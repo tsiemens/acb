@@ -12,37 +12,52 @@ import (
 	ptf "github.com/tsiemens/acb/portfolio"
 )
 
+const (
+	CsvDateFormatDefault string = "2006-01-02"
+)
+
 var Verbose = false
 var ForceDownload = false
 var DoTest = false
 
 func runRootCmd(cmd *cobra.Command, args []string) {
-	// const tFmt = "2006-01-02 15:04:05"
-	const tFmt = "2006-Jan-2"
-	ptf.RenderTxTableTest()
-	return
-	if len(args) > 0 {
+	rateLoader := fx.NewRateLoader(ForceDownload)
+
+	allTxs := make([]*ptf.Tx, 0, 20)
+	for i := 0; i < len(args); i++ {
 		// CSV passed in
-		csvName := args[0]
-		err := ptf.ParseTxCsvFile(csvName)
+		csvName := args[i]
+		txs, err := ptf.ParseTxCsvFile(csvName, rateLoader)
 		if err != nil {
 			fmt.Println("Error:", err)
+			return
 		}
-		return
+		for _, tx := range txs {
+			allTxs = append(allTxs, tx)
+		}
 	}
-	// t, err := time.Parse(tFmt, args[0])
-	// if err != nil {
-	// fmt.Fprintf(os.Stderr, "Error: %v\n", err)
-	// os.Exit(1)
-	// }
-	// fmt.Printf("Time: %v\n", t)
 
-	rates, err := fx.GetCadUsdRates(ForceDownload)
-	if err != nil {
-		fmt.Println("Error:", err)
+	allTxs = ptf.SortTxs(allTxs)
+	txsBySec := ptf.SplitTxsBySecurity(allTxs)
+
+	retVal := 0
+	nSecs := len(txsBySec)
+	i := 0
+	for sec, secTxs := range txsBySec {
+		deltas, err := ptf.TxsToDeltaList(secTxs, nil)
+		if err != nil {
+			fmt.Printf("[!] %v. Printing parsed information state:\n", err)
+			retVal = 1
+		}
+		fmt.Printf("Transactions for %s\n", sec)
+		ptf.RenderTxTable(deltas)
+		if i < (nSecs - 1) {
+			fmt.Println("")
+		}
+		i++
 	}
-	for _, rate := range rates {
-		fmt.Println(rate.String())
+	if retVal != 0 {
+		os.Exit(retVal)
 	}
 }
 
@@ -53,7 +68,7 @@ func cmdName() string {
 
 // RootCmd represents the base command when called without any subcommands
 var RootCmd = &cobra.Command{
-	Use:   cmdName() + " [FILE]",
+	Use:   cmdName() + " [CSV_FILE ...]",
 	Short: "Adjusted cost basis (ACB) calculation tool",
 	Long: `A cli tool which can be used to perform Adjusted cost basis (ACB)
 calculations on RSU and stock transactions.
@@ -66,7 +81,7 @@ certain currencies* can be automatically downloaded.
 	// Uncomment the following line if your bare application
 	// has an action associated with it:
 	Run:  runRootCmd,
-	Args: cobra.RangeArgs(0, 1),
+	Args: cobra.MinimumNArgs(1),
 }
 
 // Execute adds all child commands to the root command and sets flags appropriately.
@@ -86,6 +101,8 @@ func init() {
 		"Print verbose output")
 	RootCmd.PersistentFlags().BoolVarP(&ForceDownload, "force-download", "f", false,
 		"Download exchange rates, even if they are cached")
+	RootCmd.PersistentFlags().StringVar(&ptf.CsvDateFormat, "date-fmt", CsvDateFormatDefault,
+		"Format of how dates appear in the csv file. Must represent Jan 2, 2006")
 	RootCmd.PersistentFlags().BoolVar(&DoTest, "test", false,
 		"Do a test")
 }

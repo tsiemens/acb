@@ -3,23 +3,21 @@ package portfolio
 import (
 	"sort"
 	"time"
-
-	"github.com/tsiemens/acb/util"
 )
-
-// Security	Date	Transaction	Amount	Shares	Amount/Share	Commission	Capital Gain (Loss)	Share Balance	Change in ACB	New ACB	New ACB/Share	Memo	Foreign Currency Transaction	Exchange Rate	Amount in Foreign Currency	Commission in Foreign Corrency	T-Slip Capital Gain
 
 type Currency string
 
 const (
-	CAD Currency = "CAD"
-	USD Currency = "USD"
+	DEFAULT_CURRENCY Currency = ""
+	CAD              Currency = "CAD"
+	USD              Currency = "USD"
 )
 
 type TxAction int
 
 const (
-	BUY TxAction = iota
+	NO_ACTION TxAction = iota
+	BUY
 	SELL
 	ROC // Return of capital
 )
@@ -34,7 +32,6 @@ func (a TxAction) String() string {
 	case ROC:
 		str = "RoC"
 	default:
-		util.Assert(false, "Invalid action", a)
 	}
 	return str
 }
@@ -61,7 +58,7 @@ type Tx struct {
 	Date                              time.Time
 	Action                            TxAction
 	Shares                            uint32
-	PricePerShare                     float64
+	AmountPerShare                    float64
 	Commission                        float64
 	TxCurrency                        Currency
 	TxCurrToLocalExchangeRate         float64

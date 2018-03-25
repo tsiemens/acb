@@ -37,7 +37,7 @@ func TestBasicBuyAcb(t *testing.T) {
 
 	sptf := ptf.NewEmptyPortfolioSecurityStatus("FOO")
 	tx := &ptf.Tx{Security: "FOO", Date: mkDate(t, 1), Action: ptf.BUY,
-		Shares: 3, PricePerShare: 10.0, Commission: 0.0,
+		Shares: 3, AmountPerShare: 10.0, Commission: 0.0,
 		TxCurrency: ptf.CAD, TxCurrToLocalExchangeRate: 1.0,
 		CommissionCurrency: ptf.CAD, CommissionCurrToLocalExchangeRate: 1.0}
 
@@ -49,7 +49,7 @@ func TestBasicBuyAcb(t *testing.T) {
 
 	// Test with commission
 	tx = &ptf.Tx{Security: "FOO", Date: mkDate(t, 1), Action: ptf.BUY,
-		Shares: 2, PricePerShare: 10.0, Commission: 1.0,
+		Shares: 2, AmountPerShare: 10.0, Commission: 1.0,
 		TxCurrency: ptf.CAD, TxCurrToLocalExchangeRate: 1.0,
 		CommissionCurrency: ptf.CAD, CommissionCurrToLocalExchangeRate: 1.0}
 
@@ -61,7 +61,7 @@ func TestBasicBuyAcb(t *testing.T) {
 
 	// Test with exchange rates
 	tx = &ptf.Tx{Security: "FOO", Date: mkDate(t, 1), Action: ptf.BUY,
-		Shares: 3, PricePerShare: 12.0, Commission: 1.0,
+		Shares: 3, AmountPerShare: 12.0, Commission: 1.0,
 		TxCurrency: ptf.USD, TxCurrToLocalExchangeRate: 2.0,
 		CommissionCurrency: "XXX", CommissionCurrToLocalExchangeRate: 0.3}
 
@@ -78,7 +78,7 @@ func TestBasicSellAcbErrors(t *testing.T) {
 
 	sptf := &ptf.PortfolioSecurityStatus{Security: "FOO", ShareBalance: 2, TotalAcb: 20.0}
 	tx := &ptf.Tx{Security: "FOO", Date: mkDate(t, 1), Action: ptf.SELL,
-		Shares: 3, PricePerShare: 10.0, Commission: 0.0,
+		Shares: 3, AmountPerShare: 10.0, Commission: 0.0,
 		TxCurrency: ptf.CAD, TxCurrToLocalExchangeRate: 1.0,
 		CommissionCurrency: ptf.CAD, CommissionCurrToLocalExchangeRate: 1.0}
 
@@ -93,7 +93,7 @@ func TestBasicSellAcb(t *testing.T) {
 	// Sell all remaining shares
 	sptf := &ptf.PortfolioSecurityStatus{Security: "FOO", ShareBalance: 2, TotalAcb: 20.0}
 	tx := &ptf.Tx{Security: "FOO", Date: mkDate(t, 1), Action: ptf.SELL,
-		Shares: 2, PricePerShare: 15.0, Commission: 0.0,
+		Shares: 2, AmountPerShare: 15.0, Commission: 0.0,
 		TxCurrency: ptf.CAD, TxCurrToLocalExchangeRate: 1.0,
 		CommissionCurrency: ptf.CAD, CommissionCurrToLocalExchangeRate: 1.0}
 
@@ -106,7 +106,7 @@ func TestBasicSellAcb(t *testing.T) {
 	// Sell shares with commission
 	sptf = &ptf.PortfolioSecurityStatus{Security: "FOO", ShareBalance: 3, TotalAcb: 30.0}
 	tx = &ptf.Tx{Security: "FOO", Date: mkDate(t, 1), Action: ptf.SELL,
-		Shares: 2, PricePerShare: 15.0, Commission: 1.0,
+		Shares: 2, AmountPerShare: 15.0, Commission: 1.0,
 		TxCurrency: ptf.CAD, TxCurrToLocalExchangeRate: 1.0,
 		CommissionCurrency: ptf.CAD, CommissionCurrToLocalExchangeRate: 1.0}
 
@@ -119,7 +119,7 @@ func TestBasicSellAcb(t *testing.T) {
 	// Sell shares with exchange rate
 	sptf = &ptf.PortfolioSecurityStatus{Security: "FOO", ShareBalance: 3, TotalAcb: 30.0}
 	tx = &ptf.Tx{Security: "FOO", Date: mkDate(t, 1), Action: ptf.SELL,
-		Shares: 2, PricePerShare: 15.0, Commission: 2.0,
+		Shares: 2, AmountPerShare: 15.0, Commission: 2.0,
 		TxCurrency: "XXX", TxCurrToLocalExchangeRate: 2.0,
 		CommissionCurrency: "YYY", CommissionCurrToLocalExchangeRate: 0.4}
 
@@ -135,7 +135,7 @@ func TestBasicRocAcbErrors(t *testing.T) {
 
 	sptf := &ptf.PortfolioSecurityStatus{Security: "FOO", ShareBalance: 2, TotalAcb: 20.0}
 	tx := &ptf.Tx{Security: "FOO", Date: mkDate(t, 1), Action: ptf.ROC,
-		Shares: 3, PricePerShare: 10.0, Commission: 0.0,
+		Shares: 3, AmountPerShare: 10.0, Commission: 0.0,
 		TxCurrency: ptf.CAD, TxCurrToLocalExchangeRate: 1.0,
 		CommissionCurrency: ptf.CAD, CommissionCurrToLocalExchangeRate: 1.0}
 
@@ -145,7 +145,7 @@ func TestBasicRocAcbErrors(t *testing.T) {
 
 	sptf = &ptf.PortfolioSecurityStatus{Security: "FOO", ShareBalance: 2, TotalAcb: 20.0}
 	tx = &ptf.Tx{Security: "FOO", Date: mkDate(t, 1), Action: ptf.ROC,
-		Shares: 0, PricePerShare: 13.0, Commission: 0.0,
+		Shares: 0, AmountPerShare: 13.0, Commission: 0.0,
 		TxCurrency: ptf.CAD, TxCurrToLocalExchangeRate: 1.0,
 		CommissionCurrency: ptf.CAD, CommissionCurrToLocalExchangeRate: 1.0}
 
@@ -160,7 +160,7 @@ func TestBasicRocAcb(t *testing.T) {
 	// Sell all remaining shares
 	sptf := &ptf.PortfolioSecurityStatus{Security: "FOO", ShareBalance: 2, TotalAcb: 20.0}
 	tx := &ptf.Tx{Security: "FOO", Date: mkDate(t, 1), Action: ptf.ROC,
-		Shares: 0, PricePerShare: 1.0, Commission: 0.0,
+		Shares: 0, AmountPerShare: 1.0, Commission: 0.0,
 		TxCurrency: ptf.CAD, TxCurrToLocalExchangeRate: 1.0,
 		CommissionCurrency: ptf.CAD, CommissionCurrToLocalExchangeRate: 1.0}
 
@@ -173,7 +173,7 @@ func TestBasicRocAcb(t *testing.T) {
 	// Test RoC with exchange
 	sptf = &ptf.PortfolioSecurityStatus{Security: "FOO", ShareBalance: 2, TotalAcb: 20.0}
 	tx = &ptf.Tx{Security: "FOO", Date: mkDate(t, 1), Action: ptf.ROC,
-		Shares: 0, PricePerShare: 1.0, Commission: 0.0,
+		Shares: 0, AmountPerShare: 1.0, Commission: 0.0,
 		TxCurrency: ptf.CAD, TxCurrToLocalExchangeRate: 2.0,
 		CommissionCurrency: ptf.CAD, CommissionCurrToLocalExchangeRate: 1.0}
 

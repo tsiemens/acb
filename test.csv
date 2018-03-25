@@ -1,2 +1,5 @@
-x,y,z
-112
+security,date,action,shares,amount/share,memo,currency,exchange rate
+FOO,2017-01-02,Buy,20,1,got foo,USD,1.2
+FOO1,2017-01-02,Buy,1,2,,USD,1.2
+FOO,2017-01-03,Sell,10,3,,USD,
+FOO,2016-01-05,Buy,9,0.5,,USD,

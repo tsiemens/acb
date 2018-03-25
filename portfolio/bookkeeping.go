@@ -7,9 +7,10 @@ import (
 )
 
 func AddTx(tx *Tx, preTxStatus *PortfolioSecurityStatus) (*TxDelta, error) {
-	util.Assert(tx.Security == preTxStatus.Security)
+	util.Assertf(tx.Security == preTxStatus.Security,
+		"AddTx: securities do not match (%s and %s)\n", tx.Security, preTxStatus.Security)
 
-	var totalLocalSharePrice float64 = float64(tx.Shares) * tx.PricePerShare * tx.TxCurrToLocalExchangeRate
+	var totalLocalSharePrice float64 = float64(tx.Shares) * tx.AmountPerShare * tx.TxCurrToLocalExchangeRate
 
 	newShareBalance := preTxStatus.ShareBalance
 	var newAcbTotal float64 = preTxStatus.TotalAcb
@@ -35,14 +36,14 @@ func AddTx(tx *Tx, preTxStatus *PortfolioSecurityStatus) (*TxDelta, error) {
 			return nil, fmt.Errorf("Invalid RoC tx on %v: # of shares is non-zero (%d)",
 				tx.Date, tx.Shares)
 		}
-		acbReduction := (tx.PricePerShare * float64(preTxStatus.ShareBalance) * tx.TxCurrToLocalExchangeRate)
+		acbReduction := (tx.AmountPerShare * float64(preTxStatus.ShareBalance) * tx.TxCurrToLocalExchangeRate)
 		newAcbTotal = preTxStatus.TotalAcb - acbReduction
 		if newAcbTotal < 0.0 {
 			return nil, fmt.Errorf("Invalid RoC tx on %v: RoC (%f) exceeds the current ACB (%f)",
 				tx.Date, acbReduction, preTxStatus.TotalAcb)
 		}
 	default:
-		util.Assert(false, "Invalid action", tx.Action)
+		util.Assertf(false, "Invalid action: %v\n", tx.Action)
 	}
 
 	newStatus := &PortfolioSecurityStatus{
@@ -57,4 +58,41 @@ func AddTx(tx *Tx, preTxStatus *PortfolioSecurityStatus) (*TxDelta, error) {
 		CapitalGain: capitalGains,
 	}
 	return delta, nil
+}
+
+func TxsToDeltaList(txs []*Tx, initialStatus *PortfolioSecurityStatus) ([]*TxDelta, error) {
+	if initialStatus == nil {
+		if len(txs) == 0 {
+			return []*TxDelta{}, nil
+		}
+		initialStatus = &PortfolioSecurityStatus{
+			Security: txs[0].Security, ShareBalance: 0, TotalAcb: 0.0,
+		}
+	}
+
+	deltas := make([]*TxDelta, 0, len(txs))
+	lastStatus := initialStatus
+	for _, tx := range txs {
+		delta, err := AddTx(tx, lastStatus)
+		if err != nil {
+			// Return what we've managed so far, for debugging
+			return deltas, err
+		}
+		lastStatus = delta.PostStatus
+		deltas = append(deltas, delta)
+	}
+	return deltas, nil
+}
+
+func SplitTxsBySecurity(txs []*Tx) map[string][]*Tx {
+	txsBySec := make(map[string][]*Tx)
+	for _, tx := range txs {
+		secTxs, ok := txsBySec[tx.Security]
+		if !ok {
+			secTxs = make([]*Tx, 0, 8)
+		}
+		secTxs = append(secTxs, tx)
+		txsBySec[tx.Security] = secTxs
+	}
+	return txsBySec
 }
