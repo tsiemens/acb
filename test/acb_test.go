@@ -183,3 +183,20 @@ func TestBasicRocAcb(t *testing.T) {
 	)
 	rq.Equal(delta.CapitalGain, 0.0)
 }
+
+func TestTxSort(t *testing.T) {
+	txs := []*ptf.Tx{
+		&ptf.Tx{Security: "FOO2", Date: mkDate(t, 2)},
+		&ptf.Tx{Security: "FOO3", Date: mkDate(t, 3)},
+		&ptf.Tx{Security: "FOO1", Date: mkDate(t, 1)},
+	}
+
+	expTxs := []*ptf.Tx{
+		&ptf.Tx{Security: "FOO1", Date: mkDate(t, 1)},
+		&ptf.Tx{Security: "FOO2", Date: mkDate(t, 2)},
+		&ptf.Tx{Security: "FOO3", Date: mkDate(t, 3)},
+	}
+
+	ptf.SortTxs(txs)
+	require.Equal(t, txs, expTxs)
+}

@@ -1,6 +1,7 @@
 package portfolio
 
 import (
+	"sort"
 	"time"
 
 	"github.com/tsiemens/acb/util"
@@ -97,4 +98,10 @@ func (s *txSorter) Swap(i, j int) {
 
 func (s *txSorter) Less(i, j int) bool {
 	return s.Txs[i].Date.Unix() < s.Txs[j].Date.Unix()
+}
+
+func SortTxs(txs []*Tx) []*Tx {
+	sorter := txSorter{Txs: txs}
+	sort.Sort(&sorter)
+	return sorter.Txs
 }
