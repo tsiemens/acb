@@ -6,12 +6,12 @@ build:
 
 getdeps:
 	go get -u github.com/spf13/cobra/cobra
+	go get -u github.com/stretchr/testify
 
 clean:
 	rm bld/acb
 
 test:
-	echo "No tests yet..."
-	# go test ./test
+	go test ./test -v
 
 .PHONY: clean test
