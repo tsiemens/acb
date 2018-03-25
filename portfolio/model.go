@@ -2,6 +2,8 @@ package portfolio
 
 import (
 	"time"
+
+	"github.com/tsiemens/acb/util"
 )
 
 // Security	Date	Transaction	Amount	Shares	Amount/Share	Commission	Capital Gain (Loss)	Share Balance	Change in ACB	New ACB	New ACB/Share	Memo	Foreign Currency Transaction	Exchange Rate	Amount in Foreign Currency	Commission in Foreign Corrency	T-Slip Capital Gain
@@ -20,6 +22,21 @@ const (
 	SELL
 	ROC // Return of capital
 )
+
+func (a TxAction) String() string {
+	var str string = "invalid"
+	switch a {
+	case BUY:
+		str = "Buy"
+	case SELL:
+		str = "Sell"
+	case ROC:
+		str = "RoC"
+	default:
+		util.Assert(false, "Invalid action", a)
+	}
+	return str
+}
 
 type PortfolioSecurityStatus struct {
 	Security     string
@@ -57,6 +74,13 @@ type TxDelta struct {
 	PreStatus   *PortfolioSecurityStatus
 	PostStatus  *PortfolioSecurityStatus
 	CapitalGain float64
+}
+
+func (d *TxDelta) AcbDelta() float64 {
+	if d.PreStatus == nil {
+		return d.PostStatus.TotalAcb
+	}
+	return d.PostStatus.TotalAcb - d.PreStatus.TotalAcb
 }
 
 type txSorter struct {

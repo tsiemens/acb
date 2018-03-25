@@ -7,6 +7,7 @@ build:
 getdeps:
 	go get -u github.com/spf13/cobra/cobra
 	go get -u github.com/stretchr/testify
+	go get -u github.com/olekukonko/tablewriter
 
 clean:
 	rm bld/acb

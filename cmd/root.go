@@ -19,6 +19,8 @@ var DoTest = false
 func runRootCmd(cmd *cobra.Command, args []string) {
 	// const tFmt = "2006-01-02 15:04:05"
 	const tFmt = "2006-Jan-2"
+	ptf.RenderTxTableTest()
+	return
 	if len(args) > 0 {
 		// CSV passed in
 		csvName := args[0]
