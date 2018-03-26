@@ -1,0 +1,5 @@
+security,date,action,shares,amount/share,currency,exchange rate,commission,memo
+FOO,2017-01-03,Buy,20,1.5,USD,1.2,1,First buy!
+BAR,2017-01-04,Buy,5,50,,,2,
+FOO,2017-01-05,Sell,5,1.4,USD,1.2,,:(
+BAR,2017-01-06,Sell,1,60,,,,
