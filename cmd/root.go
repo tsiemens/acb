@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 
 	"github.com/spf13/cobra"
 	// "github.com/spf13/viper"
@@ -18,10 +20,42 @@ const (
 
 var Verbose = false
 var ForceDownload = false
-var DoTest = false
+var InitialSymStatusOpt []string
+
+func AllInitialStatus() (map[string]*ptf.PortfolioSecurityStatus, error) {
+	stati := make(map[string]*ptf.PortfolioSecurityStatus)
+	for _, opt := range InitialSymStatusOpt {
+		parts := strings.Split(opt, ":")
+		if len(parts) != 3 {
+			return nil, fmt.Errorf("Invalid ACB format '%s'", opt)
+		}
+		symbol := parts[0]
+		shares, err := strconv.ParseUint(parts[1], 10, 32)
+		if err != nil {
+			return nil, fmt.Errorf("Invalid shares format '%s'. %v", opt, err)
+		}
+		acb, err := strconv.ParseFloat(parts[2], 64)
+		if err != nil {
+			return nil, fmt.Errorf("Invalid ACB format '%s'. %v", opt, err)
+		}
+
+		if _, ok := stati[symbol]; ok {
+			return nil, fmt.Errorf("Symbol %s specified multiple times", symbol)
+		}
+		stati[symbol] = &ptf.PortfolioSecurityStatus{
+			Security: symbol, ShareBalance: uint32(shares), TotalAcb: acb}
+	}
+	return stati, nil
+}
 
 func runRootCmd(cmd *cobra.Command, args []string) {
 	rateLoader := fx.NewRateLoader(ForceDownload)
+
+	allInitStatus, err := AllInitialStatus()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error parsing --symbol-base: %v\n", err)
+		os.Exit(1)
+	}
 
 	allTxs := make([]*ptf.Tx, 0, 20)
 	for i := 0; i < len(args); i++ {
@@ -44,7 +78,11 @@ func runRootCmd(cmd *cobra.Command, args []string) {
 	nSecs := len(txsBySec)
 	i := 0
 	for sec, secTxs := range txsBySec {
-		deltas, err := ptf.TxsToDeltaList(secTxs, nil)
+		secInitStatus, ok := allInitStatus[sec]
+		if !ok {
+			secInitStatus = nil
+		}
+		deltas, err := ptf.TxsToDeltaList(secTxs, secInitStatus)
 		if err != nil {
 			fmt.Printf("[!] %v. Printing parsed information state:\n", err)
 			retVal = 1
@@ -70,14 +108,23 @@ func cmdName() string {
 var RootCmd = &cobra.Command{
 	Use:   cmdName() + " [CSV_FILE ...]",
 	Short: "Adjusted cost basis (ACB) calculation tool",
-	Long: `A cli tool which can be used to perform Adjusted cost basis (ACB)
+	Long: fmt.Sprintf(
+		`A cli tool which can be used to perform Adjusted cost basis (ACB)
 calculations on RSU and stock transactions.
 
 Stocks and transactions can be in other currencies, and conversion rates for
-certain currencies* can be automatically downloaded.
+certain currencies* can be automatically downloaded or provided manually.
 
 * Supported conversion rate pairs are:
- - CAD/USD`,
+ - CAD/USD
+
+Each CSV provided should contain a header with these column names:
+%s
+Non-essential columns like exchange rates and currency columns are optional.
+
+Exchange rates are always provided to be multiplied with the given amount to produce
+the equivalent value in the default (local) currency.
+ `, strings.Join(ptf.ColNames, ", ")),
 	// Uncomment the following line if your bare application
 	// has an action associated with it:
 	Run:  runRootCmd,
@@ -103,8 +150,9 @@ func init() {
 		"Download exchange rates, even if they are cached")
 	RootCmd.PersistentFlags().StringVar(&ptf.CsvDateFormat, "date-fmt", CsvDateFormatDefault,
 		"Format of how dates appear in the csv file. Must represent Jan 2, 2006")
-	RootCmd.PersistentFlags().BoolVar(&DoTest, "test", false,
-		"Do a test")
+	RootCmd.PersistentFlags().StringSliceVarP(&InitialSymStatusOpt, "symbol-base", "b", []string{},
+		"Base share count and ACBs for symbols, assumed at the beginning of time. "+
+			"Formatted as SYM:nShares:totalAcb. Eg. GOOG:20:1000.00 . May be provided multiple times.")
 }
 
 // onInit reads in config file and ENV variables if set, and performs global

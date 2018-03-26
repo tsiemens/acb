@@ -32,7 +32,7 @@ var colParserMap = map[string]ColParser{
 var ColNames []string
 
 func init() {
-	ColNames = make([]string, len(colParserMap))
+	ColNames = make([]string, 0, len(colParserMap))
 	for name, _ := range colParserMap {
 		ColNames = append(ColNames, name)
 	}
