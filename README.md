@@ -6,7 +6,7 @@ This is primarily designed for Canadians filing tax returns, who have stocks, RS
 ## Features
 - Can compute the total and per-share Adjusted cost base for each stock
 - Computes each transaction's capital gain, based on the ACB at that time
-- Can perform automatic lookups for the daily CAD/USD exchange rate (from bankofcanada.ca) if needed
+- Can perform automatic lookups for the daily CAD/USD exchange rate (from bankofcanada.ca) if needed. This uses the historical noon rates for 2016 and before, and the indicative rate for 2017 and newer.
 - Can accept multiple csv files (eg. one of each year of transactions, or however they are organized)
 - Can do computations for multiple securities/symbols in a single execution
 - Can apply an "initial" value for each symbol (eg. apply last year's used ACB/stock quanity)
