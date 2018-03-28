@@ -150,7 +150,7 @@ func init() {
 		"Download exchange rates, even if they are cached")
 	RootCmd.PersistentFlags().StringVar(&ptf.CsvDateFormat, "date-fmt", CsvDateFormatDefault,
 		"Format of how dates appear in the csv file. Must represent Jan 2, 2006")
-	RootCmd.PersistentFlags().StringSliceVarP(&InitialSymStatusOpt, "symbol-base", "b", []string{},
+	RootCmd.Flags().StringSliceVarP(&InitialSymStatusOpt, "symbol-base", "b", []string{},
 		"Base share count and ACBs for symbols, assumed at the beginning of time. "+
 			"Formatted as SYM:nShares:totalAcb. Eg. GOOG:20:1000.00 . May be provided multiple times.")
 }

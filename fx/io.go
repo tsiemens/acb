@@ -16,7 +16,9 @@ import (
 )
 
 const (
-	cadUsdJsonUrlFmt = "https://www.bankofcanada.ca/valet/observations/IEXE0101/json?start_date=%d-01-01&end_date=%d-12-31"
+	cadUsdNoonObs    = "IEXE0101"
+	cadUsdIndObs     = "FXCADUSD"
+	cadUsdJsonUrlFmt = "https://www.bankofcanada.ca/valet/observations/%s/json?start_date=%d-01-01&end_date=%d-12-31"
 
 	lineBufSize     = 100
 	csvTimeFormat   = "2006-01-02"
@@ -28,8 +30,9 @@ type ValetJsonFx struct {
 }
 
 type ValetJsonObs struct {
-	Date   string      `json:"d"`
-	UsdCad ValetJsonFx `json:"IEXE0101"`
+	Date       string      `json:"d"`
+	UsdCadNoon ValetJsonFx `json:"IEXE0101"`
+	UsdCad     ValetJsonFx `json:"FXCADUSD"`
 }
 
 type ValetJsonRoot struct {
@@ -37,7 +40,13 @@ type ValetJsonRoot struct {
 }
 
 func getJsonUrl(year uint32) string {
-	return fmt.Sprintf(cadUsdJsonUrlFmt, year, year)
+	var obs string
+	if year >= 2017 {
+		obs = cadUsdIndObs
+	} else {
+		obs = cadUsdNoonObs
+	}
+	return fmt.Sprintf(cadUsdJsonUrlFmt, obs, year, year)
 }
 
 func GetRemoteUsdCadRatesJson(year uint32) ([]DailyRate, error) {
@@ -63,7 +72,13 @@ func GetRemoteUsdCadRatesJson(year uint32) ([]DailyRate, error) {
 			fmt.Fprintln(os.Stderr, "Unable to parse date:", err)
 			continue
 		}
-		dRate := DailyRate{date, obs.UsdCad.Val}
+
+		var dRate DailyRate
+		if obs.UsdCadNoon.Val != 0.0 {
+			dRate = DailyRate{date, obs.UsdCadNoon.Val}
+		} else {
+			dRate = DailyRate{date, obs.UsdCad.Val}
+		}
 		rates = append(rates, dRate)
 	}
 
