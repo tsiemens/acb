@@ -77,7 +77,7 @@ func GetRemoteUsdCadRatesJson(year uint32) ([]DailyRate, error) {
 		if obs.UsdCadNoon.Val != 0.0 {
 			dRate = DailyRate{date, obs.UsdCadNoon.Val}
 		} else {
-			dRate = DailyRate{date, obs.UsdCad.Val}
+			dRate = DailyRate{date, 1.0 / obs.UsdCad.Val}
 		}
 		rates = append(rates, dRate)
 	}
