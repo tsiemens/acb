@@ -94,7 +94,26 @@ func (s *txSorter) Swap(i, j int) {
 }
 
 func (s *txSorter) Less(i, j int) bool {
-	return s.Txs[i].Date.Unix() < s.Txs[j].Date.Unix()
+	dateDiff := s.Txs[i].Date.Unix() - s.Txs[j].Date.Unix()
+	if dateDiff < 0 {
+		return true
+	} else if dateDiff > 0 {
+		return false
+	}
+	// Tie break on order type. Buys always first, so we don't go negative.
+	actionSortVal := func(action TxAction) int {
+		switch action {
+		case BUY:
+			return 0
+		case ROC:
+			return 1
+		case SELL:
+			return 2
+		default:
+			return -1
+		}
+	}
+	return actionSortVal(s.Txs[i].Action) < actionSortVal(s.Txs[j].Action)
 }
 
 func SortTxs(txs []*Tx) []*Tx {
