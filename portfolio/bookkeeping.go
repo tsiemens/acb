@@ -2,11 +2,69 @@ package portfolio
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/tsiemens/acb/util"
 )
 
-func AddTx(tx *Tx, preTxStatus *PortfolioSecurityStatus) (*TxDelta, error) {
+func mustParseDuration(str string) time.Duration {
+	dur, err := time.ParseDuration(str)
+	util.Assert(err == nil, err)
+	return dur
+}
+
+var ONE_DAY_DUR = mustParseDuration("24h")
+
+// Checks if there is a Buy action within 30 days before or after the Sell
+// at idx, AND if you hold shares after the 30 day period
+func IsSellSuperficial(idx int, txs []*Tx, shareBalanceAfterSell uint32) bool {
+	tx := txs[idx]
+	util.Assertf(tx.Action == SELL,
+		"IsSellSuperficial: Tx was not Sell, but %s", tx.Action)
+
+	firstBadBuyDate := tx.Date.Add(-30 * ONE_DAY_DUR)
+	lastBadBuyDate := tx.Date.Add(30 * ONE_DAY_DUR)
+
+	shareBalanceAfterPeriod := shareBalanceAfterSell
+	didBuyAfter := false
+	for i := idx + 1; i < len(txs); i++ {
+		afterTx := txs[i]
+		if afterTx.Date.After(lastBadBuyDate) {
+			break
+		}
+		// Within the 30 day window after
+		switch afterTx.Action {
+		case BUY:
+			didBuyAfter = true
+			shareBalanceAfterPeriod += afterTx.Shares
+		case SELL:
+			shareBalanceAfterPeriod -= afterTx.Shares
+		default:
+			// ignored
+		}
+	}
+
+	if shareBalanceAfterPeriod == 0 {
+		return false
+	} else if didBuyAfter {
+		return true
+	}
+
+	for i := idx - 1; i >= 0; i-- {
+		if txs[i].Date.Before(firstBadBuyDate) {
+			break
+		}
+		// Within the 30 day window before
+		if txs[i].Action == BUY {
+			return true
+		}
+	}
+
+	return false
+}
+
+func AddTx(idx int, txs []*Tx, preTxStatus *PortfolioSecurityStatus, applySuperficialLosses bool) (*TxDelta, error) {
+	tx := txs[idx]
 	util.Assertf(tx.Security == preTxStatus.Security,
 		"AddTx: securities do not match (%s and %s)\n", tx.Security, preTxStatus.Security)
 
@@ -15,6 +73,7 @@ func AddTx(tx *Tx, preTxStatus *PortfolioSecurityStatus) (*TxDelta, error) {
 	newShareBalance := preTxStatus.ShareBalance
 	var newAcbTotal float64 = preTxStatus.TotalAcb
 	var capitalGains float64 = 0.0
+	var superficialLoss float64 = 0.0
 
 	switch tx.Action {
 	case BUY:
@@ -31,6 +90,14 @@ func AddTx(tx *Tx, preTxStatus *PortfolioSecurityStatus) (*TxDelta, error) {
 		newAcbTotal = preTxStatus.TotalAcb - (preTxStatus.PerShareAcb() * float64(tx.Shares))
 		totalPayout := totalLocalSharePrice - (tx.Commission * tx.CommissionCurrToLocalExchangeRate)
 		capitalGains = totalPayout - (preTxStatus.PerShareAcb() * float64(tx.Shares))
+
+		if capitalGains < 0.0 &&
+			applySuperficialLosses && IsSellSuperficial(idx, txs, newShareBalance) {
+
+			superficialLoss = capitalGains
+			capitalGains = 0.0
+			newAcbTotal -= superficialLoss
+		}
 	case ROC:
 		if tx.Shares != 0 {
 			return nil, fmt.Errorf("Invalid RoC tx on %v: # of shares is non-zero (%d)",
@@ -52,15 +119,16 @@ func AddTx(tx *Tx, preTxStatus *PortfolioSecurityStatus) (*TxDelta, error) {
 		TotalAcb:     newAcbTotal,
 	}
 	delta := &TxDelta{
-		Tx:          tx,
-		PreStatus:   preTxStatus,
-		PostStatus:  newStatus,
-		CapitalGain: capitalGains,
+		Tx:              tx,
+		PreStatus:       preTxStatus,
+		PostStatus:      newStatus,
+		CapitalGain:     capitalGains,
+		SuperficialLoss: superficialLoss,
 	}
 	return delta, nil
 }
 
-func TxsToDeltaList(txs []*Tx, initialStatus *PortfolioSecurityStatus) ([]*TxDelta, error) {
+func TxsToDeltaList(txs []*Tx, initialStatus *PortfolioSecurityStatus, applySuperficialLosses bool) ([]*TxDelta, error) {
 	if initialStatus == nil {
 		if len(txs) == 0 {
 			return []*TxDelta{}, nil
@@ -72,8 +140,8 @@ func TxsToDeltaList(txs []*Tx, initialStatus *PortfolioSecurityStatus) ([]*TxDel
 
 	deltas := make([]*TxDelta, 0, len(txs))
 	lastStatus := initialStatus
-	for _, tx := range txs {
-		delta, err := AddTx(tx, lastStatus)
+	for i, _ := range txs {
+		delta, err := AddTx(i, txs, lastStatus, applySuperficialLosses)
 		if err != nil {
 			// Return what we've managed so far, for debugging
 			return deltas, err

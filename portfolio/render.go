@@ -43,31 +43,6 @@ func plusMinusDollar(val float64, showPlus bool) string {
 	return fmt.Sprintf("%s$%s", plus, currStr(val))
 }
 
-func RenderTxTableTest() {
-	sptf := &PortfolioSecurityStatus{Security: "FOO", ShareBalance: 0, TotalAcb: 0.0}
-	tx_ := &Tx{Security: "FOO", Date: time.Now(), Action: BUY,
-		Shares: 2, AmountPerShare: 13.0, Commission: 1.0,
-		TxCurrency: CAD, TxCurrToLocalExchangeRate: 1.0,
-		CommissionCurrency: CAD, CommissionCurrToLocalExchangeRate: 1.0}
-
-	delta1, err := AddTx(tx_, sptf)
-	if err != nil {
-		return
-	}
-
-	tx_ = &Tx{Security: "FOO", Date: time.Now(), Action: SELL,
-		Shares: 1, AmountPerShare: 14.0, Commission: 1.0,
-		TxCurrency: USD, TxCurrToLocalExchangeRate: 1.2,
-		CommissionCurrency: USD, CommissionCurrToLocalExchangeRate: 1.2}
-
-	delta2, err := AddTx(tx_, delta1.PostStatus)
-	if err != nil {
-		return
-	}
-
-	RenderTxTable([]*TxDelta{delta1, delta2})
-}
-
 func RenderTxTable(deltas []*TxDelta) {
 	table := tw.NewWriter(os.Stdout)
 	table.SetHeader([]string{"Security", "Date", "TX", "Amount", "Shares", "Amt/Share",
@@ -78,8 +53,16 @@ func RenderTxTable(deltas []*TxDelta) {
 	table.SetRowLine(true)
 
 	var capGainsTotal float64 = 0.0
+	sawSuperficialLoss := false
 
 	for _, d := range deltas {
+		superficialLossAsterix := ""
+		superficialLossAddAsterix := ""
+		if d.SuperficialLoss != 0.0 {
+			superficialLossAsterix = fmt.Sprintf(" *\n(was %s)", plusMinusDollar(d.SuperficialLoss, false))
+			superficialLossAddAsterix = fmt.Sprintf(" *\n(%s)", plusMinusDollar(-1*d.SuperficialLoss, true))
+			sawSuperficialLoss = true
+		}
 		tx := d.Tx
 		row := []string{d.Tx.Security, dateStr(tx.Date), tx.Action.String(),
 			// Amount
@@ -88,10 +71,10 @@ func RenderTxTable(deltas []*TxDelta) {
 			currWithFxStr(tx.AmountPerShare, tx.TxCurrency, tx.TxCurrToLocalExchangeRate),
 			strOrDash(tx.Commission != 0.0,
 				currWithFxStr(tx.Commission, tx.CommissionCurrency, tx.CommissionCurrToLocalExchangeRate)),
-			strOrDash(tx.Action == SELL, plusMinusDollar(d.CapitalGain, false)),
+			strOrDash(tx.Action == SELL, plusMinusDollar(d.CapitalGain, false)+superficialLossAsterix),
 			fmt.Sprintf("%d", d.PostStatus.ShareBalance),
-			plusMinusDollar(d.AcbDelta(), true),
-			"$" + currStr(d.PostStatus.TotalAcb),
+			plusMinusDollar(d.AcbDelta(), true) + superficialLossAddAsterix,
+			"$" + currStr(d.PostStatus.TotalAcb) + superficialLossAddAsterix,
 			// Acb per share
 			strOrDash(d.PostStatus.ShareBalance > 0.0,
 				"$"+currStr(d.PostStatus.TotalAcb/float64(d.PostStatus.ShareBalance))),
@@ -105,4 +88,8 @@ func RenderTxTable(deltas []*TxDelta) {
 		"Total", plusMinusDollar(capGainsTotal, false), "", "", "", "", ""})
 
 	table.Render()
+
+	if sawSuperficialLoss {
+		fmt.Println(" * = Superficial loss adjustment")
+	}
 }

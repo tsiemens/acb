@@ -21,6 +21,7 @@ const (
 var Verbose = false
 var ForceDownload = false
 var InitialSymStatusOpt []string
+var NoSuperficialLosses = false
 
 func AllInitialStatus() (map[string]*ptf.PortfolioSecurityStatus, error) {
 	stati := make(map[string]*ptf.PortfolioSecurityStatus)
@@ -82,7 +83,7 @@ func runRootCmd(cmd *cobra.Command, args []string) {
 		if !ok {
 			secInitStatus = nil
 		}
-		deltas, err := ptf.TxsToDeltaList(secTxs, secInitStatus)
+		deltas, err := ptf.TxsToDeltaList(secTxs, secInitStatus, !NoSuperficialLosses)
 		if err != nil {
 			fmt.Printf("[!] %v. Printing parsed information state:\n", err)
 			retVal = 1
@@ -129,7 +130,7 @@ the equivalent value in the default (local) currency.
 	// has an action associated with it:
 	Run:     runRootCmd,
 	Args:    cobra.MinimumNArgs(1),
-	Version: "0.1.0",
+	Version: "0.2.0",
 }
 
 // Execute adds all child commands to the root command and sets flags appropriately.
@@ -154,6 +155,8 @@ func init() {
 	RootCmd.Flags().StringSliceVarP(&InitialSymStatusOpt, "symbol-base", "b", []string{},
 		"Base share count and ACBs for symbols, assumed at the beginning of time. "+
 			"Formatted as SYM:nShares:totalAcb. Eg. GOOG:20:1000.00 . May be provided multiple times.")
+	RootCmd.PersistentFlags().BoolVar(&NoSuperficialLosses, "no-superficial-losses", false,
+		"Do not apply the superficial loss rule to sold shares (behaviour pre-v0.2).")
 }
 
 // onInit reads in config file and ENV variables if set, and performs global

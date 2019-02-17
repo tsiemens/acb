@@ -68,10 +68,11 @@ type Tx struct {
 }
 
 type TxDelta struct {
-	Tx          *Tx
-	PreStatus   *PortfolioSecurityStatus
-	PostStatus  *PortfolioSecurityStatus
-	CapitalGain float64
+	Tx              *Tx
+	PreStatus       *PortfolioSecurityStatus
+	PostStatus      *PortfolioSecurityStatus
+	CapitalGain     float64
+	SuperficialLoss float64
 }
 
 func (d *TxDelta) AcbDelta() float64 {
