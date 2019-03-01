@@ -45,7 +45,7 @@ func plusMinusDollar(val float64, showPlus bool) string {
 
 func RenderTxTable(deltas []*TxDelta) {
 	table := tw.NewWriter(os.Stdout)
-	table.SetHeader([]string{"Security", "Date", "TX", "Amount", "Shares", "Amt/Share",
+	table.SetHeader([]string{"Security", "Date", "TX", "Amount", "Shares", "Amt/Share", "ACB",
 		"Commission", "Cap. Gain", "Share Balance", "ACB +/-", "New ACB", "New ACB/Share",
 		"Memo",
 	})
@@ -64,13 +64,23 @@ func RenderTxTable(deltas []*TxDelta) {
 			sawSuperficialLoss = true
 		}
 		tx := d.Tx
+
+		var preAcbPerShare float64 = 0.0
+		if tx.Action == SELL && d.PreStatus.ShareBalance > 0 {
+			preAcbPerShare = d.PreStatus.TotalAcb / float64(d.PreStatus.ShareBalance)
+		}
+
 		row := []string{d.Tx.Security, dateStr(tx.Date), tx.Action.String(),
 			// Amount
 			currWithFxStr(float64(tx.Shares)*tx.AmountPerShare, tx.TxCurrency, tx.TxCurrToLocalExchangeRate),
 			fmt.Sprintf("%d", tx.Shares),
 			currWithFxStr(tx.AmountPerShare, tx.TxCurrency, tx.TxCurrToLocalExchangeRate),
+			// ACB of sale
+			strOrDash(tx.Action == SELL, "$"+currStr(preAcbPerShare*float64(tx.Shares))),
+			// Commission
 			strOrDash(tx.Commission != 0.0,
 				currWithFxStr(tx.Commission, tx.CommissionCurrency, tx.CommissionCurrToLocalExchangeRate)),
+			// Cap gains
 			strOrDash(tx.Action == SELL, plusMinusDollar(d.CapitalGain, false)+superficialLossAsterix),
 			fmt.Sprintf("%d", d.PostStatus.ShareBalance),
 			plusMinusDollar(d.AcbDelta(), true) + superficialLossAddAsterix,
@@ -84,7 +94,7 @@ func RenderTxTable(deltas []*TxDelta) {
 
 		capGainsTotal += d.CapitalGain
 	}
-	table.SetFooter([]string{"", "", "", "", "", "",
+	table.SetFooter([]string{"", "", "", "", "", "", "",
 		"Total", plusMinusDollar(capGainsTotal, false), "", "", "", "", ""})
 
 	table.Render()
