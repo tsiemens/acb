@@ -13,6 +13,8 @@ import (
 	"path/filepath"
 	"strconv"
 	"time"
+
+	"github.com/tsiemens/acb/log"
 )
 
 const (
@@ -26,7 +28,14 @@ const (
 )
 
 type ValetJsonFx struct {
-	Val float64 `json:"v"`
+	ValStr string `json:"v"`
+}
+
+func (v ValetJsonFx) Val() (float64, error) {
+	if v.ValStr == "" {
+		return 0.0, nil
+	}
+	return strconv.ParseFloat(v.ValStr, 64)
 }
 
 type ValetJsonObs struct {
@@ -51,7 +60,9 @@ func getJsonUrl(year uint32) string {
 
 func GetRemoteUsdCadRatesJson(year uint32) ([]DailyRate, error) {
 	fmt.Fprintf(os.Stderr, "Fetching USD/CAD exchange rates for %d\n", year)
-	resp, err := http.Get(getJsonUrl(year))
+	url := getJsonUrl(year)
+	log.Fverbosef(os.Stderr, "Getting %s\n", url)
+	resp, err := http.Get(url)
 	if err != nil {
 		return nil, fmt.Errorf("Error getting CAD USD rates: %v", err)
 	} else if resp.StatusCode != 200 {
@@ -74,10 +85,21 @@ func GetRemoteUsdCadRatesJson(year uint32) ([]DailyRate, error) {
 		}
 
 		var dRate DailyRate
-		if obs.UsdCadNoon.Val != 0.0 {
-			dRate = DailyRate{date, obs.UsdCadNoon.Val}
+		usdCadNoonVal, err := obs.UsdCadNoon.Val()
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "Failed to parse USDCAD Noon rate for", date, ":", obs.UsdCadNoon.ValStr)
+			continue
+		}
+
+		if usdCadNoonVal != 0.0 {
+			dRate = DailyRate{date, usdCadNoonVal}
 		} else {
-			dRate = DailyRate{date, 1.0 / obs.UsdCad.Val}
+			usdCadVal, err := obs.UsdCad.Val()
+			if err != nil {
+				fmt.Fprintln(os.Stderr, "Failed to parse USDCAD rate for", date, ":", obs.UsdCad.ValStr)
+				continue
+			}
+			dRate = DailyRate{date, 1.0 / usdCadVal}
 		}
 		rates = append(rates, dRate)
 	}

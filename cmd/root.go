@@ -11,6 +11,7 @@ import (
 	// "github.com/spf13/viper"
 
 	"github.com/tsiemens/acb/fx"
+	"github.com/tsiemens/acb/log"
 	ptf "github.com/tsiemens/acb/portfolio"
 )
 
@@ -18,7 +19,6 @@ const (
 	CsvDateFormatDefault string = "2006-01-02"
 )
 
-var Verbose = false
 var ForceDownload = false
 var InitialSymStatusOpt []string
 var NoSuperficialLosses = false
@@ -146,7 +146,7 @@ func init() {
 	cobra.OnInitialize(onInit)
 
 	// Persistent flags, which are global to the app cli
-	RootCmd.PersistentFlags().BoolVarP(&Verbose, "verbose", "v", false,
+	RootCmd.PersistentFlags().BoolVarP(&log.VerboseEnabled, "verbose", "v", false,
 		"Print verbose output")
 	RootCmd.PersistentFlags().BoolVarP(&ForceDownload, "force-download", "f", false,
 		"Download exchange rates, even if they are cached")
