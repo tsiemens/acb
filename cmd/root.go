@@ -130,7 +130,7 @@ the equivalent value in the default (local) currency.
 	// has an action associated with it:
 	Run:     runRootCmd,
 	Args:    cobra.MinimumNArgs(1),
-	Version: "0.2.0",
+	Version: "0.3.0",
 }
 
 // Execute adds all child commands to the root command and sets flags appropriately.
