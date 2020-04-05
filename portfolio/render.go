@@ -3,16 +3,10 @@ package portfolio
 import (
 	"fmt"
 	"os"
-	"time"
 
 	tw "github.com/olekukonko/tablewriter"
-	//"github.com/tsiemens/acb/util"
+	"github.com/tsiemens/acb/util"
 )
-
-func dateStr(date time.Time) string {
-	year, month, day := date.Date()
-	return fmt.Sprintf("%d-%02d-%02d", year, month, day)
-}
 
 func currStr(val float64) string {
 	return fmt.Sprintf("%.2f", val)
@@ -70,7 +64,7 @@ func RenderTxTable(deltas []*TxDelta) {
 			preAcbPerShare = d.PreStatus.TotalAcb / float64(d.PreStatus.ShareBalance)
 		}
 
-		row := []string{d.Tx.Security, dateStr(tx.Date), tx.Action.String(),
+		row := []string{d.Tx.Security, util.DateStr(tx.Date), tx.Action.String(),
 			// Amount
 			currWithFxStr(float64(tx.Shares)*tx.AmountPerShare, tx.TxCurrency, tx.TxCurrToLocalExchangeRate),
 			fmt.Sprintf("%d", tx.Shares),

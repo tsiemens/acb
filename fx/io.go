@@ -12,9 +12,11 @@ import (
 	"os/user"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/tsiemens/acb/log"
+	"github.com/tsiemens/acb/util"
 )
 
 const (
@@ -227,6 +229,56 @@ func NewRateLoader(forceDownload bool) *RateLoader {
 	}
 }
 
+func tryGetSurroundingRates(t time.Time, yearRates map[time.Time]DailyRate) (beforeRate *DailyRate, afterRate *DailyRate) {
+	beforeTime := t
+	for i := 0; i < 7; i++ {
+		beforeTime = beforeTime.AddDate(0, 0, -1)
+		rate, ok := yearRates[beforeTime]
+		if ok {
+			beforeRate = &DailyRate{}
+			*beforeRate = rate
+			break
+		}
+	}
+	afterTime := t
+	for i := 0; i < 7; i++ {
+		afterTime = afterTime.AddDate(0, 0, 1)
+		rate, ok := yearRates[afterTime]
+		if ok {
+			afterRate = &DailyRate{}
+			*afterRate = rate
+			break
+		}
+	}
+	// implicit return
+	return
+}
+
+func getSurroundingRatesHelp(t time.Time, yearRates map[time.Time]DailyRate, prefix string) string {
+	beforeRate, afterRate := tryGetSurroundingRates(t, yearRates)
+	if beforeRate != nil || afterRate != nil {
+		var builder strings.Builder
+		builder.WriteString(prefix)
+		builder.WriteString("If date is on a day where markets are closed, check if " +
+			"date should be moved to another day.\nAlternatively, you may provide a " +
+			"manual exchange rate from the appropriate surrounding day (NOTE these are only suggested rates, and do not currently include rates from different years. All saved FX rates can be found in ~/.acb/):")
+		if beforeRate != nil {
+			builder.WriteString("\n")
+			builder.WriteString(util.DateStr(beforeRate.Date))
+			builder.WriteString(": ")
+			builder.WriteString(fmt.Sprintf("%f", beforeRate.ForeignToLocalRate))
+		}
+		if afterRate != nil {
+			builder.WriteString("\n")
+			builder.WriteString(util.DateStr(afterRate.Date))
+			builder.WriteString(": ")
+			builder.WriteString(fmt.Sprintf("%f", afterRate.ForeignToLocalRate))
+		}
+		return builder.String()
+	}
+	return ""
+}
+
 func (cr *RateLoader) GetUsdCadRate(t time.Time) (DailyRate, error) {
 	yearRates, ok := cr.YearRates[uint32(t.Year())]
 	if !ok {
@@ -242,7 +294,8 @@ func (cr *RateLoader) GetUsdCadRate(t time.Time) (DailyRate, error) {
 	}
 	rate, ok := yearRates[t]
 	if !ok {
-		return DailyRate{}, fmt.Errorf("Unable to retrieve exchange rate for %v", t)
+		return DailyRate{}, fmt.Errorf("Unable to retrieve exchange rate for %v%s", t,
+			getSurroundingRatesHelp(t, yearRates, "\n"))
 	}
 	return rate, nil
 }
