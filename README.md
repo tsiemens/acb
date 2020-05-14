@@ -63,14 +63,43 @@ Transactions for BAR
                                                               +------------+-----------+---------------+----------+---------+---------------+------+
 ```
 
-## Set Up/Development
-```
-make getdeps
-make
-make test
+## Installation
+Currently, acb must be installed via the golang toolchain.
 
-export PATH=$PATH:$(pwd)/bld
-acb ...
+1\. Set up your go paths (exact directories used below are suggestions only) and environment variables.
+
+```sh
+mkdir $HOME/go
+export GOPATH=$HOME/go
+export PATH=$PATH:$GOPATH/bin
+```
+
+2\. Install the golang development tools. This will likely be available through your package manager (eg. apt, brew). [Manual installation instructions](https://golang.org/doc/install) are also available.
+
+3\. Download and install the acb source and dependencies into your GOPATH.
+
+```sh
+go get -u -v github.com/tsiemens/acb
+```
+
+The `acb` tool should now be ready to use (is installed to $GOPATH/bin/acb)
+
+```sh
+acb --help
+```
+
+## Uninstall
+
+```sh
+# Sanity check what will be done. Don't forget to include the trailing "..." here.
+go clean -i -n github.com/tsiemens/acb...
+# Clean out installed build files
+go clean -i github.com/tsiemens/acb...
+
+# Delete the downloaded source
+rm -rf $GOPATH/src/github.com/tsiemens/acb
+
+# You may want to repeat the above steps for other required packages downloaded (shown in go get -v -u), if they are not used by any other top-level package.
 ```
 
 ## Disclaimer

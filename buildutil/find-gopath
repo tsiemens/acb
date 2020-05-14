@@ -1,0 +1,11 @@
+#!/usr/bin/env python
+
+from __future__ import absolute_import, print_function
+
+import os.path
+
+project_root = os.path.join(os.path.dirname(__file__), '..')
+project_root_real = os.path.realpath(project_root)
+go_path = os.path.join(project_root_real, '../../../..')
+abs_go_path = os.path.abspath(go_path)
+print(abs_go_path)

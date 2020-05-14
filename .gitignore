@@ -14,7 +14,9 @@
 .glide/
 
 bld/
+acb
 
 # Temp files
 .~*
 ~*
+*.backup

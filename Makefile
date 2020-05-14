@@ -1,4 +1,4 @@
-export GOPATH=$(shell echo $$(readlink -f $$(pwd)/../../../..))
+export GOPATH=$(shell buildutil/find-gopath)
 
 build:
 	mkdir -p bld
