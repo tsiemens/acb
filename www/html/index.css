@@ -1,0 +1,29 @@
+.page-content-container {
+   width: auto;
+   margin: 20px;
+   /* border: 1px dashed grey; */
+}
+
+.file-info-container {
+   width: auto;
+   margin-left: 15%;
+   margin-right: 15%;
+}
+
+.file-drop-area {
+   border: 5px dashed red;
+   /* width: 440px; */
+   width: auto;
+   height: 272px;
+}
+
+.file-drop-area[drop-active=true] {
+   box-shadow: inset 0px 0px 0px 2px #00C;
+}
+
+.file-drop-area-text {
+   text-align: center;
+   vertical-align: middle;
+   line-height: 272px;
+   margin: 0;
+}
