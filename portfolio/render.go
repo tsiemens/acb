@@ -2,6 +2,7 @@ package portfolio
 
 import (
 	"fmt"
+	"io"
 	"os"
 
 	tw "github.com/olekukonko/tablewriter"
@@ -37,14 +38,19 @@ func plusMinusDollar(val float64, showPlus bool) string {
 	return fmt.Sprintf("%s$%s", plus, currStr(val))
 }
 
-func RenderTxTable(deltas []*TxDelta) {
-	table := tw.NewWriter(os.Stdout)
-	table.SetHeader([]string{"Security", "Date", "TX", "Amount", "Shares", "Amt/Share", "ACB",
+type RenderTable struct {
+	Header []string
+	Rows   [][]string
+	Footer []string
+	Notes  []string
+}
+
+func RenderTxTableModel(deltas []*TxDelta) *RenderTable {
+	table := &RenderTable{}
+	table.Header = []string{"Security", "Date", "TX", "Amount", "Shares", "Amt/Share", "ACB",
 		"Commission", "Cap. Gain", "Share Balance", "ACB +/-", "New ACB", "New ACB/Share",
 		"Memo",
-	})
-	table.SetBorder(false)
-	table.SetRowLine(true)
+	}
 
 	var capGainsTotal float64 = 0.0
 	sawSuperficialLoss := false
@@ -84,16 +90,40 @@ func RenderTxTable(deltas []*TxDelta) {
 				"$"+currStr(d.PostStatus.TotalAcb/float64(d.PostStatus.ShareBalance))),
 			tx.Memo,
 		}
-		table.Append(row)
+		table.Rows = append(table.Rows, row)
 
 		capGainsTotal += d.CapitalGain
 	}
-	table.SetFooter([]string{"", "", "", "", "", "", "",
-		"Total", plusMinusDollar(capGainsTotal, false), "", "", "", "", ""})
+	table.Footer = []string{"", "", "", "", "", "", "",
+		"Total", plusMinusDollar(capGainsTotal, false), "", "", "", "", ""}
+
+	if sawSuperficialLoss {
+		table.Notes = append(table.Notes, " * = Superficial loss adjustment")
+	}
+
+	return table
+}
+
+func PrintRenderTable(tableModel *RenderTable, writer io.Writer) {
+	table := tw.NewWriter(writer)
+	table.SetHeader(tableModel.Header)
+	table.SetBorder(false)
+	table.SetRowLine(true)
+
+	for _, row := range tableModel.Rows {
+		table.Append(row)
+	}
+
+	table.SetFooter(tableModel.Footer)
 
 	table.Render()
 
-	if sawSuperficialLoss {
-		fmt.Println(" * = Superficial loss adjustment")
+	for _, note := range tableModel.Notes {
+		fmt.Fprintln(writer, note)
 	}
+}
+
+func RenderTxTable(deltas []*TxDelta) {
+	tableModel := RenderTxTableModel(deltas)
+	PrintRenderTable(tableModel, os.Stdout)
 }

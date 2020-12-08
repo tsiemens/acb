@@ -4,99 +4,41 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 
 	"github.com/spf13/cobra"
 	// "github.com/spf13/viper"
 
-	"github.com/tsiemens/acb/fx"
+	"github.com/tsiemens/acb/app"
 	"github.com/tsiemens/acb/log"
 	ptf "github.com/tsiemens/acb/portfolio"
-)
-
-const (
-	CsvDateFormatDefault string = "2006-01-02"
 )
 
 var ForceDownload = false
 var InitialSymStatusOpt []string
 var NoSuperficialLosses = false
 
-func AllInitialStatus() (map[string]*ptf.PortfolioSecurityStatus, error) {
-	stati := make(map[string]*ptf.PortfolioSecurityStatus)
-	for _, opt := range InitialSymStatusOpt {
-		parts := strings.Split(opt, ":")
-		if len(parts) != 3 {
-			return nil, fmt.Errorf("Invalid ACB format '%s'", opt)
-		}
-		symbol := parts[0]
-		shares, err := strconv.ParseUint(parts[1], 10, 32)
-		if err != nil {
-			return nil, fmt.Errorf("Invalid shares format '%s'. %v", opt, err)
-		}
-		acb, err := strconv.ParseFloat(parts[2], 64)
-		if err != nil {
-			return nil, fmt.Errorf("Invalid ACB format '%s'. %v", opt, err)
-		}
-
-		if _, ok := stati[symbol]; ok {
-			return nil, fmt.Errorf("Symbol %s specified multiple times", symbol)
-		}
-		stati[symbol] = &ptf.PortfolioSecurityStatus{
-			Security: symbol, ShareBalance: uint32(shares), TotalAcb: acb}
-	}
-	return stati, nil
-}
-
 func runRootCmd(cmd *cobra.Command, args []string) {
-	rateLoader := fx.NewRateLoader(ForceDownload)
-
-	allInitStatus, err := AllInitialStatus()
+	allInitStatus, err := app.ParseInitialStatus(InitialSymStatusOpt)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error parsing --symbol-base: %v\n", err)
 		os.Exit(1)
 	}
 
-	allTxs := make([]*ptf.Tx, 0, 20)
-	for i := 0; i < len(args); i++ {
-		// CSV passed in
-		csvName := args[i]
-		txs, err := ptf.ParseTxCsvFile(csvName, rateLoader)
+	csvReaders := make([]app.DescribedReader, 0, len(args))
+	for _, csvName := range args {
+		fp, err := os.Open(csvName)
 		if err != nil {
-			fmt.Println("Error:", err)
-			return
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
 		}
-		for _, tx := range txs {
-			allTxs = append(allTxs, tx)
-		}
+		defer fp.Close()
+		csvReaders = append(csvReaders, app.DescribedReader{csvName, fp})
 	}
 
-	allTxs = ptf.SortTxs(allTxs)
-	txsBySec := ptf.SplitTxsBySecurity(allTxs)
-
-	retVal := 0
-	nSecs := len(txsBySec)
-	i := 0
-	for sec, secTxs := range txsBySec {
-		secInitStatus, ok := allInitStatus[sec]
-		if !ok {
-			secInitStatus = nil
-		}
-		deltas, err := ptf.TxsToDeltaList(secTxs, secInitStatus, !NoSuperficialLosses)
-		if err != nil {
-			fmt.Printf("[!] %v. Printing parsed information state:\n", err)
-			retVal = 1
-		}
-		fmt.Printf("Transactions for %s\n", sec)
-		ptf.RenderTxTable(deltas)
-		if i < (nSecs - 1) {
-			fmt.Println("")
-		}
-		i++
-	}
-	if retVal != 0 {
-		os.Exit(retVal)
+	err = app.RunAcbApp(csvReaders, allInitStatus, ForceDownload, !NoSuperficialLosses)
+	if err != nil {
+		os.Exit(1)
 	}
 }
 
@@ -150,7 +92,7 @@ func init() {
 		"Print verbose output")
 	RootCmd.PersistentFlags().BoolVarP(&ForceDownload, "force-download", "f", false,
 		"Download exchange rates, even if they are cached")
-	RootCmd.PersistentFlags().StringVar(&ptf.CsvDateFormat, "date-fmt", CsvDateFormatDefault,
+	RootCmd.PersistentFlags().StringVar(&ptf.CsvDateFormat, "date-fmt", ptf.CsvDateFormatDefault,
 		"Format of how dates appear in the csv file. Must represent Jan 2, 2006")
 	RootCmd.Flags().StringSliceVarP(&InitialSymStatusOpt, "symbol-base", "b", []string{},
 		"Base share count and ACBs for symbols, assumed at the beginning of time. "+

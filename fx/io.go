@@ -60,7 +60,28 @@ func getJsonUrl(year uint32) string {
 	return fmt.Sprintf(cadUsdJsonUrlFmt, obs, year, year)
 }
 
-func GetRemoteUsdCadRatesJson(year uint32) ([]DailyRate, error) {
+type RatesCache interface {
+	WriteRates(year uint32, rates []DailyRate) error
+	GetUsdCadRates(year uint32) ([]DailyRate, error)
+}
+
+type CsvRatesCache struct{}
+
+func (c *CsvRatesCache) WriteRates(year uint32, rates []DailyRate) error {
+	return WriteRatesToCsv(year, rates)
+}
+
+func (c *CsvRatesCache) GetUsdCadRates(year uint32) ([]DailyRate, error) {
+	file, err := ratesCsvFile(year, false)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+
+	return getRatesFromCsv(file)
+}
+
+func GetRemoteUsdCadRatesJson(year uint32, ratesCache RatesCache) ([]DailyRate, error) {
 	fmt.Fprintf(os.Stderr, "Fetching USD/CAD exchange rates for %d\n", year)
 	url := getJsonUrl(year)
 	log.Fverbosef(os.Stderr, "Getting %s\n", url)
@@ -106,7 +127,7 @@ func GetRemoteUsdCadRatesJson(year uint32) ([]DailyRate, error) {
 		rates = append(rates, dRate)
 	}
 
-	err = WriteRatesToCsv(year, rates)
+	err = ratesCache.WriteRates(year, rates)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "Failed to update exchange rate cache:", err)
 	}
@@ -142,24 +163,14 @@ func getRatesFromCsv(r io.Reader) ([]DailyRate, error) {
 	return rates, nil
 }
 
-func GetCachedUsdCadRates(year uint32) ([]DailyRate, error) {
-	file, err := ratesCsvFile(year, false)
-	if err != nil {
-		return nil, err
-	}
-	defer file.Close()
-
-	return getRatesFromCsv(file)
-}
-
-func GetUsdCadRatesForYear(year uint32, forceDownload bool) ([]DailyRate, error) {
+func GetUsdCadRatesForYear(year uint32, forceDownload bool, ratesCache RatesCache) ([]DailyRate, error) {
 	if forceDownload {
-		return GetRemoteUsdCadRatesJson(year)
+		return GetRemoteUsdCadRatesJson(year, ratesCache)
 	}
-	rates, err := GetCachedUsdCadRates(year)
+	rates, err := ratesCache.GetUsdCadRates(year)
 	if err != nil {
 		fmt.Println("Could not load cached exchange rates:", err)
-		return GetRemoteUsdCadRatesJson(year)
+		return GetRemoteUsdCadRatesJson(year, ratesCache)
 	}
 	return rates, nil
 }
@@ -220,12 +231,14 @@ func WriteRatesToCsv(year uint32, rates []DailyRate) (err error) {
 type RateLoader struct {
 	YearRates     map[uint32]map[time.Time]DailyRate
 	ForceDownload bool
+	Cache         RatesCache
 }
 
 func NewRateLoader(forceDownload bool) *RateLoader {
 	return &RateLoader{
 		YearRates:     make(map[uint32]map[time.Time]DailyRate),
 		ForceDownload: forceDownload,
+		Cache:         &CsvRatesCache{},
 	}
 }
 
@@ -282,7 +295,7 @@ func getSurroundingRatesHelp(t time.Time, yearRates map[time.Time]DailyRate, pre
 func (cr *RateLoader) GetUsdCadRate(t time.Time) (DailyRate, error) {
 	yearRates, ok := cr.YearRates[uint32(t.Year())]
 	if !ok {
-		rates, err := GetUsdCadRatesForYear(uint32(t.Year()), cr.ForceDownload)
+		rates, err := GetUsdCadRatesForYear(uint32(t.Year()), cr.ForceDownload, cr.Cache)
 		if err != nil {
 			return DailyRate{}, err
 		}

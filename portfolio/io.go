@@ -3,6 +3,7 @@ package portfolio
 import (
 	"encoding/csv"
 	"fmt"
+	"io"
 	"os"
 	"strconv"
 	"strings"
@@ -11,7 +12,11 @@ import (
 	"github.com/tsiemens/acb/fx"
 )
 
-var CsvDateFormat string
+const (
+	CsvDateFormatDefault string = "2006-01-02"
+)
+
+var CsvDateFormat string = CsvDateFormatDefault
 
 type ColParser func(string, *Tx) error
 
@@ -26,7 +31,7 @@ var colParserMap = map[string]ColParser{
 	"exchange rate":            parseTxFx,
 	"commission currency":      parseCommissionCurr,
 	"commission exchange rate": parseCommissionFx,
-	"memo": parseMemo,
+	"memo":                     parseMemo,
 }
 
 var ColNames []string
@@ -95,21 +100,15 @@ func fixupTxFx(tx *Tx, rl *fx.RateLoader) error {
 	return nil
 }
 
-func ParseTxCsvFile(fname string, rateLoader *fx.RateLoader) ([]*Tx, error) {
-	fp, err := os.Open(fname)
-	if err != nil {
-		return nil, err
-	}
-	defer fp.Close()
-
-	csvR := csv.NewReader(fp)
+func ParseTxCsv(reader io.Reader, csvDesc string, rateLoader *fx.RateLoader) ([]*Tx, error) {
+	csvR := csv.NewReader(reader)
 	records, err := csvR.ReadAll()
 	if err != nil {
-		return nil, fmt.Errorf("Failed to parse CSV file %s: %v", fname, err)
+		return nil, fmt.Errorf("Failed to parse CSV %s: %v", csvDesc, err)
 	}
 
 	if len(records) == 0 {
-		return nil, fmt.Errorf("No rows found in %s", fname)
+		return nil, fmt.Errorf("No rows found in %s", csvDesc)
 	}
 
 	header := records[0]
@@ -132,12 +131,12 @@ func ParseTxCsvFile(fname string, rateLoader *fx.RateLoader) ([]*Tx, error) {
 		for j, col := range record {
 			err = colParsers[j](col, tx)
 			if err != nil {
-				return nil, fmt.Errorf("Error parsing %s at line:col %d:%d: %v", fname, i+1, j, err)
+				return nil, fmt.Errorf("Error parsing %s at line:col %d:%d: %v", csvDesc, i+1, j, err)
 			}
 		}
 		err = CheckTxSanity(tx)
 		if err != nil {
-			return nil, fmt.Errorf("Error parsing %s at line %d: %v", fname, i+1, err)
+			return nil, fmt.Errorf("Error parsing %s at line %d: %v", csvDesc, i+1, err)
 		}
 		err = fixupTxFx(tx, rateLoader)
 		if err != nil {

@@ -47,6 +47,9 @@ function readCsv(file, targetElem) {
      const content = atob(b64Content);
      // Decode base64
      targetElem.innerText = content;
+
+     // Golang function
+     runAcb([file.name], [content]);
   });
   reader.readAsDataURL(file);
 }
