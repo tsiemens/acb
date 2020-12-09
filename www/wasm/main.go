@@ -6,8 +6,11 @@ import (
 	"syscall/js"
 
 	"github.com/tsiemens/acb/app"
+	"github.com/tsiemens/acb/fx"
 	ptf "github.com/tsiemens/acb/portfolio"
 )
+
+var globalRatesCache map[uint32][]fx.DailyRate = make(map[uint32][]fx.DailyRate)
 
 func main() {
 	fmt.Println("Go Web Assembly")
@@ -44,6 +47,21 @@ func golangDemoWrapper() js.Func {
 	return wrapperFunc
 }
 
+type MemRatesCache struct{}
+
+func (c *MemRatesCache) WriteRates(year uint32, rates []fx.DailyRate) error {
+	globalRatesCache[year] = rates
+	return nil
+}
+
+func (c *MemRatesCache) GetUsdCadRates(year uint32) ([]fx.DailyRate, error) {
+	rates, ok := globalRatesCache[year]
+	if !ok {
+		return nil, fmt.Errorf("No cached USD/CAD rates for %d", year)
+	}
+	return rates, nil
+}
+
 // Map is the description mapped to the contents
 func runAcb(csvDescs []string, csvContents []string) {
 	fmt.Println("runAcb")
@@ -57,9 +75,8 @@ func runAcb(csvDescs []string, csvContents []string) {
 	forceDownload := false
 	superficialLosses := true
 
-	fmt.Println("runAcb 2")
-	app.RunAcbApp(csvReaders, allInitStatus, forceDownload, superficialLosses)
-	fmt.Println("runAcb 3")
+	app.RunAcbApp(
+		csvReaders, allInitStatus, forceDownload, superficialLosses, &MemRatesCache{})
 }
 
 func makeRetVal(ret interface{}, err error) interface{} {

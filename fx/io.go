@@ -234,11 +234,11 @@ type RateLoader struct {
 	Cache         RatesCache
 }
 
-func NewRateLoader(forceDownload bool) *RateLoader {
+func NewRateLoader(forceDownload bool, ratesCache RatesCache) *RateLoader {
 	return &RateLoader{
 		YearRates:     make(map[uint32]map[time.Time]DailyRate),
 		ForceDownload: forceDownload,
-		Cache:         &CsvRatesCache{},
+		Cache:         ratesCache,
 	}
 }
 

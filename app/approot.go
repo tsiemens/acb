@@ -59,9 +59,10 @@ func RunAcbApp(
 	csvFileReaders []DescribedReader,
 	allInitStatus map[string]*ptf.PortfolioSecurityStatus,
 	forceDownload bool,
-	applySuperficialLosses bool) (retErr error) {
+	applySuperficialLosses bool,
+	ratesCache fx.RatesCache) (retErr error) {
 
-	rateLoader := fx.NewRateLoader(forceDownload)
+	rateLoader := fx.NewRateLoader(forceDownload, ratesCache)
 
 	allTxs := make([]*ptf.Tx, 0, 20)
 	for _, csvReader := range csvFileReaders {

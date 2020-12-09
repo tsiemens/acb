@@ -10,6 +10,7 @@ import (
 	// "github.com/spf13/viper"
 
 	"github.com/tsiemens/acb/app"
+	"github.com/tsiemens/acb/fx"
 	"github.com/tsiemens/acb/log"
 	ptf "github.com/tsiemens/acb/portfolio"
 )
@@ -36,7 +37,8 @@ func runRootCmd(cmd *cobra.Command, args []string) {
 		csvReaders = append(csvReaders, app.DescribedReader{csvName, fp})
 	}
 
-	err = app.RunAcbApp(csvReaders, allInitStatus, ForceDownload, !NoSuperficialLosses)
+	err = app.RunAcbApp(
+		csvReaders, allInitStatus, ForceDownload, !NoSuperficialLosses, &fx.CsvRatesCache{})
 	if err != nil {
 		os.Exit(1)
 	}
