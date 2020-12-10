@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"os"
 	"strings"
 	"syscall/js"
 
@@ -47,6 +48,21 @@ func golangDemoWrapper() js.Func {
 	return wrapperFunc
 }
 
+// The default ErrorPrinter
+type BufErrorPrinter struct {
+	Buf strings.Builder
+}
+
+func (p *BufErrorPrinter) Ln(v ...interface{}) {
+	fmt.Fprintln(&p.Buf, v...)
+	fmt.Fprintln(os.Stderr, v...)
+}
+
+func (p *BufErrorPrinter) F(format string, v ...interface{}) {
+	fmt.Fprintf(&p.Buf, format, v...)
+	fmt.Fprintf(os.Stderr, format, v...)
+}
+
 type MemRatesCache struct{}
 
 func (c *MemRatesCache) WriteRates(year uint32, rates []fx.DailyRate) error {
@@ -75,8 +91,11 @@ func runAcb(csvDescs []string, csvContents []string) {
 	forceDownload := false
 	superficialLosses := true
 
+	errPrinter := &BufErrorPrinter{}
+
 	app.RunAcbApp(
-		csvReaders, allInitStatus, forceDownload, superficialLosses, &MemRatesCache{})
+		csvReaders, allInitStatus, forceDownload, superficialLosses, &MemRatesCache{},
+		errPrinter)
 }
 
 func makeRetVal(ret interface{}, err error) interface{} {
@@ -86,19 +105,47 @@ func makeRetVal(ret interface{}, err error) interface{} {
 	return js.ValueOf(map[string]interface{}{"ret": ret})
 }
 
+func makeJsPromise(
+	promiseFunc func(resolveFunc js.Value, rejectFunc js.Value)) interface{} {
+
+	handler := js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+		err := validateFuncArgs(args, js.TypeFunction, js.TypeFunction)
+		if err != nil {
+			fmt.Println("Error in promise handler: ", err)
+			return nil
+		}
+		promiseFunc(args[0], args[1])
+		return nil
+	})
+
+	promiseCtor := js.Global().Get("Promise")
+	return promiseCtor.New(handler)
+}
+
+func validateFuncArgs(args []js.Value, types ...js.Type) error {
+	if len(args) != len(types) {
+		return fmt.Errorf("Invalid number of arguments (%d). Expected %d",
+			len(args), len(types))
+	}
+	for i, typ := range types {
+		if typ != args[i].Type() {
+			return fmt.Errorf("Invalid type for argument %d. Got %s but expected %s.",
+				i, args[i].Type().String(), typ.String())
+		}
+	}
+	return nil
+}
+
 func makeRunAcbWrapper() js.Func {
 	wrapperFunc := js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		if len(args) != 2 {
-			return makeRetVal(
-				nil, fmt.Errorf("Invalid number of arguments (%d). Expected 2", len(args)))
+		err := validateFuncArgs(args, js.TypeObject, js.TypeObject)
+		if err != nil {
+			return makeRetVal(nil, err)
 		}
+
 		// These are expected to be array
 		csvDescs := args[0]
 		csvContents := args[1]
-		if csvDescs.Type() != js.TypeObject || csvContents.Type() != js.TypeObject {
-			return makeRetVal(
-				nil, fmt.Errorf("Invalid argument of type (non-object)"))
-		}
 
 		descs := make([]string, 0, csvContents.Length())
 		contents := make([]string, 0, csvContents.Length())
@@ -123,8 +170,15 @@ func makeRunAcbWrapper() js.Func {
 			fmt.Printf("%d: %s\n", i, desc)
 		}
 
-		runAcb(descs, contents)
-		return makeRetVal(nil, nil)
+		promise := makeJsPromise(
+			func(resolveFunc js.Value, rejectFunc js.Value) {
+				go func() {
+					runAcb(descs, contents)
+					resolveFunc.Invoke(nil)
+					// rejectFunc.Invoke("something error")
+				}()
+			})
+		return makeRetVal(promise, nil)
 	})
 	return wrapperFunc
 }

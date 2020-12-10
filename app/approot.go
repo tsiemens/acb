@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/tsiemens/acb/fx"
+	"github.com/tsiemens/acb/log"
 	ptf "github.com/tsiemens/acb/portfolio"
 )
 
@@ -55,20 +56,74 @@ type DescribedReader struct {
 	Reader io.Reader
 }
 
+// func RunAcbAppToModel(
+// csvFileReaders []DescribedReader,
+// allInitStatus map[string]*ptf.PortfolioSecurityStatus,
+// forceDownload bool,
+// applySuperficialLosses bool,
+// ratesCache fx.RatesCache) (retErr error) {
+
+// rateLoader := fx.NewRateLoader(forceDownload, ratesCache)
+
+// allTxs := make([]*ptf.Tx, 0, 20)
+// for _, csvReader := range csvFileReaders {
+// txs, err := ptf.ParseTxCsv(csvReader.Reader, csvReader.Desc, rateLoader)
+// if err != nil {
+// fmt.Println("Error:", err)
+// retErr = err
+// return
+// }
+// for _, tx := range txs {
+// allTxs = append(allTxs, tx)
+// }
+// }
+
+// allTxs = ptf.SortTxs(allTxs)
+// txsBySec := ptf.SplitTxsBySecurity(allTxs)
+
+// models := make(map[string]*ptf.RenderTable)
+
+// nSecs := len(txsBySec)
+// i := 0
+// for sec, secTxs := range txsBySec {
+// secInitStatus, ok := allInitStatus[sec]
+// if !ok {
+// secInitStatus = nil
+// }
+// deltas, err := ptf.TxsToDeltaList(secTxs, secInitStatus, applySuperficialLosses)
+// if err != nil {
+// fmt.Printf("[!] %v. Printing parsed information state:\n", err)
+// retErr = err
+// }
+// fmt.Printf("Transactions for %s\n", sec)
+// tableModel := ptf.RenderTxTableModel(deltas)
+// if err != nil {
+// tableModel.Errors = append(tableModel.Errors, err)
+// }
+// models[sec] = tableModel
+// if i < (nSecs - 1) {
+// fmt.Println("")
+// }
+// i++
+// }
+// return
+// }
+
 func RunAcbApp(
 	csvFileReaders []DescribedReader,
 	allInitStatus map[string]*ptf.PortfolioSecurityStatus,
 	forceDownload bool,
 	applySuperficialLosses bool,
-	ratesCache fx.RatesCache) (retErr error) {
+	ratesCache fx.RatesCache,
+	errPrinter log.ErrorPrinter) (retErr error) {
 
-	rateLoader := fx.NewRateLoader(forceDownload, ratesCache)
+	rateLoader := fx.NewRateLoader(forceDownload, ratesCache, errPrinter)
 
 	allTxs := make([]*ptf.Tx, 0, 20)
 	for _, csvReader := range csvFileReaders {
 		txs, err := ptf.ParseTxCsv(csvReader.Reader, csvReader.Desc, rateLoader)
 		if err != nil {
-			fmt.Println("Error:", err)
+			errPrinter.Ln("Error:", err)
 			retErr = err
 			return
 		}

@@ -65,7 +65,9 @@ type RatesCache interface {
 	GetUsdCadRates(year uint32) ([]DailyRate, error)
 }
 
-type CsvRatesCache struct{}
+type CsvRatesCache struct {
+	ErrPrinter log.ErrorPrinter
+}
 
 func (c *CsvRatesCache) WriteRates(year uint32, rates []DailyRate) error {
 	return WriteRatesToCsv(year, rates)
@@ -78,11 +80,11 @@ func (c *CsvRatesCache) GetUsdCadRates(year uint32) ([]DailyRate, error) {
 	}
 	defer file.Close()
 
-	return getRatesFromCsv(file)
+	return c.getRatesFromCsv(file)
 }
 
-func GetRemoteUsdCadRatesJson(year uint32, ratesCache RatesCache) ([]DailyRate, error) {
-	fmt.Fprintf(os.Stderr, "Fetching USD/CAD exchange rates for %d\n", year)
+func (cr *RateLoader) GetRemoteUsdCadRatesJson(year uint32, ratesCache RatesCache) ([]DailyRate, error) {
+	cr.ErrPrinter.F("Fetching USD/CAD exchange rates for %d\n", year)
 	url := getJsonUrl(year)
 	log.Fverbosef(os.Stderr, "Getting %s\n", url)
 	resp, err := http.Get(url)
@@ -103,14 +105,14 @@ func GetRemoteUsdCadRatesJson(year uint32, ratesCache RatesCache) ([]DailyRate, 
 	for _, obs := range theJson.Observations {
 		date, err := time.Parse(csvTimeFormat, obs.Date)
 		if err != nil {
-			fmt.Fprintln(os.Stderr, "Unable to parse date:", err)
+			cr.ErrPrinter.Ln("Unable to parse date:", err)
 			continue
 		}
 
 		var dRate DailyRate
 		usdCadNoonVal, err := obs.UsdCadNoon.Val()
 		if err != nil {
-			fmt.Fprintln(os.Stderr, "Failed to parse USDCAD Noon rate for", date, ":", obs.UsdCadNoon.ValStr)
+			cr.ErrPrinter.Ln("Failed to parse USDCAD Noon rate for", date, ":", obs.UsdCadNoon.ValStr)
 			continue
 		}
 
@@ -119,7 +121,7 @@ func GetRemoteUsdCadRatesJson(year uint32, ratesCache RatesCache) ([]DailyRate, 
 		} else {
 			usdCadVal, err := obs.UsdCad.Val()
 			if err != nil {
-				fmt.Fprintln(os.Stderr, "Failed to parse USDCAD rate for", date, ":", obs.UsdCad.ValStr)
+				cr.ErrPrinter.Ln("Failed to parse USDCAD rate for", date, ":", obs.UsdCad.ValStr)
 				continue
 			}
 			dRate = DailyRate{date, 1.0 / usdCadVal}
@@ -129,12 +131,12 @@ func GetRemoteUsdCadRatesJson(year uint32, ratesCache RatesCache) ([]DailyRate, 
 
 	err = ratesCache.WriteRates(year, rates)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "Failed to update exchange rate cache:", err)
+		cr.ErrPrinter.Ln("Failed to update exchange rate cache:", err)
 	}
 	return rates, nil
 }
 
-func getRatesFromCsv(r io.Reader) ([]DailyRate, error) {
+func (c *CsvRatesCache) getRatesFromCsv(r io.Reader) ([]DailyRate, error) {
 	csvR := csv.NewReader(r)
 	csvR.FieldsPerRecord = 2
 	records, err := csvR.ReadAll()
@@ -147,12 +149,12 @@ func getRatesFromCsv(r io.Reader) ([]DailyRate, error) {
 	for _, record := range records {
 		date, err := time.Parse(csvTimeFormat, record[0])
 		if err != nil {
-			fmt.Fprintln(os.Stderr, "Unable to parse date:", err)
+			c.ErrPrinter.Ln("Unable to parse date:", err)
 			continue
 		}
 		rate, err := strconv.ParseFloat(record[1], 64)
 		if err != nil {
-			fmt.Fprintln(os.Stderr, "Unable to parse rate:", err)
+			c.ErrPrinter.Ln("Unable to parse rate:", err)
 			continue
 		}
 
@@ -163,14 +165,16 @@ func getRatesFromCsv(r io.Reader) ([]DailyRate, error) {
 	return rates, nil
 }
 
-func GetUsdCadRatesForYear(year uint32, forceDownload bool, ratesCache RatesCache) ([]DailyRate, error) {
+func (cr *RateLoader) GetUsdCadRatesForYear(
+	year uint32, forceDownload bool, ratesCache RatesCache) ([]DailyRate, error) {
+
 	if forceDownload {
-		return GetRemoteUsdCadRatesJson(year, ratesCache)
+		return cr.GetRemoteUsdCadRatesJson(year, ratesCache)
 	}
 	rates, err := ratesCache.GetUsdCadRates(year)
 	if err != nil {
-		fmt.Println("Could not load cached exchange rates:", err)
-		return GetRemoteUsdCadRatesJson(year, ratesCache)
+		cr.ErrPrinter.Ln("Could not load cached exchange rates:", err)
+		return cr.GetRemoteUsdCadRatesJson(year, ratesCache)
 	}
 	return rates, nil
 }
@@ -232,13 +236,16 @@ type RateLoader struct {
 	YearRates     map[uint32]map[time.Time]DailyRate
 	ForceDownload bool
 	Cache         RatesCache
+	ErrPrinter    log.ErrorPrinter
 }
 
-func NewRateLoader(forceDownload bool, ratesCache RatesCache) *RateLoader {
+func NewRateLoader(
+	forceDownload bool, ratesCache RatesCache, errPrinter log.ErrorPrinter) *RateLoader {
 	return &RateLoader{
 		YearRates:     make(map[uint32]map[time.Time]DailyRate),
 		ForceDownload: forceDownload,
 		Cache:         ratesCache,
+		ErrPrinter:    errPrinter,
 	}
 }
 
@@ -295,7 +302,7 @@ func getSurroundingRatesHelp(t time.Time, yearRates map[time.Time]DailyRate, pre
 func (cr *RateLoader) GetUsdCadRate(t time.Time) (DailyRate, error) {
 	yearRates, ok := cr.YearRates[uint32(t.Year())]
 	if !ok {
-		rates, err := GetUsdCadRatesForYear(uint32(t.Year()), cr.ForceDownload, cr.Cache)
+		rates, err := cr.GetUsdCadRatesForYear(uint32(t.Year()), cr.ForceDownload, cr.Cache)
 		if err != nil {
 			return DailyRate{}, err
 		}

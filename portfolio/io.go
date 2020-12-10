@@ -4,7 +4,6 @@ import (
 	"encoding/csv"
 	"fmt"
 	"io"
-	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -120,7 +119,7 @@ func ParseTxCsv(reader io.Reader, csvDesc string, rateLoader *fx.RateLoader) ([]
 		if parser, ok := colParserMap[sanCol]; ok {
 			colParsers[i] = parser
 		} else {
-			fmt.Fprintf(os.Stderr, "Warning: Unrecognized column %s\n", sanCol)
+			rateLoader.ErrPrinter.F("Warning: Unrecognized column %s\n", sanCol)
 			colParsers[i] = parseNothing
 		}
 	}

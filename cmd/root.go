@@ -20,9 +20,11 @@ var InitialSymStatusOpt []string
 var NoSuperficialLosses = false
 
 func runRootCmd(cmd *cobra.Command, args []string) {
+	errPrinter := &log.StderrErrorPrinter{}
+
 	allInitStatus, err := app.ParseInitialStatus(InitialSymStatusOpt)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error parsing --symbol-base: %v\n", err)
+		errPrinter.F("Error parsing --symbol-base: %v\n", err)
 		os.Exit(1)
 	}
 
@@ -30,7 +32,7 @@ func runRootCmd(cmd *cobra.Command, args []string) {
 	for _, csvName := range args {
 		fp, err := os.Open(csvName)
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			errPrinter.F("Error: %v\n", err)
 			os.Exit(1)
 		}
 		defer fp.Close()
@@ -38,7 +40,8 @@ func runRootCmd(cmd *cobra.Command, args []string) {
 	}
 
 	err = app.RunAcbApp(
-		csvReaders, allInitStatus, ForceDownload, !NoSuperficialLosses, &fx.CsvRatesCache{})
+		csvReaders, allInitStatus, ForceDownload, !NoSuperficialLosses,
+		&fx.CsvRatesCache{ErrPrinter: errPrinter}, errPrinter)
 	if err != nil {
 		os.Exit(1)
 	}

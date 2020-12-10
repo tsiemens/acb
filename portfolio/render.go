@@ -43,6 +43,7 @@ type RenderTable struct {
 	Rows   [][]string
 	Footer []string
 	Notes  []string
+	Errors []error
 }
 
 func RenderTxTableModel(deltas []*TxDelta) *RenderTable {

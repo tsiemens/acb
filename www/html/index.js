@@ -33,6 +33,16 @@ function printMetadataForFileList(fileList) {
    }
 }
 
+async function asyncRunAcb(filenames, contents) {
+   const ret = runAcb(filenames, contents);
+   try {
+      const resp = await ret.ret;
+      console.log("asyncRunAcb response: ", resp);
+   } catch (err) {
+      console.log("asyncRunAcb caught error: ", err);
+   }
+}
+
 function readCsv(file, targetElem) {
   // Check if the file is an image.
   if (file.type && file.type.indexOf('text/csv') === -1) {
@@ -49,7 +59,7 @@ function readCsv(file, targetElem) {
      targetElem.innerText = content;
 
      // Golang function
-     runAcb([file.name], [content]);
+     asyncRunAcb([file.name], [content]);
   });
   reader.readAsDataURL(file);
 }
