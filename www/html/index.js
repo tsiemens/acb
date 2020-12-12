@@ -115,7 +115,7 @@ function initPageJs() {
    const go = new Go();
    WebAssembly.instantiateStreaming(fetch("wasm/acb.wasm"), go.importObject).then((result) => {
        go.run(result.instance);
-       console.log(golangDemo("Foo"));
+       console.log("wasm instantiation complete");
    });
 
    // const fileSelector = document.getElementById('file-selector');

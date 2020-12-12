@@ -15,38 +15,10 @@ import (
 var globalRatesCache map[uint32][]fx.DailyRate = make(map[uint32][]fx.DailyRate)
 
 func main() {
-	fmt.Println("Go Web Assembly")
-	js.Global().Set("golangDemo", golangDemoWrapper())
+	fmt.Println("Go Web Assembly started")
 	js.Global().Set("runAcb", makeRunAcbWrapper())
 	// Wait for calls
 	<-make(chan bool)
-}
-
-type Something struct {
-	A string
-	B string
-}
-
-func golangDemo(input string) (map[string]interface{}, error) {
-	// return fmt.Sprintf("'%s' formatted by golang", input), nil
-	return map[string]interface{}{"A": "Its a A", "B": "Its a B"}, nil
-}
-
-func golangDemoWrapper() js.Func {
-	wrapperFunc := js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		if len(args) != 1 {
-			return fmt.Errorf("Invalid no of arguments passed").Error()
-		}
-		inputStr := args[0].String()
-		fmt.Printf("input %s\n", inputStr)
-		out, err := golangDemo(inputStr)
-		if err != nil {
-			fmt.Printf("unable to run demo: %s\n", err)
-			return err.Error()
-		}
-		return out
-	})
-	return wrapperFunc
 }
 
 // The default ErrorPrinter
