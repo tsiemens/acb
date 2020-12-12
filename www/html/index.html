@@ -7,7 +7,19 @@
     </head>
     <body>
       <div class="page-content-container">
-      <h1 style="text-align: center; margin-bottom: 60pt">ACB: Graphical Edition</h1>
+      <div class="header-bar">
+         <h1 style="text-align: margin-bottom; float: left; 60pt">ACB</h1>
+         <h2>
+         <a style="float: right!important;" href="https://github.com/tsiemens/acb/blob/master/README.md">Help</a>
+         </h2>
+      </div>
+         <div class="blog-text-column">
+            <p>ACB is a tool for tallying capital gains for Canadian tax returns.</p>
+            <p>ACB is not designed or developed by certified individual, and is to be
+               used at your own risk. Please cross-check any results if you have any doubts.
+            </p>
+            <p>ACB is open source, and does not collect any personal data (all processing is done locally to your browser).</p>
+         </div>
          <!--
          <textarea id="json-text-area" rows="5" cols="60" name="text" placeholder="Enter json">
    { "key": "value" }
@@ -29,13 +41,15 @@
          <br>
          -->
          <div class="file-info-container">
-            <div id="file-drop-area" class="file-drop-area">
-               <h2 class="file-drop-area-text">Drop CSV Files Here</h2>
+            <div id="file-drop-area-outer">
+               <div id="file-drop-area" class="file-drop-area">
+                  <h2 class="file-drop-area-text">Drop CSV Files Here</h2>
+               </div>
             </div>
          </div>
-         <p id="acb-errors"></p>
-         <pre id="acb-text-output"></pre>
       </div>
+      <p id="acb-errors"></p>
+      <pre id="acb-text-output"></pre>
     </body>
     <script>
       const context = initPageJs();

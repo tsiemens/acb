@@ -125,23 +125,27 @@ function initPageJs() {
    // });
 
    const dropArea = document.getElementById('file-drop-area');
+   const dropAreaOuter = document.getElementById('file-drop-area-outer');
 
    dropArea.addEventListener('dragover', (event) => {
       event.stopPropagation();
       event.preventDefault();
       // Style the drag-and-drop as a "copy file" operation.
       event.dataTransfer.dropEffect = 'copy';
-      event.target.setAttribute("drop-active", true);
+      dropArea.setAttribute("drop-active", true);
+      dropAreaOuter.setAttribute("drop-active", true);
    });
 
    dropArea.addEventListener('dragleave', (event) => {
-      event.target.setAttribute("drop-active", undefined);
+      dropArea.setAttribute("drop-active", false);
+      dropAreaOuter.setAttribute("drop-active", false);
    });
 
    dropArea.addEventListener('drop', (event) => {
       event.stopPropagation();
       event.preventDefault();
-      event.target.setAttribute("drop-active", undefined);
+      dropArea.setAttribute("drop-active", false);
+      dropAreaOuter.setAttribute("drop-active", false);
       const fileList = event.dataTransfer.files;
       console.log(fileList);
       printMetadataForFileList(fileList);

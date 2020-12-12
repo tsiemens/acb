@@ -1,7 +1,18 @@
 .page-content-container {
    width: auto;
    margin: 20px;
+   font-family: 'Verdana', sans-serif;
    /* border: 1px dashed grey; */
+}
+
+.header-bar {
+   overflow: auto;
+}
+
+.blog-text-column {
+   width: auto;
+   margin-left: 15%;
+   margin-right: 15%;
 }
 
 .file-info-container {
@@ -11,14 +22,23 @@
 }
 
 .file-drop-area {
-   border: 5px dashed red;
+   border: 2px dashed #666;
    /* width: 440px; */
    width: auto;
    height: 272px;
 }
 
 .file-drop-area[drop-active=true] {
-   box-shadow: inset 0px 0px 0px 2px #00C;
+   /* box-shadow: inset 0px 0px 0px 2px #00C; */
+}
+
+#file-drop-area-outer {
+   background: #e2e2e2;
+   padding: 10px;
+}
+
+#file-drop-area-outer[drop-active=true] {
+   background: #efefef;
 }
 
 .file-drop-area-text {
