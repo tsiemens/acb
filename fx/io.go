@@ -84,7 +84,7 @@ func (c *CsvRatesCache) GetUsdCadRates(year uint32) ([]DailyRate, error) {
 }
 
 func (cr *RateLoader) GetRemoteUsdCadRatesJson(year uint32, ratesCache RatesCache) ([]DailyRate, error) {
-	cr.ErrPrinter.F("Fetching USD/CAD exchange rates for %d\n", year)
+	fmt.Fprintf(os.Stderr, "Fetching USD/CAD exchange rates for %d\n", year)
 	url := getJsonUrl(year)
 	log.Fverbosef(os.Stderr, "Getting %s\n", url)
 	resp, err := http.Get(url)
@@ -174,6 +174,8 @@ func (cr *RateLoader) GetUsdCadRatesForYear(
 	rates, err := ratesCache.GetUsdCadRates(year)
 	if err != nil {
 		cr.ErrPrinter.Ln("Could not load cached exchange rates:", err)
+	}
+	if rates == nil {
 		return cr.GetRemoteUsdCadRatesJson(year, ratesCache)
 	}
 	return rates, nil

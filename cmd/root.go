@@ -39,10 +39,10 @@ func runRootCmd(cmd *cobra.Command, args []string) {
 		csvReaders = append(csvReaders, app.DescribedReader{csvName, fp})
 	}
 
-	err = app.RunAcbApp(
+	ok := app.RunAcbAppToConsole(
 		csvReaders, allInitStatus, ForceDownload, !NoSuperficialLosses,
 		&fx.CsvRatesCache{ErrPrinter: errPrinter}, errPrinter)
-	if err != nil {
+	if !ok {
 		os.Exit(1)
 	}
 }

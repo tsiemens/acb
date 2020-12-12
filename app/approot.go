@@ -3,6 +3,7 @@ package app
 import (
 	"fmt"
 	"io"
+	"os"
 	"strconv"
 	"strings"
 
@@ -56,66 +57,13 @@ type DescribedReader struct {
 	Reader io.Reader
 }
 
-// func RunAcbAppToModel(
-// csvFileReaders []DescribedReader,
-// allInitStatus map[string]*ptf.PortfolioSecurityStatus,
-// forceDownload bool,
-// applySuperficialLosses bool,
-// ratesCache fx.RatesCache) (retErr error) {
-
-// rateLoader := fx.NewRateLoader(forceDownload, ratesCache)
-
-// allTxs := make([]*ptf.Tx, 0, 20)
-// for _, csvReader := range csvFileReaders {
-// txs, err := ptf.ParseTxCsv(csvReader.Reader, csvReader.Desc, rateLoader)
-// if err != nil {
-// fmt.Println("Error:", err)
-// retErr = err
-// return
-// }
-// for _, tx := range txs {
-// allTxs = append(allTxs, tx)
-// }
-// }
-
-// allTxs = ptf.SortTxs(allTxs)
-// txsBySec := ptf.SplitTxsBySecurity(allTxs)
-
-// models := make(map[string]*ptf.RenderTable)
-
-// nSecs := len(txsBySec)
-// i := 0
-// for sec, secTxs := range txsBySec {
-// secInitStatus, ok := allInitStatus[sec]
-// if !ok {
-// secInitStatus = nil
-// }
-// deltas, err := ptf.TxsToDeltaList(secTxs, secInitStatus, applySuperficialLosses)
-// if err != nil {
-// fmt.Printf("[!] %v. Printing parsed information state:\n", err)
-// retErr = err
-// }
-// fmt.Printf("Transactions for %s\n", sec)
-// tableModel := ptf.RenderTxTableModel(deltas)
-// if err != nil {
-// tableModel.Errors = append(tableModel.Errors, err)
-// }
-// models[sec] = tableModel
-// if i < (nSecs - 1) {
-// fmt.Println("")
-// }
-// i++
-// }
-// return
-// }
-
-func RunAcbApp(
+func RunAcbAppToModel(
 	csvFileReaders []DescribedReader,
 	allInitStatus map[string]*ptf.PortfolioSecurityStatus,
 	forceDownload bool,
 	applySuperficialLosses bool,
 	ratesCache fx.RatesCache,
-	errPrinter log.ErrorPrinter) (retErr error) {
+	errPrinter log.ErrorPrinter) (map[string]*ptf.RenderTable, error) {
 
 	rateLoader := fx.NewRateLoader(forceDownload, ratesCache, errPrinter)
 
@@ -123,9 +71,7 @@ func RunAcbApp(
 	for _, csvReader := range csvFileReaders {
 		txs, err := ptf.ParseTxCsv(csvReader.Reader, csvReader.Desc, rateLoader)
 		if err != nil {
-			errPrinter.Ln("Error:", err)
-			retErr = err
-			return
+			return nil, err
 		}
 		for _, tx := range txs {
 			allTxs = append(allTxs, tx)
@@ -135,6 +81,8 @@ func RunAcbApp(
 	allTxs = ptf.SortTxs(allTxs)
 	txsBySec := ptf.SplitTxsBySecurity(allTxs)
 
+	models := make(map[string]*ptf.RenderTable)
+
 	nSecs := len(txsBySec)
 	i := 0
 	for sec, secTxs := range txsBySec {
@@ -143,16 +91,71 @@ func RunAcbApp(
 			secInitStatus = nil
 		}
 		deltas, err := ptf.TxsToDeltaList(secTxs, secInitStatus, applySuperficialLosses)
+
+		tableModel := ptf.RenderTxTableModel(deltas)
 		if err != nil {
-			fmt.Printf("[!] %v. Printing parsed information state:\n", err)
-			retErr = err
+			tableModel.Errors = append(tableModel.Errors, err)
 		}
-		fmt.Printf("Transactions for %s\n", sec)
-		ptf.RenderTxTable(deltas)
+		models[sec] = tableModel
+
 		if i < (nSecs - 1) {
 			fmt.Println("")
 		}
 		i++
 	}
-	return
+	return models, nil
+}
+
+// Returns an OK flag. Used to signal what exit code to use.
+// All errors get printed to the errPrinter or to the writer (as appropriate).
+func RunAcbAppToWriter(
+	writer io.Writer,
+	csvFileReaders []DescribedReader,
+	allInitStatus map[string]*ptf.PortfolioSecurityStatus,
+	forceDownload bool,
+	applySuperficialLosses bool,
+	ratesCache fx.RatesCache,
+	errPrinter log.ErrorPrinter) bool {
+
+	renderTables, err := RunAcbAppToModel(
+		csvFileReaders, allInitStatus, forceDownload,
+		applySuperficialLosses, ratesCache, errPrinter,
+	)
+
+	if err != nil {
+		errPrinter.Ln("Error:", err)
+		return false
+	}
+
+	nSecs := len(renderTables)
+	i := 0
+	for sec, renderTable := range renderTables {
+		for _, err := range renderTable.Errors {
+			fmt.Fprintf(writer, "[!] %v. Printing parsed information state:\n", err)
+		}
+		fmt.Fprintf(writer, "Transactions for %s\n", sec)
+		ptf.PrintRenderTable(renderTable, writer)
+		if i < (nSecs - 1) {
+			fmt.Fprintln(writer, "")
+		}
+		i++
+	}
+
+	return true
+}
+
+// Returns an OK flag. Used to signal what exit code to use.
+func RunAcbAppToConsole(
+	csvFileReaders []DescribedReader,
+	allInitStatus map[string]*ptf.PortfolioSecurityStatus,
+	forceDownload bool,
+	applySuperficialLosses bool,
+	ratesCache fx.RatesCache,
+	errPrinter log.ErrorPrinter) bool {
+
+	return RunAcbAppToWriter(
+		os.Stdout,
+		csvFileReaders, allInitStatus, forceDownload,
+		applySuperficialLosses, ratesCache, errPrinter,
+	)
 }

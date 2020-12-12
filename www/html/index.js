@@ -36,14 +36,27 @@ function printMetadataForFileList(fileList) {
 async function asyncRunAcb(filenames, contents) {
    const ret = runAcb(filenames, contents);
    try {
-      const resp = await ret.ret;
-      console.log("asyncRunAcb response: ", resp);
+      const resp = await ret.result;
+      var error = resp.error;
+      console.log("asyncRunAcb response received" +
+                  (error === undefined ? "" : " with error"));
+      const acbOutElem = document.getElementById("acb-text-output");
+      acbOutElem.innerText = resp.result;
+      const errorsElem = document.getElementById("acb-errors");
+      if (error !== undefined) {
+         errorsElem.innerText = error;
+      } else {
+         errorsElem.innerText = "";
+      }
    } catch (err) {
       console.log("asyncRunAcb caught error: ", err);
    }
 }
 
-function readCsv(file, targetElem) {
+/**
+ * Takes a File, Dom element to write into, and a FileLoadQueue.
+ */
+function readCsv(file, loadQueue) {
   // Check if the file is an image.
   if (file.type && file.type.indexOf('text/csv') === -1) {
     console.log('File is not a csv.', file.type, file);
@@ -53,27 +66,47 @@ function readCsv(file, targetElem) {
   const reader = new FileReader();
   reader.addEventListener('load', (event) => {
      console.log(event.target.result);
+     // Decode base64
      const b64Content = event.target.result.split(";base64,")[1];
      const content = atob(b64Content);
-     // Decode base64
-     targetElem.innerText = content;
 
-     // Golang function
-     asyncRunAcb([file.name], [content]);
+     const queueIdx = loadQueue.pendingFileNames.indexOf(file.name);
+     if (queueIdx >= 0) {
+        loadQueue.pendingFileNames.splice(queueIdx, 1);
+        loadQueue.loadedContent.push(content);
+        loadQueue.loadedFileNames.push(file.name);
+     }
+
+     if (loadQueue.pendingFileNames.length == 0) {
+        // Golang function
+        asyncRunAcb(loadQueue.loadedFileNames, loadQueue.loadedContent);
+     }
   });
   reader.readAsDataURL(file);
 }
 
+class FileLoadQueue {
+  constructor(pendingFileNames) {
+     this.pendingFileNames = pendingFileNames;
+     this.loadedContent = [];
+     this.loadedFileNames = [];
+  }
+}
+
 function loadAllFileInfo(files) {
    // Takes a list of File
-   const fileDetailsList = document.getElementById("file-details-list");
-   fileDetailsList.innerHTML = "";
+   fileNames = [];
+   for (const file of files) {
+      fileNames.push(file.name);
+   }
+   loadQueue = new FileLoadQueue(fileNames);
+
    for (const file of files) {
       if (file.type == "text/csv") {
-         fileDetailsList.innerHTML += "<li>" + file.name + "</li>";
-         readCsv(file, document.getElementById("csv-content"));
+         console.log("Loading file: " + file.name);
+         readCsv(file, loadQueue);
       } else {
-         fileDetailsList.innerHTML += "<li>" + file.name + " (Ignored. Not CSV)</li>";
+         console.log("File " + file.name + " ignored. Not CSV.");
       }
    }
 }
@@ -113,17 +146,6 @@ function initPageJs() {
       console.log(fileList);
       printMetadataForFileList(fileList);
       loadAllFileInfo(fileList);
-
-      // const fileDetailsList = document.getElementById("file-details-list");
-      // fileDetailsList.innerHTML = "";
-      // for (const fileData of fileDatas) {
-         // if (fileData.type == "text/csv") {
-            // fileDetailsList.innerHTML += "<li>" + fileData.name + "</li>";
-            // readCsv(fileData.file, document.getElementById("csv-content"));
-         // } else {
-            // fileDetailsList.innerHTML += "<li>" + fileData.name + " (Ignored. Not CSV)</li>";
-         // }
-      // }
    });
 
    // Return objects that need to stay alive.

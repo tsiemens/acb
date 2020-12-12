@@ -27,3 +27,12 @@
    line-height: 272px;
    margin: 0;
 }
+
+#acb-text-output {
+   font-family: 'Courier-New', monospace;
+   font-size: 8pt;
+}
+
+#acb-errors {
+   color: red;
+}

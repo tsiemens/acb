@@ -3,7 +3,6 @@ package portfolio
 import (
 	"fmt"
 	"io"
-	"os"
 
 	tw "github.com/olekukonko/tablewriter"
 	"github.com/tsiemens/acb/util"
@@ -122,9 +121,4 @@ func PrintRenderTable(tableModel *RenderTable, writer io.Writer) {
 	for _, note := range tableModel.Notes {
 		fmt.Fprintln(writer, note)
 	}
-}
-
-func RenderTxTable(deltas []*TxDelta) {
-	tableModel := RenderTxTableModel(deltas)
-	PrintRenderTable(tableModel, os.Stdout)
 }

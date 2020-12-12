@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -63,23 +64,23 @@ func (p *BufErrorPrinter) F(format string, v ...interface{}) {
 	fmt.Fprintf(os.Stderr, format, v...)
 }
 
-type MemRatesCache struct{}
+type GlobalMemRatesCacheAccessor struct{}
 
-func (c *MemRatesCache) WriteRates(year uint32, rates []fx.DailyRate) error {
+func (c *GlobalMemRatesCacheAccessor) WriteRates(year uint32, rates []fx.DailyRate) error {
 	globalRatesCache[year] = rates
 	return nil
 }
 
-func (c *MemRatesCache) GetUsdCadRates(year uint32) ([]fx.DailyRate, error) {
+func (c *GlobalMemRatesCacheAccessor) GetUsdCadRates(year uint32) ([]fx.DailyRate, error) {
 	rates, ok := globalRatesCache[year]
 	if !ok {
-		return nil, fmt.Errorf("No cached USD/CAD rates for %d", year)
+		return nil, nil
 	}
 	return rates, nil
 }
 
 // Map is the description mapped to the contents
-func runAcb(csvDescs []string, csvContents []string) {
+func runAcb(csvDescs []string, csvContents []string) (string, error) {
 	fmt.Println("runAcb")
 	csvReaders := make([]app.DescribedReader, 0, len(csvContents))
 	for i, contents := range csvContents {
@@ -93,16 +94,28 @@ func runAcb(csvDescs []string, csvContents []string) {
 
 	errPrinter := &BufErrorPrinter{}
 
-	app.RunAcbApp(
-		csvReaders, allInitStatus, forceDownload, superficialLosses, &MemRatesCache{},
-		errPrinter)
+	var output strings.Builder
+
+	app.RunAcbAppToWriter(
+		&output,
+		csvReaders, allInitStatus, forceDownload,
+		superficialLosses, &GlobalMemRatesCacheAccessor{}, errPrinter,
+	)
+
+	outString := output.String()
+
+	errString := errPrinter.Buf.String()
+	if errString != "" {
+		return outString, errors.New(errString)
+	}
+	return outString, nil
 }
 
 func makeRetVal(ret interface{}, err error) interface{} {
 	if err != nil {
-		return js.ValueOf(map[string]interface{}{"ret": ret, "error": err.Error()})
+		return js.ValueOf(map[string]interface{}{"result": ret, "error": err.Error()})
 	}
-	return js.ValueOf(map[string]interface{}{"ret": ret})
+	return js.ValueOf(map[string]interface{}{"result": ret})
 }
 
 func makeJsPromise(
@@ -173,8 +186,8 @@ func makeRunAcbWrapper() js.Func {
 		promise := makeJsPromise(
 			func(resolveFunc js.Value, rejectFunc js.Value) {
 				go func() {
-					runAcb(descs, contents)
-					resolveFunc.Invoke(nil)
+					out, err := runAcb(descs, contents)
+					resolveFunc.Invoke(makeRetVal(out, err))
 					// rejectFunc.Invoke("something error")
 				}()
 			})
