@@ -20,30 +20,23 @@
             </p>
             <p>ACB is open source, and does not collect any personal data (all processing is done locally to your browser).</p>
          </div>
-         <!--
-         <textarea id="json-text-area" rows="5" cols="60" name="text" placeholder="Enter json">
-   { "key": "value" }
-         </textarea>
-         <br/>
-         <button onclick="doFormat()">Format</button>
-         <br/>
-         <br/>
-         <br/>
-         <textarea disabled id="formatted-json-text-area" rows="5" cols="60" name="text out" placeholder=""></textarea>
-
-         <br/>
-         -->
-         <!-- Based on https://web.dev/read-files/-->
-         <!-- The `multiple` attribute lets users select multiple files. -->
-         <!--
-         <input type="file" id="file-selector" accept=".csv" multiple>Custom file select</input>
-         &nbsp; or
-         <br>
-         -->
          <div class="file-info-container">
-            <div id="file-drop-area-outer">
+            <!-- Based on https://web.dev/read-files/ -->
+            <div id="file-drop-area-outer" class="file-drop-area-outer">
                <div id="file-drop-area" class="file-drop-area">
-                  <h2 class="file-drop-area-text">Drop CSV Files Here</h2>
+                  <div class="file-drop-area-text">
+                     <!-- The `multiple` attribute lets users select multiple files. -->
+                     <input type="file" id="file-selector-input" accept=".csv" multiple
+                            style="display: none;"/>
+                     <label for="file-selector-input">
+                        <strong>Choose a CSV file</strong>
+                        <span>or drag it here.</span>
+                     </label>
+                  </div>
+                  <div class="file-list"></div>
+                  <div class="run-button-div">
+                     <button id="run-button">Run</button>
+                  </div>
                </div>
             </div>
          </div>

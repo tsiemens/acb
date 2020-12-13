@@ -2,7 +2,6 @@
    width: auto;
    margin: 20px;
    font-family: 'Verdana', sans-serif;
-   /* border: 1px dashed grey; */
 }
 
 .header-bar {
@@ -23,29 +22,65 @@
 
 .file-drop-area {
    border: 2px dashed #666;
-   /* width: 440px; */
    width: auto;
-   height: 272px;
+   padding: 20px;
 }
 
-.file-drop-area[drop-active=true] {
-   /* box-shadow: inset 0px 0px 0px 2px #00C; */
-}
-
-#file-drop-area-outer {
+.file-drop-area-outer {
    background: #e2e2e2;
    padding: 10px;
 }
 
-#file-drop-area-outer[drop-active=true] {
+.file-drop-area-outer[drop-active=true] {
    background: #efefef;
 }
 
 .file-drop-area-text {
    text-align: center;
    vertical-align: middle;
-   line-height: 272px;
-   margin: 0;
+   margin: 0px;
+   margin-bottom: 20px;
+}
+
+.file-drop-area-text label {
+   cursor: pointer;
+}
+
+.file-drop-area-text label:hover {
+   color: #777;
+}
+
+.file-list {
+   width: fit-content;
+   margin: auto;
+   min-height: 40px;
+}
+
+.file-list-item {
+   margin-top: 2px;
+   margin-bottom: 2px;
+   padding: 4px;
+   text-align: center;
+   vertical-align: middle;
+   width: fit-content;
+   display: flex;
+}
+
+.file-list-item-text {
+   margin-left: 3px;
+}
+
+.run-button-div {
+   width: auto;
+   text-align: center;
+   margin-top: 20px;
+}
+
+#run-button {
+   font-size: 16pt;
+   padding: 5px;
+   padding-left: 10px;
+   padding-right: 10px;
 }
 
 #acb-text-output {

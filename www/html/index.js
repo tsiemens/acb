@@ -1,23 +1,93 @@
-function doFormat() {
-   textArea = document.getElementById("json-text-area")
-   // FormatJSON is from the wasm module
-   formatted = formatJSON(textArea.value)
-   outTextArea = document.getElementById("formatted-json-text-area")
-   outTextArea.value = formatted
+// Map of id to File object
+let filesToUse = {};
+let nextFileId = 1;
+
+function setRunButtonEnabled(enabled) {
+   const runButton = document.getElementById('run-button');
+   runButton.disabled = !enabled;
 }
 
-function readImage(file) {
-  // Check if the file is an image.
-  if (file.type && file.type.indexOf('image') === -1) {
-    console.log('File is not an image.', file.type, file);
-    return;
-  }
+function addFileToUse(file) {
+   const fileId = nextFileId;
+   nextFileId++;
+   filesToUse[fileId] = file;
+   return fileId;
+}
 
-  const reader = new FileReader();
-  reader.addEventListener('load', (event) => {
-    img.src = event.target.result;
-  });
-  reader.readAsDataURL(file);
+function removeFileListEntry(fileId) {
+   const fileList = document.getElementsByClassName("file-list")[0];
+   for (const child of fileList.children) {
+      if (child.dataset.fileid == fileId) {
+         fileList.removeChild(child);
+      }
+   }
+
+   if (fileList.children.length == 0) {
+      setRunButtonEnabled(false);
+   }
+}
+
+function addFileListEntry(fileId, filename) {
+   const fileList = document.getElementsByClassName("file-list")[0];
+   const entry = document.createElement('div');
+   entry.classList.add('file-list-item');
+   const btn = document.createElement('button');
+   btn.innerText = 'X';
+   btn.addEventListener("click", (event) => {
+      const fildId = event.target.dataset.fileid;
+      console.log("Click X button for fileId", fileId);
+      delete filesToUse[fileId];
+      removeFileListEntry(fileId);
+   });
+
+   entry.appendChild(btn);
+   const entryText = document.createElement('div');
+   entryText.classList.add('file-list-item-text');
+   entryText.innerText = ' ' + filename;
+   entry.appendChild(entryText);
+
+   entry.dataset.fileid = fileId;
+
+   fileList.appendChild(entry);
+
+   if (fileList.children.length > 0) {
+      setRunButtonEnabled(true);
+   }
+}
+
+function isFileAlreadySelected(file) {
+   for (const fileId in filesToUse) {
+      const selFile = filesToUse[fileId];
+      if (selFile.name == file.name && selFile.lastModified == file.lastModified) {
+         return true;
+      }
+   }
+   return false;
+}
+
+function addFilesToUse(fileList) {
+   printMetadataForFileList(fileList);
+   for (const file of fileList) {
+      if (file.type == "text/csv") {
+         if (isFileAlreadySelected(file)) {
+            console.log("File", file.name, "already selected.");
+         } else {
+            const fileId = addFileToUse(file);
+            addFileListEntry(fileId, file.name);
+         }
+      } else {
+         console.log("File " + file.name + " ignored. Not CSV.");
+      }
+   }
+}
+
+function getRequestedFileNames() {
+   const fileNames = [];
+   const fileEntries = document.getElementsByClassName("file-list-item");
+   for (const entry of fileEntries) {
+      fileNames.push(entry.dataset.filename);
+   }
+   return fileNames;
 }
 
 function printMetadataForFileList(fileList) {
@@ -37,7 +107,7 @@ async function asyncRunAcb(filenames, contents) {
    const ret = runAcb(filenames, contents);
    try {
       const resp = await ret.result;
-      var error = resp.error;
+      let error = resp.error;
       console.log("asyncRunAcb response received" +
                   (error === undefined ? "" : " with error"));
       const acbOutElem = document.getElementById("acb-text-output");
@@ -93,7 +163,7 @@ class FileLoadQueue {
   }
 }
 
-function loadAllFileInfo(files) {
+function loadAllFileInfoAndRun(files) {
    // Takes a list of File
    fileNames = [];
    for (const file of files) {
@@ -118,12 +188,6 @@ function initPageJs() {
        console.log("wasm instantiation complete");
    });
 
-   // const fileSelector = document.getElementById('file-selector');
-   // fileSelector.addEventListener('change', (event) => {
-      // const fileList = event.target.files;
-      // console.log(fileList);
-   // });
-
    const dropArea = document.getElementById('file-drop-area');
    const dropAreaOuter = document.getElementById('file-drop-area-outer');
 
@@ -147,9 +211,24 @@ function initPageJs() {
       dropArea.setAttribute("drop-active", false);
       dropAreaOuter.setAttribute("drop-active", false);
       const fileList = event.dataTransfer.files;
-      console.log(fileList);
-      printMetadataForFileList(fileList);
-      loadAllFileInfo(fileList);
+      addFilesToUse(fileList);
+   });
+
+   const fileSelector = document.getElementById('file-selector-input');
+   fileSelector.addEventListener('input', (event) => {
+      const fileList = event.target.files;
+      console.log("on input:", fileList);
+      addFilesToUse(fileList);
+   });
+
+   const runButton = document.getElementById('run-button');
+   runButton.disabled = true;
+   runButton.addEventListener('click', (event) => {
+      const fileList = [];
+      for (const fileId in filesToUse) {
+         fileList.push(filesToUse[fileId]);
+         loadAllFileInfoAndRun(fileList);
+      }
    });
 
    // Return objects that need to stay alive.
