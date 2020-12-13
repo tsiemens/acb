@@ -91,3 +91,31 @@
 #acb-errors {
    color: red;
 }
+
+.tab-row {
+   display: flex;
+}
+
+.tab-label {
+   width: 50%;
+   text-align: center;
+   cursor: pointer;
+}
+
+.tab-label.active {
+   font-weight: bold;
+}
+
+.tab-separator {
+   border: 1px solid #aaa;
+   width: 0px;
+}
+
+.acb-output-container {
+   margin: auto;
+   width: fit-content;
+}
+
+.acb-output.inactive {
+   display: none;
+}

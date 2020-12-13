@@ -7,19 +7,18 @@
     </head>
     <body>
       <div class="page-content-container">
-      <div class="header-bar">
-         <h1 style="text-align: margin-bottom; float: left; 60pt">ACB</h1>
-         <h2>
-         <a style="float: right!important;" href="https://github.com/tsiemens/acb/blob/master/README.md">Help</a>
-         </h2>
-      </div>
+         <div class="header-bar">
+            <h1 style="text-align: margin-bottom; float: left; 60pt">ACB</h1>
+            <h2><a style="float: right!important;"
+                   href="https://github.com/tsiemens/acb/blob/master/README.md">Help</a></h2>
+         </div>
          <div class="blog-text-column">
             <p>ACB is a tool for tallying capital gains for Canadian tax returns.</p>
             <p>ACB is not designed or developed by certified individual, and is to be
                used at your own risk. Please cross-check any results if you have any doubts.
             </p>
             <p>ACB is open source, and does not collect any personal data (all processing is done locally to your browser).</p>
-         </div>
+         </div> <!-- end blog-text-column -->
          <div class="file-info-container">
             <!-- Based on https://web.dev/read-files/ -->
             <div id="file-drop-area-outer" class="file-drop-area-outer">
@@ -39,10 +38,19 @@
                   </div>
                </div>
             </div>
+         </div> <!-- end file-info-container -->
+         <p id="acb-errors"></p>
+         <div id="acb-output-tabs" class="tab-row blog-text-column">
+            <div class="tab-label" data-tab-label="table" onclick="showTableOut()">Table</div>
+            <span class="tab-separator"></span>
+            <div class="tab-label" data-tab-label="text" onclick="showTextOut()">Text</div>
          </div>
-      </div>
-      <p id="acb-errors"></p>
-      <pre id="acb-text-output"></pre>
+         <hr class="blog-text-column">
+         <div class="acb-output-container">
+            <pre id="acb-text-output" class="acb-output"></pre>
+            <div id="acb-table-output" class="acb-output"></div>
+         </div>
+      </div> <!-- end page-content-container -->
     </body>
     <script>
       const context = initPageJs();

@@ -103,6 +103,36 @@ function printMetadataForFileList(fileList) {
    }
 }
 
+function showTableOut() {
+   setTabActive('table');
+}
+
+function showTextOut() {
+   setTabActive('text');
+}
+
+function setTabActive(labelStr) {
+   const tabLabels = document.getElementsByClassName('tab-label');
+   for (const tabLabel of tabLabels) {
+      if (tabLabel.dataset.tabLabel === labelStr) {
+         tabLabel.classList.add('active');
+      } else {
+         tabLabel.classList.remove('active');
+      }
+   }
+
+   const textOutput = document.getElementById('acb-text-output');
+   const tableOutput = document.getElementById('acb-table-output');
+
+   if (labelStr == 'text') {
+      textOutput.classList.remove('inactive');
+      tableOutput.classList.add('inactive');
+   } else if (labelStr == 'table') {
+      textOutput.classList.add('inactive');
+      tableOutput.classList.remove('inactive');
+   }
+}
+
 async function asyncRunAcb(filenames, contents) {
    const ret = runAcb(filenames, contents);
    try {
@@ -230,6 +260,8 @@ function initPageJs() {
          loadAllFileInfoAndRun(fileList);
       }
    });
+
+   showTextOut();
 
    // Return objects that need to stay alive.
    return {"go": go}
