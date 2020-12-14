@@ -106,26 +106,9 @@ func RunAcbAppToModel(
 	return models, nil
 }
 
-// Returns an OK flag. Used to signal what exit code to use.
-// All errors get printed to the errPrinter or to the writer (as appropriate).
-func RunAcbAppToWriter(
-	writer io.Writer,
-	csvFileReaders []DescribedReader,
-	allInitStatus map[string]*ptf.PortfolioSecurityStatus,
-	forceDownload bool,
-	applySuperficialLosses bool,
-	ratesCache fx.RatesCache,
-	errPrinter log.ErrorPrinter) bool {
-
-	renderTables, err := RunAcbAppToModel(
-		csvFileReaders, allInitStatus, forceDownload,
-		applySuperficialLosses, ratesCache, errPrinter,
-	)
-
-	if err != nil {
-		errPrinter.Ln("Error:", err)
-		return false
-	}
+func WriteRenderTables(
+	renderTables map[string]*ptf.RenderTable,
+	writer io.Writer) {
 
 	nSecs := len(renderTables)
 	i := 0
@@ -140,8 +123,31 @@ func RunAcbAppToWriter(
 		}
 		i++
 	}
+}
 
-	return true
+// Returns an OK flag. Used to signal what exit code to use.
+// All errors get printed to the errPrinter or to the writer (as appropriate).
+func RunAcbAppToWriter(
+	writer io.Writer,
+	csvFileReaders []DescribedReader,
+	allInitStatus map[string]*ptf.PortfolioSecurityStatus,
+	forceDownload bool,
+	applySuperficialLosses bool,
+	ratesCache fx.RatesCache,
+	errPrinter log.ErrorPrinter) (bool, map[string]*ptf.RenderTable) {
+
+	renderTables, err := RunAcbAppToModel(
+		csvFileReaders, allInitStatus, forceDownload,
+		applySuperficialLosses, ratesCache, errPrinter,
+	)
+
+	if err != nil {
+		errPrinter.Ln("Error:", err)
+		return false, nil
+	}
+
+	WriteRenderTables(renderTables, writer)
+	return true, renderTables
 }
 
 // Returns an OK flag. Used to signal what exit code to use.
@@ -153,9 +159,10 @@ func RunAcbAppToConsole(
 	ratesCache fx.RatesCache,
 	errPrinter log.ErrorPrinter) bool {
 
-	return RunAcbAppToWriter(
+	ok, _ := RunAcbAppToWriter(
 		os.Stdout,
 		csvFileReaders, allInitStatus, forceDownload,
 		applySuperficialLosses, ratesCache, errPrinter,
 	)
+	return ok
 }

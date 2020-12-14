@@ -2,6 +2,14 @@
 let filesToUse = {};
 let nextFileId = 1;
 
+function get(obj, key, def) {
+   if (obj === undefined) {
+      return def;
+   }
+   const value = obj[key];
+   return (value === undefined) ? def : value;
+}
+
 function setRunButtonEnabled(enabled) {
    const runButton = document.getElementById('run-button');
    runButton.disabled = !enabled;
@@ -103,6 +111,87 @@ function printMetadataForFileList(fileList) {
    }
 }
 
+function newElem(type, parts) {
+   const elem = document.createElement(type);
+   for (const clz of get(parts, "classes", [])) {
+      elem.classList.add(clz);
+   }
+   for (const child of get(parts, "children", [])) {
+      elem.appendChild(child);
+   }
+   const text = get(parts, 'text', undefined);
+   if (text != undefined) {
+      elem.innerText = text;
+   }
+   return elem;
+}
+
+function populateTables(model) {
+   if (model === undefined) {
+      model = {"STOCK": {
+         "footer": ["", "", "", "", "", "", "", "Total", "$0", "", "", "", "", ""],
+         "header": ["Security", "Date", "TX", "Amount", "Shares", "Amt/Share", "ACB",
+                    "Commission", "Cap. Gain", "Share Balance", "ACB +/-", "New ACB",
+                     "New ACB/Share", "Memo"],
+         "rows": [],
+      }};
+   }
+
+   const tablesContainer = document.getElementById("acb-table-output");
+   tablesContainer.innerHTML = "";
+
+   const symbols = Object.keys(model);
+   symbols.sort()
+   for (const symbol of symbols) {
+      const symModel = model[symbol];
+
+      const tr = newElem("tr");
+      for (const header of symModel.header) {
+         tr.appendChild(newElem("th", {text: header}));
+      }
+
+      const tbody = newElem('tbody');
+
+      const addRow = function(rowItems) {
+         const rowElem = newElem('tr');
+         for (const item of rowItems) {
+            const td = newElem('td', {text: item});
+            rowElem.appendChild(td);
+         }
+         tbody.appendChild(rowElem);
+      };
+
+      for (const row of symModel.rows) {
+         addRow(row);
+      }
+      addRow(symModel.footer);
+
+      const table = newElem('table', {
+         children: [newElem('thead', {children:[tr]}), tbody]
+      });
+
+      const symTableContainer = newElem("div", {
+         classes: ['table-fixed-head'],
+         children: [table]
+      });
+
+      tablesContainer.appendChild(
+         newElem('div', {classes: ['symbol-name'], text: symbol}));
+
+      const errors = get(symModel, 'errors', []);
+      for (const err of errors) {
+         tablesContainer.appendChild(newElem('p', {classes: ['error-text'], text: err}));
+      }
+      if (errors.length > 0) {
+         tablesContainer.appendChild(newElem('p', {text: "Information is of parsed state only, and may not be fully correct."}));
+      }
+      tablesContainer.appendChild(symTableContainer);
+      for (const note of get(symModel, 'notes', [])) {
+         tablesContainer.appendChild(newElem('p', {text: note}));
+      }
+   }
+}
+
 function showTableOut() {
    setTabActive('table');
 }
@@ -141,13 +230,15 @@ async function asyncRunAcb(filenames, contents) {
       console.log("asyncRunAcb response received" +
                   (error === undefined ? "" : " with error"));
       const acbOutElem = document.getElementById("acb-text-output");
-      acbOutElem.innerText = resp.result;
+      acbOutElem.innerText = resp.result.textOutput;
       const errorsElem = document.getElementById("acb-errors");
       if (error !== undefined) {
          errorsElem.innerText = error;
       } else {
          errorsElem.innerText = "";
       }
+
+      populateTables(resp.result.modelOutput);
    } catch (err) {
       console.log("asyncRunAcb caught error: ", err);
    }
@@ -261,7 +352,7 @@ function initPageJs() {
       }
    });
 
-   showTextOut();
+   showTableOut();
 
    // Return objects that need to stay alive.
    return {"go": go}

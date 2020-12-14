@@ -119,3 +119,46 @@
 .acb-output.inactive {
    display: none;
 }
+
+.symbol-name {
+   margin-bottom: 5px;
+   margin-top: 20px;
+   font-weight: bold;
+}
+.error-text {
+   color: red;
+}
+
+.table-fixed-head {
+   overflow-y: auto;
+   max-height: 500px;
+}
+.table-fixed-head thead th {
+   position: sticky;
+   top: 0;
+}
+.table-fixed-head table {
+   border-collapse: collapse;
+   width 100%;
+}
+.table-fixed-head th,
+.table-fixed-head td {
+   padding: 8px 16px;
+   font-size: 9pt;
+}
+.table-fixed-head th {
+   background: #eee;
+}
+.table-fixed-head td {
+   box-shadow: inset 1px 1px #999;
+}
+.table-fixed-head th {
+   box-shadow: inset 1px 1px #999;
+}
+.table-fixed-head thead {
+   box-shadow: inset 0px -1px #999;
+}
+.table-fixed-head table {
+   border-right: solid 1px #999;
+   border-bottom: solid 1px #999;
+}

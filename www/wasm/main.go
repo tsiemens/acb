@@ -51,8 +51,51 @@ func (c *GlobalMemRatesCacheAccessor) GetUsdCadRates(year uint32) ([]fx.DailyRat
 	return rates, nil
 }
 
+func stringArrayArrayToIntfArray(arr [][]string) []interface{} {
+	outArr := make([]interface{}, 0, len(arr))
+	for _, a := range arr {
+		outArr = append(outArr, stringArrayToIntfArray(a))
+	}
+	return outArr
+}
+
+func stringArrayToIntfArray(arr []string) []interface{} {
+	outArr := make([]interface{}, 0, len(arr))
+	for _, s := range arr {
+		outArr = append(outArr, s)
+	}
+	return outArr
+}
+
+func errorArrayToIntfArray(arr []error) []interface{} {
+	outArr := make([]interface{}, 0, len(arr))
+	for _, e := range arr {
+		outArr = append(outArr, e.Error())
+	}
+	return outArr
+}
+
+func renderTablesToJsObject(renderTables map[string]*ptf.RenderTable) js.Value {
+	if renderTables == nil {
+		return js.ValueOf(nil)
+	}
+
+	tableObjMap := map[string]interface{}{}
+	for symbol, renderTable := range renderTables {
+		tableObjMap[symbol] = map[string]interface{}{
+			"header": stringArrayToIntfArray(renderTable.Header),
+			"rows":   stringArrayArrayToIntfArray(renderTable.Rows),
+			"footer": stringArrayToIntfArray(renderTable.Footer),
+			"notes":  stringArrayToIntfArray(renderTable.Notes),
+			"errors": errorArrayToIntfArray(renderTable.Errors),
+		}
+	}
+
+	return js.ValueOf(tableObjMap)
+}
+
 // Map is the description mapped to the contents
-func runAcb(csvDescs []string, csvContents []string) (string, error) {
+func runAcb(csvDescs []string, csvContents []string) (js.Value, error) {
 	fmt.Println("runAcb")
 	csvReaders := make([]app.DescribedReader, 0, len(csvContents))
 	for i, contents := range csvContents {
@@ -68,7 +111,7 @@ func runAcb(csvDescs []string, csvContents []string) (string, error) {
 
 	var output strings.Builder
 
-	app.RunAcbAppToWriter(
+	_, renderTables := app.RunAcbAppToWriter(
 		&output,
 		csvReaders, allInitStatus, forceDownload,
 		superficialLosses, &GlobalMemRatesCacheAccessor{}, errPrinter,
@@ -76,11 +119,16 @@ func runAcb(csvDescs []string, csvContents []string) (string, error) {
 
 	outString := output.String()
 
+	outObj := js.ValueOf(map[string]interface{}{
+		"textOutput":  outString,
+		"modelOutput": renderTablesToJsObject(renderTables),
+	})
+
 	errString := errPrinter.Buf.String()
 	if errString != "" {
-		return outString, errors.New(errString)
+		return outObj, errors.New(errString)
 	}
-	return outString, nil
+	return outObj, nil
 }
 
 func makeRetVal(ret interface{}, err error) interface{} {
