@@ -223,7 +223,7 @@ function setTabActive(labelStr) {
 }
 
 async function asyncRunAcb(filenames, contents) {
-   superficialLosses = true;
+   superficialLosses = document.getElementById('superficial-losses-checkbox').checked;
    const ret = runAcb(filenames, contents, [], superficialLosses);
    try {
       const resp = await ret;
