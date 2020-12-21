@@ -223,14 +223,15 @@ function setTabActive(labelStr) {
 }
 
 async function asyncRunAcb(filenames, contents) {
-   const ret = runAcb(filenames, contents);
+   superficialLosses = true;
+   const ret = runAcb(filenames, contents, [], superficialLosses);
    try {
-      const resp = await ret.result;
+      const resp = await ret;
       let error = resp.error;
       console.log("asyncRunAcb response received" +
                   (error === undefined ? "" : " with error"));
       const acbOutElem = document.getElementById("acb-text-output");
-      acbOutElem.innerText = resp.result.textOutput;
+      acbOutElem.innerText = resp.result ? resp.result.textOutput : "";
       const errorsElem = document.getElementById("acb-errors");
       if (error !== undefined) {
          errorsElem.innerText = error;
@@ -238,7 +239,7 @@ async function asyncRunAcb(filenames, contents) {
          errorsElem.innerText = "";
       }
 
-      populateTables(resp.result.modelOutput);
+      populateTables(resp ? resp.result.modelOutput : {});
    } catch (err) {
       console.log("asyncRunAcb caught error: ", err);
    }

@@ -94,8 +94,18 @@ func renderTablesToJsObject(renderTables map[string]*ptf.RenderTable) js.Value {
 	return js.ValueOf(tableObjMap)
 }
 
-// Map is the description mapped to the contents
-func runAcb(csvDescs []string, csvContents []string) (js.Value, error) {
+/* csvDescs: descriptions of each csv. usually just the name.
+ * csvContents: The read contents of each csv file. Indexes must match csvDescs
+ *	initialSymbolStates: list of symbol states formatted as  SYM:nShares:totalAcb.
+ *                      Eg. GOOG:20:1000.00
+ *
+ * Returns a js object representation of a map[string]ptf.RenderTable
+ */
+func runAcb(
+	csvDescs []string, csvContents []string,
+	initialSymbolStates []string,
+	superficialLosses bool) (js.Value, error) {
+
 	fmt.Println("runAcb")
 	csvReaders := make([]app.DescribedReader, 0, len(csvContents))
 	for i, contents := range csvContents {
@@ -103,9 +113,12 @@ func runAcb(csvDescs []string, csvContents []string) (js.Value, error) {
 		csvReaders = append(csvReaders, app.DescribedReader{desc, strings.NewReader(contents)})
 	}
 
-	allInitStatus := map[string]*ptf.PortfolioSecurityStatus{}
 	forceDownload := false
-	superficialLosses := true
+
+	allInitStatus, err := app.ParseInitialStatus(initialSymbolStates)
+	if err != nil {
+		return js.ValueOf(nil), err
+	}
 
 	errPrinter := &BufErrorPrinter{}
 
@@ -155,6 +168,16 @@ func makeJsPromise(
 	return promiseCtor.New(handler)
 }
 
+func makeErrorPromise(err error) interface{} {
+	return makeJsPromise(
+		func(resolveFunc js.Value, rejectFunc js.Value) {
+			go func() {
+				resolveFunc.Invoke(makeRetVal(nil, err))
+				// rejectFunc.Invoke("something error")
+			}()
+		})
+}
+
 func validateFuncArgs(args []js.Value, types ...js.Type) error {
 	if len(args) != len(types) {
 		return fmt.Errorf("Invalid number of arguments (%d). Expected %d",
@@ -169,49 +192,62 @@ func validateFuncArgs(args []js.Value, types ...js.Type) error {
 	return nil
 }
 
+func jsArrayToStringArray(jsArr js.Value) ([]string, error) {
+	arr := make([]string, 0, jsArr.Length())
+	for i := 0; i < jsArr.Length(); i++ {
+		v := jsArr.Index(i)
+		if v.Type() != js.TypeString {
+			return nil, fmt.Errorf("Array item at index %d is not a string", i)
+		}
+		arr = append(arr, v.String())
+	}
+	return arr, nil
+}
+
 func makeRunAcbWrapper() js.Func {
 	wrapperFunc := js.FuncOf(func(this js.Value, args []js.Value) interface{} {
-		err := validateFuncArgs(args, js.TypeObject, js.TypeObject)
+		err := validateFuncArgs(
+			args, js.TypeObject, js.TypeObject, js.TypeObject, js.TypeBoolean)
 		if err != nil {
-			return makeRetVal(nil, err)
+			return makeErrorPromise(err)
 		}
 
-		// These are expected to be array
-		csvDescs := args[0]
-		csvContents := args[1]
-
-		descs := make([]string, 0, csvContents.Length())
-		contents := make([]string, 0, csvContents.Length())
-		for i := 0; i < csvContents.Length(); i++ {
-			c := csvContents.Index(i)
-			if c.Type() != js.TypeString {
-				return makeRetVal(
-					nil, fmt.Errorf("Array item at index %d is not a string", i))
+		descs, err := jsArrayToStringArray(args[0])
+		if err != nil {
+			return makeErrorPromise(err)
+		}
+		contents, err := jsArrayToStringArray(args[1])
+		if err != nil {
+			return makeErrorPromise(err)
+		}
+		// We need a desc for each csv. Default them to empty string.
+		for i, _ := range contents {
+			var desc string = ""
+			if i < len(descs) {
+				desc = descs[i]
+			} else {
+				descs = append(descs, "")
 			}
-			contents = append(contents, c.String())
-
-			desc := ""
-			if i < csvDescs.Length() {
-				dVal := csvDescs.Index(i)
-				if dVal.Type() != js.TypeString {
-					return makeRetVal(
-						nil, fmt.Errorf("Array item at index %d is not a string", i))
-				}
-				desc = dVal.String()
-			}
-			descs = append(descs, desc)
 			fmt.Printf("%d: %s\n", i, desc)
 		}
+
+		initialSymbolStates, err := jsArrayToStringArray(args[2])
+		if err != nil {
+			return makeErrorPromise(err)
+		}
+
+		superficialLosses := args[3].Bool()
 
 		promise := makeJsPromise(
 			func(resolveFunc js.Value, rejectFunc js.Value) {
 				go func() {
-					out, err := runAcb(descs, contents)
+					out, err := runAcb(
+						descs, contents, initialSymbolStates, superficialLosses)
 					resolveFunc.Invoke(makeRetVal(out, err))
 					// rejectFunc.Invoke("something error")
 				}()
 			})
-		return makeRetVal(promise, nil)
+		return promise
 	})
 	return wrapperFunc
 }
