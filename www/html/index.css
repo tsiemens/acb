@@ -15,6 +15,7 @@
 }
 
 .centered-header {
+   width: -moz-fit-content;
    width: fit-content;
    margin-left: auto;
    margin-right: auto;
@@ -59,6 +60,7 @@
 }
 
 .file-list {
+   width: -moz-fit-content;
    width: fit-content;
    margin: auto;
    min-height: 40px;
@@ -70,6 +72,7 @@
    padding: 4px;
    text-align: center;
    vertical-align: middle;
+   width: -moz-fit-content;
    width: fit-content;
    display: flex;
 }
@@ -95,6 +98,7 @@
    margin-top: 20px;
    margin-left: auto;
    margin-right: auto;
+   width: -moz-fit-content;
    width: fit-content;
 }
 
@@ -160,6 +164,7 @@
 
 .acb-output-container {
    margin: auto;
+   width: -moz-fit-content;
    width: fit-content;
 }
 
@@ -236,4 +241,84 @@
 /* Show the tooltip text when you mouse over the tooltip container */
 .tooltip:hover .tooltiptext {
    visibility: visible;
+}
+
+/* Browser compat */
+.button {
+   display: inline;
+   width: fit-content;
+   width: -moz-fit-content;
+   margin-left: auto;
+   margin-right: auto;
+   cursor: pointer;
+
+   border-bottom-color: rgb(255, 255, 255);
+   border-bottom-left-radius: 3px;
+   border-bottom-right-radius: 3px;
+   border-bottom-width: 0px;
+   border-left-color: rgb(255, 255, 255);
+   border-left-width: 0px;
+   border-right-color: rgb(255, 255, 255);
+   border-right-width: 0px;
+   border-top-color: rgb(255, 255, 255);
+   border-top-left-radius: 3px;
+   border-top-right-radius: 3px;
+   border-top-width: 0px;
+   box-shadow: rgba(0, 0, 0, 0.2) 0px -1px 0px 0px inset;
+   box-sizing: border-box;
+   font-family: "Open Sans", sans-serif;
+   font-size: 14px;
+   font-weight: 700;
+   line-height: 14px;
+   padding-left: 8px;
+   padding-right: 8px;
+   padding-top: 5px;
+   padding-bottom: 5px;
+
+
+   position: static;
+   text-shadow: none;
+   transition-delay: 0s;
+   transition-duration: 0.2s;
+   transition-property: all;
+   transition-timing-function: linear;
+}
+
+.b-fat {
+   padding-bottom: 10px;
+   padding-left: 14px;
+   padding-right: 14px;
+   padding-top: 10px;
+}
+.b-skinny {
+   padding-left: 8px;
+   padding-right: 8px;
+   padding-top: 5px;
+   padding-bottom: 5px;
+}
+
+.b-light {
+   color: #111;
+   background-color: #fff;
+}
+.b-light:hover {
+   background-color: #aaa;
+}
+.b-light[disabled=true],
+.b-light:hover[disabled=true] {
+   color: #999;
+   background-color: #fff;
+}
+
+.b-dark {
+   color: #fff;
+   background-color: #666;
+}
+.b-dark:hover {
+   background-color: #aaa;
+}
+.b-dark[disabled=true],
+.b-dark:hover[disabled=true] {
+   color: #fff;
+   background-color: #aaa;
 }

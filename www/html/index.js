@@ -12,7 +12,7 @@ function get(obj, key, def) {
 
 function setRunButtonEnabled(enabled) {
    const runButton = document.getElementById('run-button');
-   runButton.disabled = !enabled;
+   runButton.setAttribute("disabled", !enabled);
 }
 
 function addFileToUse(file) {
@@ -39,7 +39,7 @@ function addFileListEntry(fileId, filename) {
    const fileList = document.getElementsByClassName("file-list")[0];
    const entry = document.createElement('div');
    entry.classList.add('file-list-item');
-   const btn = document.createElement('button');
+   const btn = newElem('div', {classes:['button', 'b-skinny', 'b-light']});
    btn.innerText = 'X';
    btn.addEventListener("click", (event) => {
       const fildId = event.target.dataset.fileid;
@@ -239,10 +239,10 @@ function addInitialSecurityStateRow() {
                 onfocus="handleInitSecFocusChange(this)"
                 onfocusout="handleInitSecFocusChange(this)"
                 placeholder="total cost basis (CAD)"/>
-         <button class="init-sec-button" onclick="handleInitSecButton(this)"
+         <div class="button b-skinny b-dark init-sec-button" onclick="handleInitSecButton(this)"
                  onfocus="handleInitSecFocusChange(this)"
                  onfocusout="handleInitSecFocusChange(this)">
-            Add</button>`;
+            Add</div>`;
 
    initsDiv.appendChild(newInitDiv);
 }
@@ -474,7 +474,7 @@ function initPageJs() {
    });
 
    const runButton = document.getElementById('run-button');
-   runButton.disabled = true;
+   setRunButtonEnabled(false);
    runButton.addEventListener('click', (event) => {
       const fileList = [];
       for (const fileId in filesToUse) {
