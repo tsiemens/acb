@@ -126,6 +126,127 @@ function newElem(type, parts) {
    return elem;
 }
 
+function handleInitSecButton(button) {
+   if (button.dataset.deleteOnClick) {
+      const initsDiv = document.getElementById("initial-symbol-state-inputs");
+      const row = button.parentElement;
+      initsDiv.removeChild(row);
+   } else {
+      addInitialSecurityStateRow();
+      button.dataset.deleteOnClick = true;
+      button.innerText = "X";
+   }
+}
+
+function rowHasFocus(row) {
+   for (const child of row.children) {
+      if (child === document.activeElement) {
+         return true;
+      }
+   }
+   return false;
+}
+
+function handleInitSecFocusChange(inp) {
+   // Sleep just a bit, because when we tab to a new input, it transiently focuses
+   // the document body, not the next element.
+   setTimeout(() => {
+      const row = inp.parentElement;
+      if (!rowHasFocus(row)) {
+         validateInitSecRow(row);
+      }
+   }, 100);
+}
+
+function getRowContents(row) {
+   return {
+      secInput: row.getElementsByClassName("init-sec-name")[0],
+      secQuantInput: row.getElementsByClassName("init-sec-quant")[0],
+      secAcbInput: row.getElementsByClassName("init-sec-acb")[0]
+   };
+}
+
+function validateInitSecRow(rowElem) {
+   const row = getRowContents(rowElem);
+
+   const setError = (elem, err) => {
+      if (err) {
+         elem.classList.add("init-sec-input-error");
+      } else {
+         elem.classList.remove("init-sec-input-error");
+      }
+   };
+
+   if (row.secInput.value) {
+      setError(row.secInput, false);
+      setError(row.secQuantInput, row.secQuantInput.value == false);
+      setError(row.secAcbInput, row.secAcbInput.value == false);
+   } else if (!row.secInput.value && (row.secQuantInput.value || row.secAcbInput.value)) {
+      setError(row.secInput, true);
+      setError(row.secQuantInput, false);
+      setError(row.secAcbInput, false);
+   } else {
+      setError(row.secInput, false);
+      setError(row.secQuantInput, false);
+      setError(row.secAcbInput, false);
+   }
+}
+
+function getInitSecs() {
+   const initsDiv = document.getElementById("initial-symbol-state-inputs");
+   valids = [];
+   invalids = [];
+   for (const rowElem of initsDiv.children) {
+      const row = getRowContents(rowElem);
+      const security = row.secInput.value;
+      const quant = row.secQuantInput.value;
+      const acb = row.secAcbInput.value;
+      if (security) {
+         if (quant && acb) {
+            valids.push(security + ":" + quant + ":" + acb);
+         } else {
+            invalids.push("Invalid quantity and/or ACB for " + security);
+         }
+      } else if (quant || acb) {
+         invalids.push("Missing security name");
+      }
+   }
+
+   const errorsElem = document.getElementById("init-secs-errors");
+   if (invalids) {
+      errorsElem.innerText = invalids.join("\n");
+   } else {
+      errorsElem.innerText = "";
+   }
+
+   return {"valid": valids, "invalid": invalids}
+}
+
+function addInitialSecurityStateRow() {
+   const initsDiv = document.getElementById("initial-symbol-state-inputs");
+
+   const newInitDiv = newElem("div", {classes: ["init-sec-row"]});
+   newInitDiv.innerHTML = `
+         <input type="text" class="init-sec-input init-sec-name"
+                onfocus="handleInitSecFocusChange(this)"
+                onfocusout="handleInitSecFocusChange(this)"
+                placeholder="SECURITY"/>
+         <input type="number" class="init-sec-input init-sec-quant"
+                onfocus="handleInitSecFocusChange(this)"
+                onfocusout="handleInitSecFocusChange(this)"
+                placeholder="quantity" pattern="[0-9]+"/>
+         <input type="number" class="init-sec-input init-sec-acb"
+                onfocus="handleInitSecFocusChange(this)"
+                onfocusout="handleInitSecFocusChange(this)"
+                placeholder="total cost basis (CAD)"/>
+         <button class="init-sec-button" onclick="handleInitSecButton(this)"
+                 onfocus="handleInitSecFocusChange(this)"
+                 onfocusout="handleInitSecFocusChange(this)">
+            Add</button>`;
+
+   initsDiv.appendChild(newInitDiv);
+}
+
 function populateTables(model) {
    if (model === undefined) {
       model = {"STOCK": {
@@ -224,7 +345,11 @@ function setTabActive(labelStr) {
 
 async function asyncRunAcb(filenames, contents) {
    superficialLosses = document.getElementById('superficial-losses-checkbox').checked;
-   const ret = runAcb(filenames, contents, [], superficialLosses);
+   const initSecs = getInitSecs();
+   if (initSecs.invalid.length) {
+      return;
+   }
+   const ret = runAcb(filenames, contents, initSecs.valid, superficialLosses);
    try {
       const resp = await ret;
       let error = resp.error;
@@ -286,6 +411,11 @@ class FileLoadQueue {
 }
 
 function loadAllFileInfoAndRun(files) {
+   const initSecs = getInitSecs();
+   if (initSecs.invalid.length) {
+      return;
+   }
+
    // Takes a list of File
    fileNames = [];
    for (const file of files) {
@@ -349,9 +479,11 @@ function initPageJs() {
       const fileList = [];
       for (const fileId in filesToUse) {
          fileList.push(filesToUse[fileId]);
-         loadAllFileInfoAndRun(fileList);
       }
+      loadAllFileInfoAndRun(fileList);
    });
+
+   addInitialSecurityStateRow();
 
    showTableOut();
 

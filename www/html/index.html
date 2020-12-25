@@ -8,19 +8,28 @@
     <body>
       <div class="page-content-container">
          <div class="header-bar">
-            <h1 style="text-align: margin-bottom; float: left; 60pt">ACB</h1>
+            <h1 style="text-align: margin-bottom; float: left; 60pt">
+               ACB - A Capital Gains Calculator For Canadians</h1>
             <h2><a style="float: right!important;"
                    href="https://github.com/tsiemens/acb/blob/master/README.md">Help</a></h2>
          </div>
-         <div class="blog-text-column">
-            <p>ACB is a tool for tallying capital gains for Canadian tax returns.</p>
+         <div class="page-centered-column">
+            <p><span class="tooltip">ACB<span class="tooltiptext">
+                  Adjusted Cost Basis - The method in which capital gains tax are calculated in Canada. This can differ from the methods used in other countries.</span>
+               </span>
+            is a tool for tallying capital gains for Canadian tax returns. Features include:</p>
+            <ul>
+               <li>Calculating <a href="https://www.canada.ca/en/revenue-agency/services/tax/individuals/topics/about-your-tax-return/tax-return/completing-a-tax-return/personal-income/line-127-capital-gains/capital-losses-deductions/what-a-superficial-loss.html">Superficial Losses</a></li>
+               <li>Automatic per-day foreign exchange rate lookups (USD only supported currently)</li>
+               <li>Can output to both table and text (good for saving for records)</li>
+            </ul>
             <p>ACB is not designed or developed by certified individual, and is to be
-               used at your own risk. Please cross-check any results if you have any doubts.
+            used <strong>at your own risk</strong>. Please cross-check any results if you have any doubts.
             </p>
             <p>ACB is open source, and does not collect any personal data (all processing is done locally to your browser).</p>
             <input type="checkbox" id="superficial-losses-checkbox" checked>Calculate Superficial Losses</input>
-         </div> <!-- end blog-text-column -->
-         <div class="file-info-container">
+         </div> <!-- end page-centered-column -->
+         <div class="file-info-container page-centered-column">
             <!-- Based on https://web.dev/read-files/ -->
             <div id="file-drop-area-outer" class="file-drop-area-outer">
                <div id="file-drop-area" class="file-drop-area">
@@ -29,9 +38,11 @@
                      <input type="file" id="file-selector-input" accept=".csv" multiple
                             style="display: none;"/>
                      <label for="file-selector-input">
-                        <strong>Choose a CSV file</strong>
-                        <span>or drag it here.</span>
+                        <strong>Choose CSV file(s)</strong>
+                        <span>or drag them here.</span>
                      </label>
+                     <br><br>
+                     <a href="https://github.com/tsiemens/acb/blob/master/README.md">Details on compatible CSV format.</a>
                   </div>
                   <div class="file-list"></div>
                   <div class="run-button-div">
@@ -40,13 +51,25 @@
                </div>
             </div>
          </div> <!-- end file-info-container -->
-         <p id="acb-errors"></p>
-         <div id="acb-output-tabs" class="tab-row blog-text-column">
+         <h3 style="text-align: center;" class="centered-header tooltip">
+            Initial Security Values
+            <span class="tooltiptext">
+               Add entries here for securities which you already held before any
+               transactions in any of the spreadsheets specified.
+               BE CAREFUL that transactions producing this initial value do not
+               cause superficial losses on your documented transactions.
+            </span>
+         </h3>
+         <div id="initial-symbol-state-inputs">
+         </div> <!-- end page-centered-column -->
+         <p id="init-secs-errors" class="errors-par page-centered-column"></p>
+         <p id="acb-errors" class="errors-par page-centered-column"></p>
+         <div id="acb-output-tabs" class="tab-row page-centered-column">
             <div class="tab-label" data-tab-label="table" onclick="showTableOut()">Table</div>
             <span class="tab-separator"></span>
             <div class="tab-label" data-tab-label="text" onclick="showTextOut()">Text</div>
          </div>
-         <hr class="blog-text-column">
+         <hr class="page-centered-column">
          <div class="acb-output-container">
             <pre id="acb-text-output" class="acb-output"></pre>
             <div id="acb-table-output" class="acb-output"></div>

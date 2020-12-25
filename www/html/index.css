@@ -8,17 +8,24 @@
    overflow: auto;
 }
 
-.blog-text-column {
+.page-centered-column {
    width: auto;
    margin-left: 15%;
    margin-right: 15%;
 }
 
+.centered-header {
+   width: fit-content;
+   margin-left: auto;
+   margin-right: auto;
+}
+
+#superficial-losses-checkbox {
+   margin-top: 50px;
+}
+
 .file-info-container {
-   width: auto;
    margin-top: 20px;
-   margin-left: 15%;
-   margin-right: 15%;
 }
 
 .file-drop-area {
@@ -28,12 +35,12 @@
 }
 
 .file-drop-area-outer {
-   background: #e2e2e2;
+   background: #badcf9;
    padding: 10px;
 }
 
 .file-drop-area-outer[drop-active=true] {
-   background: #efefef;
+   background: #a5c5e0;
 }
 
 .file-drop-area-text {
@@ -84,12 +91,51 @@
    padding-right: 10px;
 }
 
+#initial-symbol-state-inputs {
+   margin-top: 20px;
+   margin-left: auto;
+   margin-right: auto;
+   width: fit-content;
+}
+
+.init-sec-row {
+   margin-top: 5px;
+}
+
+.init-sec-input {
+   margin-left: 5px;
+   margin-right: 5px;
+   font-size: 12pt;
+   border-radius: 4px;
+}
+
+.init-sec-input-error {
+   border: 2px solid red;
+   outline: none !important;
+}
+
+.init-sec-name {
+   width: 70pt;
+}
+
+.init-sec-quant {
+   width: 70pt;
+}
+
+.init-sec-acb {
+   width: 135pt;
+}
+
+#init-secs-errors {
+   margin-bottom: 50px;
+}
+
 #acb-text-output {
    font-family: 'Courier-New', monospace;
    font-size: 8pt;
 }
 
-#acb-errors {
+.errors-par {
    color: red;
 }
 
@@ -162,4 +208,32 @@
 .table-fixed-head table {
    border-right: solid 1px #999;
    border-bottom: solid 1px #999;
+}
+
+/* Tooltip container */
+.tooltip {
+  /* position: relative; */
+  /* display: inline-block; */
+  border-bottom: 1px dotted black; /* If you want dots under the hoverable text */
+}
+
+/* Tooltip text */
+.tooltip .tooltiptext {
+   visibility: hidden;
+   width: 140pt;
+   padding: 8pt;
+   background-color: #3c3c3c;
+   color: #fff;
+   font-size: 10pt;
+   text-align: center;
+   border-radius: 6px;
+
+   /* Position the tooltip text - see examples below! */
+   position: absolute;
+   z-index: 1;
+}
+
+/* Show the tooltip text when you mouse over the tooltip container */
+.tooltip:hover .tooltiptext {
+   visibility: visible;
 }
