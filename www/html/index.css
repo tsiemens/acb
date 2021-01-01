@@ -199,7 +199,8 @@
    font-size: 9pt;
 }
 .table-fixed-head th {
-   background: #eee;
+   background: #666;
+   color: white;
 }
 .table-fixed-head td {
    box-shadow: inset 1px 1px #999;
@@ -213,6 +214,10 @@
 .table-fixed-head table {
    border-right: solid 1px #999;
    border-bottom: solid 1px #999;
+}
+
+.sell-row td {
+   background: #eee;
 }
 
 /* Tooltip container */

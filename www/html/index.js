@@ -274,7 +274,12 @@ function populateTables(model) {
       const tbody = newElem('tbody');
 
       const addRow = function(rowItems) {
+         let isSell = rowItems[2].search(/sell/i) >= 0;
+
          const rowElem = newElem('tr');
+         if (isSell) {
+            rowElem.classList.add('sell-row');
+         }
          for (const item of rowItems) {
             const td = newElem('td', {text: item});
             rowElem.appendChild(td);
