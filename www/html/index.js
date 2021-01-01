@@ -348,6 +348,20 @@ function setTabActive(labelStr) {
    }
 }
 
+function setAcbErrorText(err) {
+   const errorsElem = document.getElementById("acb-errors");
+   errorsElem.innerText = err;
+}
+
+function addAcbErrorText(err) {
+   const errorsElem = document.getElementById("acb-errors");
+   if (errorsElem.innerText) {
+      errorsElem.innerText += '\n' + err;
+   } else {
+      errorsElem.innerText = err;
+   }
+}
+
 async function asyncRunAcb(filenames, contents) {
    superficialLosses = document.getElementById('superficial-losses-checkbox').checked;
    const initSecs = getInitSecs();
@@ -362,12 +376,7 @@ async function asyncRunAcb(filenames, contents) {
                   (error === undefined ? "" : " with error"));
       const acbOutElem = document.getElementById("acb-text-output");
       acbOutElem.innerText = resp.result ? resp.result.textOutput : "";
-      const errorsElem = document.getElementById("acb-errors");
-      if (error !== undefined) {
-         errorsElem.innerText = error;
-      } else {
-         errorsElem.innerText = "";
-      }
+      addAcbErrorText(error !== undefined ? error : "");
 
       populateTables(resp ? resp.result.modelOutput : {});
    } catch (err) {
@@ -386,8 +395,18 @@ function readCsv(file, loadQueue) {
   }
 
   const reader = new FileReader();
-  reader.addEventListener('load', (event) => {
-     console.log(event.target.result);
+  reader.addEventListener('loadend', (event) => {
+     console.log('FileReader loadend:', event.target.result);
+
+     if (!event.target.result) {
+        let errText = "Error reading " + file.name + ": "
+        if (event.target.error) {
+           errText += event.target.error;
+        }
+        addAcbErrorText(errText);
+        return;
+     }
+
      // Decode base64
      const b64Content = event.target.result.split(";base64,")[1];
      const content = atob(b64Content);
@@ -420,6 +439,8 @@ function loadAllFileInfoAndRun(files) {
    if (initSecs.invalid.length) {
       return;
    }
+
+   setAcbErrorText("");
 
    // Takes a list of File
    fileNames = [];
