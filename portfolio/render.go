@@ -98,7 +98,7 @@ func RenderTxTableModel(deltas []*TxDelta) *RenderTable {
 		"Total", plusMinusDollar(capGainsTotal, false), "", "", "", "", ""}
 
 	if sawSuperficialLoss {
-		table.Notes = append(table.Notes, " * = Superficial loss adjustment")
+		table.Notes = append(table.Notes, " * = Superficial loss adjustment (Full only. Partial not yet supported)")
 	}
 
 	return table

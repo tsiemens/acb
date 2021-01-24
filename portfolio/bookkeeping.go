@@ -17,6 +17,10 @@ var ONE_DAY_DUR = mustParseDuration("24h")
 
 // Checks if there is a Buy action within 30 days before or after the Sell
 // at idx, AND if you hold shares after the 30 day period
+//
+// NOTE: Currently this only supports FULL superficial loss application. It cannot
+// apply partial superficial losses yet. For more info on partial superficial losses,
+// see https://www.adjustedcostbase.ca/blog/applying-the-superficial-loss-rule-for-a-partial-disposition-of-shares/
 func IsSellSuperficial(idx int, txs []*Tx, shareBalanceAfterSell uint32) bool {
 	tx := txs[idx]
 	util.Assertf(tx.Action == SELL,
