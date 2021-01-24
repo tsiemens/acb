@@ -509,6 +509,12 @@ function initPageJs() {
       loadAllFileInfoAndRun(fileList);
    });
 
+   const legacyToggleButton = document.getElementById('legacy-options-button');
+   legacyToggleButton.addEventListener('click', (event) => {
+      const legacyOptionsDiv = document.getElementById('legacy-options-dropdown');
+      legacyOptionsDiv.hidden = !legacyOptionsDiv.hidden;
+   });
+
    addInitialSecurityStateRow();
 
    showTableOut();

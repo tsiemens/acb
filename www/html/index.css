@@ -21,8 +21,13 @@
    margin-right: auto;
 }
 
-#superficial-losses-checkbox {
-   margin-top: 50px;
+#legacy-options-container {
+   margin-top: 30px;
+}
+
+#legacy-options-button {
+   margin-bottom: 5px;
+   cursor: pointer;
 }
 
 .file-info-container {
