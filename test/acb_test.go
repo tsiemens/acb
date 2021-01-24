@@ -331,19 +331,40 @@ func TestBasicRocAcb(t *testing.T) {
 	rq.Equal(delta.CapitalGain, 0.0)
 }
 
-func TestTxSort(t *testing.T) {
+func TestTxSortLegacySortBuysBeforeSells(t *testing.T) {
 	txs := []*ptf.Tx{
-		&ptf.Tx{Security: "FOO2", Date: mkDate(t, 2)},
-		&ptf.Tx{Security: "FOO3", Date: mkDate(t, 3)},
-		&ptf.Tx{Security: "FOO1", Date: mkDate(t, 1)},
+		&ptf.Tx{Security: "FOO2", Date: mkDate(t, 2), Action: ptf.SELL, ReadIndex: 0},
+		&ptf.Tx{Security: "FOO2", Date: mkDate(t, 2), Action: ptf.BUY, ReadIndex: 3},
+		&ptf.Tx{Security: "FOO3", Date: mkDate(t, 3), Action: ptf.BUY, ReadIndex: 1},
+		&ptf.Tx{Security: "FOO1", Date: mkDate(t, 1), Action: ptf.BUY, ReadIndex: 2},
 	}
 
 	expTxs := []*ptf.Tx{
-		&ptf.Tx{Security: "FOO1", Date: mkDate(t, 1)},
-		&ptf.Tx{Security: "FOO2", Date: mkDate(t, 2)},
-		&ptf.Tx{Security: "FOO3", Date: mkDate(t, 3)},
+		&ptf.Tx{Security: "FOO1", Date: mkDate(t, 1), Action: ptf.BUY, ReadIndex: 2},
+		&ptf.Tx{Security: "FOO2", Date: mkDate(t, 2), Action: ptf.BUY, ReadIndex: 3},
+		&ptf.Tx{Security: "FOO2", Date: mkDate(t, 2), Action: ptf.SELL, ReadIndex: 0},
+		&ptf.Tx{Security: "FOO3", Date: mkDate(t, 3), Action: ptf.BUY, ReadIndex: 1},
 	}
 
-	ptf.SortTxs(txs)
+	ptf.SortTxs(txs, true)
+	require.Equal(t, txs, expTxs)
+}
+
+func TestTxSort(t *testing.T) {
+	txs := []*ptf.Tx{
+		&ptf.Tx{Security: "FOO2", Date: mkDate(t, 2), Action: ptf.SELL, ReadIndex: 0},
+		&ptf.Tx{Security: "FOO2", Date: mkDate(t, 2), Action: ptf.BUY, ReadIndex: 3},
+		&ptf.Tx{Security: "FOO3", Date: mkDate(t, 3), Action: ptf.BUY, ReadIndex: 1},
+		&ptf.Tx{Security: "FOO1", Date: mkDate(t, 1), Action: ptf.BUY, ReadIndex: 2},
+	}
+
+	expTxs := []*ptf.Tx{
+		&ptf.Tx{Security: "FOO1", Date: mkDate(t, 1), Action: ptf.BUY, ReadIndex: 2},
+		&ptf.Tx{Security: "FOO2", Date: mkDate(t, 2), Action: ptf.SELL, ReadIndex: 0},
+		&ptf.Tx{Security: "FOO2", Date: mkDate(t, 2), Action: ptf.BUY, ReadIndex: 3},
+		&ptf.Tx{Security: "FOO3", Date: mkDate(t, 3), Action: ptf.BUY, ReadIndex: 1},
+	}
+
+	ptf.SortTxs(txs, false)
 	require.Equal(t, txs, expTxs)
 }

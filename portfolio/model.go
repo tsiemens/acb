@@ -65,6 +65,9 @@ type Tx struct {
 	CommissionCurrency                Currency
 	CommissionCurrToLocalExchangeRate float64
 	Memo                              string
+	// The absolute order in which the Tx was read from file or entered.
+	// Used as a tiebreak in sorting.
+	ReadIndex uint32
 }
 
 type TxDelta struct {
@@ -84,6 +87,8 @@ func (d *TxDelta) AcbDelta() float64 {
 
 type txSorter struct {
 	Txs []*Tx
+	// Settings
+	LegacySortBuysBeforeSells bool
 }
 
 func (s *txSorter) Len() int {
@@ -101,24 +106,32 @@ func (s *txSorter) Less(i, j int) bool {
 	} else if dateDiff > 0 {
 		return false
 	}
-	// Tie break on order type. Buys always first, so we don't go negative.
-	actionSortVal := func(action TxAction) int {
-		switch action {
-		case BUY:
-			return 0
-		case ROC:
-			return 1
-		case SELL:
-			return 2
-		default:
-			return -1
+	if s.LegacySortBuysBeforeSells {
+		// Tie break on order type. Buys always first, so we don't go negative.
+		actionSortVal := func(action TxAction) int {
+			switch action {
+			case BUY:
+				return 0
+			case ROC:
+				return 1
+			case SELL:
+				return 2
+			default:
+				return -1
+			}
 		}
+		return actionSortVal(s.Txs[i].Action) < actionSortVal(s.Txs[j].Action)
+	} else {
+		// Tie break by the order read from file.
+		return s.Txs[i].ReadIndex < s.Txs[j].ReadIndex
 	}
-	return actionSortVal(s.Txs[i].Action) < actionSortVal(s.Txs[j].Action)
 }
 
-func SortTxs(txs []*Tx) []*Tx {
-	sorter := txSorter{Txs: txs}
+func SortTxs(txs []*Tx, legacySortBuysBeforeSells bool) []*Tx {
+	sorter := txSorter{
+		Txs:                       txs,
+		LegacySortBuysBeforeSells: legacySortBuysBeforeSells,
+	}
 	sort.Sort(&sorter)
 	return sorter.Txs
 }

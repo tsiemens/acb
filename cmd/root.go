@@ -17,7 +17,8 @@ import (
 
 var ForceDownload = false
 var InitialSymStatusOpt []string
-var NoSuperficialLosses = false
+
+var legacyOptions = app.NewLegacyOptions()
 
 func runRootCmd(cmd *cobra.Command, args []string) {
 	errPrinter := &log.StderrErrorPrinter{}
@@ -40,7 +41,8 @@ func runRootCmd(cmd *cobra.Command, args []string) {
 	}
 
 	ok := app.RunAcbAppToConsole(
-		csvReaders, allInitStatus, ForceDownload, !NoSuperficialLosses,
+		csvReaders, allInitStatus, ForceDownload,
+		legacyOptions,
 		&fx.CsvRatesCache{ErrPrinter: errPrinter}, errPrinter)
 	if !ok {
 		os.Exit(1)
@@ -77,7 +79,7 @@ the equivalent value in the default (local) currency.
 	// has an action associated with it:
 	Run:     runRootCmd,
 	Args:    cobra.MinimumNArgs(1),
-	Version: "0.3.0",
+	Version: "0.4.0",
 }
 
 // Execute adds all child commands to the root command and sets flags appropriately.
@@ -102,8 +104,14 @@ func init() {
 	RootCmd.Flags().StringSliceVarP(&InitialSymStatusOpt, "symbol-base", "b", []string{},
 		"Base share count and ACBs for symbols, assumed at the beginning of time. "+
 			"Formatted as SYM:nShares:totalAcb. Eg. GOOG:20:1000.00 . May be provided multiple times.")
-	RootCmd.PersistentFlags().BoolVar(&NoSuperficialLosses, "no-superficial-losses", false,
+
+	// Legacy Options
+	RootCmd.PersistentFlags().BoolVar(&legacyOptions.NoSuperficialLosses,
+		"legacy-no-superficial-losses", false,
 		"Do not apply the superficial loss rule to sold shares (behaviour pre-v0.2).")
+	RootCmd.PersistentFlags().BoolVar(&legacyOptions.SortBuysBeforeSells,
+		"legacy-sort-buys-before-sells", false,
+		"Sort all buys before all sells made on the same day (default behaviour pre-v0.4).")
 }
 
 // onInit reads in config file and ENV variables if set, and performs global

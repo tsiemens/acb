@@ -99,7 +99,10 @@ func fixupTxFx(tx *Tx, rl *fx.RateLoader) error {
 	return nil
 }
 
-func ParseTxCsv(reader io.Reader, csvDesc string, rateLoader *fx.RateLoader) ([]*Tx, error) {
+func ParseTxCsv(reader io.Reader, initialGlobalReadIndex uint32,
+	csvDesc string, rateLoader *fx.RateLoader) ([]*Tx, error) {
+
+	globalRowIndex := initialGlobalReadIndex
 	csvR := csv.NewReader(reader)
 	records, err := csvR.ReadAll()
 	if err != nil {
@@ -127,6 +130,8 @@ func ParseTxCsv(reader io.Reader, csvDesc string, rateLoader *fx.RateLoader) ([]
 	txs := make([]*Tx, 0, len(records)-1)
 	for i, record := range records[1:] {
 		tx := DefaultTx()
+		tx.ReadIndex = globalRowIndex
+		globalRowIndex++
 		for j, col := range record {
 			err = colParsers[j](col, tx)
 			if err != nil {

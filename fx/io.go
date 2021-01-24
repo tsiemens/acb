@@ -65,6 +65,27 @@ type RatesCache interface {
 	GetUsdCadRates(year uint32) ([]DailyRate, error)
 }
 
+type MemRatesCacheAccessor struct {
+	RatesByYear map[uint32][]DailyRate
+}
+
+func NewMemRatesCacheAccessor() *MemRatesCacheAccessor {
+	return &MemRatesCacheAccessor{RatesByYear: make(map[uint32][]DailyRate)}
+}
+
+func (c *MemRatesCacheAccessor) WriteRates(year uint32, rates []DailyRate) error {
+	c.RatesByYear[year] = rates
+	return nil
+}
+
+func (c *MemRatesCacheAccessor) GetUsdCadRates(year uint32) ([]DailyRate, error) {
+	rates, ok := c.RatesByYear[year]
+	if !ok {
+		return nil, nil
+	}
+	return rates, nil
+}
+
 type CsvRatesCache struct {
 	ErrPrinter log.ErrorPrinter
 }

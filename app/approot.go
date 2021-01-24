@@ -42,43 +42,47 @@ func ParseInitialStatus(
 	return stati, nil
 }
 
-// Returns a map of Security to its RenderTable
-/*
-func CalculateAcbTables(
-	initialAcbs map[string]*ptf.PortfolioSecurityStatus, forceDownload bool) (map[string]*RenderTable, error) {
-
-	rateLoader := fx.NewRateLoader(ForceDownload)
-
-}
-*/
-
 type DescribedReader struct {
 	Desc   string
 	Reader io.Reader
+}
+
+type LegacyOptions struct {
+	NoSuperficialLosses bool
+	SortBuysBeforeSells bool
+}
+
+func NewLegacyOptions() LegacyOptions {
+	return LegacyOptions{
+		NoSuperficialLosses: false,
+		SortBuysBeforeSells: false,
+	}
 }
 
 func RunAcbAppToModel(
 	csvFileReaders []DescribedReader,
 	allInitStatus map[string]*ptf.PortfolioSecurityStatus,
 	forceDownload bool,
-	applySuperficialLosses bool,
+	legacyOptions LegacyOptions,
 	ratesCache fx.RatesCache,
 	errPrinter log.ErrorPrinter) (map[string]*ptf.RenderTable, error) {
 
 	rateLoader := fx.NewRateLoader(forceDownload, ratesCache, errPrinter)
 
 	allTxs := make([]*ptf.Tx, 0, 20)
+	var globalReadIndex uint32 = 0
 	for _, csvReader := range csvFileReaders {
-		txs, err := ptf.ParseTxCsv(csvReader.Reader, csvReader.Desc, rateLoader)
+		txs, err := ptf.ParseTxCsv(csvReader.Reader, globalReadIndex, csvReader.Desc, rateLoader)
 		if err != nil {
 			return nil, err
 		}
+		globalReadIndex += uint32(len(txs))
 		for _, tx := range txs {
 			allTxs = append(allTxs, tx)
 		}
 	}
 
-	allTxs = ptf.SortTxs(allTxs)
+	allTxs = ptf.SortTxs(allTxs, legacyOptions.SortBuysBeforeSells)
 	txsBySec := ptf.SplitTxsBySecurity(allTxs)
 
 	models := make(map[string]*ptf.RenderTable)
@@ -90,7 +94,7 @@ func RunAcbAppToModel(
 		if !ok {
 			secInitStatus = nil
 		}
-		deltas, err := ptf.TxsToDeltaList(secTxs, secInitStatus, applySuperficialLosses)
+		deltas, err := ptf.TxsToDeltaList(secTxs, secInitStatus, !legacyOptions.NoSuperficialLosses)
 
 		tableModel := ptf.RenderTxTableModel(deltas)
 		if err != nil {
@@ -132,13 +136,13 @@ func RunAcbAppToWriter(
 	csvFileReaders []DescribedReader,
 	allInitStatus map[string]*ptf.PortfolioSecurityStatus,
 	forceDownload bool,
-	applySuperficialLosses bool,
+	legacyOptions LegacyOptions,
 	ratesCache fx.RatesCache,
 	errPrinter log.ErrorPrinter) (bool, map[string]*ptf.RenderTable) {
 
 	renderTables, err := RunAcbAppToModel(
 		csvFileReaders, allInitStatus, forceDownload,
-		applySuperficialLosses, ratesCache, errPrinter,
+		legacyOptions, ratesCache, errPrinter,
 	)
 
 	if err != nil {
@@ -155,14 +159,14 @@ func RunAcbAppToConsole(
 	csvFileReaders []DescribedReader,
 	allInitStatus map[string]*ptf.PortfolioSecurityStatus,
 	forceDownload bool,
-	applySuperficialLosses bool,
+	legacyOptions LegacyOptions,
 	ratesCache fx.RatesCache,
 	errPrinter log.ErrorPrinter) bool {
 
 	ok, _ := RunAcbAppToWriter(
 		os.Stdout,
 		csvFileReaders, allInitStatus, forceDownload,
-		applySuperficialLosses, ratesCache, errPrinter,
+		legacyOptions, ratesCache, errPrinter,
 	)
 	return ok
 }

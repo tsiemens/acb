@@ -124,10 +124,14 @@ func runAcb(
 
 	var output strings.Builder
 
+	legacyOptions := app.NewLegacyOptions()
+	legacyOptions.NoSuperficialLosses = !superficialLosses
+
 	_, renderTables := app.RunAcbAppToWriter(
 		&output,
 		csvReaders, allInitStatus, forceDownload,
-		superficialLosses, &GlobalMemRatesCacheAccessor{}, errPrinter,
+		legacyOptions, &fx.MemRatesCacheAccessor{RatesByYear: globalRatesCache},
+		errPrinter,
 	)
 
 	outString := output.String()
