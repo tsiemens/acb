@@ -104,7 +104,7 @@ func renderTablesToJsObject(renderTables map[string]*ptf.RenderTable) js.Value {
 func runAcb(
 	csvDescs []string, csvContents []string,
 	initialSymbolStates []string,
-	superficialLosses bool) (js.Value, error) {
+	noSuperficialLosses bool, sortBuysBeforeSells bool) (js.Value, error) {
 
 	fmt.Println("runAcb")
 	csvReaders := make([]app.DescribedReader, 0, len(csvContents))
@@ -125,7 +125,8 @@ func runAcb(
 	var output strings.Builder
 
 	legacyOptions := app.NewLegacyOptions()
-	legacyOptions.NoSuperficialLosses = !superficialLosses
+	legacyOptions.NoSuperficialLosses = noSuperficialLosses
+	legacyOptions.SortBuysBeforeSells = sortBuysBeforeSells
 
 	_, renderTables := app.RunAcbAppToWriter(
 		&output,
@@ -211,7 +212,7 @@ func jsArrayToStringArray(jsArr js.Value) ([]string, error) {
 func makeRunAcbWrapper() js.Func {
 	wrapperFunc := js.FuncOf(func(this js.Value, args []js.Value) interface{} {
 		err := validateFuncArgs(
-			args, js.TypeObject, js.TypeObject, js.TypeObject, js.TypeBoolean)
+			args, js.TypeObject, js.TypeObject, js.TypeObject, js.TypeBoolean, js.TypeBoolean)
 		if err != nil {
 			return makeErrorPromise(err)
 		}
@@ -240,13 +241,15 @@ func makeRunAcbWrapper() js.Func {
 			return makeErrorPromise(err)
 		}
 
-		superficialLosses := args[3].Bool()
+		noSuperficialLosses := args[3].Bool()
+		sortBuysBeforeSells := args[4].Bool()
 
 		promise := makeJsPromise(
 			func(resolveFunc js.Value, rejectFunc js.Value) {
 				go func() {
 					out, err := runAcb(
-						descs, contents, initialSymbolStates, superficialLosses)
+						descs, contents, initialSymbolStates,
+						noSuperficialLosses, sortBuysBeforeSells)
 					resolveFunc.Invoke(makeRetVal(out, err))
 					// rejectFunc.Invoke("something error")
 				}()

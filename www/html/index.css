@@ -30,6 +30,10 @@
    cursor: pointer;
 }
 
+.legacy-option-checkbox {
+   margin-left: 16pt;
+}
+
 .file-info-container {
    margin-top: 20px;
 }

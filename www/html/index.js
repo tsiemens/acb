@@ -363,12 +363,14 @@ function addAcbErrorText(err) {
 }
 
 async function asyncRunAcb(filenames, contents) {
-   superficialLosses = document.getElementById('superficial-losses-checkbox').checked;
+   const noSuperficialLosses = document.getElementById('no-superficial-losses-checkbox').checked;
+   const sortBuysBeforeSells = document.getElementById('sort-buys-before-sells-checkbox').checked;
    const initSecs = getInitSecs();
    if (initSecs.invalid.length) {
       return;
    }
-   const ret = runAcb(filenames, contents, initSecs.valid, superficialLosses);
+   const ret = runAcb(filenames, contents, initSecs.valid,
+                      noSuperficialLosses, sortBuysBeforeSells);
    try {
       const resp = await ret;
       let error = resp.error;
