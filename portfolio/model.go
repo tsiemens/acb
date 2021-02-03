@@ -85,6 +85,10 @@ func (d *TxDelta) AcbDelta() float64 {
 	return d.PostStatus.TotalAcb - d.PreStatus.TotalAcb
 }
 
+func (d *TxDelta) SuperficialLossPercent() float64 {
+	return d.SuperficialLoss / (d.SuperficialLoss + d.CapitalGain)
+}
+
 type txSorter struct {
 	Txs []*Tx
 	// Settings

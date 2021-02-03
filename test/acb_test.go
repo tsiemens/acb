@@ -26,10 +26,20 @@ func AssertNil(t *testing.T, o interface{}) {
 	}
 }
 
+func AlmostEqual(t *testing.T, exp float64, actual float64) {
+	diff := exp - actual
+	if diff < 0.0000001 && diff > -0.0000001 {
+		return
+	}
+	require.Equal(t, exp, actual)
+	t.Fatal(fmt.Errorf("%f was not almost equal %f (expected)\n", actual, exp))
+	t.FailNow()
+}
+
 func AddTxNoErr(t *testing.T, tx *ptf.Tx, preTxStatus *ptf.PortfolioSecurityStatus) *ptf.TxDelta {
 	txs := []*ptf.Tx{tx}
-	applySuperficialLosses := true
-	delta, err := ptf.AddTx(0, txs, preTxStatus, applySuperficialLosses)
+	plo := ptf.NewLegacyOptions()
+	delta, err := ptf.AddTx(0, txs, preTxStatus, plo)
 	require.Nil(t, err)
 	return delta
 }
@@ -85,7 +95,8 @@ func TestBasicSellAcbErrors(t *testing.T) {
 		CommissionCurrency: ptf.CAD, CommissionCurrToLocalExchangeRate: 1.0}
 	txs := []*ptf.Tx{tx}
 
-	delta, err := ptf.AddTx(0, txs, sptf, true)
+	plo := ptf.NewLegacyOptions()
+	delta, err := ptf.AddTx(0, txs, sptf, plo)
 	rq.Nil(delta)
 	rq.NotNil(err)
 }
@@ -133,7 +144,7 @@ func TestBasicSellAcb(t *testing.T) {
 	rq.Equal(delta.CapitalGain, (15.0*2.0*2.0)-20.0-0.8)
 }
 
-func TestSuperficialLosses(t *testing.T) {
+func doTestSuperficialLosses(t *testing.T, partialLosses bool) {
 	rq := require.New(t)
 
 	makeTx := func(day uint32, action ptf.TxAction, shares uint32, amount float64) *ptf.Tx {
@@ -161,25 +172,33 @@ func TestSuperficialLosses(t *testing.T) {
 	var err error
 
 	validate := func(i int, shares uint32, totalAcb float64, gain float64) {
+		AlmostEqual(t, totalAcb, deltas[i].PostStatus.TotalAcb)
 		rq.Equal(
 			&ptf.PortfolioSecurityStatus{
 				Security:     "FOO",
 				ShareBalance: shares,
-				TotalAcb:     totalAcb},
+				TotalAcb:     deltas[i].PostStatus.TotalAcb},
 			deltas[i].PostStatus,
 		)
-		rq.Equal(gain, deltas[i].CapitalGain)
+		AlmostEqual(t, gain, deltas[i].CapitalGain)
 	}
 
-	deltas, err = ptf.TxsToDeltaList(txs, nil, true)
+	plo := ptf.LegacyOptions{
+		NoSuperficialLosses:        false,
+		NoPartialSuperficialLosses: !partialLosses,
+	}
+
+	deltas, err = ptf.TxsToDeltaList(txs, nil, plo)
 	rq.Nil(err)
 	validate(0, 10, 12.0, 0)
 	validate(1, 5, 6.0, -5)
 
+	// (min(#sold, totalAquired, endBalance) / #sold) x (Total Loss)
+
 	/*
 		buy 10
-		sell 5 (superficial loss)
-		sell 4 (superficial loss)
+		sell 5 (superficial loss) -- min(5, 10, 1) / 5 * (loss of $5) = 1
+		sell 4 (superficial loss) -- min(4, 10, 1) / 4 * (loss of $4.8) = 0.6
 		wait
 		sell 1 (loss, not superficial)
 	*/
@@ -191,17 +210,23 @@ func TestSuperficialLosses(t *testing.T) {
 	tx3 := makeTx(100, ptf.SELL, 1, 0.2)
 	txs = []*ptf.Tx{tx0, tx1, tx2, tx3}
 
-	deltas, err = ptf.TxsToDeltaList(txs, nil, true)
+	deltas, err = ptf.TxsToDeltaList(txs, nil, plo)
 	rq.Nil(err)
 	validate(0, 10, 12.0, 0)
-	validate(1, 5, 11.0, 0)
-	validate(2, 1, 10.2, 0)
-	validate(3, 0, 0.0, -10.0)
+	if partialLosses {
+		validate(1, 5, 7.0, -4.0) // $1 superficial
+		validate(2, 1, 2.6, -3.6) // $1.2 superficial
+		validate(3, 0, 0.0, -2.4)
+	} else {
+		validate(1, 5, 11.0, 0)
+		validate(2, 1, 10.2, 0)
+		validate(3, 0, 0.0, -10.0)
+	}
 
 	/*
 		buy 10
 		wait
-		sell 5 (superficial loss)
+		sell 5 (superficial loss) -- min(5, 5, 10) / 5 = 1
 		buy 5
 	*/
 	tx0 = makeTx(1, ptf.BUY, 10, 1.0)
@@ -210,7 +235,7 @@ func TestSuperficialLosses(t *testing.T) {
 	tx2 = makeTx(51, ptf.BUY, 5, 0.2)
 	txs = []*ptf.Tx{tx0, tx1, tx2}
 
-	deltas, err = ptf.TxsToDeltaList(txs, nil, true)
+	deltas, err = ptf.TxsToDeltaList(txs, nil, plo)
 	rq.Nil(err)
 	validate(0, 10, 12.0, 0)
 	validate(1, 5, 11.0, 0)
@@ -228,17 +253,40 @@ func TestSuperficialLosses(t *testing.T) {
 	tx2 = makeTx(51, ptf.SELL, 5, 0.2)
 	txs = []*ptf.Tx{tx0, tx1, tx2}
 
-	deltas, err = ptf.TxsToDeltaList(txs, nil, true)
+	deltas, err = ptf.TxsToDeltaList(txs, nil, plo)
 	rq.Nil(err)
 	validate(0, 10, 12.0, 0)
 	validate(1, 5, 6.0, -5.0)
 	validate(2, 0, 0.0, -5.0)
 
 	/*
+		buy 100
+		wait
+		sell 99 (superficial loss) -- min(99, 25, 26) / 99 = 0.252525253
+		buy 25
+	*/
+	tx0 = makeTx(1, ptf.BUY, 100, 3.0)
+	// Sell causing superficial loss, because of quick buyback
+	tx1 = makeTx(50, ptf.SELL, 99, 2.0)
+	tx2 = makeTx(51, ptf.BUY, 25, 2.2)
+	txs = []*ptf.Tx{tx0, tx1, tx2}
+
+	deltas, err = ptf.TxsToDeltaList(txs, nil, plo)
+	rq.Nil(err)
+	validate(0, 100, 302.0, 0)
+	if partialLosses {
+		validate(1, 1, 28.520000048, -75.479999952) // total loss of 100.98, 25.500000048 is superficial
+		validate(2, 26, 85.520000048, 0)
+	} else {
+		validate(1, 1, 104, 0) // total superfical loss of 100.98
+		validate(2, 26, 161, 0)
+	}
+
+	/*
 		buy 10
-		sell 10
+		sell 10 (superficial loss) -- min(10, 15, 3) / 10 = 0.3
 		buy 5
-		sell 2 (superficial loss)
+		sell 2 (superficial loss) -- min(2, 15, 3) / 2 = 1
 		wait
 		sell 3 (loss)
 	*/
@@ -250,13 +298,20 @@ func TestSuperficialLosses(t *testing.T) {
 	tx4 := makeTx(50, ptf.SELL, 3, 0.2)
 	txs = []*ptf.Tx{tx0, tx1, tx2, tx3, tx4}
 
-	deltas, err = ptf.TxsToDeltaList(txs, nil, true)
+	deltas, err = ptf.TxsToDeltaList(txs, nil, plo)
 	rq.Nil(err)
 	validate(0, 10, 12.0, 0)
-	validate(1, 0, 10.0, 0.0)
-	validate(2, 5, 17.0, 0)
-	validate(3, 3, 16.599999999999998, 0.0)
-	validate(4, 0, 0, -15.999999999999998)
+	if partialLosses {
+		validate(1, 0, 3, -7) // Superficial loss of 3
+		validate(2, 5, 10.0, 0)
+		validate(3, 3, 9.6, 0.0) // Superficial loss of 3.6
+		validate(4, 0, 0, -9)
+	} else {
+		validate(1, 0, 10.0, 0.0)
+		validate(2, 5, 17.0, 0)
+		validate(3, 3, 16.599999999999998, 0.0)
+		validate(4, 0, 0, -15.999999999999998)
+	}
 
 	/*
 		buy 10
@@ -267,10 +322,18 @@ func TestSuperficialLosses(t *testing.T) {
 	tx1 = makeTx(2, ptf.SELL, 5, 2)
 	txs = []*ptf.Tx{tx0, tx1}
 
-	deltas, err = ptf.TxsToDeltaList(txs, nil, true)
+	deltas, err = ptf.TxsToDeltaList(txs, nil, plo)
 	rq.Nil(err)
 	validate(0, 10, 12.0, 0)
 	validate(1, 5, 6.0, 4.0)
+}
+
+func TestSuperficialLosses(t *testing.T) {
+	doTestSuperficialLosses(t, true)
+}
+
+func TestSuperficialLossesWithoutPartials(t *testing.T) {
+	doTestSuperficialLosses(t, false)
 }
 
 func TestBasicRocAcbErrors(t *testing.T) {
@@ -284,7 +347,8 @@ func TestBasicRocAcbErrors(t *testing.T) {
 		CommissionCurrency: ptf.CAD, CommissionCurrToLocalExchangeRate: 1.0}
 	txs := []*ptf.Tx{tx}
 
-	delta, err := ptf.AddTx(0, txs, sptf, true)
+	plo := ptf.NewLegacyOptions()
+	delta, err := ptf.AddTx(0, txs, sptf, plo)
 	rq.Nil(delta)
 	rq.NotNil(err)
 
@@ -296,7 +360,7 @@ func TestBasicRocAcbErrors(t *testing.T) {
 		CommissionCurrency: ptf.CAD, CommissionCurrToLocalExchangeRate: 1.0}
 	txs = []*ptf.Tx{tx}
 
-	delta, err = ptf.AddTx(0, txs, sptf, true)
+	delta, err = ptf.AddTx(0, txs, sptf, plo)
 	rq.Nil(delta)
 	rq.NotNil(err)
 }

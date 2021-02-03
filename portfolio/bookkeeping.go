@@ -15,22 +15,46 @@ func mustParseDuration(str string) time.Duration {
 
 var ONE_DAY_DUR = mustParseDuration("24h")
 
+type LegacyOptions struct {
+	NoSuperficialLosses        bool
+	NoPartialSuperficialLosses bool
+}
+
+func NewLegacyOptions() LegacyOptions {
+	return LegacyOptions{
+		NoSuperficialLosses:        false,
+		NoPartialSuperficialLosses: false,
+	}
+}
+
+type _SuperficialLossInfo struct {
+	IsSuperficial        bool
+	FirstDateInPeriod    time.Time
+	LastDateInPeriod     time.Time
+	SharesAtEndOfPeriod  uint32
+	TotalAquiredInPeriod uint32
+}
+
 // Checks if there is a Buy action within 30 days before or after the Sell
 // at idx, AND if you hold shares after the 30 day period
-//
-// NOTE: Currently this only supports FULL superficial loss application. It cannot
-// apply partial superficial losses yet. For more info on partial superficial losses,
-// see https://www.adjustedcostbase.ca/blog/applying-the-superficial-loss-rule-for-a-partial-disposition-of-shares/
-func IsSellSuperficial(idx int, txs []*Tx, shareBalanceAfterSell uint32) bool {
+// Also gathers relevant information for partial superficial loss calculation.
+func getSuperficialLossInfo(idx int, txs []*Tx, shareBalanceAfterSell uint32) _SuperficialLossInfo {
 	tx := txs[idx]
 	util.Assertf(tx.Action == SELL,
-		"IsSellSuperficial: Tx was not Sell, but %s", tx.Action)
+		"getSuperficialLossInfo: Tx was not Sell, but %s", tx.Action)
 
 	firstBadBuyDate := tx.Date.Add(-30 * ONE_DAY_DUR)
 	lastBadBuyDate := tx.Date.Add(30 * ONE_DAY_DUR)
 
-	shareBalanceAfterPeriod := shareBalanceAfterSell
-	didBuyAfter := false
+	sli := _SuperficialLossInfo{
+		IsSuperficial:        false,
+		FirstDateInPeriod:    tx.Date.Add(-30 * ONE_DAY_DUR),
+		LastDateInPeriod:     tx.Date.Add(30 * ONE_DAY_DUR),
+		SharesAtEndOfPeriod:  shareBalanceAfterSell,
+		TotalAquiredInPeriod: 0,
+	}
+
+	didBuyAfterInPeriod := false
 	for i := idx + 1; i < len(txs); i++ {
 		afterTx := txs[i]
 		if afterTx.Date.After(lastBadBuyDate) {
@@ -39,35 +63,58 @@ func IsSellSuperficial(idx int, txs []*Tx, shareBalanceAfterSell uint32) bool {
 		// Within the 30 day window after
 		switch afterTx.Action {
 		case BUY:
-			didBuyAfter = true
-			shareBalanceAfterPeriod += afterTx.Shares
+			didBuyAfterInPeriod = true
+			sli.SharesAtEndOfPeriod += afterTx.Shares
+			sli.TotalAquiredInPeriod += afterTx.Shares
 		case SELL:
-			shareBalanceAfterPeriod -= afterTx.Shares
+			sli.SharesAtEndOfPeriod -= afterTx.Shares
 		default:
 			// ignored
 		}
 	}
 
-	if shareBalanceAfterPeriod == 0 {
-		return false
-	} else if didBuyAfter {
-		return true
+	if sli.SharesAtEndOfPeriod == 0 {
+		// Not superficial
+		return sli
 	}
 
+	didBuyBeforeInPeriod := false
 	for i := idx - 1; i >= 0; i-- {
-		if txs[i].Date.Before(firstBadBuyDate) {
+		beforeTx := txs[i]
+		if beforeTx.Date.Before(firstBadBuyDate) {
 			break
 		}
 		// Within the 30 day window before
-		if txs[i].Action == BUY {
-			return true
+		if beforeTx.Action == BUY {
+			didBuyBeforeInPeriod = true
+			sli.TotalAquiredInPeriod += beforeTx.Shares
 		}
 	}
 
-	return false
+	sli.IsSuperficial = didBuyBeforeInPeriod || didBuyAfterInPeriod
+	return sli
 }
 
-func AddTx(idx int, txs []*Tx, preTxStatus *PortfolioSecurityStatus, applySuperficialLosses bool) (*TxDelta, error) {
+// Calculation of partial superficial losses where
+// Superficial loss = (min(#sold, totalAquired, endBalance) / #sold) x (Total Loss)
+// This function returns the left hand side of this formula, on the condition that
+// the loss is actually superficial.
+//
+// Reference: https://www.adjustedcostbase.ca/blog/applying-the-superficial-loss-rule-for-a-partial-disposition-of-shares/
+func SuperficialLossPercent(idx int, txs []*Tx, shareBalanceAfterSell uint32) float64 {
+	sli := getSuperficialLossInfo(idx, txs, shareBalanceAfterSell)
+
+	if sli.IsSuperficial {
+		tx := txs[idx]
+		return float64(util.MinUint32(tx.Shares, sli.TotalAquiredInPeriod, sli.SharesAtEndOfPeriod)) / float64(tx.Shares)
+	} else {
+		return 0.0
+	}
+}
+
+func AddTx(idx int, txs []*Tx, preTxStatus *PortfolioSecurityStatus, legacyOptions LegacyOptions) (*TxDelta, error) {
+	applySuperficialLosses := !legacyOptions.NoSuperficialLosses
+	noPartialSuperficialLosses := legacyOptions.NoPartialSuperficialLosses
 	tx := txs[idx]
 	util.Assertf(tx.Security == preTxStatus.Security,
 		"AddTx: securities do not match (%s and %s)\n", tx.Security, preTxStatus.Security)
@@ -95,12 +142,18 @@ func AddTx(idx int, txs []*Tx, preTxStatus *PortfolioSecurityStatus, applySuperf
 		totalPayout := totalLocalSharePrice - (tx.Commission * tx.CommissionCurrToLocalExchangeRate)
 		capitalGains = totalPayout - (preTxStatus.PerShareAcb() * float64(tx.Shares))
 
-		if capitalGains < 0.0 &&
-			applySuperficialLosses && IsSellSuperficial(idx, txs, newShareBalance) {
-
-			superficialLoss = capitalGains
-			capitalGains = 0.0
-			newAcbTotal -= superficialLoss
+		if capitalGains < 0.0 && applySuperficialLosses {
+			superficialLossPercent := SuperficialLossPercent(idx, txs, newShareBalance)
+			if superficialLossPercent != 0.0 {
+				if noPartialSuperficialLosses {
+					superficialLoss = capitalGains
+					capitalGains = 0.0
+				} else {
+					superficialLoss = capitalGains * superficialLossPercent
+					capitalGains = capitalGains - superficialLoss
+				}
+				newAcbTotal -= superficialLoss
+			}
 		}
 	case ROC:
 		if tx.Shares != 0 {
@@ -132,7 +185,7 @@ func AddTx(idx int, txs []*Tx, preTxStatus *PortfolioSecurityStatus, applySuperf
 	return delta, nil
 }
 
-func TxsToDeltaList(txs []*Tx, initialStatus *PortfolioSecurityStatus, applySuperficialLosses bool) ([]*TxDelta, error) {
+func TxsToDeltaList(txs []*Tx, initialStatus *PortfolioSecurityStatus, legacyOptions LegacyOptions) ([]*TxDelta, error) {
 	if initialStatus == nil {
 		if len(txs) == 0 {
 			return []*TxDelta{}, nil
@@ -145,7 +198,7 @@ func TxsToDeltaList(txs []*Tx, initialStatus *PortfolioSecurityStatus, applySupe
 	deltas := make([]*TxDelta, 0, len(txs))
 	lastStatus := initialStatus
 	for i, _ := range txs {
-		delta, err := AddTx(i, txs, lastStatus, applySuperficialLosses)
+		delta, err := AddTx(i, txs, lastStatus, legacyOptions)
 		if err != nil {
 			// Return what we've managed so far, for debugging
 			return deltas, err
