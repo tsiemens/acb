@@ -79,7 +79,7 @@ the equivalent value in the default (local) currency.
 	// has an action associated with it:
 	Run:     runRootCmd,
 	Args:    cobra.MinimumNArgs(1),
-	Version: "0.4.0",
+	Version: "0.5.0",
 }
 
 // Execute adds all child commands to the root command and sets flags appropriately.
@@ -109,6 +109,9 @@ func init() {
 	RootCmd.PersistentFlags().BoolVar(&legacyOptions.NoSuperficialLosses,
 		"legacy-no-superficial-losses", false,
 		"Do not apply the superficial loss rule to sold shares (behaviour pre-v0.2).")
+	RootCmd.PersistentFlags().BoolVar(&legacyOptions.NoPartialSuperficialLosses,
+		"legacy-no-partial-superficial-losses", false,
+		"Apply superficial losses in full only (behaviour pre-v0.5).")
 	RootCmd.PersistentFlags().BoolVar(&legacyOptions.SortBuysBeforeSells,
 		"legacy-sort-buys-before-sells", false,
 		"Sort all buys before all sells made on the same day (default behaviour pre-v0.4).")

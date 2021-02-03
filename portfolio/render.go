@@ -59,7 +59,7 @@ func RenderTxTableModel(deltas []*TxDelta) *RenderTable {
 		superficialLossAsterix := ""
 		superficialLossAddAsterix := ""
 		if d.SuperficialLoss != 0.0 {
-			superficialLossAsterix = fmt.Sprintf(" *\n(was %s)", plusMinusDollar(d.SuperficialLoss, false))
+			superficialLossAsterix = fmt.Sprintf(" *\n(SFL %s)", plusMinusDollar(d.SuperficialLoss, false))
 			superficialLossAddAsterix = fmt.Sprintf(" *\n(%s)", plusMinusDollar(-1*d.SuperficialLoss, true))
 			sawSuperficialLoss = true
 		}
@@ -98,7 +98,7 @@ func RenderTxTableModel(deltas []*TxDelta) *RenderTable {
 		"Total", plusMinusDollar(capGainsTotal, false), "", "", "", "", ""}
 
 	if sawSuperficialLoss {
-		table.Notes = append(table.Notes, " * = Superficial loss adjustment (Full only. Partial not yet supported)")
+		table.Notes = append(table.Notes, " */SFL = Superficial loss adjustment")
 	}
 
 	return table
