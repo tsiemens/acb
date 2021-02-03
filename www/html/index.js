@@ -363,14 +363,17 @@ function addAcbErrorText(err) {
 }
 
 async function asyncRunAcb(filenames, contents) {
+   const printFullDollarValues = document.getElementById('print-full-values-checkbox').checked;
    const noSuperficialLosses = document.getElementById('no-superficial-losses-checkbox').checked;
+   const noPartialSuperficialLosses = document.getElementById('no-partial-superficial-losses-checkbox').checked;
    const sortBuysBeforeSells = document.getElementById('sort-buys-before-sells-checkbox').checked;
    const initSecs = getInitSecs();
    if (initSecs.invalid.length) {
       return;
    }
    const ret = runAcb(filenames, contents, initSecs.valid,
-                      noSuperficialLosses, sortBuysBeforeSells);
+                      printFullDollarValues,
+                      noSuperficialLosses, noPartialSuperficialLosses, sortBuysBeforeSells);
    try {
       const resp = await ret;
       let error = resp.error;
@@ -461,6 +464,14 @@ function loadAllFileInfoAndRun(files) {
    }
 }
 
+function setupExpandableOptions(buttonId, dropdownId) {
+   const toggleButton = document.getElementById(buttonId);
+   toggleButton.addEventListener('click', (event) => {
+      const optionsDiv = document.getElementById(dropdownId);
+      optionsDiv.hidden = !optionsDiv.hidden;
+   });
+}
+
 function initPageJs() {
    const go = new Go();
    WebAssembly.instantiateStreaming(fetch("wasm/acb.wasm"), go.importObject).then((result) => {
@@ -511,11 +522,8 @@ function initPageJs() {
       loadAllFileInfoAndRun(fileList);
    });
 
-   const legacyToggleButton = document.getElementById('legacy-options-button');
-   legacyToggleButton.addEventListener('click', (event) => {
-      const legacyOptionsDiv = document.getElementById('legacy-options-dropdown');
-      legacyOptionsDiv.hidden = !legacyOptionsDiv.hidden;
-   });
+   setupExpandableOptions('extra-options-button', 'extra-options-dropdown');
+   setupExpandableOptions('legacy-options-button', 'legacy-options-dropdown');
 
    addInitialSecurityStateRow();
 

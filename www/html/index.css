@@ -21,17 +21,19 @@
    margin-right: auto;
 }
 
-#legacy-options-container {
-   margin-top: 30px;
+.expandable-options-container {
+   margin-top: 20px;
 }
 
-#legacy-options-button {
+.expandable-options-button {
+   margin-top: 10px;
    margin-bottom: 5px;
    cursor: pointer;
 }
 
-.legacy-option-checkbox {
+.expanded-option-checkbox {
    margin-left: 16pt;
+   margin-top: 10pt;
 }
 
 .file-info-container {

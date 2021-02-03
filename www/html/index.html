@@ -32,14 +32,24 @@
             used <strong>at your own risk</strong>. Please cross-check any results if you have any doubts.
             </p>
             <p>ACB is open source, and does not collect any personal data (all processing is done locally to your browser).</p>
-            <div id="legacy-options-container">
-               <div id="legacy-options-button">&#8964; Legacy Options</div>
+            <div class="expandable-options-container">
+
+               <div id="extra-options-button" class="expandable-options-button">&#8964; Options</div>
+               <div id="extra-options-dropdown" hidden="true">
+                  <input type="checkbox" id="print-full-values-checkbox" class="expanded-option-checkbox">
+                     Output more decimals of dollar values</input><br>
+               </div>
+
+               <div id="legacy-options-button" class="expandable-options-button">&#8964; Legacy Options</div>
                <div id="legacy-options-dropdown" hidden="true">
-                  <input type="checkbox" id="no-superficial-losses-checkbox" class="legacy-option-checkbox">
+                  <input type="checkbox" id="no-superficial-losses-checkbox" class="expanded-option-checkbox">
                      Do not calculate superficial losses</input><br>
-                  <input type="checkbox" id="sort-buys-before-sells-checkbox" class="legacy-option-checkbox">
+                  <input type="checkbox" id="no-partial-superficial-losses-checkbox" class="expanded-option-checkbox">
+                     Apply superficial losses in full only</input><br>
+                  <input type="checkbox" id="sort-buys-before-sells-checkbox" class="expanded-option-checkbox">
                      Sort buys before sells</input>
                </div>
+
             </div>
          </div> <!-- end page-centered-column -->
          <div class="file-info-container page-centered-column">

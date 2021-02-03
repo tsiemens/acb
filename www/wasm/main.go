@@ -104,7 +104,10 @@ func renderTablesToJsObject(renderTables map[string]*ptf.RenderTable) js.Value {
 func runAcb(
 	csvDescs []string, csvContents []string,
 	initialSymbolStates []string,
-	noSuperficialLosses bool, sortBuysBeforeSells bool) (js.Value, error) {
+	renderFullValues bool,
+	// Legacy options
+	noSuperficialLosses bool, noPartialSuperficialLosses bool,
+	sortBuysBeforeSells bool) (js.Value, error) {
 
 	fmt.Println("runAcb")
 	csvReaders := make([]app.DescribedReader, 0, len(csvContents))
@@ -114,7 +117,6 @@ func runAcb(
 	}
 
 	forceDownload := false
-	renderFullDollarValues := false
 
 	allInitStatus, err := app.ParseInitialStatus(initialSymbolStates)
 	if err != nil {
@@ -127,11 +129,12 @@ func runAcb(
 
 	legacyOptions := app.NewLegacyOptions()
 	legacyOptions.NoSuperficialLosses = noSuperficialLosses
+	legacyOptions.NoPartialSuperficialLosses = noPartialSuperficialLosses
 	legacyOptions.SortBuysBeforeSells = sortBuysBeforeSells
 
 	_, renderTables := app.RunAcbAppToWriter(
 		&output,
-		csvReaders, allInitStatus, forceDownload, renderFullDollarValues,
+		csvReaders, allInitStatus, forceDownload, renderFullValues,
 		legacyOptions, &fx.MemRatesCacheAccessor{RatesByYear: globalRatesCache},
 		errPrinter,
 	)
@@ -213,16 +216,24 @@ func jsArrayToStringArray(jsArr js.Value) ([]string, error) {
 func makeRunAcbWrapper() js.Func {
 	wrapperFunc := js.FuncOf(func(this js.Value, args []js.Value) interface{} {
 		err := validateFuncArgs(
-			args, js.TypeObject, js.TypeObject, js.TypeObject, js.TypeBoolean, js.TypeBoolean)
+			args, js.TypeObject, js.TypeObject, js.TypeObject, js.TypeBoolean,
+			js.TypeBoolean, js.TypeBoolean, js.TypeBoolean)
 		if err != nil {
 			return makeErrorPromise(err)
 		}
 
-		descs, err := jsArrayToStringArray(args[0])
+		popArgIdx := 0
+		popArg := func() js.Value {
+			i := popArgIdx
+			popArgIdx++
+			return args[i]
+		}
+
+		descs, err := jsArrayToStringArray(popArg())
 		if err != nil {
 			return makeErrorPromise(err)
 		}
-		contents, err := jsArrayToStringArray(args[1])
+		contents, err := jsArrayToStringArray(popArg())
 		if err != nil {
 			return makeErrorPromise(err)
 		}
@@ -237,20 +248,22 @@ func makeRunAcbWrapper() js.Func {
 			fmt.Printf("%d: %s\n", i, desc)
 		}
 
-		initialSymbolStates, err := jsArrayToStringArray(args[2])
+		initialSymbolStates, err := jsArrayToStringArray(popArg())
 		if err != nil {
 			return makeErrorPromise(err)
 		}
 
-		noSuperficialLosses := args[3].Bool()
-		sortBuysBeforeSells := args[4].Bool()
+		renderFullValues := popArg().Bool()
+		noSuperficialLosses := popArg().Bool()
+		noPartialSuperficialLosses := popArg().Bool()
+		sortBuysBeforeSells := popArg().Bool()
 
 		promise := makeJsPromise(
 			func(resolveFunc js.Value, rejectFunc js.Value) {
 				go func() {
 					out, err := runAcb(
-						descs, contents, initialSymbolStates,
-						noSuperficialLosses, sortBuysBeforeSells)
+						descs, contents, initialSymbolStates, renderFullValues,
+						noSuperficialLosses, noPartialSuperficialLosses, sortBuysBeforeSells)
 					resolveFunc.Invoke(makeRetVal(out, err))
 					// rejectFunc.Invoke("something error")
 				}()
