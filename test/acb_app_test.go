@@ -65,7 +65,7 @@ func TestSameDayBuySells(t *testing.T) {
 
 		renderTables, err := app.RunAcbAppToModel(
 			csvReaders, map[string]*ptf.PortfolioSecurityStatus{},
-			false,
+			false, false,
 			app.LegacyOptions{},
 			fx.NewMemRatesCacheAccessor(),
 			&log.StderrErrorPrinter{},
@@ -86,7 +86,7 @@ func TestSameDayBuySells(t *testing.T) {
 
 		renderTables, err = app.RunAcbAppToModel(
 			csvReaders, map[string]*ptf.PortfolioSecurityStatus{},
-			false,
+			false, false,
 			app.LegacyOptions{SortBuysBeforeSells: true},
 			fx.NewMemRatesCacheAccessor(),
 			&log.StderrErrorPrinter{},
@@ -109,7 +109,7 @@ func TestNegativeStocks(t *testing.T) {
 
 	renderTables, err := app.RunAcbAppToModel(
 		csvReaders, map[string]*ptf.PortfolioSecurityStatus{},
-		false,
+		false, false,
 		app.LegacyOptions{},
 		fx.NewMemRatesCacheAccessor(),
 		&log.StderrErrorPrinter{},

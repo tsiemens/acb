@@ -65,6 +65,7 @@ func RunAcbAppToModel(
 	csvFileReaders []DescribedReader,
 	allInitStatus map[string]*ptf.PortfolioSecurityStatus,
 	forceDownload bool,
+	renderFullDollarValues bool,
 	legacyOptions LegacyOptions,
 	ratesCache fx.RatesCache,
 	errPrinter log.ErrorPrinter) (map[string]*ptf.RenderTable, error) {
@@ -102,7 +103,7 @@ func RunAcbAppToModel(
 		}
 		deltas, err := ptf.TxsToDeltaList(secTxs, secInitStatus, portfolioLegacyOptions)
 
-		tableModel := ptf.RenderTxTableModel(deltas)
+		tableModel := ptf.RenderTxTableModel(deltas, renderFullDollarValues)
 		if err != nil {
 			tableModel.Errors = append(tableModel.Errors, err)
 		}
@@ -142,12 +143,13 @@ func RunAcbAppToWriter(
 	csvFileReaders []DescribedReader,
 	allInitStatus map[string]*ptf.PortfolioSecurityStatus,
 	forceDownload bool,
+	renderFullDollarValues bool,
 	legacyOptions LegacyOptions,
 	ratesCache fx.RatesCache,
 	errPrinter log.ErrorPrinter) (bool, map[string]*ptf.RenderTable) {
 
 	renderTables, err := RunAcbAppToModel(
-		csvFileReaders, allInitStatus, forceDownload,
+		csvFileReaders, allInitStatus, forceDownload, renderFullDollarValues,
 		legacyOptions, ratesCache, errPrinter,
 	)
 
@@ -165,13 +167,14 @@ func RunAcbAppToConsole(
 	csvFileReaders []DescribedReader,
 	allInitStatus map[string]*ptf.PortfolioSecurityStatus,
 	forceDownload bool,
+	renderFullDollarValues bool,
 	legacyOptions LegacyOptions,
 	ratesCache fx.RatesCache,
 	errPrinter log.ErrorPrinter) bool {
 
 	ok, _ := RunAcbAppToWriter(
 		os.Stdout,
-		csvFileReaders, allInitStatus, forceDownload,
+		csvFileReaders, allInitStatus, forceDownload, renderFullDollarValues,
 		legacyOptions, ratesCache, errPrinter,
 	)
 	return ok

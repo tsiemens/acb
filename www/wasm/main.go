@@ -114,6 +114,7 @@ func runAcb(
 	}
 
 	forceDownload := false
+	renderFullDollarValues := false
 
 	allInitStatus, err := app.ParseInitialStatus(initialSymbolStates)
 	if err != nil {
@@ -130,7 +131,7 @@ func runAcb(
 
 	_, renderTables := app.RunAcbAppToWriter(
 		&output,
-		csvReaders, allInitStatus, forceDownload,
+		csvReaders, allInitStatus, forceDownload, renderFullDollarValues,
 		legacyOptions, &fx.MemRatesCacheAccessor{RatesByYear: globalRatesCache},
 		errPrinter,
 	)

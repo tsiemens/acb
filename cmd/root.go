@@ -16,6 +16,7 @@ import (
 )
 
 var ForceDownload = false
+var PrintFullDollarValues = false
 var InitialSymStatusOpt []string
 
 var legacyOptions = app.NewLegacyOptions()
@@ -41,7 +42,7 @@ func runRootCmd(cmd *cobra.Command, args []string) {
 	}
 
 	ok := app.RunAcbAppToConsole(
-		csvReaders, allInitStatus, ForceDownload,
+		csvReaders, allInitStatus, ForceDownload, PrintFullDollarValues,
 		legacyOptions,
 		&fx.CsvRatesCache{ErrPrinter: errPrinter}, errPrinter)
 	if !ok {
@@ -104,6 +105,8 @@ func init() {
 	RootCmd.Flags().StringSliceVarP(&InitialSymStatusOpt, "symbol-base", "b", []string{},
 		"Base share count and ACBs for symbols, assumed at the beginning of time. "+
 			"Formatted as SYM:nShares:totalAcb. Eg. GOOG:20:1000.00 . May be provided multiple times.")
+	RootCmd.PersistentFlags().BoolVar(&PrintFullDollarValues,
+		"print-full-values", false, "Print all digits in output values")
 
 	// Legacy Options
 	RootCmd.PersistentFlags().BoolVar(&legacyOptions.NoSuperficialLosses,
