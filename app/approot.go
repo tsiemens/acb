@@ -12,6 +12,8 @@ import (
 	ptf "github.com/tsiemens/acb/portfolio"
 )
 
+var AcbVersion = "0.5.0"
+
 /* Takes a list of security status strings, each formatted as:
  * SYM:nShares:totalAcb. Eg. GOOG:20:1000.00
  */

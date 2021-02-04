@@ -80,7 +80,7 @@ the equivalent value in the default (local) currency.
 	// has an action associated with it:
 	Run:     runRootCmd,
 	Args:    cobra.MinimumNArgs(1),
-	Version: "0.5.0",
+	Version: app.AcbVersion,
 }
 
 // Execute adds all child commands to the root command and sets flags appropriately.

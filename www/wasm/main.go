@@ -17,8 +17,16 @@ var globalRatesCache map[uint32][]fx.DailyRate = make(map[uint32][]fx.DailyRate)
 func main() {
 	fmt.Println("Go Web Assembly started")
 	js.Global().Set("runAcb", makeRunAcbWrapper())
+	js.Global().Set("getAcbVersion", makeGetVersionWrapper())
 	// Wait for calls
 	<-make(chan bool)
+}
+
+func makeGetVersionWrapper() js.Func {
+	wrapperFunc := js.FuncOf(func(this js.Value, args []js.Value) interface{} {
+		return app.AcbVersion
+	})
+	return wrapperFunc
 }
 
 // The default ErrorPrinter

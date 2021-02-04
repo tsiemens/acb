@@ -472,11 +472,17 @@ function setupExpandableOptions(buttonId, dropdownId) {
    });
 }
 
+function updateVersionElement() {
+   const versionElem = document.getElementById("acb-version");
+   versionElem.innerText = "ACB Version: " + getAcbVersion();
+}
+
 function initPageJs() {
    const go = new Go();
    WebAssembly.instantiateStreaming(fetch("wasm/acb.wasm"), go.importObject).then((result) => {
        go.run(result.instance);
        console.log("wasm instantiation complete");
+      updateVersionElement();
    });
 
    const dropArea = document.getElementById('file-drop-area');
