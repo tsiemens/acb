@@ -472,6 +472,88 @@ function setupExpandableOptions(buttonId, dropdownId) {
    });
 }
 
+function loadJSON(url, doneHandler, errorHandler) {
+   var http_request = new XMLHttpRequest();
+   try {
+      // Opera 8.0+, Firefox, Chrome, Safari
+      http_request = new XMLHttpRequest();
+   } catch (e) {
+      // Internet Explorer Browsers
+      try {
+         http_request = new ActiveXObject("Msxml2.XMLHTTP");
+      } catch (e) {
+         try {
+            http_request = new ActiveXObject("Microsoft.XMLHTTP");
+         } catch (e) {
+            // Something went wrong
+            const err = "Browser support error requesting external site data";
+            alert(err);
+            errorHandler(err);
+         }
+      }
+   }
+
+   http_request.onreadystatechange = function() {
+      const DONE = 4
+      console.log("loadJSON::onreadystatechange:", http_request.readyState);
+      if (http_request.readyState == DONE) {
+         // Javascript function JSON.parse to parse JSON data
+         try {
+            const jsonObj = JSON.parse(http_request.responseText);
+            doneHandler(jsonObj);
+         } catch (e) {
+            errorHandler(e);
+         }
+      }
+   }
+
+   http_request.open("GET", url, true);
+   http_request.send();
+}
+
+function setGitIssuesLoadError(error) {
+   const elem = document.getElementById("git-issues-load-error");
+   if (error) {
+      elem.innerText = "Error loading git caveat issues: " + error;
+      elem.hidden = false;
+
+      const gitCaveatsInfoElem = document.getElementById("git-issues-info");
+      gitCaveatsInfoElem.hidden = true;
+   } else {
+      elem.hidden = true;
+   }
+}
+
+function loadGitUserCaveatIssues() {
+   const url = "https://api.github.com/repos/tsiemens/acb/issues?state=open&labels=user%20caveat"
+   loadJSON(url,
+      (jsonObj) => {
+         console.log(jsonObj);
+         console.log("json obj length:", jsonObj.length);
+         if (jsonObj.message) {
+            console.log("loadGitUserCaveatIssues failed!");
+            console.log(jsonObj);
+            setGitIssuesLoadError(jsonObj.message);
+         } else if (jsonObj.length === undefined) {
+            setGitIssuesLoadError("Received unknown format");
+         } else {
+            setGitIssuesLoadError(null);
+            const gitCaveatsInfoElem = document.getElementById("git-issues-info");
+            if (jsonObj.length > 0) {
+               gitCaveatsInfoElem.hidden = false;
+            } else {
+               gitCaveatsInfoElem.hidden = true;
+            }
+         }
+      },
+      (error) => {
+         console.log("loadGitUserCaveatIssues error:", error);
+         setGitIssuesLoadError("Unknown");
+      }
+   );
+}
+
+
 function updateVersionElement() {
    const versionElem = document.getElementById("acb-version");
    versionElem.innerText = "ACB Version: " + getAcbVersion();
@@ -534,6 +616,8 @@ function initPageJs() {
    addInitialSecurityStateRow();
 
    showTableOut();
+
+   loadGitUserCaveatIssues();
 
    // Return objects that need to stay alive.
    return {"go": go}

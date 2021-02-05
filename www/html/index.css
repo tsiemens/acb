@@ -21,6 +21,11 @@
    margin-right: auto;
 }
 
+.git-issues-text {
+   color: red;
+   font-weight: bold;
+}
+
 .expandable-options-container {
    margin-top: 20px;
 }
