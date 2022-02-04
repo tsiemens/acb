@@ -3,6 +3,8 @@ package portfolio
 import (
 	"fmt"
 	"io"
+	"sort"
+	"strings"
 
 	tw "github.com/olekukonko/tablewriter"
 	"github.com/tsiemens/acb/util"
@@ -62,7 +64,12 @@ func RenderTxTableModel(deltas []*TxDelta, renderFullDollarValues bool) *RenderT
 	ph := _PrintHelper{PrintAllDecimals: renderFullDollarValues}
 
 	var capGainsTotal float64 = 0.0
+	capGainsYearTotals := map[int]float64{}
 	sawSuperficialLoss := false
+
+	for _, d := range deltas {
+		capGainsYearTotals[d.Tx.Date.Year()] = 0.0
+	}
 
 	for _, d := range deltas {
 		superficialLossAsterix := ""
@@ -102,10 +109,30 @@ func RenderTxTableModel(deltas []*TxDelta, renderFullDollarValues bool) *RenderT
 		table.Rows = append(table.Rows, row)
 
 		capGainsTotal += d.CapitalGain
+		capGainsYearTotals[tx.Date.Year()] += d.CapitalGain
 	}
-	table.Footer = []string{"", "", "", "", "", "", "",
-		"Total", ph.PlusMinusDollar(capGainsTotal, false), "", "", "", "", ""}
 
+	// Footer
+	years := util.IntFloat64MapKeys(capGainsYearTotals)
+	sort.Ints(years)
+	yearStrs := []string{}
+	yearValsStrs := []string{}
+	for _, year := range years {
+		yearStrs = append(yearStrs, fmt.Sprintf("%d", year))
+		yearlyTotal := capGainsYearTotals[year]
+		yearValsStrs = append(yearValsStrs, ph.PlusMinusDollar(yearlyTotal, false))
+	}
+	totalFooterLabel := "Total"
+	totalFooterValsStr := ph.PlusMinusDollar(capGainsTotal, false)
+	if len(years) > 0 {
+		totalFooterLabel += "\n" + strings.Join(yearStrs, "\n")
+		totalFooterValsStr += "\n" + strings.Join(yearValsStrs, "\n")
+	}
+
+	table.Footer = []string{"", "", "", "", "", "", "",
+		totalFooterLabel, totalFooterValsStr, "", "", "", "", ""}
+
+	// Notes
 	if sawSuperficialLoss {
 		table.Notes = append(table.Notes, " */SFL = Superficial loss adjustment")
 	}

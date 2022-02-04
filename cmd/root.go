@@ -115,6 +115,8 @@ func init() {
 	RootCmd.PersistentFlags().BoolVar(&legacyOptions.NoPartialSuperficialLosses,
 		"legacy-no-partial-superficial-losses", false,
 		"Apply superficial losses in full only (behaviour pre-v0.5).")
+	// Capital gains can be different if you sell before buy, so they can't be
+	// re-ordered arbitrarily.
 	RootCmd.PersistentFlags().BoolVar(&legacyOptions.SortBuysBeforeSells,
 		"legacy-sort-buys-before-sells", false,
 		"Sort all buys before all sells made on the same day (default behaviour pre-v0.4).")
