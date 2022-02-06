@@ -156,7 +156,7 @@ func parseNothing(data string, tx *Tx) error {
 }
 
 func parseSecurity(data string, tx *Tx) error {
-	tx.Security = data
+	tx.Security = strings.TrimSpace(data)
 	return nil
 }
 

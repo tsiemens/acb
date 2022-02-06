@@ -41,7 +41,7 @@ func splitCsvRows(fileLens []uint32, rows ...string) []app.DescribedReader {
 }
 
 func getTotalCapGain(tableModel *ptf.RenderTable) string {
-	return tableModel.Footer[8]
+	return strings.Split(tableModel.Footer[8], "\n")[0]
 }
 
 func getAndCheckFooTable(rq *require.Assertions, rts map[string]*ptf.RenderTable) *ptf.RenderTable {
@@ -119,6 +119,30 @@ func TestNegativeStocks(t *testing.T) {
 	renderTable := getAndCheckFooTable(rq, renderTables)
 	rq.Equal(0, len(renderTable.Rows))
 	rq.Contains(renderTable.Errors[0].Error(), "is more than the current holdings")
+	rq.Equal("$0.00", getTotalCapGain(renderTable))
+
+}
+
+func TestSanitizedSecurityNames(t *testing.T) {
+	rq := require.New(t)
+
+	csvReaders := splitCsvRows([]uint32{2},
+		"    FOO    ,2016-01-05,Buy,5,1.6,CAD,,0,",
+		"FOO,2016-01-06,Sell,4,1.6,CAD,,0,",
+	)
+
+	renderTables, err := app.RunAcbAppToModel(
+		csvReaders, map[string]*ptf.PortfolioSecurityStatus{},
+		false, false,
+		app.LegacyOptions{},
+		fx.NewMemRatesCacheAccessor(),
+		&log.StderrErrorPrinter{},
+	)
+
+	AssertNil(t, err)
+	renderTable := getAndCheckFooTable(rq, renderTables)
+	rq.Equal(2, len(renderTable.Rows))
+	rq.Equal(len(renderTable.Errors), 0)
 	rq.Equal("$0.00", getTotalCapGain(renderTable))
 
 }
