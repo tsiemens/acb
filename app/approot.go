@@ -64,14 +64,18 @@ func NewLegacyOptions() LegacyOptions {
 	}
 }
 
-func RunAcbAppToModel(
+type SecurityDeltas struct {
+	Deltas []*ptf.TxDelta
+	Errors []error
+}
+
+func RunAcbAppToDeltaModels(
 	csvFileReaders []DescribedReader,
 	allInitStatus map[string]*ptf.PortfolioSecurityStatus,
 	forceDownload bool,
-	renderFullDollarValues bool,
 	legacyOptions LegacyOptions,
 	ratesCache fx.RatesCache,
-	errPrinter log.ErrorPrinter) (map[string]*ptf.RenderTable, error) {
+	errPrinter log.ErrorPrinter) (map[string]*SecurityDeltas, error) {
 
 	rateLoader := fx.NewRateLoader(forceDownload, ratesCache, errPrinter)
 
@@ -95,7 +99,7 @@ func RunAcbAppToModel(
 		NoSuperficialLosses:        legacyOptions.NoSuperficialLosses,
 		NoPartialSuperficialLosses: legacyOptions.NoPartialSuperficialLosses,
 	}
-	models := make(map[string]*ptf.RenderTable)
+	models := make(map[string]*SecurityDeltas)
 
 	for sec, secTxs := range txsBySec {
 		secInitStatus, ok := allInitStatus[sec]
@@ -103,11 +107,35 @@ func RunAcbAppToModel(
 			secInitStatus = nil
 		}
 		deltas, err := ptf.TxsToDeltaList(secTxs, secInitStatus, portfolioLegacyOptions)
-
-		tableModel := ptf.RenderTxTableModel(deltas, renderFullDollarValues)
+		deltasModel := &SecurityDeltas{deltas, []error{}}
 		if err != nil {
-			tableModel.Errors = append(tableModel.Errors, err)
+			deltasModel.Errors = append(deltasModel.Errors, err)
 		}
+		models[sec] = deltasModel
+	}
+	return models, nil
+}
+
+func RunAcbAppToRenderModel(
+	csvFileReaders []DescribedReader,
+	allInitStatus map[string]*ptf.PortfolioSecurityStatus,
+	forceDownload bool,
+	renderFullDollarValues bool,
+	legacyOptions LegacyOptions,
+	ratesCache fx.RatesCache,
+	errPrinter log.ErrorPrinter) (map[string]*ptf.RenderTable, error) {
+
+	deltasBySec, err := RunAcbAppToDeltaModels(
+		csvFileReaders, allInitStatus, forceDownload, legacyOptions, ratesCache,
+		errPrinter)
+	if err != nil {
+		return nil, err
+	}
+
+	models := make(map[string]*ptf.RenderTable)
+	for sec, deltas := range deltasBySec {
+		tableModel := ptf.RenderTxTableModel(deltas.Deltas, renderFullDollarValues)
+		tableModel.Errors = deltas.Errors
 		models[sec] = tableModel
 	}
 	return models, nil
@@ -152,7 +180,7 @@ func RunAcbAppToWriter(
 	ratesCache fx.RatesCache,
 	errPrinter log.ErrorPrinter) (bool, map[string]*ptf.RenderTable) {
 
-	renderTables, err := RunAcbAppToModel(
+	renderTables, err := RunAcbAppToRenderModel(
 		csvFileReaders, allInitStatus, forceDownload, renderFullDollarValues,
 		legacyOptions, ratesCache, errPrinter,
 	)

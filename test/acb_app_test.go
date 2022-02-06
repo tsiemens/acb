@@ -63,7 +63,7 @@ func TestSameDayBuySells(t *testing.T) {
 			"FOO,2016-01-05,Buy,5,1.7,CAD,,0,",
 		)
 
-		renderTables, err := app.RunAcbAppToModel(
+		renderTables, err := app.RunAcbAppToRenderModel(
 			csvReaders, map[string]*ptf.PortfolioSecurityStatus{},
 			false, false,
 			app.LegacyOptions{},
@@ -84,7 +84,7 @@ func TestSameDayBuySells(t *testing.T) {
 			"FOO,2016-01-05,Buy,5,1.7,CAD,,0,",
 		)
 
-		renderTables, err = app.RunAcbAppToModel(
+		renderTables, err = app.RunAcbAppToRenderModel(
 			csvReaders, map[string]*ptf.PortfolioSecurityStatus{},
 			false, false,
 			app.LegacyOptions{SortBuysBeforeSells: true},
@@ -107,7 +107,7 @@ func TestNegativeStocks(t *testing.T) {
 		"FOO,2016-01-05,Sell,5,1.6,CAD,,0,",
 	)
 
-	renderTables, err := app.RunAcbAppToModel(
+	renderTables, err := app.RunAcbAppToRenderModel(
 		csvReaders, map[string]*ptf.PortfolioSecurityStatus{},
 		false, false,
 		app.LegacyOptions{},
@@ -131,7 +131,7 @@ func TestSanitizedSecurityNames(t *testing.T) {
 		"FOO,2016-01-06,Sell,4,1.6,CAD,,0,",
 	)
 
-	renderTables, err := app.RunAcbAppToModel(
+	renderTables, err := app.RunAcbAppToRenderModel(
 		csvReaders, map[string]*ptf.PortfolioSecurityStatus{},
 		false, false,
 		app.LegacyOptions{},
