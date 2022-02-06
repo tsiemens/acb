@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -96,8 +97,6 @@ func RunAcbAppToModel(
 	}
 	models := make(map[string]*ptf.RenderTable)
 
-	nSecs := len(txsBySec)
-	i := 0
 	for sec, secTxs := range txsBySec {
 		secInitStatus, ok := allInitStatus[sec]
 		if !ok {
@@ -110,11 +109,6 @@ func RunAcbAppToModel(
 			tableModel.Errors = append(tableModel.Errors, err)
 		}
 		models[sec] = tableModel
-
-		if i < (nSecs - 1) {
-			fmt.Println("")
-		}
-		i++
 	}
 	return models, nil
 }
@@ -124,8 +118,16 @@ func WriteRenderTables(
 	writer io.Writer) {
 
 	nSecs := len(renderTables)
+
+	secs := make([]string, 0, len(renderTables))
+	for k := range renderTables {
+		secs = append(secs, k)
+	}
+	sort.Strings(secs)
+
 	i := 0
-	for sec, renderTable := range renderTables {
+	for _, sec := range secs {
+		renderTable := renderTables[sec]
 		for _, err := range renderTable.Errors {
 			fmt.Fprintf(writer, "[!] %v. Printing parsed information state:\n", err)
 		}
