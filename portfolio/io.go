@@ -1,6 +1,7 @@
 package portfolio
 
 import (
+	"bytes"
 	"encoding/csv"
 	"fmt"
 	"io"
@@ -9,6 +10,7 @@ import (
 	"time"
 
 	"github.com/tsiemens/acb/fx"
+	"github.com/tsiemens/acb/util"
 )
 
 const (
@@ -255,4 +257,68 @@ func parseCommissionFx(data string, tx *Tx) error {
 func parseMemo(data string, tx *Tx) error {
 	tx.Memo = data
 	return nil
+}
+
+func ToCsvString(txs []*Tx) string {
+	var buf bytes.Buffer
+	writer := csv.NewWriter(&buf)
+
+	header := []string{
+		"security",
+		"date",
+		"action",
+		"shares",
+		"amount/share",
+		"commission",
+		"currency",
+		"exchange rate",
+		"commission currency",
+		"commission exchange rate",
+		"memo",
+	}
+	writer.Write(header)
+
+	currString := func(curr Currency) string {
+		if curr == DEFAULT_CURRENCY {
+			return string(CAD)
+		}
+		return string(curr)
+	}
+	rateIsExplicit := func(curr Currency, rate float64) bool {
+		if rate == 0.0 {
+			return false
+		} else if (curr == DEFAULT_CURRENCY || curr == CAD) && rate == 1.0 {
+			return false
+		}
+		return true
+	}
+
+	for _, tx := range txs {
+		txRate := ""
+		commRate := ""
+		if rateIsExplicit(tx.TxCurrency, tx.TxCurrToLocalExchangeRate) {
+			txRate = fmt.Sprintf("%f", tx.TxCurrToLocalExchangeRate)
+		}
+		if rateIsExplicit(tx.CommissionCurrency, tx.CommissionCurrToLocalExchangeRate) {
+			commRate = fmt.Sprintf("%f", tx.CommissionCurrToLocalExchangeRate)
+		}
+
+		record := []string{
+			tx.Security,
+			util.DateStr(tx.Date),
+			tx.Action.String(),
+			fmt.Sprintf("%d", tx.Shares),
+			fmt.Sprintf("%f", tx.AmountPerShare),
+			fmt.Sprintf("%f", tx.Commission),
+			currString(tx.TxCurrency),
+			txRate,
+			currString(tx.CommissionCurrency),
+			commRate,
+			tx.Memo,
+		}
+		writer.Write(record)
+	}
+	writer.Flush()
+
+	return buf.String()
 }
