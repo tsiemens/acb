@@ -10,13 +10,17 @@ import (
 	ptf "github.com/tsiemens/acb/portfolio"
 )
 
-func mkDate(t *testing.T, day uint32) time.Time {
+func mkDateYD(t *testing.T, year uint32, day int32) time.Time {
 	const tFmt = "2006-01-02"
-	tm, err := time.Parse(tFmt, "2017-01-01")
+	tm, err := time.Parse(tFmt, fmt.Sprintf("%d-01-01", year))
 	if err != nil {
 		t.Fatal(err)
 	}
 	return tm.Add(ptf.ONE_DAY_DUR * time.Duration(day))
+}
+
+func mkDate(t *testing.T, day int32) time.Time {
+	return mkDateYD(t, 2017, day)
 }
 
 func AssertNil(t *testing.T, o interface{}) {
@@ -147,7 +151,7 @@ func TestBasicSellAcb(t *testing.T) {
 func doTestSuperficialLosses(t *testing.T, partialLosses bool) {
 	rq := require.New(t)
 
-	makeTx := func(day uint32, action ptf.TxAction, shares uint32, amount float64) *ptf.Tx {
+	makeTx := func(day int32, action ptf.TxAction, shares uint32, amount float64) *ptf.Tx {
 		commission := 0.0
 		if action == ptf.BUY {
 			commission = 2.0

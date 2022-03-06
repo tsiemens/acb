@@ -35,6 +35,14 @@ type _SuperficialLossInfo struct {
 	TotalAquiredInPeriod uint32
 }
 
+func GetFirstDayInSuperficialLossPeriod(txDate time.Time) time.Time {
+	return txDate.Add(-30 * ONE_DAY_DUR)
+}
+
+func GetLastDayInSuperficialLossPeriod(txDate time.Time) time.Time {
+	return txDate.Add(30 * ONE_DAY_DUR)
+}
+
 // Checks if there is a Buy action within 30 days before or after the Sell
 // at idx, AND if you hold shares after the 30 day period
 // Also gathers relevant information for partial superficial loss calculation.
@@ -43,13 +51,13 @@ func getSuperficialLossInfo(idx int, txs []*Tx, shareBalanceAfterSell uint32) _S
 	util.Assertf(tx.Action == SELL,
 		"getSuperficialLossInfo: Tx was not Sell, but %s", tx.Action)
 
-	firstBadBuyDate := tx.Date.Add(-30 * ONE_DAY_DUR)
-	lastBadBuyDate := tx.Date.Add(30 * ONE_DAY_DUR)
+	firstBadBuyDate := GetFirstDayInSuperficialLossPeriod(tx.Date)
+	lastBadBuyDate := GetLastDayInSuperficialLossPeriod(tx.Date)
 
 	sli := _SuperficialLossInfo{
 		IsSuperficial:        false,
-		FirstDateInPeriod:    tx.Date.Add(-30 * ONE_DAY_DUR),
-		LastDateInPeriod:     tx.Date.Add(30 * ONE_DAY_DUR),
+		FirstDateInPeriod:    firstBadBuyDate,
+		LastDateInPeriod:     lastBadBuyDate,
 		SharesAtEndOfPeriod:  shareBalanceAfterSell,
 		TotalAquiredInPeriod: 0,
 	}
