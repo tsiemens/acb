@@ -7,10 +7,9 @@ import (
 	"io"
 	"strconv"
 	"strings"
-	"time"
 
+	"github.com/tsiemens/acb/date"
 	"github.com/tsiemens/acb/fx"
-	"github.com/tsiemens/acb/util"
 )
 
 const (
@@ -46,7 +45,7 @@ func init() {
 
 func DefaultTx() *Tx {
 	return &Tx{
-		Security: "", Date: time.Time{}, Action: NO_ACTION,
+		Security: "", Date: date.Date{}, Action: NO_ACTION,
 		Shares: 0, AmountPerShare: 0.0, Commission: 0.0,
 		TxCurrency: DEFAULT_CURRENCY, TxCurrToLocalExchangeRate: 0.0,
 		CommissionCurrency: DEFAULT_CURRENCY, CommissionCurrToLocalExchangeRate: 0.0,
@@ -56,7 +55,7 @@ func DefaultTx() *Tx {
 func CheckTxSanity(tx *Tx) error {
 	if tx.Security == "" {
 		return fmt.Errorf("Transaction has no security")
-	} else if (tx.Date == time.Time{}) {
+	} else if (tx.Date == date.Date{}) {
 		return fmt.Errorf("Transaction has no date")
 	} else if tx.Action == NO_ACTION {
 		return fmt.Errorf("Transaction has no action (Buy, Sell, RoC)")
@@ -163,7 +162,7 @@ func parseSecurity(data string, tx *Tx) error {
 }
 
 func parseDate(data string, tx *Tx) error {
-	t, err := time.Parse(CsvDateFormat, data)
+	t, err := date.Parse(CsvDateFormat, data)
 	if err != nil {
 		return err
 	}
@@ -305,7 +304,7 @@ func ToCsvString(txs []*Tx) string {
 
 		record := []string{
 			tx.Security,
-			util.DateStr(tx.Date),
+			tx.Date.String(),
 			tx.Action.String(),
 			fmt.Sprintf("%d", tx.Shares),
 			fmt.Sprintf("%f", tx.AmountPerShare),

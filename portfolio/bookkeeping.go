@@ -2,18 +2,10 @@ package portfolio
 
 import (
 	"fmt"
-	"time"
 
+	"github.com/tsiemens/acb/date"
 	"github.com/tsiemens/acb/util"
 )
-
-func mustParseDuration(str string) time.Duration {
-	dur, err := time.ParseDuration(str)
-	util.Assert(err == nil, err)
-	return dur
-}
-
-var ONE_DAY_DUR = mustParseDuration("24h")
 
 type LegacyOptions struct {
 	NoSuperficialLosses        bool
@@ -29,18 +21,18 @@ func NewLegacyOptions() LegacyOptions {
 
 type _SuperficialLossInfo struct {
 	IsSuperficial        bool
-	FirstDateInPeriod    time.Time
-	LastDateInPeriod     time.Time
+	FirstDateInPeriod    date.Date
+	LastDateInPeriod     date.Date
 	SharesAtEndOfPeriod  uint32
 	TotalAquiredInPeriod uint32
 }
 
-func GetFirstDayInSuperficialLossPeriod(txDate time.Time) time.Time {
-	return txDate.Add(-30 * ONE_DAY_DUR)
+func GetFirstDayInSuperficialLossPeriod(txDate date.Date) date.Date {
+	return txDate.AddDays(-30)
 }
 
-func GetLastDayInSuperficialLossPeriod(txDate time.Time) time.Time {
-	return txDate.Add(30 * ONE_DAY_DUR)
+func GetLastDayInSuperficialLossPeriod(txDate date.Date) date.Date {
+	return txDate.AddDays(30)
 }
 
 // Checks if there is a Buy action within 30 days before or after the Sell

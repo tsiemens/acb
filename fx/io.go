@@ -1,7 +1,6 @@
 package fx
 
 import (
-	// "bytes"
 	"encoding/csv"
 	"encoding/json"
 	"fmt"
@@ -13,10 +12,9 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	"time"
 
+	"github.com/tsiemens/acb/date"
 	"github.com/tsiemens/acb/log"
-	"github.com/tsiemens/acb/util"
 )
 
 const (
@@ -124,7 +122,7 @@ func (cr *RateLoader) GetRemoteUsdCadRatesJson(year uint32, ratesCache RatesCach
 
 	rates := make([]DailyRate, 0, len(theJson.Observations))
 	for _, obs := range theJson.Observations {
-		date, err := time.Parse(csvTimeFormat, obs.Date)
+		date, err := date.Parse(csvTimeFormat, obs.Date)
 		if err != nil {
 			cr.ErrPrinter.Ln("Unable to parse date:", err)
 			continue
@@ -168,7 +166,7 @@ func (c *CsvRatesCache) getRatesFromCsv(r io.Reader) ([]DailyRate, error) {
 	rates := make([]DailyRate, 0, len(records))
 
 	for _, record := range records {
-		date, err := time.Parse(csvTimeFormat, record[0])
+		date, err := date.Parse(csvTimeFormat, record[0])
 		if err != nil {
 			c.ErrPrinter.Ln("Unable to parse date:", err)
 			continue
@@ -226,7 +224,7 @@ func ratesCsvFile(year uint32, write bool) (*os.File, error) {
 }
 
 func rateDateCsvStr(r DailyRate) string {
-	year, month, day := r.Date.Date()
+	year, month, day := r.Date.Parts()
 	return fmt.Sprintf(csvPrintTimeFmt, year, month, day)
 }
 
@@ -256,7 +254,7 @@ func WriteRatesToCsv(year uint32, rates []DailyRate) (err error) {
 }
 
 type RateLoader struct {
-	YearRates     map[uint32]map[time.Time]DailyRate
+	YearRates     map[uint32]map[date.Date]DailyRate
 	ForceDownload bool
 	Cache         RatesCache
 	ErrPrinter    log.ErrorPrinter
@@ -265,17 +263,17 @@ type RateLoader struct {
 func NewRateLoader(
 	forceDownload bool, ratesCache RatesCache, errPrinter log.ErrorPrinter) *RateLoader {
 	return &RateLoader{
-		YearRates:     make(map[uint32]map[time.Time]DailyRate),
+		YearRates:     make(map[uint32]map[date.Date]DailyRate),
 		ForceDownload: forceDownload,
 		Cache:         ratesCache,
 		ErrPrinter:    errPrinter,
 	}
 }
 
-func tryGetSurroundingRates(t time.Time, yearRates map[time.Time]DailyRate) (beforeRate *DailyRate, afterRate *DailyRate) {
+func tryGetSurroundingRates(t date.Date, yearRates map[date.Date]DailyRate) (beforeRate *DailyRate, afterRate *DailyRate) {
 	beforeTime := t
 	for i := 0; i < 7; i++ {
-		beforeTime = beforeTime.AddDate(0, 0, -1)
+		beforeTime = beforeTime.AddDays(-1)
 		rate, ok := yearRates[beforeTime]
 		if ok {
 			beforeRate = &DailyRate{}
@@ -285,7 +283,7 @@ func tryGetSurroundingRates(t time.Time, yearRates map[time.Time]DailyRate) (bef
 	}
 	afterTime := t
 	for i := 0; i < 7; i++ {
-		afterTime = afterTime.AddDate(0, 0, 1)
+		afterTime = afterTime.AddDays(1)
 		rate, ok := yearRates[afterTime]
 		if ok {
 			afterRate = &DailyRate{}
@@ -297,7 +295,7 @@ func tryGetSurroundingRates(t time.Time, yearRates map[time.Time]DailyRate) (bef
 	return
 }
 
-func getSurroundingRatesHelp(t time.Time, yearRates map[time.Time]DailyRate, prefix string) string {
+func getSurroundingRatesHelp(t date.Date, yearRates map[date.Date]DailyRate, prefix string) string {
 	beforeRate, afterRate := tryGetSurroundingRates(t, yearRates)
 	if beforeRate != nil || afterRate != nil {
 		var builder strings.Builder
@@ -307,13 +305,13 @@ func getSurroundingRatesHelp(t time.Time, yearRates map[time.Time]DailyRate, pre
 			"manual exchange rate from the appropriate surrounding day (NOTE these are only suggested rates, and do not currently include rates from different years. All saved FX rates can be found in ~/.acb/):")
 		if beforeRate != nil {
 			builder.WriteString("\n")
-			builder.WriteString(util.DateStr(beforeRate.Date))
+			builder.WriteString(beforeRate.Date.String())
 			builder.WriteString(": ")
 			builder.WriteString(fmt.Sprintf("%f", beforeRate.ForeignToLocalRate))
 		}
 		if afterRate != nil {
 			builder.WriteString("\n")
-			builder.WriteString(util.DateStr(afterRate.Date))
+			builder.WriteString(afterRate.Date.String())
 			builder.WriteString(": ")
 			builder.WriteString(fmt.Sprintf("%f", afterRate.ForeignToLocalRate))
 		}
@@ -322,14 +320,14 @@ func getSurroundingRatesHelp(t time.Time, yearRates map[time.Time]DailyRate, pre
 	return ""
 }
 
-func (cr *RateLoader) GetUsdCadRate(t time.Time) (DailyRate, error) {
+func (cr *RateLoader) GetUsdCadRate(t date.Date) (DailyRate, error) {
 	yearRates, ok := cr.YearRates[uint32(t.Year())]
 	if !ok {
 		rates, err := cr.GetUsdCadRatesForYear(uint32(t.Year()), cr.ForceDownload, cr.Cache)
 		if err != nil {
 			return DailyRate{}, err
 		}
-		yearRates = make(map[time.Time]DailyRate)
+		yearRates = make(map[date.Date]DailyRate)
 		for _, rate := range rates {
 			yearRates[rate.Date] = rate
 		}

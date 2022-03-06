@@ -86,7 +86,7 @@ func RenderTxTableModel(deltas []*TxDelta, renderFullDollarValues bool) *RenderT
 			preAcbPerShare = d.PreStatus.TotalAcb / float64(d.PreStatus.ShareBalance)
 		}
 
-		row := []string{d.Tx.Security, util.DateStr(tx.Date), tx.Action.String(),
+		row := []string{d.Tx.Security, tx.Date.String(), tx.Action.String(),
 			// Amount
 			ph.CurrWithFxStr(float64(tx.Shares)*tx.AmountPerShare, tx.TxCurrency, tx.TxCurrToLocalExchangeRate),
 			fmt.Sprintf("%d", tx.Shares),

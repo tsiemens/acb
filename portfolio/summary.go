@@ -3,11 +3,9 @@ package portfolio
 import (
 	"fmt"
 	"time"
-)
 
-func UTCDate(t time.Time) time.Time {
-	return time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, time.UTC)
-}
+	"github.com/tsiemens/acb/date"
+)
 
 // Return a slice of Txs which can summarise all txs in `deltas` up to `latestDate`.
 // Multiple Txs might be returned if it is not possible to accurately summarise
@@ -31,11 +29,11 @@ func UTCDate(t time.Time) time.Time {
 // 2022-01-01 SELL 10 @ 1.00
 //
 // Return: summary Txs, user warnings, error
-func MakeSummaryTxs(latestDate time.Time, deltas []*TxDelta) ([]*Tx, []string, error) {
+func MakeSummaryTxs(latestDate date.Date, deltas []*TxDelta) ([]*Tx, []string, error) {
 	// Step 1: Find the latest Delta <= latestDate
 	latestDeltaInSummaryRangeIdx := -1
 	for i, delta := range deltas {
-		if UTCDate(delta.Tx.Date).After(UTCDate(latestDate)) {
+		if delta.Tx.Date.After(latestDate) {
 			break
 		}
 		latestDeltaInSummaryRangeIdx = i
@@ -48,11 +46,11 @@ func MakeSummaryTxs(latestDate time.Time, deltas []*TxDelta) ([]*Tx, []string, e
 	// superficial losses.
 	// If any are, save the date 30 days prior to it (firstSuperficialLossPeriodDay)
 	txInSummaryOverlapsSuperficialLoss := false
-	firstSuperficialLossPeriodDay := time.Date(3000, time.January, 1, 0, 0, 0, 0, time.UTC)
-	latestInSummaryDate := UTCDate(deltas[latestDeltaInSummaryRangeIdx].Tx.Date)
+	firstSuperficialLossPeriodDay := date.New(3000, time.January, 1)
+	latestInSummaryDate := deltas[latestDeltaInSummaryRangeIdx].Tx.Date
 	for _, delta := range deltas[latestDeltaInSummaryRangeIdx+1:] {
 		if delta.SuperficialLoss != 0.0 {
-			firstSuperficialLossPeriodDay = UTCDate(GetFirstDayInSuperficialLossPeriod(delta.Tx.Date))
+			firstSuperficialLossPeriodDay = GetFirstDayInSuperficialLossPeriod(delta.Tx.Date)
 			txInSummaryOverlapsSuperficialLoss = !latestInSummaryDate.Before(firstSuperficialLossPeriodDay)
 			break
 		}
@@ -69,7 +67,7 @@ func MakeSummaryTxs(latestDate time.Time, deltas []*TxDelta) ([]*Tx, []string, e
 		// of any superficial loss at the end of the summary range.
 		for i := latestDeltaInSummaryRangeIdx; i >= 0; i-- {
 			delta := deltas[i]
-			if UTCDate(delta.Tx.Date).Before(firstSuperficialLossPeriodDay) {
+			if delta.Tx.Date.Before(firstSuperficialLossPeriodDay) {
 				latestSummarizableDeltaIdx = i
 				break
 			}
@@ -77,7 +75,7 @@ func MakeSummaryTxs(latestDate time.Time, deltas []*TxDelta) ([]*Tx, []string, e
 				// We've encountered another superficial loss within the summary
 				// range. This can be affected by previous txs, so we need to now push
 				// up the period where we can't find any txs.
-				firstSuperficialLossPeriodDay = UTCDate(GetFirstDayInSuperficialLossPeriod(delta.Tx.Date))
+				firstSuperficialLossPeriodDay = GetFirstDayInSuperficialLossPeriod(delta.Tx.Date)
 			}
 		}
 	} else {

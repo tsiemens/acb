@@ -2,15 +2,15 @@ package fx
 
 import (
 	"fmt"
-	"time"
+
+	"github.com/tsiemens/acb/date"
 )
 
 type DailyRate struct {
-	Date               time.Time
+	Date               date.Date
 	ForeignToLocalRate float64
 }
 
 func (r DailyRate) String() string {
-	year, month, day := r.Date.Date()
-	return fmt.Sprintf("%d-%02d-%02d : %f", year, month, day, r.ForeignToLocalRate)
+	return fmt.Sprintf("%s : %f", r.Date.String(), r.ForeignToLocalRate)
 }

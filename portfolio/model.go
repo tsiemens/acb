@@ -2,7 +2,8 @@ package portfolio
 
 import (
 	"sort"
-	"time"
+
+	"github.com/tsiemens/acb/date"
 )
 
 type Currency string
@@ -55,7 +56,7 @@ func (s *PortfolioSecurityStatus) PerShareAcb() float64 {
 
 type Tx struct {
 	Security                          string
-	Date                              time.Time
+	Date                              date.Date
 	Action                            TxAction
 	Shares                            uint32
 	AmountPerShare                    float64
@@ -104,12 +105,14 @@ func (s *txSorter) Swap(i, j int) {
 }
 
 func (s *txSorter) Less(i, j int) bool {
-	dateDiff := s.Txs[i].Date.Unix() - s.Txs[j].Date.Unix()
-	if dateDiff < 0 {
+	iDate := s.Txs[i].Date
+	jDate := s.Txs[j].Date
+	if iDate.Before(jDate) {
 		return true
-	} else if dateDiff > 0 {
+	} else if iDate.After(jDate) {
 		return false
 	}
+
 	if s.LegacySortBuysBeforeSells {
 		// Tie break on order type. Buys always first, so we don't go negative.
 		actionSortVal := func(action TxAction) int {
