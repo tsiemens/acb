@@ -23,8 +23,12 @@ func New(year uint32, month time.Month, day uint32) Date {
 	return Date{time.Date(int(year), month, int(day), 0, 0, 0, 0, time.UTC)}
 }
 
+func NewFromTime(t time.Time) Date {
+	return New(uint32(t.Year()), t.Month(), uint32(t.Day()))
+}
+
 func (d Date) isPureUtcDate() bool {
-	other := New(uint32(d.time.Year()), d.time.Month(), uint32(d.time.Day()))
+	other := NewFromTime(d.time)
 	return d == other
 }
 
@@ -38,6 +42,15 @@ func Parse(dFmt string, dateStr string) (Date, error) {
 		return Date{}, fmt.Errorf("Format %v and string %v did not produce a pure date", dFmt, dateStr)
 	}
 	return d, nil
+}
+
+var TodaysDateForTest Date = Date{}
+
+func Today() Date {
+	if TodaysDateForTest != (Date{}) {
+		return TodaysDateForTest
+	}
+	return NewFromTime(time.Now())
 }
 
 // After reports whether the date instant d is after u.

@@ -10,15 +10,16 @@ import (
 	// "github.com/spf13/viper"
 
 	"github.com/tsiemens/acb/app"
+	"github.com/tsiemens/acb/date"
 	"github.com/tsiemens/acb/fx"
 	"github.com/tsiemens/acb/log"
 	ptf "github.com/tsiemens/acb/portfolio"
 )
 
-var ForceDownload = false
-var PrintFullDollarValues = false
 var InitialSymStatusOpt []string
 
+var summarizeBeforeStr string
+var options = app.NewOptions()
 var legacyOptions = app.NewLegacyOptions()
 
 func runRootCmd(cmd *cobra.Command, args []string) {
@@ -41,9 +42,18 @@ func runRootCmd(cmd *cobra.Command, args []string) {
 		csvReaders = append(csvReaders, app.DescribedReader{csvName, fp})
 	}
 
+	if summarizeBeforeStr != "" {
+		summarizeBeforeDate, err := date.Parse(date.DefaultFormat, summarizeBeforeStr)
+		if err != nil {
+			errPrinter.F("Error: %v\n", err)
+			os.Exit(1)
+		} else {
+			options.SummaryModeLatestDate = summarizeBeforeDate.AddDays(-1)
+		}
+	}
+
 	ok := app.RunAcbAppToConsole(
-		csvReaders, allInitStatus, ForceDownload, PrintFullDollarValues,
-		legacyOptions,
+		csvReaders, allInitStatus, options, legacyOptions,
 		&fx.CsvRatesCache{ErrPrinter: errPrinter}, errPrinter)
 	if !ok {
 		os.Exit(1)
@@ -98,15 +108,19 @@ func init() {
 	// Persistent flags, which are global to the app cli
 	RootCmd.PersistentFlags().BoolVarP(&log.VerboseEnabled, "verbose", "v", false,
 		"Print verbose output")
-	RootCmd.PersistentFlags().BoolVarP(&ForceDownload, "force-download", "f", false,
+	RootCmd.PersistentFlags().BoolVarP(&options.ForceDownload, "force-download", "f", false,
 		"Download exchange rates, even if they are cached")
 	RootCmd.PersistentFlags().StringVar(&ptf.CsvDateFormat, "date-fmt", ptf.CsvDateFormatDefault,
 		"Format of how dates appear in the csv file. Must represent Jan 2, 2006")
 	RootCmd.Flags().StringSliceVarP(&InitialSymStatusOpt, "symbol-base", "b", []string{},
 		"Base share count and ACBs for symbols, assumed at the beginning of time. "+
 			"Formatted as SYM:nShares:totalAcb. Eg. GOOG:20:1000.00 . May be provided multiple times.")
-	RootCmd.PersistentFlags().BoolVar(&PrintFullDollarValues,
+	RootCmd.PersistentFlags().BoolVar(&options.RenderFullDollarValues,
 		"print-full-values", false, "Print all digits in output values")
+	RootCmd.Flags().StringVar(&summarizeBeforeStr, "summarize-before", "",
+		"Generate a summary CSV for transactions before the provided date "+
+			"(YYYY-MM-DD format). You should include all transactions made up to the "+
+			"present for an accurate summary.")
 
 	// Legacy Options
 	RootCmd.PersistentFlags().BoolVar(&legacyOptions.NoSuperficialLosses,

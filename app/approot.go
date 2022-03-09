@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/tsiemens/acb/date"
 	"github.com/tsiemens/acb/fx"
 	"github.com/tsiemens/acb/log"
 	ptf "github.com/tsiemens/acb/portfolio"
@@ -61,6 +62,24 @@ func NewLegacyOptions() LegacyOptions {
 		NoSuperficialLosses:        false,
 		NoPartialSuperficialLosses: false,
 		SortBuysBeforeSells:        false,
+	}
+}
+
+type Options struct {
+	ForceDownload          bool
+	RenderFullDollarValues bool
+	SummaryModeLatestDate  date.Date
+}
+
+func (o *Options) SummaryMode() bool {
+	return o.SummaryModeLatestDate != date.Date{}
+}
+
+func NewOptions() Options {
+	return Options{
+		ForceDownload:          false,
+		RenderFullDollarValues: false,
+		SummaryModeLatestDate:  date.Date{},
 	}
 }
 
@@ -141,6 +160,38 @@ func RunAcbAppToRenderModel(
 	return models, nil
 }
 
+func RunAcbAppSummaryToModel(
+	latestDate date.Date,
+	csvFileReaders []DescribedReader,
+	allInitStatus map[string]*ptf.PortfolioSecurityStatus,
+	forceDownload bool,
+	legacyOptions LegacyOptions,
+	ratesCache fx.RatesCache,
+	errPrinter log.ErrorPrinter) (*ptf.CollectedSummaryData, error) {
+
+	secDeltasBySec, err := RunAcbAppToDeltaModels(
+		csvFileReaders, allInitStatus, forceDownload, legacyOptions, ratesCache,
+		errPrinter)
+	if err != nil {
+		return nil, err
+	}
+
+	deltasBySec := map[string][]*ptf.TxDelta{}
+	errors := map[string][]error{}
+	for sec, deltas := range secDeltasBySec {
+		if deltas.Errors != nil && len(deltas.Errors) > 0 {
+			errors[sec] = deltas.Errors
+		}
+
+		deltasBySec[sec] = deltas.Deltas
+	}
+	if len(errors) > 0 {
+		return &ptf.CollectedSummaryData{nil, nil, errors}, nil
+	}
+
+	return ptf.MakeAggregateSummaryTxs(latestDate, deltasBySec), nil
+}
+
 func WriteRenderTables(
 	renderTables map[string]*ptf.RenderTable,
 	writer io.Writer) {
@@ -194,20 +245,75 @@ func RunAcbAppToWriter(
 	return true, renderTables
 }
 
+func WriteSummaryData(summData *ptf.CollectedSummaryData, errPrinter log.ErrorPrinter) {
+	if summData.Errors != nil && len(summData.Errors) > 0 {
+		for sec, errs := range summData.Errors {
+			errPrinter.F("Error(s) in %s:\n", sec)
+			for _, err := range errs {
+				errPrinter.F(" %s", err)
+			}
+		}
+		return
+	}
+
+	if summData.Warnings != nil && len(summData.Warnings) > 0 {
+		errPrinter.Ln("Warnings:")
+		for warn, secs := range summData.Warnings {
+			errPrinter.F(" %s. Encountered for %s\n", warn, strings.Join(secs, ","))
+		}
+		errPrinter.F("\n")
+	}
+
+	if summData.Txs != nil && len(summData.Txs) > 0 {
+		fmt.Printf("%s", ptf.ToCsvString(summData.Txs))
+	}
+}
+
 // Returns an OK flag. Used to signal what exit code to use.
-func RunAcbAppToConsole(
+func RunAcbAppSummaryToConsole(
+	latestDate date.Date,
 	csvFileReaders []DescribedReader,
 	allInitStatus map[string]*ptf.PortfolioSecurityStatus,
 	forceDownload bool,
-	renderFullDollarValues bool,
 	legacyOptions LegacyOptions,
 	ratesCache fx.RatesCache,
 	errPrinter log.ErrorPrinter) bool {
 
-	ok, _ := RunAcbAppToWriter(
-		os.Stdout,
-		csvFileReaders, allInitStatus, forceDownload, renderFullDollarValues,
-		legacyOptions, ratesCache, errPrinter,
-	)
+	summData, err := RunAcbAppSummaryToModel(
+		latestDate, csvFileReaders, allInitStatus, forceDownload,
+		legacyOptions, ratesCache, errPrinter)
+
+	if err != nil {
+		errPrinter.Ln("Error:", err)
+		return false
+	}
+
+	WriteSummaryData(summData, errPrinter)
+	return len(summData.Errors) == 0
+}
+
+// Returns an OK flag. Used to signal what exit code to use.
+func RunAcbAppToConsole(
+	csvFileReaders []DescribedReader,
+	allInitStatus map[string]*ptf.PortfolioSecurityStatus,
+	options Options,
+	legacyOptions LegacyOptions,
+	ratesCache fx.RatesCache,
+	errPrinter log.ErrorPrinter) bool {
+
+	ok := true
+	if options.SummaryMode() {
+		ok = RunAcbAppSummaryToConsole(
+			options.SummaryModeLatestDate, csvFileReaders, allInitStatus,
+			options.ForceDownload,
+			legacyOptions, ratesCache, errPrinter,
+		)
+	} else {
+		ok, _ = RunAcbAppToWriter(
+			os.Stdout,
+			csvFileReaders, allInitStatus, options.ForceDownload, options.RenderFullDollarValues,
+			legacyOptions, ratesCache, errPrinter,
+		)
+	}
 	return ok
 }

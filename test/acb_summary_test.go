@@ -5,6 +5,7 @@ import (
 
 	"github.com/stretchr/testify/require"
 
+	"github.com/tsiemens/acb/date"
 	ptf "github.com/tsiemens/acb/portfolio"
 )
 
@@ -32,16 +33,16 @@ func makeSummaryTx(year uint32, dayOfYear int, shares uint32, amount float64) *p
 func TestSummary(t *testing.T) {
 	rq := require.New(t)
 
-	checkOk := func(summaryTxs []*ptf.Tx, warnings []string, err error) {
+	// Ensure we don't think we're too close to the summary date.
+	date.TodaysDateForTest = date.New(3000, 1, 1)
+
+	checkOk := func(summaryTxs []*ptf.Tx, warnings []string) {
 		rq.NotNil(summaryTxs)
 		rq.Nil(warnings)
-		rq.Nil(err)
 	}
-
-	checkError := func(summaryTxs []*ptf.Tx, warnings []string, err error) {
-		rq.Nil(summaryTxs)
-		rq.Nil(warnings)
-		rq.NotNil(err)
+	checkWarnings := func(warningCount int, summaryTxs []*ptf.Tx, warnings []string) {
+		rq.NotNil(warnings)
+		rq.Equal(warningCount, len(warnings))
 	}
 
 	initialStatus := &ptf.PortfolioSecurityStatus{
@@ -65,16 +66,16 @@ func TestSummary(t *testing.T) {
 	}
 
 	deltas := txsToDeltaList(txs)
-	summaryTxs, warnings, err := ptf.MakeSummaryTxs(mkDateYD(2022, -1), deltas)
-	checkOk(summaryTxs, warnings, err)
+	summaryTxs, warnings := ptf.MakeSummaryTxs(mkDateYD(2022, -1), deltas)
+	checkOk(summaryTxs, warnings)
 	rq.Equal(expSummaryTxs, summaryTxs)
 
 	// TEST: nothing at all
 	txs = []*ptf.Tx{}
 
 	deltas = txsToDeltaList(txs)
-	summaryTxs, warnings, err = ptf.MakeSummaryTxs(mkDateYD(2022, -1), deltas)
-	checkError(summaryTxs, warnings, err)
+	summaryTxs, warnings = ptf.MakeSummaryTxs(mkDateYD(2022, -1), deltas)
+	checkWarnings(1, summaryTxs, warnings)
 
 	// TEST: only after summary period
 	txs = []*ptf.Tx{
@@ -82,8 +83,8 @@ func TestSummary(t *testing.T) {
 	}
 
 	deltas = txsToDeltaList(txs)
-	summaryTxs, warnings, err = ptf.MakeSummaryTxs(mkDateYD(2022, -1), deltas)
-	checkError(summaryTxs, warnings, err)
+	summaryTxs, warnings = ptf.MakeSummaryTxs(mkDateYD(2022, -1), deltas)
+	checkWarnings(1, summaryTxs, warnings)
 
 	// TEST: only after summary period, but there is a close superficial loss
 	txs = []*ptf.Tx{
@@ -92,8 +93,8 @@ func TestSummary(t *testing.T) {
 	}
 
 	deltas = txsToDeltaList(txs)
-	summaryTxs, warnings, err = ptf.MakeSummaryTxs(mkDateYD(2022, -1), deltas)
-	checkError(summaryTxs, warnings, err)
+	summaryTxs, warnings = ptf.MakeSummaryTxs(mkDateYD(2022, -1), deltas)
+	checkWarnings(1, summaryTxs, warnings)
 
 	// TEST: only after summary period, but there is a further superficial loss
 	txs = []*ptf.Tx{
@@ -102,8 +103,8 @@ func TestSummary(t *testing.T) {
 	}
 
 	deltas = txsToDeltaList(txs)
-	summaryTxs, warnings, err = ptf.MakeSummaryTxs(mkDateYD(2022, -1), deltas)
-	checkError(summaryTxs, warnings, err)
+	summaryTxs, warnings = ptf.MakeSummaryTxs(mkDateYD(2022, -1), deltas)
+	checkWarnings(1, summaryTxs, warnings)
 
 	// TEST: only before period, and there are terminating superficial losses
 	txs = []*ptf.Tx{
@@ -115,8 +116,8 @@ func TestSummary(t *testing.T) {
 	}
 
 	deltas = txsToDeltaList(txs)
-	summaryTxs, warnings, err = ptf.MakeSummaryTxs(mkDateYD(2022, -1), deltas)
-	checkOk(summaryTxs, warnings, err)
+	summaryTxs, warnings = ptf.MakeSummaryTxs(mkDateYD(2022, -1), deltas)
+	checkOk(summaryTxs, warnings)
 	rq.Equal(expSummaryTxs, summaryTxs)
 
 	// TEST: present [ SELL ... 2 days || SFL, BUY ] past
@@ -130,8 +131,8 @@ func TestSummary(t *testing.T) {
 	}
 
 	deltas = txsToDeltaList(txs)
-	summaryTxs, warnings, err = ptf.MakeSummaryTxs(mkDateYD(2022, -1), deltas)
-	checkOk(summaryTxs, warnings, err)
+	summaryTxs, warnings = ptf.MakeSummaryTxs(mkDateYD(2022, -1), deltas)
+	checkOk(summaryTxs, warnings)
 	rq.Equal(expSummaryTxs, summaryTxs)
 
 	// TEST: present [ SFL ... 30 days || SELL(+), BUY ] past
@@ -146,8 +147,8 @@ func TestSummary(t *testing.T) {
 	}
 
 	deltas = txsToDeltaList(txs)
-	summaryTxs, warnings, err = ptf.MakeSummaryTxs(mkDateYD(2022, -1), deltas)
-	checkOk(summaryTxs, warnings, err)
+	summaryTxs, warnings = ptf.MakeSummaryTxs(mkDateYD(2022, -1), deltas)
+	checkOk(summaryTxs, warnings)
 	rq.Equal(expSummaryTxs, summaryTxs)
 
 	// TEST: present [ SFL ... 29 days || SELL(+), 1 day...  BUY ] past
@@ -164,8 +165,8 @@ func TestSummary(t *testing.T) {
 	}
 
 	deltas = txsToDeltaList(txs)
-	summaryTxs, warnings, err = ptf.MakeSummaryTxs(mkDateYD(2022, -1), deltas)
-	checkOk(summaryTxs, warnings, err)
+	summaryTxs, warnings = ptf.MakeSummaryTxs(mkDateYD(2022, -1), deltas)
+	checkWarnings(1, summaryTxs, warnings)
 	rq.Equal(expSummaryTxs, summaryTxs)
 
 	// TEST: present [ SFL ... 29 days || SELL(+), 0 days...  BUY ] past
@@ -182,8 +183,8 @@ func TestSummary(t *testing.T) {
 	}
 
 	deltas = txsToDeltaList(txs)
-	summaryTxs, warnings, err = ptf.MakeSummaryTxs(mkDateYD(2022, -1), deltas)
-	checkOk(summaryTxs, warnings, err)
+	summaryTxs, warnings = ptf.MakeSummaryTxs(mkDateYD(2022, -1), deltas)
+	checkWarnings(1, summaryTxs, warnings)
 	rq.Equal(expSummaryTxs, summaryTxs)
 
 	// TEST: present [ SFL ... 29 days || SFL, 29 days... BUY, 1 day... BUY ] past
@@ -202,8 +203,8 @@ func TestSummary(t *testing.T) {
 	}
 
 	deltas = txsToDeltaList(txs)
-	summaryTxs, warnings, err = ptf.MakeSummaryTxs(mkDateYD(2022, -1), deltas)
-	checkOk(summaryTxs, warnings, err)
+	summaryTxs, warnings = ptf.MakeSummaryTxs(mkDateYD(2022, -1), deltas)
+	checkWarnings(1, summaryTxs, warnings)
 	rq.Equal(expSummaryTxs, summaryTxs)
 
 	// TEST: present [ SFL ... 29 days || <mix of SFLs, BUYs> ] past
@@ -229,8 +230,8 @@ func TestSummary(t *testing.T) {
 	}
 
 	deltas = txsToDeltaList(txs)
-	summaryTxs, warnings, err = ptf.MakeSummaryTxs(mkDateYD(2022, -1), deltas)
-	checkOk(summaryTxs, warnings, err)
+	summaryTxs, warnings = ptf.MakeSummaryTxs(mkDateYD(2022, -1), deltas)
+	checkWarnings(1, summaryTxs, warnings)
 	rq.Equal(expSummaryTxs, summaryTxs)
 
 	// TEST: before and after: present [ SFL ... 25 days || ... 5 days, SFL, BUY ] past
@@ -246,8 +247,8 @@ func TestSummary(t *testing.T) {
 	}
 
 	deltas = txsToDeltaList(txs)
-	summaryTxs, warnings, err = ptf.MakeSummaryTxs(mkDateYD(2022, -1), deltas)
-	checkOk(summaryTxs, warnings, err)
+	summaryTxs, warnings = ptf.MakeSummaryTxs(mkDateYD(2022, -1), deltas)
+	checkOk(summaryTxs, warnings)
 	rq.Equal(expSummaryTxs, summaryTxs)
 
 	// TEST: before and after: present [ SFL ... 2 days || BUY, SFL ... 20 days, BUY ... 10 days, BUY ] past
@@ -269,8 +270,8 @@ func TestSummary(t *testing.T) {
 	}
 
 	deltas = txsToDeltaList(txs)
-	summaryTxs, warnings, err = ptf.MakeSummaryTxs(mkDateYD(2022, -1), deltas)
-	checkOk(summaryTxs, warnings, err)
+	summaryTxs, warnings = ptf.MakeSummaryTxs(mkDateYD(2022, -1), deltas)
+	checkWarnings(1, summaryTxs, warnings)
 	rq.Equal(expSummaryTxs, summaryTxs)
 
 	// TEST: before and after: present [ SFL ... 30 days || BUY, SFL ... 20 days, BUY ... 10 days, BUY ] past
@@ -288,7 +289,38 @@ func TestSummary(t *testing.T) {
 	}
 
 	deltas = txsToDeltaList(txs)
-	summaryTxs, warnings, err = ptf.MakeSummaryTxs(mkDateYD(2022, -1), deltas)
-	checkOk(summaryTxs, warnings, err)
+	summaryTxs, warnings = ptf.MakeSummaryTxs(mkDateYD(2022, -1), deltas)
+	checkOk(summaryTxs, warnings)
+	rq.Equal(expSummaryTxs, summaryTxs)
+
+	// TEST: No shares left in summary.
+	txs = []*ptf.Tx{
+		makeTxYD(2021, 4, ptf.BUY, 10, 1.0), // commission 2.0
+		makeTxYD(2021, 4, ptf.SELL, 10, 1.0),
+	}
+	expSummaryTxs = []*ptf.Tx{}
+
+	deltas = txsToDeltaList(txs)
+	summaryTxs, warnings = ptf.MakeSummaryTxs(mkDateYD(2022, -1), deltas)
+	checkWarnings(1, summaryTxs, warnings)
+	rq.Equal(expSummaryTxs, summaryTxs)
+
+	// TEST: No shares left in summarizable region
+	txs = []*ptf.Tx{
+		makeTxYD(2022, -33, ptf.BUY, 10, 1.0),  // commission 2.0
+		makeTxYD(2022, -33, ptf.SELL, 10, 2.0), // Gain
+		// unsummarizable below
+		makeTxYD(2022, -20, ptf.BUY, 4, 1.0), // commission 2.0
+		// end of summary period
+		makeTxYD(2022, 2, ptf.SELL, 2, 0.2), // SFL
+		makeTxYD(2022, 3, ptf.BUY, 1, 2.0),  // Causes SFL
+	}
+	expSummaryTxs = []*ptf.Tx{
+		makeTxYD(2022, -20, ptf.BUY, 4, 1.0), // commission 2.0
+	}
+
+	deltas = txsToDeltaList(txs)
+	summaryTxs, warnings = ptf.MakeSummaryTxs(mkDateYD(2022, -1), deltas)
+	checkWarnings(2, summaryTxs, warnings)
 	rq.Equal(expSummaryTxs, summaryTxs)
 }
