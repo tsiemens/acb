@@ -103,6 +103,7 @@ func Execute() {
 }
 
 func init() {
+	helpNl := "\n                                                 "
 	cobra.OnInitialize(onInit)
 
 	// Persistent flags, which are global to the app cli
@@ -113,14 +114,17 @@ func init() {
 	RootCmd.PersistentFlags().StringVar(&ptf.CsvDateFormat, "date-fmt", ptf.CsvDateFormatDefault,
 		"Format of how dates appear in the csv file. Must represent Jan 2, 2006")
 	RootCmd.Flags().StringSliceVarP(&InitialSymStatusOpt, "symbol-base", "b", []string{},
-		"Base share count and ACBs for symbols, assumed at the beginning of time. "+
+		"Base share count and ACBs for symbols, assumed at the beginning of time. "+helpNl+
 			"Formatted as SYM:nShares:totalAcb. Eg. GOOG:20:1000.00 . May be provided multiple times.")
 	RootCmd.PersistentFlags().BoolVar(&options.RenderFullDollarValues,
 		"print-full-values", false, "Print all digits in output values")
 	RootCmd.Flags().StringVar(&summarizeBeforeStr, "summarize-before", "",
 		"Generate a summary CSV for transactions before the provided date "+
-			"(YYYY-MM-DD format). You should include all transactions made up to the "+
+			"(YYYY-MM-DD format)."+helpNl+"You should include all transactions made up to the "+
 			"present for an accurate summary.")
+	RootCmd.PersistentFlags().BoolVar(&options.SplitAnnualSummaryGains, "summarize-annual-gains", false,
+		"Summary will include transactions which represent annual capital gains/losses."+helpNl+
+			"Only valid with --summarize-before.")
 
 	// Legacy Options
 	RootCmd.PersistentFlags().BoolVar(&legacyOptions.NoSuperficialLosses,

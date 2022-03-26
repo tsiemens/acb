@@ -1,6 +1,7 @@
 package portfolio
 
 import (
+	"fmt"
 	"sort"
 	"time"
 
@@ -17,16 +18,13 @@ import (
 // that 60 day period after, and introduced a new superficial loss within 30 days
 // of the summary.
 //
-// TODO do we want an option to break summaries up so they are per-year? (so we
-// also still get a per-year capital gains summary, so we can look backwards?)
-//
 // eg 1. (cannot be summarized)
 // 2021-11-05 BUY  1  @ 1.50
 // 2021-12-05 BUY  11 @ 1.50
 // 2022-01-01 SELL 10 @ 1.00
 //
 // Return: summary Txs, user warnings, error
-func MakeSummaryTxs(latestDate date.Date, deltas []*TxDelta) ([]*Tx, []string) {
+func MakeSummaryTxs(latestDate date.Date, deltas []*TxDelta, splitAnnualGains bool) ([]*Tx, []string) {
 	// Step 1: Find the latest Delta <= latestDate
 	latestDeltaInSummaryRangeIdx := -1
 	for i, delta := range deltas {
@@ -79,32 +77,14 @@ func MakeSummaryTxs(latestDate date.Date, deltas []*TxDelta) ([]*Tx, []string) {
 		latestSummarizableDeltaIdx = latestDeltaInSummaryRangeIdx
 	}
 
+	var summaryPeriodTxs []*Tx
 	var warnings []string
-	summaryPeriodTxs := []*Tx{}
-
-	if latestSummarizableDeltaIdx != -1 {
-
-		tx := deltas[latestSummarizableDeltaIdx].Tx
-		// All one TX. No capital gains yet.
-		sumPostStatus := deltas[latestSummarizableDeltaIdx].PostStatus
-		if sumPostStatus.ShareBalance != 0 {
-			summaryTx := &Tx{
-				Security: tx.Security, Date: tx.Date, Action: BUY,
-				Shares:         sumPostStatus.ShareBalance,
-				AmountPerShare: sumPostStatus.TotalAcb / float64(sumPostStatus.ShareBalance),
-				Commission:     0.0,
-				TxCurrency:     DEFAULT_CURRENCY, TxCurrToLocalExchangeRate: 0.0,
-				CommissionCurrency: DEFAULT_CURRENCY, CommissionCurrToLocalExchangeRate: 0.0,
-				Memo:      "Summary",
-				ReadIndex: 0, // This needs to be the first Tx in the list.
-			}
-
-			summaryPeriodTxs = append(summaryPeriodTxs, summaryTx)
-		} else {
-			warnings = append(warnings, "Share balance at the end of the summarized period was zero")
-		}
-
-		// TODO Create a summary Sell TX with the same cap gains for the year?
+	if splitAnnualGains {
+		summaryPeriodTxs, warnings = makeAnnualGainsSummaryTxs(
+			deltas, latestSummarizableDeltaIdx)
+	} else {
+		summaryPeriodTxs, warnings = makeSimpleSummaryTxs(
+			deltas, latestSummarizableDeltaIdx)
 	}
 
 	unsummarizableTxs := deltas[latestSummarizableDeltaIdx+1 : latestDeltaInSummaryRangeIdx+1]
@@ -133,6 +113,129 @@ func MakeSummaryTxs(latestDate date.Date, deltas []*TxDelta) ([]*Tx, []string) {
 	return summaryPeriodTxs, warnings
 }
 
+const shareBalanceZeroWarning = "Share balance at the end of the summarized period was zero"
+
+func makeSimpleSummaryTxs(
+	deltas []*TxDelta, latestSummarizableDeltaIdx int) ([]*Tx, []string) {
+
+	var warnings []string
+	summaryPeriodTxs := []*Tx{}
+
+	if latestSummarizableDeltaIdx != -1 {
+
+		tx := deltas[latestSummarizableDeltaIdx].Tx
+		// All one TX. No capital gains yet.
+		sumPostStatus := deltas[latestSummarizableDeltaIdx].PostStatus
+		if sumPostStatus.ShareBalance != 0 {
+			summaryTx := &Tx{
+				Security: tx.Security, Date: tx.Date, Action: BUY,
+				Shares:         sumPostStatus.ShareBalance,
+				AmountPerShare: sumPostStatus.TotalAcb / float64(sumPostStatus.ShareBalance),
+				Commission:     0.0,
+				TxCurrency:     DEFAULT_CURRENCY, TxCurrToLocalExchangeRate: 0.0,
+				CommissionCurrency: DEFAULT_CURRENCY, CommissionCurrToLocalExchangeRate: 0.0,
+				Memo:      "Summary",
+				ReadIndex: 0, // This needs to be the first Tx in the list.
+			}
+
+			summaryPeriodTxs = append(summaryPeriodTxs, summaryTx)
+		} else {
+			warnings = append(warnings, shareBalanceZeroWarning)
+		}
+	}
+
+	return summaryPeriodTxs, warnings
+}
+
+func makeAnnualGainsSummaryTxs(
+	deltas []*TxDelta, latestSummarizableDeltaIdx int) ([]*Tx, []string) {
+
+	var warnings []string
+	summaryPeriodTxs := []*Tx{}
+
+	if latestSummarizableDeltaIdx == -1 {
+		return summaryPeriodTxs, warnings
+	}
+
+	yearlyCapGains := map[int]float64{}
+	latestYearDelta := map[int]*TxDelta{}
+	firstYear := deltas[0].Tx.Date.Year()
+	for _, delta := range deltas[:latestSummarizableDeltaIdx+1] {
+		year := delta.Tx.Date.Year()
+		if delta.CapitalGain != 0.0 {
+			if _, ok := yearlyCapGains[year]; ok {
+				yearlyCapGains[year] += delta.CapitalGain
+			} else {
+				yearlyCapGains[year] = delta.CapitalGain
+			}
+		}
+		latestYearDelta[year] = delta
+	}
+
+	yearsWithGains := make([]int, 0, len(yearlyCapGains))
+	for year, _ := range yearlyCapGains {
+		yearsWithGains = append(yearsWithGains, year)
+	}
+	sort.Ints(yearsWithGains)
+
+	readIndex := uint32(0)
+
+	sumPostStatus := deltas[latestSummarizableDeltaIdx].PostStatus
+	baseAcbPerShare := 0.0
+	if sumPostStatus.ShareBalance != 0.0 {
+		baseAcbPerShare = sumPostStatus.TotalAcb / float64(sumPostStatus.ShareBalance)
+	}
+
+	if sumPostStatus.ShareBalance == 0 {
+		warnings = append(warnings, shareBalanceZeroWarning)
+	}
+
+	tx := deltas[latestSummarizableDeltaIdx].Tx
+	setupBuySumTx := &Tx{
+		Security: tx.Security,
+		// Get the earliest year, and use Jan 1 of the previous year for the buy.
+		Date:   date.New(uint32(firstYear-1), time.January, 1),
+		Action: BUY,
+		// Add length of yearsWithGains to the share balance, as we'll sell one share per year
+		Shares:         sumPostStatus.ShareBalance + uint32(len(yearsWithGains)),
+		AmountPerShare: baseAcbPerShare,
+		Commission:     0.0,
+		TxCurrency:     DEFAULT_CURRENCY, TxCurrToLocalExchangeRate: 0.0,
+		CommissionCurrency: DEFAULT_CURRENCY, CommissionCurrToLocalExchangeRate: 0.0,
+		Memo:      "Summary base (buy)",
+		ReadIndex: readIndex,
+	}
+	summaryPeriodTxs = append(summaryPeriodTxs, setupBuySumTx)
+
+	for _, year := range yearsWithGains {
+		gain := yearlyCapGains[year]
+		loss := 0.0
+		if gain < 0.0 {
+			loss = -gain
+			gain = 0.0
+		}
+		tx := latestYearDelta[year].Tx
+		summaryTx := &Tx{
+			Security:       tx.Security,
+			Date:           date.New(uint32(tx.Date.Year()), time.January, 1),
+			Action:         SELL,
+			Shares:         1,
+			AmountPerShare: baseAcbPerShare + gain,
+			Commission:     loss,
+			TxCurrency:     DEFAULT_CURRENCY, TxCurrToLocalExchangeRate: 0.0,
+			CommissionCurrency: DEFAULT_CURRENCY, CommissionCurrToLocalExchangeRate: 0.0,
+			Memo:      fmt.Sprintf("%d gain summary (sell)", year),
+			ReadIndex: readIndex, // This needs to be before the Buy
+		}
+		summaryPeriodTxs = append(summaryPeriodTxs, summaryTx)
+	}
+
+	return summaryPeriodTxs, warnings
+}
+
+// TODO summarize annually generally. ie, have the amount bought and sold each year
+// be accurate, as well as the gains/loss.
+
 type CollectedSummaryData struct {
 	Txs []*Tx
 	// Warnings -> list of secs that encountered this warning
@@ -143,7 +246,8 @@ type CollectedSummaryData struct {
 
 func MakeAggregateSummaryTxs(
 	latestDate date.Date,
-	deltasBySec map[string][]*TxDelta) *CollectedSummaryData {
+	deltasBySec map[string][]*TxDelta,
+	splitAnnualGains bool) *CollectedSummaryData {
 
 	allSummaryTxs := []*Tx{}
 	// Warnings -> list of secs that encountered this warning.
@@ -157,7 +261,7 @@ func MakeAggregateSummaryTxs(
 
 	for _, sec := range secs {
 		deltas := deltasBySec[sec]
-		summaryTxs, warnings := MakeSummaryTxs(latestDate, deltas)
+		summaryTxs, warnings := MakeSummaryTxs(latestDate, deltas, splitAnnualGains)
 		if warnings != nil {
 			// Add warnings to allWarnings
 			for _, warning := range warnings {

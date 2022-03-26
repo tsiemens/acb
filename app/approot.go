@@ -66,9 +66,10 @@ func NewLegacyOptions() LegacyOptions {
 }
 
 type Options struct {
-	ForceDownload          bool
-	RenderFullDollarValues bool
-	SummaryModeLatestDate  date.Date
+	ForceDownload           bool
+	RenderFullDollarValues  bool
+	SummaryModeLatestDate   date.Date
+	SplitAnnualSummaryGains bool
 }
 
 func (o *Options) SummaryMode() bool {
@@ -77,9 +78,10 @@ func (o *Options) SummaryMode() bool {
 
 func NewOptions() Options {
 	return Options{
-		ForceDownload:          false,
-		RenderFullDollarValues: false,
-		SummaryModeLatestDate:  date.Date{},
+		ForceDownload:           false,
+		RenderFullDollarValues:  false,
+		SummaryModeLatestDate:   date.Date{},
+		SplitAnnualSummaryGains: false,
 	}
 }
 
@@ -165,6 +167,7 @@ func RunAcbAppSummaryToModel(
 	csvFileReaders []DescribedReader,
 	allInitStatus map[string]*ptf.PortfolioSecurityStatus,
 	forceDownload bool,
+	options Options,
 	legacyOptions LegacyOptions,
 	ratesCache fx.RatesCache,
 	errPrinter log.ErrorPrinter) (*ptf.CollectedSummaryData, error) {
@@ -189,7 +192,7 @@ func RunAcbAppSummaryToModel(
 		return &ptf.CollectedSummaryData{nil, nil, errors}, nil
 	}
 
-	return ptf.MakeAggregateSummaryTxs(latestDate, deltasBySec), nil
+	return ptf.MakeAggregateSummaryTxs(latestDate, deltasBySec, options.SplitAnnualSummaryGains), nil
 }
 
 func WriteRenderTables(
@@ -275,13 +278,14 @@ func RunAcbAppSummaryToConsole(
 	csvFileReaders []DescribedReader,
 	allInitStatus map[string]*ptf.PortfolioSecurityStatus,
 	forceDownload bool,
+	options Options,
 	legacyOptions LegacyOptions,
 	ratesCache fx.RatesCache,
 	errPrinter log.ErrorPrinter) bool {
 
 	summData, err := RunAcbAppSummaryToModel(
 		latestDate, csvFileReaders, allInitStatus, forceDownload,
-		legacyOptions, ratesCache, errPrinter)
+		options, legacyOptions, ratesCache, errPrinter)
 
 	if err != nil {
 		errPrinter.Ln("Error:", err)
@@ -306,7 +310,7 @@ func RunAcbAppToConsole(
 		ok = RunAcbAppSummaryToConsole(
 			options.SummaryModeLatestDate, csvFileReaders, allInitStatus,
 			options.ForceDownload,
-			legacyOptions, ratesCache, errPrinter,
+			options, legacyOptions, ratesCache, errPrinter,
 		)
 	} else {
 		ok, _ = RunAcbAppToWriter(
