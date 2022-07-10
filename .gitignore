@@ -16,6 +16,10 @@
 bld/
 acb
 
+# Python environment
+.venv/
+venv/
+
 # Temp files
 .~*
 ~*
