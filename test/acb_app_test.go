@@ -14,11 +14,20 @@ import (
 	ptf "github.com/tsiemens/acb/portfolio"
 )
 
-const header = "security,date,action,shares,amount/share,currency,exchange rate,commission,memo\n"
+const legacyHeader = "security,date,action,shares,amount/share,currency,exchange rate,commission,memo\n"
+const header = "security,trade date,settlement date,action,shares,amount/share,currency,exchange rate,commission,memo\n"
 
 func makeCsvReader(desc string, lines ...string) app.DescribedReader {
 	contents := strings.Join(lines, "\n")
-	return app.DescribedReader{desc, strings.NewReader(header + contents)}
+	var headerToUse string
+	if ctx.CsvHeaders != "" {
+		headerToUse = ctx.CsvHeaders
+	} else if ctx.UseLegacyCsvHeaders {
+		headerToUse = legacyHeader
+	} else {
+		headerToUse = header
+	}
+	return app.DescribedReader{desc, strings.NewReader(headerToUse + contents)}
 }
 
 func render(tableModel *ptf.RenderTable) {
@@ -41,7 +50,7 @@ func splitCsvRows(fileLens []uint32, rows ...string) []app.DescribedReader {
 }
 
 func getTotalCapGain(tableModel *ptf.RenderTable) string {
-	return strings.Split(tableModel.Footer[8], "\n")[0]
+	return strings.Split(tableModel.Footer[9], "\n")[0]
 }
 
 func getAndCheckFooTable(rq *require.Assertions, rts map[string]*ptf.RenderTable) *ptf.RenderTable {

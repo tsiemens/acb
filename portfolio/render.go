@@ -56,7 +56,7 @@ type RenderTable struct {
 
 func RenderTxTableModel(deltas []*TxDelta, renderFullDollarValues bool) *RenderTable {
 	table := &RenderTable{}
-	table.Header = []string{"Security", "Date", "TX", "Amount", "Shares", "Amt/Share", "ACB",
+	table.Header = []string{"Security", "Trade Date", "Settl. Date", "TX", "Amount", "Shares", "Amt/Share", "ACB",
 		"Commission", "Cap. Gain", "Share Balance", "ACB +/-", "New ACB", "New ACB/Share",
 		"Memo",
 	}
@@ -68,7 +68,7 @@ func RenderTxTableModel(deltas []*TxDelta, renderFullDollarValues bool) *RenderT
 	sawSuperficialLoss := false
 
 	for _, d := range deltas {
-		capGainsYearTotals[d.Tx.Date.Year()] = 0.0
+		capGainsYearTotals[d.Tx.SettlementDate.Year()] = 0.0
 	}
 
 	for _, d := range deltas {
@@ -86,7 +86,7 @@ func RenderTxTableModel(deltas []*TxDelta, renderFullDollarValues bool) *RenderT
 			preAcbPerShare = d.PreStatus.TotalAcb / float64(d.PreStatus.ShareBalance)
 		}
 
-		row := []string{d.Tx.Security, tx.Date.String(), tx.Action.String(),
+		row := []string{d.Tx.Security, tx.TradeDate.String(), tx.SettlementDate.String(), tx.Action.String(),
 			// Amount
 			ph.CurrWithFxStr(float64(tx.Shares)*tx.AmountPerShare, tx.TxCurrency, tx.TxCurrToLocalExchangeRate),
 			fmt.Sprintf("%d", tx.Shares),
@@ -109,7 +109,7 @@ func RenderTxTableModel(deltas []*TxDelta, renderFullDollarValues bool) *RenderT
 		table.Rows = append(table.Rows, row)
 
 		capGainsTotal += d.CapitalGain
-		capGainsYearTotals[tx.Date.Year()] += d.CapitalGain
+		capGainsYearTotals[tx.SettlementDate.Year()] += d.CapitalGain
 	}
 
 	// Footer
@@ -129,7 +129,7 @@ func RenderTxTableModel(deltas []*TxDelta, renderFullDollarValues bool) *RenderT
 		totalFooterValsStr += "\n" + strings.Join(yearValsStrs, "\n")
 	}
 
-	table.Footer = []string{"", "", "", "", "", "", "",
+	table.Footer = []string{"", "", "", "", "", "", "", "",
 		totalFooterLabel, totalFooterValsStr, "", "", "", "", ""}
 
 	// Notes

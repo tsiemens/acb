@@ -22,7 +22,9 @@ type ColParser func(string, *Tx) error
 
 var colParserMap = map[string]ColParser{
 	"security":                 parseSecurity,
-	"date":                     parseDate,
+	"trade date":               parseTradeDate,
+	"date":                     parseSettlementDate,
+	"settlement date":          parseSettlementDate,
 	"action":                   parseAction,
 	"shares":                   parseShares,
 	"amount/share":             parseAmountPerShare,
@@ -45,7 +47,7 @@ func init() {
 
 func DefaultTx() *Tx {
 	return &Tx{
-		Security: "", Date: date.Date{}, Action: NO_ACTION,
+		Security: "", SettlementDate: date.Date{}, Action: NO_ACTION,
 		Shares: 0, AmountPerShare: 0.0, Commission: 0.0,
 		TxCurrency: DEFAULT_CURRENCY, TxCurrToLocalExchangeRate: 0.0,
 		CommissionCurrency: DEFAULT_CURRENCY, CommissionCurrToLocalExchangeRate: 0.0,
@@ -55,8 +57,11 @@ func DefaultTx() *Tx {
 func CheckTxSanity(tx *Tx) error {
 	if tx.Security == "" {
 		return fmt.Errorf("Transaction has no security")
-	} else if (tx.Date == date.Date{}) {
-		return fmt.Errorf("Transaction has no date")
+		// TODO
+		// } else if (tx.TradeDate == date.Date{}) {
+		// return fmt.Errorf("Transaction has no trade date")
+	} else if (tx.SettlementDate == date.Date{}) {
+		return fmt.Errorf("Transaction has no settlement date")
 	} else if tx.Action == NO_ACTION {
 		return fmt.Errorf("Transaction has no action (Buy, Sell, RoC)")
 	}
@@ -76,7 +81,7 @@ func fixupTxFx(tx *Tx, rl *fx.RateLoader) error {
 		if tx.TxCurrency != USD {
 			return fmt.Errorf("Unsupported auto-FX for %s", tx.TxCurrency)
 		}
-		rate, err := rl.GetUsdCadRate(tx.Date)
+		rate, err := rl.GetEffectiveUsdCadRate(tx.TradeDate)
 		if err != nil {
 			return err
 		}
@@ -91,7 +96,7 @@ func fixupTxFx(tx *Tx, rl *fx.RateLoader) error {
 		if tx.TxCurrency != USD {
 			return fmt.Errorf("Unsupported auto-FX for %s", tx.TxCurrency)
 		}
-		rate, err := rl.GetUsdCadRate(tx.Date)
+		rate, err := rl.GetEffectiveUsdCadRate(tx.TradeDate)
 		if err != nil {
 			return err
 		}
@@ -161,12 +166,25 @@ func parseSecurity(data string, tx *Tx) error {
 	return nil
 }
 
-func parseDate(data string, tx *Tx) error {
+func parseTradeDate(data string, tx *Tx) error {
 	t, err := date.Parse(CsvDateFormat, data)
 	if err != nil {
 		return err
 	}
-	tx.Date = t
+	tx.TradeDate = t
+	return nil
+}
+
+func parseSettlementDate(data string, tx *Tx) error {
+	t, err := date.Parse(CsvDateFormat, data)
+	if err != nil {
+		return err
+	}
+	if tx.SettlementDate != (date.Date{}) {
+		return fmt.Errorf(
+			"Settlement Date provided twice (found both 'date' and 'settlement date' columns)")
+	}
+	tx.SettlementDate = t
 	return nil
 }
 
@@ -304,7 +322,7 @@ func ToCsvString(txs []*Tx) string {
 
 		record := []string{
 			tx.Security,
-			tx.Date.String(),
+			tx.SettlementDate.String(),
 			tx.Action.String(),
 			fmt.Sprintf("%d", tx.Shares),
 			fmt.Sprintf("%f", tx.AmountPerShare),

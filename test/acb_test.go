@@ -20,6 +20,9 @@ func mkDate(day int) date.Date {
 	return mkDateYD(2017, day)
 }
 
+/*
+* Deprecated: Use require.Nil
+ */
 func AssertNil(t *testing.T, o interface{}) {
 	if o != nil {
 		fmt.Println("Obj was not nil:", o)
@@ -49,7 +52,7 @@ func TestBasicBuyAcb(t *testing.T) {
 	rq := require.New(t)
 
 	sptf := ptf.NewEmptyPortfolioSecurityStatus("FOO")
-	tx := &ptf.Tx{Security: "FOO", Date: mkDate(1), Action: ptf.BUY,
+	tx := &ptf.Tx{Security: "FOO", SettlementDate: mkDate(1), Action: ptf.BUY,
 		Shares: 3, AmountPerShare: 10.0, Commission: 0.0,
 		TxCurrency: ptf.CAD, TxCurrToLocalExchangeRate: 1.0,
 		CommissionCurrency: ptf.CAD, CommissionCurrToLocalExchangeRate: 1.0}
@@ -61,7 +64,7 @@ func TestBasicBuyAcb(t *testing.T) {
 	rq.Equal(delta.CapitalGain, 0.0)
 
 	// Test with commission
-	tx = &ptf.Tx{Security: "FOO", Date: mkDate(1), Action: ptf.BUY,
+	tx = &ptf.Tx{Security: "FOO", SettlementDate: mkDate(1), Action: ptf.BUY,
 		Shares: 2, AmountPerShare: 10.0, Commission: 1.0,
 		TxCurrency: ptf.CAD, TxCurrToLocalExchangeRate: 1.0,
 		CommissionCurrency: ptf.CAD, CommissionCurrToLocalExchangeRate: 1.0}
@@ -73,7 +76,7 @@ func TestBasicBuyAcb(t *testing.T) {
 	rq.Equal(delta.CapitalGain, 0.0)
 
 	// Test with exchange rates
-	tx = &ptf.Tx{Security: "FOO", Date: mkDate(1), Action: ptf.BUY,
+	tx = &ptf.Tx{Security: "FOO", SettlementDate: mkDate(1), Action: ptf.BUY,
 		Shares: 3, AmountPerShare: 12.0, Commission: 1.0,
 		TxCurrency: ptf.USD, TxCurrToLocalExchangeRate: 2.0,
 		CommissionCurrency: "XXX", CommissionCurrToLocalExchangeRate: 0.3}
@@ -90,7 +93,7 @@ func TestBasicSellAcbErrors(t *testing.T) {
 	rq := require.New(t)
 
 	sptf := &ptf.PortfolioSecurityStatus{Security: "FOO", ShareBalance: 2, TotalAcb: 20.0}
-	tx := &ptf.Tx{Security: "FOO", Date: mkDate(1), Action: ptf.SELL,
+	tx := &ptf.Tx{Security: "FOO", SettlementDate: mkDate(1), Action: ptf.SELL,
 		Shares: 3, AmountPerShare: 10.0, Commission: 0.0,
 		TxCurrency: ptf.CAD, TxCurrToLocalExchangeRate: 1.0,
 		CommissionCurrency: ptf.CAD, CommissionCurrToLocalExchangeRate: 1.0}
@@ -107,7 +110,7 @@ func TestBasicSellAcb(t *testing.T) {
 
 	// Sell all remaining shares
 	sptf := &ptf.PortfolioSecurityStatus{Security: "FOO", ShareBalance: 2, TotalAcb: 20.0}
-	tx := &ptf.Tx{Security: "FOO", Date: mkDate(1), Action: ptf.SELL,
+	tx := &ptf.Tx{Security: "FOO", SettlementDate: mkDate(1), Action: ptf.SELL,
 		Shares: 2, AmountPerShare: 15.0, Commission: 0.0,
 		TxCurrency: ptf.CAD, TxCurrToLocalExchangeRate: 1.0,
 		CommissionCurrency: ptf.CAD, CommissionCurrToLocalExchangeRate: 1.0}
@@ -120,7 +123,7 @@ func TestBasicSellAcb(t *testing.T) {
 
 	// Sell shares with commission
 	sptf = &ptf.PortfolioSecurityStatus{Security: "FOO", ShareBalance: 3, TotalAcb: 30.0}
-	tx = &ptf.Tx{Security: "FOO", Date: mkDate(1), Action: ptf.SELL,
+	tx = &ptf.Tx{Security: "FOO", SettlementDate: mkDate(1), Action: ptf.SELL,
 		Shares: 2, AmountPerShare: 15.0, Commission: 1.0,
 		TxCurrency: ptf.CAD, TxCurrToLocalExchangeRate: 1.0,
 		CommissionCurrency: ptf.CAD, CommissionCurrToLocalExchangeRate: 1.0}
@@ -133,7 +136,7 @@ func TestBasicSellAcb(t *testing.T) {
 
 	// Sell shares with exchange rate
 	sptf = &ptf.PortfolioSecurityStatus{Security: "FOO", ShareBalance: 3, TotalAcb: 30.0}
-	tx = &ptf.Tx{Security: "FOO", Date: mkDate(1), Action: ptf.SELL,
+	tx = &ptf.Tx{Security: "FOO", SettlementDate: mkDate(1), Action: ptf.SELL,
 		Shares: 2, AmountPerShare: 15.0, Commission: 2.0,
 		TxCurrency: "XXX", TxCurrToLocalExchangeRate: 2.0,
 		CommissionCurrency: "YYY", CommissionCurrToLocalExchangeRate: 0.4}
@@ -153,7 +156,7 @@ func doTestSuperficialLosses(t *testing.T, partialLosses bool) {
 		if action == ptf.BUY {
 			commission = 2.0
 		}
-		return &ptf.Tx{Security: "FOO", Date: mkDate(day), Action: action,
+		return &ptf.Tx{Security: "FOO", SettlementDate: mkDate(day), Action: action,
 			Shares: shares, AmountPerShare: amount, Commission: commission,
 			TxCurrency: ptf.CAD, TxCurrToLocalExchangeRate: 1.0,
 			CommissionCurrency: ptf.CAD, CommissionCurrToLocalExchangeRate: 1.0}
@@ -342,7 +345,7 @@ func TestBasicRocAcbErrors(t *testing.T) {
 
 	// Test that RoC Txs always have zero shares
 	sptf := &ptf.PortfolioSecurityStatus{Security: "FOO", ShareBalance: 2, TotalAcb: 20.0}
-	tx := &ptf.Tx{Security: "FOO", Date: mkDate(1), Action: ptf.ROC,
+	tx := &ptf.Tx{Security: "FOO", SettlementDate: mkDate(1), Action: ptf.ROC,
 		Shares: 3, AmountPerShare: 10.0, Commission: 0.0,
 		TxCurrency: ptf.CAD, TxCurrToLocalExchangeRate: 1.0,
 		CommissionCurrency: ptf.CAD, CommissionCurrToLocalExchangeRate: 1.0}
@@ -355,7 +358,7 @@ func TestBasicRocAcbErrors(t *testing.T) {
 
 	// Test that RoC cannot exceed the current ACB
 	sptf = &ptf.PortfolioSecurityStatus{Security: "FOO", ShareBalance: 2, TotalAcb: 20.0}
-	tx = &ptf.Tx{Security: "FOO", Date: mkDate(1), Action: ptf.ROC,
+	tx = &ptf.Tx{Security: "FOO", SettlementDate: mkDate(1), Action: ptf.ROC,
 		Shares: 0, AmountPerShare: 13.0, Commission: 0.0,
 		TxCurrency: ptf.CAD, TxCurrToLocalExchangeRate: 1.0,
 		CommissionCurrency: ptf.CAD, CommissionCurrToLocalExchangeRate: 1.0}
@@ -371,7 +374,7 @@ func TestBasicRocAcb(t *testing.T) {
 
 	// Sell all remaining shares
 	sptf := &ptf.PortfolioSecurityStatus{Security: "FOO", ShareBalance: 2, TotalAcb: 20.0}
-	tx := &ptf.Tx{Security: "FOO", Date: mkDate(1), Action: ptf.ROC,
+	tx := &ptf.Tx{Security: "FOO", SettlementDate: mkDate(1), Action: ptf.ROC,
 		Shares: 0, AmountPerShare: 1.0, Commission: 0.0,
 		TxCurrency: ptf.CAD, TxCurrToLocalExchangeRate: 1.0,
 		CommissionCurrency: ptf.CAD, CommissionCurrToLocalExchangeRate: 1.0}
@@ -384,7 +387,7 @@ func TestBasicRocAcb(t *testing.T) {
 
 	// Test RoC with exchange
 	sptf = &ptf.PortfolioSecurityStatus{Security: "FOO", ShareBalance: 2, TotalAcb: 20.0}
-	tx = &ptf.Tx{Security: "FOO", Date: mkDate(1), Action: ptf.ROC,
+	tx = &ptf.Tx{Security: "FOO", SettlementDate: mkDate(1), Action: ptf.ROC,
 		Shares: 0, AmountPerShare: 1.0, Commission: 0.0,
 		TxCurrency: ptf.CAD, TxCurrToLocalExchangeRate: 2.0,
 		CommissionCurrency: ptf.CAD, CommissionCurrToLocalExchangeRate: 1.0}
@@ -398,17 +401,17 @@ func TestBasicRocAcb(t *testing.T) {
 
 func TestTxSortLegacySortBuysBeforeSells(t *testing.T) {
 	txs := []*ptf.Tx{
-		&ptf.Tx{Security: "FOO2", Date: mkDate(2), Action: ptf.SELL, ReadIndex: 0},
-		&ptf.Tx{Security: "FOO2", Date: mkDate(2), Action: ptf.BUY, ReadIndex: 3},
-		&ptf.Tx{Security: "FOO3", Date: mkDate(3), Action: ptf.BUY, ReadIndex: 1},
-		&ptf.Tx{Security: "FOO1", Date: mkDate(1), Action: ptf.BUY, ReadIndex: 2},
+		&ptf.Tx{Security: "FOO2", SettlementDate: mkDate(2), Action: ptf.SELL, ReadIndex: 0},
+		&ptf.Tx{Security: "FOO2", SettlementDate: mkDate(2), Action: ptf.BUY, ReadIndex: 3},
+		&ptf.Tx{Security: "FOO3", SettlementDate: mkDate(3), Action: ptf.BUY, ReadIndex: 1},
+		&ptf.Tx{Security: "FOO1", SettlementDate: mkDate(1), Action: ptf.BUY, ReadIndex: 2},
 	}
 
 	expTxs := []*ptf.Tx{
-		&ptf.Tx{Security: "FOO1", Date: mkDate(1), Action: ptf.BUY, ReadIndex: 2},
-		&ptf.Tx{Security: "FOO2", Date: mkDate(2), Action: ptf.BUY, ReadIndex: 3},
-		&ptf.Tx{Security: "FOO2", Date: mkDate(2), Action: ptf.SELL, ReadIndex: 0},
-		&ptf.Tx{Security: "FOO3", Date: mkDate(3), Action: ptf.BUY, ReadIndex: 1},
+		&ptf.Tx{Security: "FOO1", SettlementDate: mkDate(1), Action: ptf.BUY, ReadIndex: 2},
+		&ptf.Tx{Security: "FOO2", SettlementDate: mkDate(2), Action: ptf.BUY, ReadIndex: 3},
+		&ptf.Tx{Security: "FOO2", SettlementDate: mkDate(2), Action: ptf.SELL, ReadIndex: 0},
+		&ptf.Tx{Security: "FOO3", SettlementDate: mkDate(3), Action: ptf.BUY, ReadIndex: 1},
 	}
 
 	ptf.SortTxs(txs, true)
@@ -417,17 +420,17 @@ func TestTxSortLegacySortBuysBeforeSells(t *testing.T) {
 
 func TestTxSort(t *testing.T) {
 	txs := []*ptf.Tx{
-		&ptf.Tx{Security: "FOO2", Date: mkDate(2), Action: ptf.SELL, ReadIndex: 0},
-		&ptf.Tx{Security: "FOO2", Date: mkDate(2), Action: ptf.BUY, ReadIndex: 3},
-		&ptf.Tx{Security: "FOO3", Date: mkDate(3), Action: ptf.BUY, ReadIndex: 1},
-		&ptf.Tx{Security: "FOO1", Date: mkDate(1), Action: ptf.BUY, ReadIndex: 2},
+		&ptf.Tx{Security: "FOO2", SettlementDate: mkDate(2), Action: ptf.SELL, ReadIndex: 0},
+		&ptf.Tx{Security: "FOO2", SettlementDate: mkDate(2), Action: ptf.BUY, ReadIndex: 3},
+		&ptf.Tx{Security: "FOO3", SettlementDate: mkDate(3), Action: ptf.BUY, ReadIndex: 1},
+		&ptf.Tx{Security: "FOO1", SettlementDate: mkDate(1), Action: ptf.BUY, ReadIndex: 2},
 	}
 
 	expTxs := []*ptf.Tx{
-		&ptf.Tx{Security: "FOO1", Date: mkDate(1), Action: ptf.BUY, ReadIndex: 2},
-		&ptf.Tx{Security: "FOO2", Date: mkDate(2), Action: ptf.SELL, ReadIndex: 0},
-		&ptf.Tx{Security: "FOO2", Date: mkDate(2), Action: ptf.BUY, ReadIndex: 3},
-		&ptf.Tx{Security: "FOO3", Date: mkDate(3), Action: ptf.BUY, ReadIndex: 1},
+		&ptf.Tx{Security: "FOO1", SettlementDate: mkDate(1), Action: ptf.BUY, ReadIndex: 2},
+		&ptf.Tx{Security: "FOO2", SettlementDate: mkDate(2), Action: ptf.SELL, ReadIndex: 0},
+		&ptf.Tx{Security: "FOO2", SettlementDate: mkDate(2), Action: ptf.BUY, ReadIndex: 3},
+		&ptf.Tx{Security: "FOO3", SettlementDate: mkDate(3), Action: ptf.BUY, ReadIndex: 1},
 	}
 
 	ptf.SortTxs(txs, false)

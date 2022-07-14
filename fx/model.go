@@ -11,6 +11,6 @@ type DailyRate struct {
 	ForeignToLocalRate float64
 }
 
-func (r DailyRate) String() string {
+func (r *DailyRate) String() string {
 	return fmt.Sprintf("%s : %f", r.Date.String(), r.ForeignToLocalRate)
 }

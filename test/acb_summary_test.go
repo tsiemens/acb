@@ -17,14 +17,14 @@ func makeTxYD(year uint32, dayOfYear int,
 	if action == ptf.BUY {
 		commission = 2.0
 	}
-	return &ptf.Tx{Security: "FOO", Date: mkDateYD(year, dayOfYear), Action: action,
+	return &ptf.Tx{Security: "FOO", SettlementDate: mkDateYD(year, dayOfYear), Action: action,
 		Shares: shares, AmountPerShare: amount, Commission: commission,
 		TxCurrency: ptf.CAD, TxCurrToLocalExchangeRate: 1.0,
 		CommissionCurrency: ptf.CAD, CommissionCurrToLocalExchangeRate: 1.0}
 }
 
 func makeSummaryTx(year uint32, dayOfYear int, shares uint32, amount float64) *ptf.Tx {
-	return &ptf.Tx{Security: "FOO", Date: mkDateYD(year, dayOfYear), Action: ptf.BUY,
+	return &ptf.Tx{Security: "FOO", SettlementDate: mkDateYD(year, dayOfYear), Action: ptf.BUY,
 		Shares: shares, AmountPerShare: amount, Commission: 0.0,
 		TxCurrency: ptf.DEFAULT_CURRENCY, TxCurrToLocalExchangeRate: 0.0,
 		CommissionCurrency: ptf.DEFAULT_CURRENCY, CommissionCurrToLocalExchangeRate: 0.0,
@@ -334,7 +334,7 @@ func TestSummary(t *testing.T) {
 }
 
 func makeSummaryBuyTx(year uint32, shares uint32, amount float64) *ptf.Tx {
-	return &ptf.Tx{Security: "FOO", Date: mkDateYD(year, 0), Action: ptf.BUY,
+	return &ptf.Tx{Security: "FOO", SettlementDate: mkDateYD(year, 0), Action: ptf.BUY,
 		Shares: shares, AmountPerShare: amount, Commission: 0.0,
 		TxCurrency: ptf.DEFAULT_CURRENCY, TxCurrToLocalExchangeRate: 0.0,
 		CommissionCurrency: ptf.DEFAULT_CURRENCY, CommissionCurrToLocalExchangeRate: 0.0,
@@ -349,7 +349,7 @@ func makeSummaryGainsTx(year uint32, acb float64, gain float64) *ptf.Tx {
 	} else {
 		com = -gain
 	}
-	return &ptf.Tx{Security: "FOO", Date: mkDateYD(year, 0), Action: ptf.SELL,
+	return &ptf.Tx{Security: "FOO", SettlementDate: mkDateYD(year, 0), Action: ptf.SELL,
 		Shares: 1, AmountPerShare: amount, Commission: com,
 		TxCurrency: ptf.DEFAULT_CURRENCY, TxCurrToLocalExchangeRate: 0.0,
 		CommissionCurrency: ptf.DEFAULT_CURRENCY, CommissionCurrToLocalExchangeRate: 0.0,

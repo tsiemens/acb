@@ -11,10 +11,11 @@ import (
 	"os/user"
 	"path/filepath"
 	"strconv"
-	"strings"
+	"time"
 
 	"github.com/tsiemens/acb/date"
 	"github.com/tsiemens/acb/log"
+	"github.com/tsiemens/acb/util"
 )
 
 const (
@@ -56,6 +57,65 @@ func getJsonUrl(year uint32) string {
 		obs = cadUsdNoonObs
 	}
 	return fmt.Sprintf(cadUsdJsonUrlFmt, obs, year, year)
+}
+
+type RemoteRateLoader interface {
+	GetRemoteUsdCadRates(year uint32) ([]DailyRate, error)
+}
+
+type JsonRemoteRateLoader struct {
+	ErrPrinter log.ErrorPrinter
+}
+
+// Verify that *JsonRemoteRateLoader implements RemoteRateLoader
+var _ RemoteRateLoader = (*JsonRemoteRateLoader)(nil)
+
+func (l *JsonRemoteRateLoader) GetRemoteUsdCadRates(year uint32) ([]DailyRate, error) {
+	fmt.Fprintf(os.Stderr, "Fetching USD/CAD exchange rates for %d\n", year)
+	url := getJsonUrl(year)
+	log.Fverbosef(os.Stderr, "Getting %s\n", url)
+	resp, err := http.Get(url)
+	if err != nil {
+		return nil, fmt.Errorf("Error getting CAD USD rates: %v", err)
+	} else if resp.StatusCode != 200 {
+		return nil, fmt.Errorf("Error status: %s", resp.Status)
+	}
+
+	var theJson ValetJsonRoot
+	dcdr := json.NewDecoder(resp.Body)
+	err = dcdr.Decode(&theJson)
+	if err != nil {
+		return nil, err
+	}
+
+	rates := make([]DailyRate, 0, len(theJson.Observations))
+	for _, obs := range theJson.Observations {
+		date, err := date.Parse(csvTimeFormat, obs.Date)
+		if err != nil {
+			l.ErrPrinter.Ln("Unable to parse date:", err)
+			continue
+		}
+
+		var dRate DailyRate
+		usdCadNoonVal, err := obs.UsdCadNoon.Val()
+		if err != nil {
+			l.ErrPrinter.Ln("Failed to parse USDCAD Noon rate for", date, ":", obs.UsdCadNoon.ValStr)
+			continue
+		}
+
+		if usdCadNoonVal != 0.0 {
+			dRate = DailyRate{date, usdCadNoonVal}
+		} else {
+			usdCadVal, err := obs.UsdCad.Val()
+			if err != nil {
+				l.ErrPrinter.Ln("Failed to parse USDCAD rate for", date, ":", obs.UsdCad.ValStr)
+				continue
+			}
+			dRate = DailyRate{date, 1.0 / usdCadVal}
+		}
+		rates = append(rates, dRate)
+	}
+	return rates, nil
 }
 
 type RatesCache interface {
@@ -102,57 +162,27 @@ func (c *CsvRatesCache) GetUsdCadRates(year uint32) ([]DailyRate, error) {
 	return c.getRatesFromCsv(file)
 }
 
-func (cr *RateLoader) GetRemoteUsdCadRatesJson(year uint32, ratesCache RatesCache) ([]DailyRate, error) {
-	fmt.Fprintf(os.Stderr, "Fetching USD/CAD exchange rates for %d\n", year)
-	url := getJsonUrl(year)
-	log.Fverbosef(os.Stderr, "Getting %s\n", url)
-	resp, err := http.Get(url)
-	if err != nil {
-		return nil, fmt.Errorf("Error getting CAD USD rates: %v", err)
-	} else if resp.StatusCode != 200 {
-		return nil, fmt.Errorf("Error status: %s", resp.Status)
-	}
-
-	var theJson ValetJsonRoot
-	dcdr := json.NewDecoder(resp.Body)
-	err = dcdr.Decode(&theJson)
-	if err != nil {
-		return nil, err
-	}
-
-	rates := make([]DailyRate, 0, len(theJson.Observations))
-	for _, obs := range theJson.Observations {
-		date, err := date.Parse(csvTimeFormat, obs.Date)
-		if err != nil {
-			cr.ErrPrinter.Ln("Unable to parse date:", err)
-			continue
+// Fills in gaps in daily rates (for a single year) with zero
+// If today is in the same year as the rates, will fill up to yesterday, with the
+// assumption that today's rate wouldn't yet be published.
+func FillInUnknownDayRates(rates []DailyRate, year uint32) []DailyRate {
+	filledRates := make([]DailyRate, 0, int(float32(len(rates))*(7.0/5.0)))
+	dateToFill := date.New(year, time.January, 1)
+	for _, rate := range rates {
+		for dateToFill.Before(rate.Date) {
+			filledRates = append(filledRates, DailyRate{dateToFill, 0.0})
+			dateToFill = dateToFill.AddDays(1)
 		}
-
-		var dRate DailyRate
-		usdCadNoonVal, err := obs.UsdCadNoon.Val()
-		if err != nil {
-			cr.ErrPrinter.Ln("Failed to parse USDCAD Noon rate for", date, ":", obs.UsdCadNoon.ValStr)
-			continue
-		}
-
-		if usdCadNoonVal != 0.0 {
-			dRate = DailyRate{date, usdCadNoonVal}
-		} else {
-			usdCadVal, err := obs.UsdCad.Val()
-			if err != nil {
-				cr.ErrPrinter.Ln("Failed to parse USDCAD rate for", date, ":", obs.UsdCad.ValStr)
-				continue
-			}
-			dRate = DailyRate{date, 1.0 / usdCadVal}
-		}
-		rates = append(rates, dRate)
+		filledRates = append(filledRates, rate)
+		dateToFill = dateToFill.AddDays(1)
 	}
 
-	err = ratesCache.WriteRates(year, rates)
-	if err != nil {
-		cr.ErrPrinter.Ln("Failed to update exchange rate cache:", err)
+	today := date.Today()
+	for dateToFill.Before(today) && uint32(dateToFill.Year()) == year {
+		filledRates = append(filledRates, DailyRate{dateToFill, 0.0})
+		dateToFill = dateToFill.AddDays(1)
 	}
-	return rates, nil
+	return filledRates
 }
 
 func (c *CsvRatesCache) getRatesFromCsv(r io.Reader) ([]DailyRate, error) {
@@ -181,22 +211,6 @@ func (c *CsvRatesCache) getRatesFromCsv(r io.Reader) ([]DailyRate, error) {
 		rates = append(rates, dRate)
 	}
 
-	return rates, nil
-}
-
-func (cr *RateLoader) GetUsdCadRatesForYear(
-	year uint32, forceDownload bool, ratesCache RatesCache) ([]DailyRate, error) {
-
-	if forceDownload {
-		return cr.GetRemoteUsdCadRatesJson(year, ratesCache)
-	}
-	rates, err := ratesCache.GetUsdCadRates(year)
-	if err != nil {
-		cr.ErrPrinter.Ln("Could not load cached exchange rates:", err)
-	}
-	if rates == nil {
-		return cr.GetRemoteUsdCadRatesJson(year, ratesCache)
-	}
 	return rates, nil
 }
 
@@ -254,89 +268,184 @@ func WriteRatesToCsv(year uint32, rates []DailyRate) (err error) {
 }
 
 type RateLoader struct {
-	YearRates     map[uint32]map[date.Date]DailyRate
-	ForceDownload bool
-	Cache         RatesCache
-	ErrPrinter    log.ErrorPrinter
+	YearRates        map[uint32]map[date.Date]DailyRate
+	ForceDownload    bool
+	Cache            RatesCache
+	RemoteLoader     RemoteRateLoader
+	FreshLoadedYears map[uint32]bool
+	ErrPrinter       log.ErrorPrinter
 }
 
 func NewRateLoader(
 	forceDownload bool, ratesCache RatesCache, errPrinter log.ErrorPrinter) *RateLoader {
 	return &RateLoader{
-		YearRates:     make(map[uint32]map[date.Date]DailyRate),
-		ForceDownload: forceDownload,
-		Cache:         ratesCache,
-		ErrPrinter:    errPrinter,
+		YearRates:        make(map[uint32]map[date.Date]DailyRate),
+		ForceDownload:    forceDownload,
+		Cache:            ratesCache,
+		RemoteLoader:     &JsonRemoteRateLoader{errPrinter},
+		FreshLoadedYears: make(map[uint32]bool),
+		ErrPrinter:       errPrinter,
 	}
 }
 
-func tryGetSurroundingRates(t date.Date, yearRates map[date.Date]DailyRate) (beforeRate *DailyRate, afterRate *DailyRate) {
-	beforeTime := t
+func (cr *RateLoader) GetRemoteUsdCadRatesJson(year uint32, ratesCache RatesCache) ([]DailyRate, error) {
+	rates, err := cr.RemoteLoader.GetRemoteUsdCadRates(year)
+	if err != nil {
+		return nil, err
+	}
+	rates = FillInUnknownDayRates(rates, year)
+
+	cr.FreshLoadedYears[year] = true
+	err = ratesCache.WriteRates(year, rates)
+	if err != nil {
+		cr.ErrPrinter.Ln("Failed to update exchange rate cache:", err)
+	}
+	return rates, nil
+}
+
+func makeDateToRateMap(rates []DailyRate) map[date.Date]DailyRate {
+	ratesMap := make(map[date.Date]DailyRate)
+	for _, rate := range rates {
+		ratesMap[rate.Date] = rate
+	}
+	return ratesMap
+}
+
+/* Loads exchange rates for year from cache or from remote web API.
+ * @year - year to load.
+ * @targetDay - The target date we're loading for.
+ *
+ * Will use the cache if we are not force downloading, if we already downloaded
+ * in this process run, or if `targetDay` has a defined value in the cache
+ * (even if it is defined as zero).
+ * Using `targetDay` for cache invalidation allows us to avoid invalidating the cache if
+ * there are no new transactions.
+ */
+func (cr *RateLoader) fetchUsdCadRatesForDateYear(
+	targetDay date.Date) (map[date.Date]DailyRate, error) {
+	year := uint32(targetDay.Year())
+	var ratesMap map[date.Date]DailyRate
+
+	if !cr.ForceDownload {
+		// Try the cache
+		rates, err := cr.Cache.GetUsdCadRates(year)
+		_, ratesAreFresh := cr.FreshLoadedYears[year]
+		if err != nil {
+			if ratesAreFresh {
+				// We already loaded this year from remote during this process.
+				// Something is wrong if we tried to access it via the cache again and it
+				// failed (since we are not allowed to make the same request again).
+				return nil, err
+			}
+			cr.ErrPrinter.Ln("Could not load cached exchange rates:", err)
+		}
+		ratesMap = makeDateToRateMap(rates)
+		if !ratesAreFresh {
+			// Check for cache invalidation.
+			if _, ok := ratesMap[targetDay]; ok {
+				return ratesMap, nil
+			}
+		} else {
+			return ratesMap, nil
+		}
+	}
+
+	rates, err := cr.GetRemoteUsdCadRatesJson(year, cr.Cache)
+	if err != nil {
+		return nil, err
+	}
+	return makeDateToRateMap(rates), nil
+}
+
+/*
+TL;DR official recommendation appears to be to get the "active" rate on the trade
+day, which is the last known rate (we can'tradeDate see the future, obviously).
+
+As per the CRA's interpretation of Section 261 (1.4)
+https://www.canada.ca/en/revenue-agency/services/tax/technical-information/income-tax/income-tax-folios-index/series-5-international-residency/series-5-international-residency-folio-4-foreign-currency/income-tax-folio-s5-f4-c1-income-tax-reporting-currency.html
+
+For a particular day after February 28, 2017, the relevant spot rate is to be used to
+convert an amount from one currency to another, where one of the currencies is
+Canadian currency is the rate quoted by the Bank of Canada on that day. If the Bank
+of Canada ordinarily quotes such a rate, but no rate is quoted for that particular
+day, then the closest preceding day for which such a rate is quoted should be used.
+If the particular day, or closest preceding day, of conversion is before
+March 1, 2017, the Bank of Canada noon rate should be used.
+
+NOTE: This function should NOT be called for today if the rate is not yet knowable.
+*/
+func (cr *RateLoader) findUsdCadPrecedingRelevantSpotRate(
+	tradeDate date.Date, foundRate DailyRate) (DailyRate, error) {
+
+	const errFmt = "%s. As per Section 261(1) of the Income Tax Act, the exchange rate " +
+		"from the preceding day for which such a rate is quoted should be " +
+		"used if no rate is quoted on the day the trade."
+
+	util.Assertf(foundRate == DailyRate{tradeDate, 0.0},
+		"findUsdCadPrecedingRelevantSpotRate: rate for %s must be explicitly "+
+			"marked as 'markets closed' with a rate of zero\n",
+		tradeDate)
+
+	precedingDate := tradeDate
+	// Limit to 7 days look-back. This is arbitrarily chosen as a large-enough value
+	// (unless the markets close for more than a week due to an apocalypse)
 	for i := 0; i < 7; i++ {
-		beforeTime = beforeTime.AddDays(-1)
-		rate, ok := yearRates[beforeTime]
-		if ok {
-			beforeRate = &DailyRate{}
-			*beforeRate = rate
+		precedingDate = precedingDate.AddDays(-1)
+		rate, err := cr.GetExactUsdCadRate(precedingDate)
+		if err != nil {
 			break
 		}
-	}
-	afterTime := t
-	for i := 0; i < 7; i++ {
-		afterTime = afterTime.AddDays(1)
-		rate, ok := yearRates[afterTime]
-		if ok {
-			afterRate = &DailyRate{}
-			*afterRate = rate
-			break
+		if rate.ForeignToLocalRate != 0.0 {
+			return rate, nil
 		}
 	}
-	// implicit return
-	return
+	return DailyRate{}, fmt.Errorf(errFmt,
+		"Could not find relevant exchange rate within the 7 preceding days")
 }
 
-func getSurroundingRatesHelp(t date.Date, yearRates map[date.Date]DailyRate, prefix string) string {
-	beforeRate, afterRate := tryGetSurroundingRates(t, yearRates)
-	if beforeRate != nil || afterRate != nil {
-		var builder strings.Builder
-		builder.WriteString(prefix)
-		builder.WriteString("If date is on a day where markets are closed, check if " +
-			"date should be moved to another day.\nAlternatively, you may provide a " +
-			"manual exchange rate from the appropriate surrounding day (NOTE these are only suggested rates, and do not currently include rates from different years. All saved FX rates can be found in ~/.acb/):")
-		if beforeRate != nil {
-			builder.WriteString("\n")
-			builder.WriteString(beforeRate.Date.String())
-			builder.WriteString(": ")
-			builder.WriteString(fmt.Sprintf("%f", beforeRate.ForeignToLocalRate))
-		}
-		if afterRate != nil {
-			builder.WriteString("\n")
-			builder.WriteString(afterRate.Date.String())
-			builder.WriteString(": ")
-			builder.WriteString(fmt.Sprintf("%f", afterRate.ForeignToLocalRate))
-		}
-		return builder.String()
-	}
-	return ""
-}
-
-func (cr *RateLoader) GetUsdCadRate(t date.Date) (DailyRate, error) {
-	yearRates, ok := cr.YearRates[uint32(t.Year())]
+func (cr *RateLoader) GetExactUsdCadRate(tradeDate date.Date) (DailyRate, error) {
+	year := uint32(tradeDate.Year())
+	yearRates, ok := cr.YearRates[year]
 	if !ok {
-		rates, err := cr.GetUsdCadRatesForYear(uint32(t.Year()), cr.ForceDownload, cr.Cache)
+		var err error
+		yearRates, err = cr.fetchUsdCadRatesForDateYear(tradeDate)
 		if err != nil {
 			return DailyRate{}, err
 		}
-		yearRates = make(map[date.Date]DailyRate)
-		for _, rate := range rates {
-			yearRates[rate.Date] = rate
-		}
-		cr.YearRates[uint32(t.Year())] = yearRates
 	}
-	rate, ok := yearRates[t]
+	rate, ok := yearRates[tradeDate]
 	if !ok {
-		return DailyRate{}, fmt.Errorf("Unable to retrieve exchange rate for %v%s", t,
-			getSurroundingRatesHelp(t, yearRates, "\n"))
+		// if tradeDate >= today
+		today := date.Today()
+		if tradeDate == today || tradeDate.After(today) {
+			// There is no rate available for today yet, so error out.
+			// The user must manually provide a rate in this scenario.
+			return DailyRate{}, fmt.Errorf(
+				"No USD/CAD exchange rate is available for %s yet. Either explicitly add to "+
+					"CSV file or modify the exchange rates cache file in ~/.acb/. "+
+					"If today is a bank holiday, use rate for preceding business day.",
+				tradeDate)
+		}
+		// There is no rate for this exact date, but it is for a date in the past,
+		// so the caller can try a previous date for the relevant rate. (ie. we are
+		// not in an error scenario yet).
+		rate = DailyRate{}
 	}
 	return rate, nil
+}
+
+func (cr *RateLoader) GetEffectiveUsdCadRate(tradeDate date.Date) (DailyRate, error) {
+	rate, err := cr.GetExactUsdCadRate(tradeDate)
+	if err == nil {
+		if rate.ForeignToLocalRate == 0.0 {
+			rate, err = cr.findUsdCadPrecedingRelevantSpotRate(tradeDate, rate)
+			if err == nil {
+				return rate, nil
+			}
+		} else {
+			return rate, nil
+		}
+	}
+	return DailyRate{}, fmt.Errorf("Unable to retrieve exchange rate for %v: %s",
+		tradeDate, err)
 }

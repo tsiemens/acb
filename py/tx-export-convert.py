@@ -29,7 +29,7 @@ class Action(Enum):
 @dataclass
 class Tx:
    security: str
-   date: str # Settlement date
+   settlement_date: str # Settlement date
    date_and_time: str # Just used for sorting
    transaction_date: str
    action: Action
@@ -49,13 +49,13 @@ class AcbCsvRenderer:
 
    def rows(self):
       for tx in self.txs:
-         yield (tx.security, tx.date, tx.transaction_date, str(tx.action),
+         yield (tx.security, tx.transaction_date, tx.settlement_date, str(tx.action),
                 str(tx.amount_per_share),
                 str(tx.num_shares), str(tx.commission), tx.currency, tx.memo,
                 str(tx.exchange_rate) if tx.exchange_rate else '')
 
    def header_row(self):
-      return ['Security', 'Date', 'Transaction Date', 'Action', 'Amount/Share',
+      return ['Security', 'Trade Date', 'Settlement Date', 'Action', 'Amount/Share',
               'Shares', 'Commission', 'Currency', 'Memo', 'Exchange Rate']
 
    def render_csv(self):
@@ -121,7 +121,7 @@ class QuestradeSheet(AcbCsvRenderer):
 
             tx = Tx(
                security=symbol,
-               date=QuestradeSheet.convert_date_str(get('Settlement Date')),
+               settlement_date=QuestradeSheet.convert_date_str(get('Settlement Date')),
                date_and_time=get('Settlement Date'),
                transaction_date=QuestradeSheet.convert_date_str(get('Transaction Date')),
                action=action.value,
@@ -130,9 +130,7 @@ class QuestradeSheet(AcbCsvRenderer):
                                                           action),
                commission=abs(float(get('Commission'))),
                currency=get('Currency'),
-               memo="{}Note: Using settlement date. Transaction date: {}".format(
-                  orig_symbol_note,
-                  QuestradeSheet.convert_date_str(get('Transaction Date'))),
+               memo=orig_symbol_note,
                exchange_rate=None,
             )
             self.txs.append(tx)

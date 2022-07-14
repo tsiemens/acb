@@ -56,7 +56,8 @@ func (s *PortfolioSecurityStatus) PerShareAcb() float64 {
 
 type Tx struct {
 	Security                          string
-	Date                              date.Date
+	TradeDate                         date.Date
+	SettlementDate                    date.Date
 	Action                            TxAction
 	Shares                            uint32
 	AmountPerShare                    float64
@@ -105,8 +106,8 @@ func (s *txSorter) Swap(i, j int) {
 }
 
 func (s *txSorter) Less(i, j int) bool {
-	iDate := s.Txs[i].Date
-	jDate := s.Txs[j].Date
+	iDate := s.Txs[i].SettlementDate
+	jDate := s.Txs[j].SettlementDate
 	if iDate.Before(jDate) {
 		return true
 	} else if iDate.After(jDate) {

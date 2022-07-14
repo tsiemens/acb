@@ -28,7 +28,7 @@ func MakeSummaryTxs(latestDate date.Date, deltas []*TxDelta, splitAnnualGains bo
 	// Step 1: Find the latest Delta <= latestDate
 	latestDeltaInSummaryRangeIdx := -1
 	for i, delta := range deltas {
-		if delta.Tx.Date.After(latestDate) {
+		if delta.Tx.SettlementDate.After(latestDate) {
 			break
 		}
 		latestDeltaInSummaryRangeIdx = i
@@ -42,10 +42,10 @@ func MakeSummaryTxs(latestDate date.Date, deltas []*TxDelta, splitAnnualGains bo
 	// If any are, save the date 30 days prior to it (firstSuperficialLossPeriodDay)
 	txInSummaryOverlapsSuperficialLoss := false
 	firstSuperficialLossPeriodDay := date.New(3000, time.January, 1)
-	latestInSummaryDate := deltas[latestDeltaInSummaryRangeIdx].Tx.Date
+	latestInSummaryDate := deltas[latestDeltaInSummaryRangeIdx].Tx.SettlementDate
 	for _, delta := range deltas[latestDeltaInSummaryRangeIdx+1:] {
 		if delta.SuperficialLoss != 0.0 {
-			firstSuperficialLossPeriodDay = GetFirstDayInSuperficialLossPeriod(delta.Tx.Date)
+			firstSuperficialLossPeriodDay = GetFirstDayInSuperficialLossPeriod(delta.Tx.SettlementDate)
 			txInSummaryOverlapsSuperficialLoss = !latestInSummaryDate.Before(firstSuperficialLossPeriodDay)
 			break
 		}
@@ -62,7 +62,7 @@ func MakeSummaryTxs(latestDate date.Date, deltas []*TxDelta, splitAnnualGains bo
 		// of any superficial loss at the end of the summary range.
 		for i := latestDeltaInSummaryRangeIdx; i >= 0; i-- {
 			delta := deltas[i]
-			if delta.Tx.Date.Before(firstSuperficialLossPeriodDay) {
+			if delta.Tx.SettlementDate.Before(firstSuperficialLossPeriodDay) {
 				latestSummarizableDeltaIdx = i
 				break
 			}
@@ -70,7 +70,7 @@ func MakeSummaryTxs(latestDate date.Date, deltas []*TxDelta, splitAnnualGains bo
 				// We've encountered another superficial loss within the summary
 				// range. This can be affected by previous txs, so we need to now push
 				// up the period where we can't find any txs.
-				firstSuperficialLossPeriodDay = GetFirstDayInSuperficialLossPeriod(delta.Tx.Date)
+				firstSuperficialLossPeriodDay = GetFirstDayInSuperficialLossPeriod(delta.Tx.SettlementDate)
 			}
 		}
 	} else {
@@ -101,7 +101,7 @@ func MakeSummaryTxs(latestDate date.Date, deltas []*TxDelta, splitAnnualGains bo
 		// Find the very latest day that could possibly ever affect or be affected by
 		// the last tx. This should be 60 days.
 		lastAffectingDay := GetLastDayInSuperficialLossPeriod(
-			GetLastDayInSuperficialLossPeriod(lastSummarizableDelta.Tx.Date))
+			GetLastDayInSuperficialLossPeriod(lastSummarizableDelta.Tx.SettlementDate))
 		if !today.After(lastAffectingDay) {
 			warnings = append(warnings,
 				"The current date is such that new TXs could potentially alter how the "+
@@ -128,7 +128,7 @@ func makeSimpleSummaryTxs(
 		sumPostStatus := deltas[latestSummarizableDeltaIdx].PostStatus
 		if sumPostStatus.ShareBalance != 0 {
 			summaryTx := &Tx{
-				Security: tx.Security, Date: tx.Date, Action: BUY,
+				Security: tx.Security, SettlementDate: tx.SettlementDate, Action: BUY,
 				Shares:         sumPostStatus.ShareBalance,
 				AmountPerShare: sumPostStatus.TotalAcb / float64(sumPostStatus.ShareBalance),
 				Commission:     0.0,
@@ -159,9 +159,9 @@ func makeAnnualGainsSummaryTxs(
 
 	yearlyCapGains := map[int]float64{}
 	latestYearDelta := map[int]*TxDelta{}
-	firstYear := deltas[0].Tx.Date.Year()
+	firstYear := deltas[0].Tx.SettlementDate.Year()
 	for _, delta := range deltas[:latestSummarizableDeltaIdx+1] {
-		year := delta.Tx.Date.Year()
+		year := delta.Tx.SettlementDate.Year()
 		if delta.CapitalGain != 0.0 {
 			if _, ok := yearlyCapGains[year]; ok {
 				yearlyCapGains[year] += delta.CapitalGain
@@ -194,8 +194,8 @@ func makeAnnualGainsSummaryTxs(
 	setupBuySumTx := &Tx{
 		Security: tx.Security,
 		// Get the earliest year, and use Jan 1 of the previous year for the buy.
-		Date:   date.New(uint32(firstYear-1), time.January, 1),
-		Action: BUY,
+		SettlementDate: date.New(uint32(firstYear-1), time.January, 1),
+		Action:         BUY,
 		// Add length of yearsWithGains to the share balance, as we'll sell one share per year
 		Shares:         sumPostStatus.ShareBalance + uint32(len(yearsWithGains)),
 		AmountPerShare: baseAcbPerShare,
@@ -217,7 +217,7 @@ func makeAnnualGainsSummaryTxs(
 		tx := latestYearDelta[year].Tx
 		summaryTx := &Tx{
 			Security:       tx.Security,
-			Date:           date.New(uint32(tx.Date.Year()), time.January, 1),
+			SettlementDate: date.New(uint32(tx.SettlementDate.Year()), time.January, 1),
 			Action:         SELL,
 			Shares:         1,
 			AmountPerShare: baseAcbPerShare + gain,

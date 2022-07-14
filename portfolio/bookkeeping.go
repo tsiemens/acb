@@ -43,8 +43,8 @@ func getSuperficialLossInfo(idx int, txs []*Tx, shareBalanceAfterSell uint32) _S
 	util.Assertf(tx.Action == SELL,
 		"getSuperficialLossInfo: Tx was not Sell, but %s", tx.Action)
 
-	firstBadBuyDate := GetFirstDayInSuperficialLossPeriod(tx.Date)
-	lastBadBuyDate := GetLastDayInSuperficialLossPeriod(tx.Date)
+	firstBadBuyDate := GetFirstDayInSuperficialLossPeriod(tx.SettlementDate)
+	lastBadBuyDate := GetLastDayInSuperficialLossPeriod(tx.SettlementDate)
 
 	sli := _SuperficialLossInfo{
 		IsSuperficial:        false,
@@ -57,7 +57,7 @@ func getSuperficialLossInfo(idx int, txs []*Tx, shareBalanceAfterSell uint32) _S
 	didBuyAfterInPeriod := false
 	for i := idx + 1; i < len(txs); i++ {
 		afterTx := txs[i]
-		if afterTx.Date.After(lastBadBuyDate) {
+		if afterTx.SettlementDate.After(lastBadBuyDate) {
 			break
 		}
 		// Within the 30 day window after
@@ -81,7 +81,7 @@ func getSuperficialLossInfo(idx int, txs []*Tx, shareBalanceAfterSell uint32) _S
 	didBuyBeforeInPeriod := false
 	for i := idx - 1; i >= 0; i-- {
 		beforeTx := txs[i]
-		if beforeTx.Date.Before(firstBadBuyDate) {
+		if beforeTx.SettlementDate.Before(firstBadBuyDate) {
 			break
 		}
 		// Within the 30 day window before
@@ -134,7 +134,7 @@ func AddTx(idx int, txs []*Tx, preTxStatus *PortfolioSecurityStatus, legacyOptio
 	case SELL:
 		if tx.Shares > preTxStatus.ShareBalance {
 			return nil, fmt.Errorf("Sell order on %v of %d shares of %s is more than the current holdings (%d)",
-				tx.Date, tx.Shares, tx.Security, preTxStatus.ShareBalance)
+				tx.SettlementDate, tx.Shares, tx.Security, preTxStatus.ShareBalance)
 		}
 		newShareBalance = preTxStatus.ShareBalance - tx.Shares
 		// Note commission plays no effect on sell order ACB
@@ -158,13 +158,13 @@ func AddTx(idx int, txs []*Tx, preTxStatus *PortfolioSecurityStatus, legacyOptio
 	case ROC:
 		if tx.Shares != 0 {
 			return nil, fmt.Errorf("Invalid RoC tx on %v: # of shares is non-zero (%d)",
-				tx.Date, tx.Shares)
+				tx.SettlementDate, tx.Shares)
 		}
 		acbReduction := (tx.AmountPerShare * float64(preTxStatus.ShareBalance) * tx.TxCurrToLocalExchangeRate)
 		newAcbTotal = preTxStatus.TotalAcb - acbReduction
 		if newAcbTotal < 0.0 {
 			return nil, fmt.Errorf("Invalid RoC tx on %v: RoC (%f) exceeds the current ACB (%f)",
-				tx.Date, acbReduction, preTxStatus.TotalAcb)
+				tx.SettlementDate, acbReduction, preTxStatus.TotalAcb)
 		}
 	default:
 		util.Assertf(false, "Invalid action: %v\n", tx.Action)
