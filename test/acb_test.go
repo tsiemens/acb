@@ -20,16 +20,6 @@ func mkDate(day int) date.Date {
 	return mkDateYD(2017, day)
 }
 
-/*
-* Deprecated: Use require.Nil
- */
-func AssertNil(t *testing.T, o interface{}) {
-	if o != nil {
-		fmt.Println("Obj was not nil:", o)
-		t.FailNow()
-	}
-}
-
 func AlmostEqual(t *testing.T, exp float64, actual float64) {
 	diff := exp - actual
 	if diff < 0.0000001 && diff > -0.0000001 {

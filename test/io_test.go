@@ -39,7 +39,7 @@ func TestToCsvString(t *testing.T) {
 		"BAR,2016-01-03,2016-01-06,Buy,7,1.7,USD,1.11,1.0,a memo 2",
 	)[0]
 	txs, err := ptf.ParseTxCsv(csvReader.Reader, 0, "", rateLoader)
-	AssertNil(t, err)
+	rq.Nil(err)
 	verifyParsedTxs(txs)
 
 	// Legacy input, with just Date column
@@ -49,7 +49,7 @@ func TestToCsvString(t *testing.T) {
 		"BAR,2016-01-06,Buy,7,1.7,USD,1.11,1.0,a memo 2",
 	)[0]
 	txs, err = ptf.ParseTxCsv(csvReader.Reader, 0, "", rateLoader)
-	AssertNil(t, err)
+	rq.Nil(err)
 	verifyParsedTxs(txs)
 
 	resetContext()

@@ -80,7 +80,7 @@ func TestSameDayBuySells(t *testing.T) {
 			&log.StderrErrorPrinter{},
 		)
 
-		AssertNil(t, err)
+		rq.Nil(err)
 		renderTable := getAndCheckFooTable(rq, renderTables)
 		rq.Equal(3, len(renderTable.Rows))
 		rq.ElementsMatch([]error{}, renderTable.Errors)
@@ -101,7 +101,7 @@ func TestSameDayBuySells(t *testing.T) {
 			&log.StderrErrorPrinter{},
 		)
 
-		AssertNil(t, err)
+		rq.Nil(err)
 		renderTable = getAndCheckFooTable(rq, renderTables)
 		rq.Equal(3, len(renderTable.Rows))
 		rq.ElementsMatch([]error{}, renderTable.Errors)
@@ -124,7 +124,7 @@ func TestNegativeStocks(t *testing.T) {
 		&log.StderrErrorPrinter{},
 	)
 
-	AssertNil(t, err)
+	rq.Nil(err)
 	renderTable := getAndCheckFooTable(rq, renderTables)
 	rq.Equal(0, len(renderTable.Rows))
 	rq.Contains(renderTable.Errors[0].Error(), "is more than the current holdings")
@@ -148,7 +148,7 @@ func TestSanitizedSecurityNames(t *testing.T) {
 		&log.StderrErrorPrinter{},
 	)
 
-	AssertNil(t, err)
+	rq.Nil(err)
 	renderTable := getAndCheckFooTable(rq, renderTables)
 	rq.Equal(2, len(renderTable.Rows))
 	rq.Equal(len(renderTable.Errors), 0)
