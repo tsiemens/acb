@@ -11,8 +11,14 @@ getdeps:
 
 clean:
 	rm bld/acb
+	rm bld/test.test
 
 test:
-	go test ./test -v
+	# -count=1 is the idiomatic way to disable test caching.
+	go test ./test -v -count=1
+
+test-bin:
+	go test ./test -c -o bld/test.test
+	@echo "Test binary file created: 'bld/test.test'. This should be run from the ./test/ directory"
 
 .PHONY: clean test

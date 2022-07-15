@@ -1,8 +1,8 @@
-security,date,action,shares,amount/share,currency,exchange rate,commission,memo
-OOOO,2016-01-05,Buy,20,1.5,USD,,1,First buy!
-ZVZZT,2017-01-04,Buy,5,50,,,2,
-OOOO,2017-01-05,Sell,5,1.4,USD,1.2,,:(
-ZVZZT,2017-01-06,Sell,1,60,,,,
-OOOO,2017-12-06,Sell,15,2,USD,,,
-OOOO,2018-02-05,Buy,20,1.5,USD,1.2,1,
-OOOO,2018-02-06,Sell,10,1.49,USD,1.2,,Sell to cover taxes (superficial loss)
+security,trade date,settlement date,action,shares,amount/share,currency,exchange rate,commission,memo
+OOOO,2016-01-03,2016-01-05,Buy,20,1.5,USD,,1,First buy!
+ZVZZT,2017-01-02,2017-01-04,Buy,5,50,,,2,
+OOOO,2017-01-03,2017-01-05,Sell,5,1.4,USD,1.2,,:(
+ZVZZT,2017-01-04,2017-01-06,Sell,1,60,,,,
+OOOO,2017-12-04,2017-12-06,Sell,15,2,USD,,,
+OOOO,2018-02-03,2018-02-05,Buy,20,1.5,USD,1.2,1,
+OOOO,2018-02-04,2018-02-06,Sell,10,1.49,USD,1.2,,Sell to cover taxes (superficial loss)
