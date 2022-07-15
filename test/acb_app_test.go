@@ -67,9 +67,9 @@ func TestSameDayBuySells(t *testing.T) {
 
 	for _, splits := range [][]uint32{[]uint32{3}, []uint32{1, 2}} {
 		csvReaders := splitCsvRows(splits,
-			"FOO,2016-01-05,Buy,20,1.5,CAD,,0,",
-			"FOO,2016-01-05,Sell,5,1.6,CAD,,0,",
-			"FOO,2016-01-05,Buy,5,1.7,CAD,,0,",
+			"FOO,2016-01-03,2016-01-05,Buy,20,1.5,CAD,,0,",
+			"FOO,2016-01-03,2016-01-05,Sell,5,1.6,CAD,,0,",
+			"FOO,2016-01-03,2016-01-05,Buy,5,1.7,CAD,,0,",
 		)
 
 		renderTables, err := app.RunAcbAppToRenderModel(
@@ -88,9 +88,9 @@ func TestSameDayBuySells(t *testing.T) {
 
 		// Try with legacy buys before sell
 		csvReaders = splitCsvRows(splits,
-			"FOO,2016-01-05,Buy,20,1.5,CAD,,0,",
-			"FOO,2016-01-05,Sell,5,1.6,CAD,,0,",
-			"FOO,2016-01-05,Buy,5,1.7,CAD,,0,",
+			"FOO,2016-01-03,2016-01-05,Buy,20,1.5,CAD,,0,",
+			"FOO,2016-01-03,2016-01-05,Sell,5,1.6,CAD,,0,",
+			"FOO,2016-01-03,2016-01-05,Buy,5,1.7,CAD,,0,",
 		)
 
 		renderTables, err = app.RunAcbAppToRenderModel(
@@ -113,7 +113,7 @@ func TestNegativeStocks(t *testing.T) {
 	rq := require.New(t)
 
 	csvReaders := splitCsvRows([]uint32{1},
-		"FOO,2016-01-05,Sell,5,1.6,CAD,,0,",
+		"FOO,2016-01-03,2016-01-05,Sell,5,1.6,CAD,,0,",
 	)
 
 	renderTables, err := app.RunAcbAppToRenderModel(
@@ -136,8 +136,8 @@ func TestSanitizedSecurityNames(t *testing.T) {
 	rq := require.New(t)
 
 	csvReaders := splitCsvRows([]uint32{2},
-		"    FOO    ,2016-01-05,Buy,5,1.6,CAD,,0,",
-		"FOO,2016-01-06,Sell,4,1.6,CAD,,0,",
+		"    FOO    ,2016-01-03,2016-01-05,Buy,5,1.6,CAD,,0,",
+		"FOO,2016-01-04,2016-01-06,Sell,4,1.6,CAD,,0,",
 	)
 
 	renderTables, err := app.RunAcbAppToRenderModel(

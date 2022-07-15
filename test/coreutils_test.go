@@ -14,7 +14,7 @@ type TestContext struct {
 var ctx TestContext
 
 func setup() {
-	ctx = TestContext{UseLegacyCsvHeaders: true, CsvHeaders: ""}
+	ctx = TestContext{UseLegacyCsvHeaders: false, CsvHeaders: ""}
 	// Do something here.
 
 	// fmt.Printf("\033[1;36m%s\033[0m", "> Setup completed\n")

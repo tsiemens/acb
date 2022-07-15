@@ -57,9 +57,8 @@ func DefaultTx() *Tx {
 func CheckTxSanity(tx *Tx) error {
 	if tx.Security == "" {
 		return fmt.Errorf("Transaction has no security")
-		// TODO
-		// } else if (tx.TradeDate == date.Date{}) {
-		// return fmt.Errorf("Transaction has no trade date")
+	} else if (tx.TradeDate == date.Date{}) {
+		return fmt.Errorf("Transaction has no trade date")
 	} else if (tx.SettlementDate == date.Date{}) {
 		return fmt.Errorf("Transaction has no settlement date")
 	} else if tx.Action == NO_ACTION {
@@ -282,7 +281,8 @@ func ToCsvString(txs []*Tx) string {
 
 	header := []string{
 		"security",
-		"date",
+		"trade date",
+		"settlement date",
 		"action",
 		"shares",
 		"amount/share",
@@ -322,6 +322,7 @@ func ToCsvString(txs []*Tx) string {
 
 		record := []string{
 			tx.Security,
+			tx.TradeDate.String(),
 			tx.SettlementDate.String(),
 			tx.Action.String(),
 			fmt.Sprintf("%d", tx.Shares),

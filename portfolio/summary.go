@@ -128,7 +128,12 @@ func makeSimpleSummaryTxs(
 		sumPostStatus := deltas[latestSummarizableDeltaIdx].PostStatus
 		if sumPostStatus.ShareBalance != 0 {
 			summaryTx := &Tx{
-				Security: tx.Security, SettlementDate: tx.SettlementDate, Action: BUY,
+				Security: tx.Security,
+				// Use same day for TradeDate and SettlementDate, since this is not
+				// a real trade, and has no exchange rate to depend on the trade date.
+				TradeDate:      tx.SettlementDate,
+				SettlementDate: tx.SettlementDate,
+				Action:         BUY,
 				Shares:         sumPostStatus.ShareBalance,
 				AmountPerShare: sumPostStatus.TotalAcb / float64(sumPostStatus.ShareBalance),
 				Commission:     0.0,
@@ -191,10 +196,12 @@ func makeAnnualGainsSummaryTxs(
 	}
 
 	tx := deltas[latestSummarizableDeltaIdx].Tx
+	// Get the earliest year, and use Jan 1 of the previous year for the buy.
+	dt := date.New(uint32(firstYear-1), time.January, 1)
 	setupBuySumTx := &Tx{
-		Security: tx.Security,
-		// Get the earliest year, and use Jan 1 of the previous year for the buy.
-		SettlementDate: date.New(uint32(firstYear-1), time.January, 1),
+		Security:       tx.Security,
+		TradeDate:      dt,
+		SettlementDate: dt,
 		Action:         BUY,
 		// Add length of yearsWithGains to the share balance, as we'll sell one share per year
 		Shares:         sumPostStatus.ShareBalance + uint32(len(yearsWithGains)),
@@ -215,9 +222,11 @@ func makeAnnualGainsSummaryTxs(
 			gain = 0.0
 		}
 		tx := latestYearDelta[year].Tx
+		dt := date.New(uint32(tx.SettlementDate.Year()), time.January, 1)
 		summaryTx := &Tx{
 			Security:       tx.Security,
-			SettlementDate: date.New(uint32(tx.SettlementDate.Year()), time.January, 1),
+			TradeDate:      dt,
+			SettlementDate: dt,
 			Action:         SELL,
 			Shares:         1,
 			AmountPerShare: baseAcbPerShare + gain,
