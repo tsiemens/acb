@@ -29,9 +29,9 @@ class Action(Enum):
 @dataclass
 class Tx:
    security: str
+   trade_date: str
    settlement_date: str # Settlement date
    date_and_time: str # Just used for sorting
-   transaction_date: str
    action: Action
    amount_per_share: float
    num_shares: int
@@ -49,7 +49,7 @@ class AcbCsvRenderer:
 
    def rows(self):
       for tx in self.txs:
-         yield (tx.security, tx.transaction_date, tx.settlement_date, str(tx.action),
+         yield (tx.security, tx.trade_date, tx.settlement_date, str(tx.action),
                 str(tx.amount_per_share),
                 str(tx.num_shares), str(tx.commission), tx.currency, tx.memo,
                 str(tx.exchange_rate) if tx.exchange_rate else '')
@@ -121,9 +121,9 @@ class QuestradeSheet(AcbCsvRenderer):
 
             tx = Tx(
                security=symbol,
+               trade_date=QuestradeSheet.convert_date_str(get('Transaction Date')),
                settlement_date=QuestradeSheet.convert_date_str(get('Settlement Date')),
                date_and_time=get('Settlement Date'),
-               transaction_date=QuestradeSheet.convert_date_str(get('Transaction Date')),
                action=action.value,
                amount_per_share=float(get('Price')),
                num_shares=QuestradeSheet.get_quantity_int(get('Quantity'),
