@@ -120,7 +120,7 @@ func RunAcbAppToDeltaModels(
 		NoSuperficialLosses:        legacyOptions.NoSuperficialLosses,
 		NoPartialSuperficialLosses: legacyOptions.NoPartialSuperficialLosses,
 	}
-	models := make(map[string]*SecurityDeltas)
+	secModels := make(map[string]*SecurityDeltas)
 
 	for sec, secTxs := range txsBySec {
 		secInitStatus, ok := allInitStatus[sec]
@@ -132,9 +132,28 @@ func RunAcbAppToDeltaModels(
 		if err != nil {
 			deltasModel.Errors = append(deltasModel.Errors, err)
 		}
-		models[sec] = deltasModel
+		secModels[sec] = deltasModel
 	}
-	return models, nil
+	return secModels, nil
+}
+
+type AllCumulativeCapitalGains struct {
+	SecurityGains  map[string]*ptf.CumulativeCapitalGains
+	AggregateGains *ptf.CumulativeCapitalGains
+}
+
+func getCumulativeCapitalGains(deltasBySec map[string]*SecurityDeltas) *AllCumulativeCapitalGains {
+	securityGains := make(map[string]*ptf.CumulativeCapitalGains)
+	for sec, deltas := range deltasBySec {
+		securityGains[sec] = ptf.CalcSecurityCumulativeCapitalGains(deltas.Deltas)
+	}
+	aggregateGains := ptf.CalcCumulativeCapitalGains(securityGains)
+	return &AllCumulativeCapitalGains{securityGains, aggregateGains}
+}
+
+type AppRenderResult struct {
+	SecurityTables      map[string]*ptf.RenderTable
+	AggregateGainsTable *ptf.RenderTable
 }
 
 func RunAcbAppToRenderModel(
@@ -144,7 +163,7 @@ func RunAcbAppToRenderModel(
 	renderFullDollarValues bool,
 	legacyOptions LegacyOptions,
 	ratesCache fx.RatesCache,
-	errPrinter log.ErrorPrinter) (map[string]*ptf.RenderTable, error) {
+	errPrinter log.ErrorPrinter) (*AppRenderResult, error) {
 
 	deltasBySec, err := RunAcbAppToDeltaModels(
 		csvFileReaders, allInitStatus, forceDownload, legacyOptions, ratesCache,
@@ -153,13 +172,20 @@ func RunAcbAppToRenderModel(
 		return nil, err
 	}
 
-	models := make(map[string]*ptf.RenderTable)
+	gains := getCumulativeCapitalGains(deltasBySec)
+
+	secModels := make(map[string]*ptf.RenderTable)
 	for sec, deltas := range deltasBySec {
-		tableModel := ptf.RenderTxTableModel(deltas.Deltas, renderFullDollarValues)
+		tableModel := ptf.RenderTxTableModel(
+			deltas.Deltas, gains.SecurityGains[sec], renderFullDollarValues)
 		tableModel.Errors = deltas.Errors
-		models[sec] = tableModel
+		secModels[sec] = tableModel
 	}
-	return models, nil
+
+	cumulativeGainsTable := ptf.RenderAggregateCapitalGains(
+		gains.AggregateGains, renderFullDollarValues)
+
+	return &AppRenderResult{secModels, cumulativeGainsTable}, nil
 }
 
 func RunAcbAppSummaryToModel(
@@ -195,31 +221,28 @@ func RunAcbAppSummaryToModel(
 	return ptf.MakeAggregateSummaryTxs(latestDate, deltasBySec, options.SplitAnnualSummaryGains), nil
 }
 
-func WriteRenderTables(
-	renderTables map[string]*ptf.RenderTable,
-	writer io.Writer) {
+func WriteRenderResult(renderRes *AppRenderResult, writer io.Writer) {
+	secRenderTables := renderRes.SecurityTables
+	nSecs := len(secRenderTables)
 
-	nSecs := len(renderTables)
-
-	secs := make([]string, 0, len(renderTables))
-	for k := range renderTables {
+	secs := make([]string, 0, len(secRenderTables))
+	for k := range secRenderTables {
 		secs = append(secs, k)
 	}
 	sort.Strings(secs)
 
 	i := 0
 	for _, sec := range secs {
-		renderTable := renderTables[sec]
-		for _, err := range renderTable.Errors {
-			fmt.Fprintf(writer, "[!] %v. Printing parsed information state:\n", err)
-		}
-		fmt.Fprintf(writer, "Transactions for %s\n", sec)
-		ptf.PrintRenderTable(renderTable, writer)
+		renderTable := secRenderTables[sec]
+		ptf.PrintRenderTable(fmt.Sprintf("Transactions for %s", sec), renderTable, writer)
 		if i < (nSecs - 1) {
 			fmt.Fprintln(writer, "")
 		}
 		i++
 	}
+
+	fmt.Fprintln(writer, "")
+	ptf.PrintRenderTable("Aggregate Gains", renderRes.AggregateGainsTable, writer)
 }
 
 // Returns an OK flag. Used to signal what exit code to use.
@@ -234,7 +257,7 @@ func RunAcbAppToWriter(
 	ratesCache fx.RatesCache,
 	errPrinter log.ErrorPrinter) (bool, map[string]*ptf.RenderTable) {
 
-	renderTables, err := RunAcbAppToRenderModel(
+	renderRes, err := RunAcbAppToRenderModel(
 		csvFileReaders, allInitStatus, forceDownload, renderFullDollarValues,
 		legacyOptions, ratesCache, errPrinter,
 	)
@@ -244,8 +267,8 @@ func RunAcbAppToWriter(
 		return false, nil
 	}
 
-	WriteRenderTables(renderTables, writer)
-	return true, renderTables
+	WriteRenderResult(renderRes, writer)
+	return true, renderRes.SecurityTables
 }
 
 func WriteSummaryData(summData *ptf.CollectedSummaryData, errPrinter log.ErrorPrinter) {

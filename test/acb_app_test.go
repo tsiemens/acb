@@ -32,7 +32,7 @@ func makeCsvReader(desc string, lines ...string) app.DescribedReader {
 
 func render(tableModel *ptf.RenderTable) {
 	if os.Getenv("VERBOSE") != "" {
-		ptf.PrintRenderTable(tableModel, os.Stdout)
+		ptf.PrintRenderTable("Dummy title", tableModel, os.Stdout)
 	}
 }
 
@@ -72,7 +72,7 @@ func TestSameDayBuySells(t *testing.T) {
 			"FOO,2016-01-03,2016-01-05,Buy,5,1.7,CAD,,0,",
 		)
 
-		renderTables, err := app.RunAcbAppToRenderModel(
+		renderRes, err := app.RunAcbAppToRenderModel(
 			csvReaders, map[string]*ptf.PortfolioSecurityStatus{},
 			false, false,
 			app.LegacyOptions{},
@@ -81,7 +81,7 @@ func TestSameDayBuySells(t *testing.T) {
 		)
 
 		rq.Nil(err)
-		renderTable := getAndCheckFooTable(rq, renderTables)
+		renderTable := getAndCheckFooTable(rq, renderRes.SecurityTables)
 		rq.Equal(3, len(renderTable.Rows))
 		rq.ElementsMatch([]error{}, renderTable.Errors)
 		rq.Equal("$0.50", getTotalCapGain(renderTable))
@@ -93,7 +93,7 @@ func TestSameDayBuySells(t *testing.T) {
 			"FOO,2016-01-03,2016-01-05,Buy,5,1.7,CAD,,0,",
 		)
 
-		renderTables, err = app.RunAcbAppToRenderModel(
+		renderRes, err = app.RunAcbAppToRenderModel(
 			csvReaders, map[string]*ptf.PortfolioSecurityStatus{},
 			false, false,
 			app.LegacyOptions{SortBuysBeforeSells: true},
@@ -102,7 +102,7 @@ func TestSameDayBuySells(t *testing.T) {
 		)
 
 		rq.Nil(err)
-		renderTable = getAndCheckFooTable(rq, renderTables)
+		renderTable = getAndCheckFooTable(rq, renderRes.SecurityTables)
 		rq.Equal(3, len(renderTable.Rows))
 		rq.ElementsMatch([]error{}, renderTable.Errors)
 		rq.Equal("$0.30", getTotalCapGain(renderTable))
@@ -116,7 +116,7 @@ func TestNegativeStocks(t *testing.T) {
 		"FOO,2016-01-03,2016-01-05,Sell,5,1.6,CAD,,0,",
 	)
 
-	renderTables, err := app.RunAcbAppToRenderModel(
+	renderRes, err := app.RunAcbAppToRenderModel(
 		csvReaders, map[string]*ptf.PortfolioSecurityStatus{},
 		false, false,
 		app.LegacyOptions{},
@@ -125,7 +125,7 @@ func TestNegativeStocks(t *testing.T) {
 	)
 
 	rq.Nil(err)
-	renderTable := getAndCheckFooTable(rq, renderTables)
+	renderTable := getAndCheckFooTable(rq, renderRes.SecurityTables)
 	rq.Equal(0, len(renderTable.Rows))
 	rq.Contains(renderTable.Errors[0].Error(), "is more than the current holdings")
 	rq.Equal("$0.00", getTotalCapGain(renderTable))
@@ -140,7 +140,7 @@ func TestSanitizedSecurityNames(t *testing.T) {
 		"FOO,2016-01-04,2016-01-06,Sell,4,1.6,CAD,,0,",
 	)
 
-	renderTables, err := app.RunAcbAppToRenderModel(
+	renderRes, err := app.RunAcbAppToRenderModel(
 		csvReaders, map[string]*ptf.PortfolioSecurityStatus{},
 		false, false,
 		app.LegacyOptions{},
@@ -149,7 +149,7 @@ func TestSanitizedSecurityNames(t *testing.T) {
 	)
 
 	rq.Nil(err)
-	renderTable := getAndCheckFooTable(rq, renderTables)
+	renderTable := getAndCheckFooTable(rq, renderRes.SecurityTables)
 	rq.Equal(2, len(renderTable.Rows))
 	rq.Equal(len(renderTable.Errors), 0)
 	rq.Equal("$0.00", getTotalCapGain(renderTable))

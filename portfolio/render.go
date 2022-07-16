@@ -3,11 +3,9 @@ package portfolio
 import (
 	"fmt"
 	"io"
-	"sort"
 	"strings"
 
 	tw "github.com/olekukonko/tablewriter"
-	"github.com/tsiemens/acb/util"
 )
 
 type _PrintHelper struct {
@@ -54,7 +52,8 @@ type RenderTable struct {
 	Errors []error
 }
 
-func RenderTxTableModel(deltas []*TxDelta, renderFullDollarValues bool) *RenderTable {
+func RenderTxTableModel(
+	deltas []*TxDelta, gains *CumulativeCapitalGains, renderFullDollarValues bool) *RenderTable {
 	table := &RenderTable{}
 	table.Header = []string{"Security", "Trade Date", "Settl. Date", "TX", "Amount", "Shares", "Amt/Share", "ACB",
 		"Commission", "Cap. Gain", "Share Balance", "ACB +/-", "New ACB", "New ACB/Share",
@@ -63,13 +62,7 @@ func RenderTxTableModel(deltas []*TxDelta, renderFullDollarValues bool) *RenderT
 
 	ph := _PrintHelper{PrintAllDecimals: renderFullDollarValues}
 
-	var capGainsTotal float64 = 0.0
-	capGainsYearTotals := map[int]float64{}
 	sawSuperficialLoss := false
-
-	for _, d := range deltas {
-		capGainsYearTotals[d.Tx.SettlementDate.Year()] = 0.0
-	}
 
 	for _, d := range deltas {
 		superficialLossAsterix := ""
@@ -107,23 +100,19 @@ func RenderTxTableModel(deltas []*TxDelta, renderFullDollarValues bool) *RenderT
 			tx.Memo,
 		}
 		table.Rows = append(table.Rows, row)
-
-		capGainsTotal += d.CapitalGain
-		capGainsYearTotals[tx.SettlementDate.Year()] += d.CapitalGain
 	}
 
 	// Footer
-	years := util.IntFloat64MapKeys(capGainsYearTotals)
-	sort.Ints(years)
+	years := gains.CapitalGainsYearTotalsKeysSorted()
 	yearStrs := []string{}
 	yearValsStrs := []string{}
 	for _, year := range years {
 		yearStrs = append(yearStrs, fmt.Sprintf("%d", year))
-		yearlyTotal := capGainsYearTotals[year]
+		yearlyTotal := gains.CapitalGainsYearTotals[year]
 		yearValsStrs = append(yearValsStrs, ph.PlusMinusDollar(yearlyTotal, false))
 	}
 	totalFooterLabel := "Total"
-	totalFooterValsStr := ph.PlusMinusDollar(capGainsTotal, false)
+	totalFooterValsStr := ph.PlusMinusDollar(gains.CapitalGainsTotal, false)
 	if len(years) > 0 {
 		totalFooterLabel += "\n" + strings.Join(yearStrs, "\n")
 		totalFooterValsStr += "\n" + strings.Join(yearValsStrs, "\n")
@@ -140,7 +129,42 @@ func RenderTxTableModel(deltas []*TxDelta, renderFullDollarValues bool) *RenderT
 	return table
 }
 
-func PrintRenderTable(tableModel *RenderTable, writer io.Writer) {
+/*
+  Generates a RenderTable that will render out to this:
+  | Year             | Capital Gains |
+  +------------------+---------------+
+  | 2000             | xxxx.xx       |
+  | 2001             | xxxx.xx       |
+  | Since inception  | xxxx.xx       |
+*/
+func RenderAggregateCapitalGains(
+	gains *CumulativeCapitalGains, renderFullDollarValues bool) *RenderTable {
+
+	table := &RenderTable{}
+	table.Header = []string{"Year", "Capital Gains"}
+
+	ph := _PrintHelper{PrintAllDecimals: renderFullDollarValues}
+
+	years := gains.CapitalGainsYearTotalsKeysSorted()
+	for _, year := range years {
+		yearlyTotal := gains.CapitalGainsYearTotals[year]
+		table.Rows = append(
+			table.Rows,
+			[]string{fmt.Sprintf("%d", year), ph.PlusMinusDollar(yearlyTotal, false)})
+	}
+	table.Rows = append(
+		table.Rows,
+		[]string{"Since inception", ph.PlusMinusDollar(gains.CapitalGainsTotal, false)})
+
+	return table
+}
+
+func PrintRenderTable(title string, tableModel *RenderTable, writer io.Writer) {
+	for _, err := range tableModel.Errors {
+		fmt.Fprintf(writer, "[!] %v. Printing parsed information state:\n", err)
+	}
+	fmt.Fprintf(writer, "%s\n", title)
+
 	table := tw.NewWriter(writer)
 	table.SetHeader(tableModel.Header)
 	table.SetBorder(false)

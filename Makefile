@@ -9,6 +9,13 @@ getdeps:
 	go get -u github.com/stretchr/testify
 	go get -u github.com/olekukonko/tablewriter
 
+www:
+	$(MAKE) -C www all
+html-import:
+	$(MAKE) -C www html-import
+wasm:
+	$(MAKE) -C www wasm
+
 clean:
 	rm bld/acb
 	rm bld/test.test
