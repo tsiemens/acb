@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+DIR=$(dirname `realpath $0`)
+source $DIR/.venv/bin/activate
+exec $DIR/tx-export-convert.py "$@"
