@@ -6,6 +6,7 @@ transaction csv format.
 
 Currently only supports Questrade.
 """
+import ensure_in_venv
 
 import argparse
 import csv
