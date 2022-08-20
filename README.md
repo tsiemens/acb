@@ -14,8 +14,8 @@ This is primarily designed for Canadians filing tax returns, who have stocks, RS
 
 ### "Bonus" Script Features
 In addition to the main `acb` app, a few extra scripts are provided for convenience. See the `py/` directory (you'll need to run `setup.sh` first).
-- tx-export-convert.py: Convert exported transaction spreadsheets to acb-compatible csv files (Questrade-only for now)
-- etrade-plan-pdf-tx-extract.py: Generate acb csv files from ETRADE stock plan PDFs.
+- tx-export-convert: Convert exported transaction spreadsheets to acb-compatible csv files (Questrade-only for now)
+- etrade-plan-pdf-tx-extract: Generate acb csv files from ETRADE stock plan PDFs.
 
 ## Example
 
