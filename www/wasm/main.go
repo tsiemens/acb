@@ -83,6 +83,23 @@ func errorArrayToIntfArray(arr []error) []interface{} {
 	return outArr
 }
 
+func renderTableToJsConvertible(renderTable *ptf.RenderTable) map[string]interface{} {
+	return map[string]interface{}{
+		"header": stringArrayToIntfArray(renderTable.Header),
+		"rows":   stringArrayArrayToIntfArray(renderTable.Rows),
+		"footer": stringArrayToIntfArray(renderTable.Footer),
+		"notes":  stringArrayToIntfArray(renderTable.Notes),
+		"errors": errorArrayToIntfArray(renderTable.Errors),
+	}
+}
+
+func renderTableToJsObject(renderTable *ptf.RenderTable) js.Value {
+	if renderTable == nil {
+		return js.ValueOf(nil)
+	}
+	return js.ValueOf(renderTableToJsConvertible(renderTable))
+}
+
 func renderTablesToJsObject(renderTables map[string]*ptf.RenderTable) js.Value {
 	if renderTables == nil {
 		return js.ValueOf(nil)
@@ -90,13 +107,7 @@ func renderTablesToJsObject(renderTables map[string]*ptf.RenderTable) js.Value {
 
 	tableObjMap := map[string]interface{}{}
 	for symbol, renderTable := range renderTables {
-		tableObjMap[symbol] = map[string]interface{}{
-			"header": stringArrayToIntfArray(renderTable.Header),
-			"rows":   stringArrayArrayToIntfArray(renderTable.Rows),
-			"footer": stringArrayToIntfArray(renderTable.Footer),
-			"notes":  stringArrayToIntfArray(renderTable.Notes),
-			"errors": errorArrayToIntfArray(renderTable.Errors),
-		}
+		tableObjMap[symbol] = renderTableToJsConvertible(renderTable)
 	}
 
 	return js.ValueOf(tableObjMap)
@@ -140,7 +151,7 @@ func runAcb(
 	legacyOptions.NoPartialSuperficialLosses = noPartialSuperficialLosses
 	legacyOptions.SortBuysBeforeSells = sortBuysBeforeSells
 
-	_, renderTables := app.RunAcbAppToWriter(
+	_, renderRes := app.RunAcbAppToWriter(
 		&output,
 		csvReaders, allInitStatus, forceDownload, renderFullValues,
 		legacyOptions, &fx.MemRatesCacheAccessor{RatesByYear: globalRatesCache},
@@ -150,8 +161,11 @@ func runAcb(
 	outString := output.String()
 
 	outObj := js.ValueOf(map[string]interface{}{
-		"textOutput":  outString,
-		"modelOutput": renderTablesToJsObject(renderTables),
+		"textOutput": outString,
+		"modelOutput": map[string]interface{}{
+			"securityTables":      renderTablesToJsObject(renderRes.SecurityTables),
+			"aggregateGainsTable": renderTableToJsObject(renderRes.AggregateGainsTable),
+		},
 	})
 
 	errString := errPrinter.Buf.String()

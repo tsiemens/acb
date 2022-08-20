@@ -249,28 +249,80 @@ function addInitialSecurityStateRow() {
 
 function populateTables(model) {
    if (model === undefined) {
-      model = {"STOCK": {
-         "footer": ["", "", "", "", "", "", "", "Total", "$0", "", "", "", "", ""],
-         "header": ["Security", "Date", "TX", "Amount", "Shares", "Amt/Share", "ACB",
-                    "Commission", "Cap. Gain", "Share Balance", "ACB +/-", "New ACB",
-                     "New ACB/Share", "Memo"],
-         "rows": [],
-      }};
+      model = {
+         "securityTables": {
+            "STOCK": {
+               "footer": ["", "", "", "", "", "", "", "Total", "$0", "", "", "", "", ""],
+               "header": ["Security", "Date", "TX", "Amount", "Shares", "Amt/Share", "ACB",
+                          "Commission", "Cap. Gain", "Share Balance", "ACB +/-", "New ACB",
+                           "New ACB/Share", "Memo"],
+               "rows": [],
+            }
+         },
+         "aggregateGainsTable": {
+            "footer": [],
+            "header": ["Year", "Capital Gains"],
+            "rows": [],
+         }
+      };
    }
 
    const tablesContainer = document.getElementById("acb-table-output");
    tablesContainer.innerHTML = "";
 
-   const symbols = Object.keys(model);
-   symbols.sort()
-   for (const symbol of symbols) {
-      const symModel = model[symbol];
-
+   const makeTableHeaderRow = function(tableModel) {
       const tr = newElem("tr");
-      for (const header of symModel.header) {
+      for (const header of tableModel.header) {
          tr.appendChild(newElem("th", {text: header}));
       }
+      return tr;
+   };
 
+   const makeTableContainer = function(headerRowTr, tbody) {
+      const table = newElem('table', {
+         children: [newElem('thead', {children:[headerRowTr]}), tbody]
+      });
+
+      return newElem("div", {
+         classes: ['table-fixed-head'],
+         children: [table]
+      });
+   };
+
+   // Aggregate table
+   (() => {
+      const aggModel = model["aggregateGainsTable"];
+      console.log("Agg model:");
+      console.log(aggModel);
+      const tr = makeTableHeaderRow(aggModel);
+      const tbody = newElem('tbody');
+
+      const addRow = function(rowItems) {
+         const rowElem = newElem('tr');
+         for (const item of rowItems) {
+            const td = newElem('td', {text: item});
+            rowElem.appendChild(td);
+         }
+         tbody.appendChild(rowElem);
+      };
+      for (const row of aggModel.rows) {
+         addRow(row);
+      }
+
+      const tableContainer = makeTableContainer(tr, tbody);
+
+      tablesContainer.appendChild(
+         newElem('div', {classes: ['table-title'], text: "Aggregate Gains"}));
+      tablesContainer.appendChild(tableContainer);
+   })();
+
+   // Symbol tables
+   const symbols = Object.keys(model["securityTables"]);
+   symbols.sort()
+   for (const symbol of symbols) {
+      const symModel = model["securityTables"][symbol];
+
+      const tr = makeTableHeaderRow(symModel);
       const tbody = newElem('tbody');
 
       const addRow = function(rowItems) {
@@ -292,17 +344,10 @@ function populateTables(model) {
       }
       addRow(symModel.footer);
 
-      const table = newElem('table', {
-         children: [newElem('thead', {children:[tr]}), tbody]
-      });
-
-      const symTableContainer = newElem("div", {
-         classes: ['table-fixed-head'],
-         children: [table]
-      });
+      const symTableContainer = makeTableContainer(tr, tbody);
 
       tablesContainer.appendChild(
-         newElem('div', {classes: ['symbol-name'], text: symbol}));
+         newElem('div', {classes: ['table-title'], text: symbol}));
 
       const errors = get(symModel, 'errors', []);
       for (const err of errors) {
@@ -386,6 +431,8 @@ async function asyncRunAcb(filenames, contents) {
       populateTables(resp ? resp.result.modelOutput : {});
    } catch (err) {
       console.log("asyncRunAcb caught error: ", err);
+      addAcbErrorText("An unexpected error was encountered while processing ACB "+
+                      "output. Try clearing your cache.");
    }
 }
 

@@ -255,7 +255,7 @@ func RunAcbAppToWriter(
 	renderFullDollarValues bool,
 	legacyOptions LegacyOptions,
 	ratesCache fx.RatesCache,
-	errPrinter log.ErrorPrinter) (bool, map[string]*ptf.RenderTable) {
+	errPrinter log.ErrorPrinter) (bool, *AppRenderResult) {
 
 	renderRes, err := RunAcbAppToRenderModel(
 		csvFileReaders, allInitStatus, forceDownload, renderFullDollarValues,
@@ -268,7 +268,7 @@ func RunAcbAppToWriter(
 	}
 
 	WriteRenderResult(renderRes, writer)
-	return true, renderRes.SecurityTables
+	return true, renderRes
 }
 
 func WriteSummaryData(summData *ptf.CollectedSummaryData, errPrinter log.ErrorPrinter) {
