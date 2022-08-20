@@ -6,7 +6,6 @@ A convenience script to extract transactions from PDFs downloaded from us.etrade
 import ensure_in_venv
 
 import argparse
-from contextlib import contextmanager
 from dataclasses import dataclass
 import datetime
 from decimal import Decimal
@@ -17,7 +16,19 @@ import re
 import sys
 from typing import Union
 
+from txlib import AcbCsvRenderer, Action, StderrSilencer, Tx
+
 import PyPDF2
+
+_debug = False
+
+def debug(*args):
+   if _debug:
+      print(*args)
+
+def ppdebug(obj):
+   if _debug:
+      pprint(obj)
 
 @dataclass
 class BenefitEntry:
@@ -35,6 +46,43 @@ class BenefitEntry:
    sell_to_cover_fee: Decimal
 
    plan_note: str
+
+def make_tx_renderer(benefits):
+   renderer = AcbCsvRenderer()
+   for b in benefits:
+      buy_tx = Tx(
+            security=b.security,
+            trade_date=Tx.date_to_str(b.acquire_tx_date),
+            settlement_date=Tx.date_to_str(b.acquire_settle_date),
+            date_and_time=Tx.date_to_str(b.acquire_settle_date),
+            action=Action.BUY,
+            amount_per_share=float(b.acquire_share_price),
+            num_shares=b.acquire_shares,
+            commission=0.0,
+            currency='USD',
+            memo=b.plan_note,
+            exchange_rate=None,
+         )
+
+      sell_tx = Tx(
+            security=b.security,
+            trade_date=Tx.date_to_str(b.sell_to_cover_tx_date),
+            settlement_date=Tx.date_to_str(b.sell_to_cover_settle_date),
+            date_and_time=Tx.date_to_str(b.sell_to_cover_settle_date),
+            action=Action.SELL,
+            amount_per_share=float(b.sell_to_cover_price),
+            num_shares=b.sell_to_cover_shares,
+            commission=float(b.sell_to_cover_fee),
+            currency='USD',
+            memo=f"{b.plan_note} sell-to-cover",
+            exchange_rate=None,
+         )
+
+      renderer.txs.append(buy_tx)
+      renderer.txs.append(sell_tx)
+
+   renderer.sort_txs()
+   return renderer
 
 def text_to_common_data(text: str) -> dict:
    return {
@@ -221,14 +269,6 @@ def text_to_trade_confirmation_objs(text: str):
          ))
    return objs
 
-@contextmanager
-def StderrSilencer():
-   with open('/dev/null', 'w+') as devnull:
-      stderr = sys.stderr
-      sys.stderr = devnull
-      yield
-      sys.stderr = stderr
-
 def parse_pdf(f: io.BufferedReader) -> Union[BenefitEntry, TradeConfirmation]:
    reader = PyPDF2.PdfReader(f)
    with StderrSilencer():
@@ -241,11 +281,12 @@ def parse_pdf(f: io.BufferedReader) -> Union[BenefitEntry, TradeConfirmation]:
    elif re.search(r'TRADE\s*CONFIRMATION', text):
       obj = text_to_trade_confirmation_objs(text)
    else:
-      pprint(text)
-      print("Error: Unrecognized PDF format")
+      pprint(text, stream=sys.stderr)
+      print("Error: Unrecognized PDF format", file=sys.stderr)
       exit(1)
 
-   pprint(obj)
+   if _debug:
+      pprint(obj)
    return obj
 
 def find_and_apply_sell_to_cover_trade_set(benefit, trade_confs):
@@ -258,18 +299,26 @@ def find_and_apply_sell_to_cover_trade_set(benefit, trade_confs):
          if n_shares == benefit.sell_to_cover_shares:
             if matching_trades is not None:
                print(f"Error: Multiple trade combinations near {benefit.acquire_tx_date} "
-                      "could potentially constitute the sale")
+                      "could potentially constitute the sale", file=sys.stderr)
                return []
             else:
                matching_trades = trades
 
    if matching_trades:
-      benefit.sell_to_cover_tx_date=matching_trades[0].tx_date
-      benefit.sell_to_cover_settle_date=matching_trades[0].settle_date
+      matching_trades = sorted(matching_trades, key=lambda t: t.tx_date)
+      t0 = matching_trades[0]
+      for t in matching_trades[1:]:
+         if t.tx_date != t0.tx_date or t.settle_date != t0.settle_date:
+            print("Warning: sell-to-cover trades have varrying dates:",
+                  file=sys.stderr)
+            for t_ in matching_trades:
+               pprint(t_, stream=sys.stderr)
+      benefit.sell_to_cover_tx_date=t0.tx_date
+      benefit.sell_to_cover_settle_date=t0.settle_date
       return matching_trades
    else:
       print(f"Error: Found no trades matching the sell-to-cover for {benefit.plan_note} "
-            f"{benefit.acquire_tx_date}")
+            f"{benefit.acquire_tx_date}", file=sys.stderr)
       return []
 
 def amend_benefit_sales(benefits, trade_confs):
@@ -306,16 +355,21 @@ for both sales is to the same document, so only one needs to be downloaded.
 Run this script, giving the name of all PDFs as arguments.""",
          formatter_class=argparse.RawDescriptionHelpFormatter,)
    ap.add_argument('files', metavar='FILES', nargs='+')
+   ap.add_argument('--pretty', action='store_true')
+   ap.add_argument('--debug', action='store_true')
    args = ap.parse_args()
+
+   global _debug
+   _debug = args.debug
 
    benefits = []
    trade_confs = []
    first = True
    for fname in args.files:
       if not first:
-         print()
+         debug()
       first = False
-      print("Parsing ", fname)
+      debug("Parsing ", fname)
       with open(fname, 'rb') as f:
          obj = parse_pdf(f)
          if isinstance(obj, BenefitEntry):
@@ -324,12 +378,18 @@ Run this script, giving the name of all PDFs as arguments.""",
             trade_confs.extend(obj)
 
    remaining_trades = amend_benefit_sales(benefits, trade_confs)
-   print("\nAmmended benefit entries:")
+   debug("\nAmmended benefit entries:")
    for b in benefits:
-      pprint(b)
-   print("\nRemaining trades:")
+      ppdebug(b)
+   debug("\nRemaining trades:")
    for t in remaining_trades:
-      pprint(t)
+      ppdebug(t)
+
+   renderer = make_tx_renderer(benefits)
+   if args.pretty:
+      renderer.render_table()
+   else:
+      renderer.render_csv()
 
 if __name__ == '__main__':
    exit(main())

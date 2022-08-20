@@ -12,6 +12,11 @@ This is primarily designed for Canadians filing tax returns, who have stocks, RS
 - Can do computations for multiple securities/symbols in a single execution
 - Can apply an "initial" value for each symbol (eg. apply last year's used ACB/stock quanity)
 
+### "Bonus" Script Features
+In addition to the main `acb` app, a few extra scripts are provided for convenience. See the `py/` directory (you'll need to run `setup.sh` first).
+- tx-export-convert.py: Convert exported transaction spreadsheets to acb-compatible csv files (Questrade-only for now)
+- etrade-plan-pdf-tx-extract.py: Generate acb csv files from ETRADE stock plan PDFs.
+
 ## Example
 
 A csv file like so:
