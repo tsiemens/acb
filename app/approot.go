@@ -14,7 +14,12 @@ import (
 	ptf "github.com/tsiemens/acb/portfolio"
 )
 
-var AcbVersion = "0.6.0"
+// Version is of the format 0.YY.MM[.i], or 0.year.month.optional_minor_increment
+// This is similar to Ubuntu's versioning scheme, and allows for a more immediate
+// reference for when the last time the app was updated.
+// Major version is kept at 0, since the app is perpetually in 'beta' due to there
+// not being a tax-lawer on staff to verify anything.
+var AcbVersion = "0.22.08"
 
 /* Takes a list of security status strings, each formatted as:
  * SYM:nShares:totalAcb. Eg. GOOG:20:1000.00
