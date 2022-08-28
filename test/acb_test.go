@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/markphelps/optional"
 	"github.com/stretchr/testify/require"
 
 	"github.com/tsiemens/acb/date"
@@ -143,15 +144,29 @@ func TestBasicSellAcb(t *testing.T) {
 func doTestSuperficialLosses(t *testing.T, partialLosses bool) {
 	rq := require.New(t)
 
-	makeTx := func(day int, action ptf.TxAction, shares uint32, amount float64) *ptf.Tx {
+	makeTxV := func(
+		day int, action ptf.TxAction, shares uint32, amount float64,
+		curr ptf.Currency, fxRate float64, expSfl optional.Float64,
+	) *ptf.Tx {
 		commission := 0.0
 		if action == ptf.BUY {
 			commission = 2.0
 		}
 		return &ptf.Tx{Security: "FOO", SettlementDate: mkDate(day), Action: action,
 			Shares: shares, AmountPerShare: amount, Commission: commission,
-			TxCurrency: ptf.CAD, TxCurrToLocalExchangeRate: 1.0,
-			CommissionCurrency: ptf.CAD, CommissionCurrToLocalExchangeRate: 1.0}
+			TxCurrency: curr, TxCurrToLocalExchangeRate: fxRate,
+			CommissionCurrency: curr, CommissionCurrToLocalExchangeRate: fxRate,
+			SpecifiedSuperficialLoss: expSfl,
+		}
+	}
+	makeTxWithCurr := func(
+		day int, action ptf.TxAction, shares uint32, amount float64,
+		curr ptf.Currency, fxRate float64,
+	) *ptf.Tx {
+		return makeTxV(day, action, shares, amount, curr, fxRate, optional.Float64{})
+	}
+	makeTx := func(day int, action ptf.TxAction, shares uint32, amount float64) *ptf.Tx {
+		return makeTxWithCurr(day, action, shares, amount, ptf.CAD, 1.0)
 	}
 
 	/*
@@ -246,6 +261,26 @@ func doTestSuperficialLosses(t *testing.T, partialLosses bool) {
 	validate(3, 10, 14.0, 0) // buy
 
 	/*
+		USD SFL test.
+		buy 10 (in USD)
+		wait
+		sell 5 (in USD) (superficial loss) -- min(5, 5, 10) / 5 = 1
+		buy 5 (in USD)
+	*/
+	tx0 = makeTxWithCurr(1, ptf.BUY, 10, 1.0, ptf.USD, 1.2)
+	// Sell causing superficial loss, because of quick buyback
+	tx1 = makeTxWithCurr(50, ptf.SELL, 5, 0.2, ptf.USD, 1.2)
+	tx2 = makeTxWithCurr(51, ptf.BUY, 5, 0.2, ptf.USD, 1.2)
+	txs = []*ptf.Tx{tx0, tx1, tx2}
+
+	deltas, err = ptf.TxsToDeltaList(txs, nil, plo)
+	rq.Nil(err)
+	validate(0, 10, 14.4, 0) // buy, ACB (CAD) = (10*1.0 + 2) * 1.2
+	validate(1, 5, 7.2, 0)   // sell sfl $1 USD (1.2 CAD)
+	validate(2, 5, 13.2, 0)  // sfl ACB adjust
+	validate(3, 10, 16.8, 0) // buy
+
+	/*
 		buy 10
 		wait
 		sell 5 (loss)
@@ -336,6 +371,77 @@ func doTestSuperficialLosses(t *testing.T, partialLosses bool) {
 	rq.Nil(err)
 	validate(0, 10, 12.0, 0)
 	validate(1, 5, 6.0, 4.0)
+
+	// ************** Explicit Superficial Losses ***************************
+	// Only test with partial losses, since we'll deprecate this before the next
+	// release.
+	if partialLosses {
+		// Override a detected SFL
+		/*
+			USD SFL test.
+			buy 10 (in USD)
+			wait
+			sell 5 (in USD) (superficial loss)
+			buy 5 (in USD)
+		*/
+		tx0 = makeTxWithCurr(1, ptf.BUY, 10, 1.0, ptf.USD, 1.2)
+		// Sell causing superficial loss, because of quick buyback
+		tx1 = makeTxV(50, ptf.SELL, 5, 0.2, ptf.USD, 1.2, optional.NewFloat64(-0.7) /*SFL override in CAD*/)
+		// ACB adjust is partial, as if splitting some to another affiliate.
+		tx2 = makeTxV(50, ptf.SFLA, 5, 0.02, ptf.DEFAULT_CURRENCY, 1.0, optional.Float64{})
+		tx3 = makeTxWithCurr(51, ptf.BUY, 5, 0.2, ptf.USD, 1.2)
+		txs = []*ptf.Tx{tx0, tx1, tx2, tx3}
+
+		deltas, err = ptf.TxsToDeltaList(txs, nil, plo)
+		rq.Nil(err)
+		validate(0, 10, 14.4, 0)  // buy, ACB (CAD) = (10*1.0 + 2) * 1.2
+		validate(1, 5, 7.2, -5.3) // sell for $1 USD, capital loss $-5 USD before SFL deduction, sfl 0.7 CAD
+		validate(2, 5, 7.3, 0)    // sfl ACB adjust 0.02 * 5
+		validate(3, 10, 10.9, 0)  // buy
+
+		// Add an un-detectable SFL (ie, the buy occurred in an untracked affiliate)
+		/*
+			USD SFL test.
+			buy 10 (in USD)
+			wait
+			sell 5 (in USD) (loss)
+		*/
+		tx0 = makeTxWithCurr(1, ptf.BUY, 10, 1.0, ptf.USD, 1.2)
+		// Sell causing superficial loss, because of quick buyback
+		tx1 = makeTxV(50, ptf.SELL, 5, 0.2, ptf.USD, 1.2, optional.NewFloat64(-0.7) /*SFL override in CAD*/)
+		// ACB adjust is partial, as if splitting some to another affiliate.
+		tx2 = makeTxV(50, ptf.SFLA, 5, 0.02, ptf.CAD, 1.0, optional.Float64{})
+		txs = []*ptf.Tx{tx0, tx1, tx2}
+
+		deltas, err = ptf.TxsToDeltaList(txs, nil, plo)
+		rq.Nil(err)
+		validate(0, 10, 14.4, 0)  // buy, ACB (CAD) = (10*1.0 + 2) * 1.2
+		validate(1, 5, 7.2, -5.3) // sell for $1 USD, capital loss $-5 USD before SFL deduction, sfl 0.7 CAD
+		validate(2, 5, 7.3, 0)    // sfl ACB adjust 0.02 * 5
+
+		// Currency errors
+		// Sanity check for ok by itself.
+		tx0 = makeTxV(50, ptf.SFLA, 1, 0.1, ptf.CAD, 1.0, optional.Float64{})
+		txs = []*ptf.Tx{tx0}
+		deltas, err = ptf.TxsToDeltaList(txs, nil, plo)
+		rq.Nil(err)
+		validate(0, 0, 0.1, 0)
+		tx0 = makeTxV(50, ptf.SFLA, 1, 0.1, ptf.DEFAULT_CURRENCY, 1.0, optional.Float64{})
+		txs = []*ptf.Tx{tx0}
+		deltas, err = ptf.TxsToDeltaList(txs, nil, plo)
+		rq.Nil(err)
+		validate(0, 0, 0.1, 0)
+		// Non 1.0 exchange rate
+		tx0 = makeTxV(50, ptf.SFLA, 5, 0.02, ptf.USD, 1.0, optional.Float64{})
+		txs = []*ptf.Tx{tx0}
+		_, err = ptf.TxsToDeltaList(txs, nil, plo)
+		rq.NotNil(err)
+		// Non 1.0 exchange rate
+		tx0 = makeTxV(50, ptf.SFLA, 5, 0.02, ptf.CAD, 1.1, optional.Float64{})
+		txs = []*ptf.Tx{tx0}
+		_, err = ptf.TxsToDeltaList(txs, nil, plo)
+		rq.NotNil(err)
+	}
 }
 
 func TestSuperficialLosses(t *testing.T) {

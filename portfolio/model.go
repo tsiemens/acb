@@ -80,6 +80,8 @@ type Tx struct {
 	// specified by the user. May be cross-validated against calculated SFL to emit
 	// warnings. If specified, the user is also required to specify one or more
 	// SfLA Txs following this one, accounting for all shares experiencing the loss.
+	// NOTE: This is always a negative (or zero) value in CAD, so that it matches the
+	// displayed value
 	SpecifiedSuperficialLoss optional.Float64
 
 	// The absolute order in which the Tx was read from file or entered.

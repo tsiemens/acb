@@ -8,6 +8,8 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/markphelps/optional"
+
 	"github.com/tsiemens/acb/date"
 	"github.com/tsiemens/acb/fx"
 )
@@ -33,6 +35,7 @@ var colParserMap = map[string]ColParser{
 	"exchange rate":            parseTxFx,
 	"commission currency":      parseCommissionCurr,
 	"commission exchange rate": parseCommissionFx,
+	"superficial loss":         parseSuperficialLoss,
 	"memo":                     parseMemo,
 }
 
@@ -196,6 +199,8 @@ func parseAction(data string, tx *Tx) error {
 		action = SELL
 	case "roc":
 		action = ROC
+	case "sfla":
+		action = SFLA
 	default:
 		return fmt.Errorf("Invalid action: '%s'", data)
 	}
@@ -267,6 +272,21 @@ func parseCommissionFx(data string, tx *Tx) error {
 		}
 	}
 	tx.CommissionCurrToLocalExchangeRate = fx
+	return nil
+}
+
+func parseSuperficialLoss(data string, tx *Tx) error {
+	sfl, err := strconv.ParseFloat(data, 64)
+	if data != "" {
+		if err != nil {
+			return fmt.Errorf("Error parsing superficial loss: %v", err)
+		}
+		if sfl > 0.0 {
+			return fmt.Errorf(
+				"Error: superficial loss must be specified as a non-positive value: %f", sfl)
+		}
+		tx.SpecifiedSuperficialLoss = optional.NewFloat64(sfl)
+	}
 	return nil
 }
 

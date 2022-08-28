@@ -149,7 +149,7 @@ func AddTx(
 		if tx.Shares > preTxStatus.ShareBalance {
 			return nil, nil, fmt.Errorf(
 				"Sell order on %v of %d shares of %s is more than the current holdings (%d)",
-				tx.SettlementDate, tx.Shares, tx.Security, preTxStatus.ShareBalance)
+				tx.TradeDate, tx.Shares, tx.Security, preTxStatus.ShareBalance)
 		}
 		newShareBalance = preTxStatus.ShareBalance - tx.Shares
 		// Note commission plays no effect on sell order ACB
@@ -157,19 +157,18 @@ func AddTx(
 		totalPayout := totalLocalSharePrice - (tx.Commission * tx.CommissionCurrToLocalExchangeRate)
 		capitalGains = totalPayout - (preTxStatus.PerShareAcb() * float64(tx.Shares))
 
-		// TODO Check for SpecifiedSuperficialLoss
-
 		if capitalGains < 0.0 && applySuperficialLosses {
 			superficialLossRatio = getSuperficialLossRatio(idx, txs, newShareBalance)
-			if superficialLossRatio.Valid() {
+			if tx.SpecifiedSuperficialLoss.Present() {
+				superficialLoss = tx.SpecifiedSuperficialLoss.MustGet()
+				capitalGains = capitalGains - superficialLoss
+				// Loss adjustment must be specified manually in this case.
+			} else if superficialLossRatio.Valid() {
 				if noPartialSuperficialLosses {
 					superficialLossRatio.Numerator = superficialLossRatio.Denominator
-					superficialLoss = capitalGains
-					capitalGains = 0.0
-				} else {
-					superficialLoss = capitalGains * superficialLossRatio.ToFloat64()
-					capitalGains = capitalGains - superficialLoss
 				}
+				superficialLoss = capitalGains * superficialLossRatio.ToFloat64()
+				capitalGains = capitalGains - superficialLoss
 
 				// This new Tx will adjust (increase) the ACB for this superficial loss.
 				newTx = &Tx{
@@ -179,28 +178,38 @@ func AddTx(
 					Action:                    SFLA,
 					Shares:                    superficialLossRatio.Numerator,
 					AmountPerShare:            -1.0 * superficialLoss / float64(superficialLossRatio.Numerator),
-					TxCurrency:                tx.TxCurrency,
-					TxCurrToLocalExchangeRate: tx.TxCurrToLocalExchangeRate,
+					TxCurrency:                CAD,
+					TxCurrToLocalExchangeRate: 1.0,
 					Memo:                      "automatic SfL ACB adjustment",
 				}
 			}
+		} else if tx.SpecifiedSuperficialLoss.Present() {
+			return nil, nil, fmt.Errorf(
+				"Sell order on %v of %s: superficial loss was specified, but there is no capital loss",
+				tx.TradeDate, tx.Security)
 		}
 	case ROC:
 		if tx.Shares != 0 {
 			return nil, nil, fmt.Errorf("Invalid RoC tx on %v: # of shares is non-zero (%d)",
-				tx.SettlementDate, tx.Shares)
+				tx.TradeDate, tx.Shares)
 		}
 		acbReduction := tx.AmountPerShare * float64(preTxStatus.ShareBalance) *
 			tx.TxCurrToLocalExchangeRate
 		newAcbTotal = preTxStatus.TotalAcb - acbReduction
 		if newAcbTotal < 0.0 {
 			return nil, nil, fmt.Errorf("Invalid RoC tx on %v: RoC (%f) exceeds the current ACB (%f)",
-				tx.SettlementDate, acbReduction, preTxStatus.TotalAcb)
+				tx.TradeDate, acbReduction, preTxStatus.TotalAcb)
 		}
 	case SFLA:
 		acbAdjustment := tx.AmountPerShare * float64(tx.Shares) *
 			tx.TxCurrToLocalExchangeRate
 		newAcbTotal = preTxStatus.TotalAcb + acbAdjustment
+		if !(tx.TxCurrency == CAD || tx.TxCurrency == DEFAULT_CURRENCY) ||
+			tx.TxCurrToLocalExchangeRate != 1.0 {
+			return nil, nil, fmt.Errorf(
+				"Invalid SfLA tx on %v: Currency is not CAD/default, and/or exchange rate is not 1",
+				tx.TradeDate)
+		}
 	default:
 		util.Assertf(false, "Invalid action: %v\n", tx.Action)
 	}
