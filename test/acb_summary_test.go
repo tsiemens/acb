@@ -24,6 +24,15 @@ func makeTxYD(year uint32, dayOfYear int,
 		CommissionCurrency: ptf.CAD, CommissionCurrToLocalExchangeRate: 1.0}
 }
 
+func makeSflaTxYD(year uint32, dayOfYear int, shares uint32, amount float64) *ptf.Tx {
+	dt := mkDateYD(year, dayOfYear)
+	return &ptf.Tx{Security: "FOO", TradeDate: dt.AddDays(-2), SettlementDate: dt, Action: ptf.SFLA,
+		Shares: shares, AmountPerShare: amount, Commission: 0.0,
+		TxCurrency: ptf.CAD, TxCurrToLocalExchangeRate: 1.0,
+		CommissionCurrency: ptf.DEFAULT_CURRENCY, CommissionCurrToLocalExchangeRate: 0.0,
+		Memo: "automatic SfL ACB adjustment"}
+}
+
 func makeSummaryTx(year uint32, dayOfYear int, shares uint32, amount float64) *ptf.Tx {
 	dt := mkDateYD(year, dayOfYear)
 	return &ptf.Tx{Security: "FOO", TradeDate: dt, SettlementDate: dt, Action: ptf.BUY,
@@ -208,8 +217,9 @@ func TestSummary(t *testing.T) {
 	}
 	expSummaryTxs = []*ptf.Tx{
 		makeSummaryTx(2022, -32, 8, 1.25),
-		makeTxYD(2022, -31, ptf.BUY, 2, 1.0),
-		makeTxYD(2022, -1, ptf.SELL, 2, 0.2), // SFL
+		makeTxYD(2022, -31, ptf.BUY, 2, 1.0), // ACB of 14 total after here.
+		makeTxYD(2022, -1, ptf.SELL, 2, 0.2), // SFL of $2.4
+		makeSflaTxYD(2022, -1, 2, 1.2),
 	}
 
 	deltas = th.txsToDeltaList(txs)
@@ -233,10 +243,12 @@ func TestSummary(t *testing.T) {
 	}
 	expSummaryTxs = []*ptf.Tx{
 		makeSummaryTx(2022, -70, 8, 1.45),
-		makeTxYD(2022, -45, ptf.BUY, 8, 1.0),  // commission 2.0
-		makeTxYD(2022, -31, ptf.BUY, 2, 1.0),  // commission 2.0
-		makeTxYD(2022, -15, ptf.SELL, 2, 0.2), // SFL
-		makeTxYD(2022, -1, ptf.SELL, 2, 0.2),  // SFL
+		makeTxYD(2022, -45, ptf.BUY, 8, 1.0),           // commission 2.0, post ACB = 21.6
+		makeTxYD(2022, -31, ptf.BUY, 2, 1.0),           // commission 2.0, post ACB = 25.6
+		makeTxYD(2022, -15, ptf.SELL, 2, 0.2),          // SFL of 2.4444444444, ACB = 22.755555556
+		makeSflaTxYD(2022, -15, 2, 1.2222222222222223), // ACB of 25.2
+		makeTxYD(2022, -1, ptf.SELL, 2, 0.2),           // SFL of 2.75, ACB = 22.05
+		makeSflaTxYD(2022, -1, 2, 1.3750000000000002),
 	}
 
 	deltas = th.txsToDeltaList(txs)
@@ -274,9 +286,10 @@ func TestSummary(t *testing.T) {
 	}
 	expSummaryTxs = []*ptf.Tx{
 		makeSummaryTx(2022, -33, 10, 1.2),
-		makeTxYD(2022, -20, ptf.BUY, 4, 1.0), // commission 2.0
-		makeTxYD(2022, -2, ptf.SELL, 2, 0.2), // SFL
-		makeTxYD(2022, -1, ptf.BUY, 2, 0.2),  // commission 2.0
+		makeTxYD(2022, -20, ptf.BUY, 4, 1.0), // commission 2.0, ACB = 18
+		makeTxYD(2022, -2, ptf.SELL, 2, 0.2), // SFL of 2.171428571, ACB = 15.428571429
+		makeSflaTxYD(2022, -2, 2, 1.0857142857142859),
+		makeTxYD(2022, -1, ptf.BUY, 2, 0.2), // commission 2.0
 	}
 
 	deltas = th.txsToDeltaList(txs)

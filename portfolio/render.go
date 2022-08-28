@@ -66,10 +66,13 @@ func RenderTxTableModel(
 
 	for _, d := range deltas {
 		superficialLossAsterix := ""
-		superficialLossAddAsterix := ""
 		if d.SuperficialLoss != 0.0 {
-			superficialLossAsterix = fmt.Sprintf(" *\n(SFL %s)", ph.PlusMinusDollar(d.SuperficialLoss, false))
-			superficialLossAddAsterix = fmt.Sprintf(" *\n(%s)", ph.PlusMinusDollar(-1*d.SuperficialLoss, true))
+			superficialLossAsterix = fmt.Sprintf(
+				" *\n(SfL %s; %d/%d)",
+				ph.PlusMinusDollar(d.SuperficialLoss, false),
+				d.SuperficialLossRatio.Numerator,
+				d.SuperficialLossRatio.Denominator,
+			)
 			sawSuperficialLoss = true
 		}
 		tx := d.Tx
@@ -92,8 +95,8 @@ func RenderTxTableModel(
 			// Cap gains
 			strOrDash(tx.Action == SELL, ph.PlusMinusDollar(d.CapitalGain, false)+superficialLossAsterix),
 			fmt.Sprintf("%d", d.PostStatus.ShareBalance),
-			ph.PlusMinusDollar(d.AcbDelta(), true) + superficialLossAddAsterix,
-			"$" + ph.CurrStr(d.PostStatus.TotalAcb) + superficialLossAddAsterix,
+			ph.PlusMinusDollar(d.AcbDelta(), true),
+			"$" + ph.CurrStr(d.PostStatus.TotalAcb),
 			// Acb per share
 			strOrDash(d.PostStatus.ShareBalance > 0.0,
 				"$"+ph.CurrStr(d.PostStatus.TotalAcb/float64(d.PostStatus.ShareBalance))),
@@ -123,7 +126,7 @@ func RenderTxTableModel(
 
 	// Notes
 	if sawSuperficialLoss {
-		table.Notes = append(table.Notes, " */SFL = Superficial loss adjustment")
+		table.Notes = append(table.Notes, " */SfL = Superficial loss adjustment")
 	}
 
 	return table

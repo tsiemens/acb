@@ -101,18 +101,30 @@ func getSuperficialLossInfo(idx int, txs []*Tx, shareBalanceAfterSell uint32) _S
 // the loss is actually superficial.
 //
 // Reference: https://www.adjustedcostbase.ca/blog/applying-the-superficial-loss-rule-for-a-partial-disposition-of-shares/
-func SuperficialLossPercent(idx int, txs []*Tx, shareBalanceAfterSell uint32) float64 {
+func getSuperficialLossRatio(idx int, txs []*Tx, shareBalanceAfterSell uint32) util.Uint32Ratio {
 	sli := getSuperficialLossInfo(idx, txs, shareBalanceAfterSell)
 
 	if sli.IsSuperficial {
 		tx := txs[idx]
-		return float64(util.MinUint32(tx.Shares, sli.TotalAquiredInPeriod, sli.SharesAtEndOfPeriod)) / float64(tx.Shares)
+		return util.Uint32Ratio{
+			util.MinUint32(tx.Shares, sli.TotalAquiredInPeriod, sli.SharesAtEndOfPeriod),
+			tx.Shares,
+		}
 	} else {
-		return 0.0
+		return util.Uint32Ratio{}
 	}
 }
 
-func AddTx(idx int, txs []*Tx, preTxStatus *PortfolioSecurityStatus, legacyOptions LegacyOptions) (*TxDelta, error) {
+// Returns a TxDelta for the Tx at txs[idx].
+// Optionally, returns a new Tx if a SFLA Tx was generated to accompany
+// this Tx. It is expected that that Tx be inserted into txs and evaluated next.
+func AddTx(
+	idx int,
+	txs []*Tx,
+	preTxStatus *PortfolioSecurityStatus,
+	legacyOptions LegacyOptions,
+) (*TxDelta, *Tx, error) {
+
 	applySuperficialLosses := !legacyOptions.NoSuperficialLosses
 	noPartialSuperficialLosses := legacyOptions.NoPartialSuperficialLosses
 	tx := txs[idx]
@@ -125,6 +137,8 @@ func AddTx(idx int, txs []*Tx, preTxStatus *PortfolioSecurityStatus, legacyOptio
 	var newAcbTotal float64 = preTxStatus.TotalAcb
 	var capitalGains float64 = 0.0
 	var superficialLoss float64 = 0.0
+	superficialLossRatio := util.Uint32Ratio{}
+	var newTx *Tx = nil
 
 	switch tx.Action {
 	case BUY:
@@ -133,7 +147,8 @@ func AddTx(idx int, txs []*Tx, preTxStatus *PortfolioSecurityStatus, legacyOptio
 		newAcbTotal = preTxStatus.TotalAcb + (totalPrice)
 	case SELL:
 		if tx.Shares > preTxStatus.ShareBalance {
-			return nil, fmt.Errorf("Sell order on %v of %d shares of %s is more than the current holdings (%d)",
+			return nil, nil, fmt.Errorf(
+				"Sell order on %v of %d shares of %s is more than the current holdings (%d)",
 				tx.SettlementDate, tx.Shares, tx.Security, preTxStatus.ShareBalance)
 		}
 		newShareBalance = preTxStatus.ShareBalance - tx.Shares
@@ -142,30 +157,50 @@ func AddTx(idx int, txs []*Tx, preTxStatus *PortfolioSecurityStatus, legacyOptio
 		totalPayout := totalLocalSharePrice - (tx.Commission * tx.CommissionCurrToLocalExchangeRate)
 		capitalGains = totalPayout - (preTxStatus.PerShareAcb() * float64(tx.Shares))
 
+		// TODO Check for SpecifiedSuperficialLoss
+
 		if capitalGains < 0.0 && applySuperficialLosses {
-			superficialLossPercent := SuperficialLossPercent(idx, txs, newShareBalance)
-			if superficialLossPercent != 0.0 {
+			superficialLossRatio = getSuperficialLossRatio(idx, txs, newShareBalance)
+			if superficialLossRatio.Valid() {
 				if noPartialSuperficialLosses {
+					superficialLossRatio.Numerator = superficialLossRatio.Denominator
 					superficialLoss = capitalGains
 					capitalGains = 0.0
 				} else {
-					superficialLoss = capitalGains * superficialLossPercent
+					superficialLoss = capitalGains * superficialLossRatio.ToFloat64()
 					capitalGains = capitalGains - superficialLoss
 				}
-				newAcbTotal -= superficialLoss
+
+				// This new Tx will adjust (increase) the ACB for this superficial loss.
+				newTx = &Tx{
+					Security:                  tx.Security,
+					TradeDate:                 tx.TradeDate,
+					SettlementDate:            tx.SettlementDate,
+					Action:                    SFLA,
+					Shares:                    superficialLossRatio.Numerator,
+					AmountPerShare:            -1.0 * superficialLoss / float64(superficialLossRatio.Numerator),
+					TxCurrency:                tx.TxCurrency,
+					TxCurrToLocalExchangeRate: tx.TxCurrToLocalExchangeRate,
+					Memo:                      "automatic SfL ACB adjustment",
+				}
 			}
 		}
 	case ROC:
 		if tx.Shares != 0 {
-			return nil, fmt.Errorf("Invalid RoC tx on %v: # of shares is non-zero (%d)",
+			return nil, nil, fmt.Errorf("Invalid RoC tx on %v: # of shares is non-zero (%d)",
 				tx.SettlementDate, tx.Shares)
 		}
-		acbReduction := (tx.AmountPerShare * float64(preTxStatus.ShareBalance) * tx.TxCurrToLocalExchangeRate)
+		acbReduction := tx.AmountPerShare * float64(preTxStatus.ShareBalance) *
+			tx.TxCurrToLocalExchangeRate
 		newAcbTotal = preTxStatus.TotalAcb - acbReduction
 		if newAcbTotal < 0.0 {
-			return nil, fmt.Errorf("Invalid RoC tx on %v: RoC (%f) exceeds the current ACB (%f)",
+			return nil, nil, fmt.Errorf("Invalid RoC tx on %v: RoC (%f) exceeds the current ACB (%f)",
 				tx.SettlementDate, acbReduction, preTxStatus.TotalAcb)
 		}
+	case SFLA:
+		acbAdjustment := tx.AmountPerShare * float64(tx.Shares) *
+			tx.TxCurrToLocalExchangeRate
+		newAcbTotal = preTxStatus.TotalAcb + acbAdjustment
 	default:
 		util.Assertf(false, "Invalid action: %v\n", tx.Action)
 	}
@@ -176,16 +211,31 @@ func AddTx(idx int, txs []*Tx, preTxStatus *PortfolioSecurityStatus, legacyOptio
 		TotalAcb:     newAcbTotal,
 	}
 	delta := &TxDelta{
-		Tx:              tx,
-		PreStatus:       preTxStatus,
-		PostStatus:      newStatus,
-		CapitalGain:     capitalGains,
-		SuperficialLoss: superficialLoss,
+		Tx:                   tx,
+		PreStatus:            preTxStatus,
+		PostStatus:           newStatus,
+		CapitalGain:          capitalGains,
+		SuperficialLoss:      superficialLoss,
+		SuperficialLossRatio: superficialLossRatio,
 	}
-	return delta, nil
+	return delta, newTx, nil
 }
 
-func TxsToDeltaList(txs []*Tx, initialStatus *PortfolioSecurityStatus, legacyOptions LegacyOptions) ([]*TxDelta, error) {
+// Insert tx at index i and return the resulting slice
+func insertTx(slice []*Tx, tx *Tx, i int) []*Tx {
+	newSlice := make([]*Tx, 0, len(slice)+1)
+	newSlice = append(newSlice, slice[:i]...)
+	newSlice = append(newSlice, tx)
+	newSlice = append(newSlice, slice[i:]...)
+	return newSlice
+}
+
+func TxsToDeltaList(
+	txs []*Tx,
+	initialStatus *PortfolioSecurityStatus,
+	legacyOptions LegacyOptions,
+) ([]*TxDelta, error) {
+
 	if initialStatus == nil {
 		if len(txs) == 0 {
 			return []*TxDelta{}, nil
@@ -195,16 +245,31 @@ func TxsToDeltaList(txs []*Tx, initialStatus *PortfolioSecurityStatus, legacyOpt
 		}
 	}
 
+	var modifiedTxs []*Tx
+	activeTxs := txs
 	deltas := make([]*TxDelta, 0, len(txs))
 	lastStatus := initialStatus
-	for i, _ := range txs {
-		delta, err := AddTx(i, txs, lastStatus, legacyOptions)
+
+	for i := 0; i < len(activeTxs); i++ {
+		delta, newTx, err := AddTx(i, activeTxs, lastStatus, legacyOptions)
 		if err != nil {
 			// Return what we've managed so far, for debugging
 			return deltas, err
 		}
 		lastStatus = delta.PostStatus
 		deltas = append(deltas, delta)
+		if newTx != nil {
+			// Add new Tx into modifiedTxs
+			if modifiedTxs == nil {
+				// Copy Txs, as we now need to modify
+				modifiedTxs = make([]*Tx, 0, len(txs))
+				modifiedTxs = append(modifiedTxs, txs...)
+				activeTxs = modifiedTxs
+			}
+			// Insert into modifiedTxs after the current Tx
+			modifiedTxs = insertTx(modifiedTxs, newTx, i+1)
+			activeTxs = modifiedTxs
+		}
 	}
 	return deltas, nil
 }

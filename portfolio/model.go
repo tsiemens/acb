@@ -3,7 +3,10 @@ package portfolio
 import (
 	"sort"
 
+	"github.com/markphelps/optional"
+
 	"github.com/tsiemens/acb/date"
+	"github.com/tsiemens/acb/util"
 )
 
 type Currency string
@@ -20,7 +23,8 @@ const (
 	NO_ACTION TxAction = iota
 	BUY
 	SELL
-	ROC // Return of capital
+	ROC  // Return of capital
+	SFLA // Superficial loss ACB adjustment
 )
 
 func (a TxAction) String() string {
@@ -32,6 +36,8 @@ func (a TxAction) String() string {
 		str = "Sell"
 	case ROC:
 		str = "RoC"
+	case SFLA:
+		str = "SfLA"
 	default:
 	}
 	return str
@@ -67,17 +73,29 @@ type Tx struct {
 	CommissionCurrency                Currency
 	CommissionCurrToLocalExchangeRate float64
 	Memo                              string
+
+	// More commonly optional fields/columns
+
+	// The total superficial loss for the transaction, as explicitly
+	// specified by the user. May be cross-validated against calculated SFL to emit
+	// warnings. If specified, the user is also required to specify one or more
+	// SfLA Txs following this one, accounting for all shares experiencing the loss.
+	SpecifiedSuperficialLoss optional.Float64
+
 	// The absolute order in which the Tx was read from file or entered.
 	// Used as a tiebreak in sorting.
 	ReadIndex uint32
 }
 
 type TxDelta struct {
-	Tx              *Tx
-	PreStatus       *PortfolioSecurityStatus
-	PostStatus      *PortfolioSecurityStatus
-	CapitalGain     float64
+	Tx          *Tx
+	PreStatus   *PortfolioSecurityStatus
+	PostStatus  *PortfolioSecurityStatus
+	CapitalGain float64
+
 	SuperficialLoss float64
+	// A ratio, representing <N reacquired shares which suffered SFL> / <N sold shares>
+	SuperficialLossRatio util.Uint32Ratio
 }
 
 func (d *TxDelta) AcbDelta() float64 {
@@ -85,10 +103,6 @@ func (d *TxDelta) AcbDelta() float64 {
 		return d.PostStatus.TotalAcb
 	}
 	return d.PostStatus.TotalAcb - d.PreStatus.TotalAcb
-}
-
-func (d *TxDelta) SuperficialLossPercent() float64 {
-	return d.SuperficialLoss / (d.SuperficialLoss + d.CapitalGain)
 }
 
 type txSorter struct {
@@ -124,6 +138,8 @@ func (s *txSorter) Less(i, j int) bool {
 				return 1
 			case SELL:
 				return 2
+			case SFLA:
+				return 3
 			default:
 				return -1
 			}
