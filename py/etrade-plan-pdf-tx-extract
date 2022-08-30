@@ -50,6 +50,11 @@ class BenefitEntry:
 def make_tx_renderer(benefits):
    renderer = AcbCsvRenderer()
    for b in benefits:
+      if b.sell_to_cover_tx_date is None or b.sell_to_cover_settle_date is None:
+         print("Error: No trade or settlement date found for sell-to-cover for "
+               f"{b.acquire_shares} shares of {b.security} aquired on {b.acquire_tx_date}")
+         exit(1)
+
       buy_tx = Tx(
             security=b.security,
             trade_date=Tx.date_to_str(b.acquire_tx_date),
@@ -254,6 +259,9 @@ class TradeConfirmation:
    settle_date: datetime.date
    shares: int
 
+   def __hash__(self):
+      return hash(repr(self))
+
 def text_to_trade_confirmation_objs(text: str):
    ms = re.finditer(r'(?P<txdate>\d+/\d+/\d+)\s+(?P<sdate>\d+/\d+/\d+)\s+(?P<cpt>\d+)\s+'
                     r'(?P<sym>\S+)\s+(?P<act>\S+)\s+(?P<nshares>\d+)\s+\$(\d+\.\d+)',
@@ -298,9 +306,12 @@ def find_and_apply_sell_to_cover_trade_set(benefit, trade_confs):
          n_shares = sum(t.shares for t in trades)
          if n_shares == benefit.sell_to_cover_shares:
             if matching_trades is not None:
-               print(f"Error: Multiple trade combinations near {benefit.acquire_tx_date} "
-                      "could potentially constitute the sale", file=sys.stderr)
-               return []
+               if set(matching_trades) != set(trades):
+                  print(f"Error: Multiple trade combinations near {benefit.acquire_tx_date} "
+                         "could potentially constitute the sale", file=sys.stderr)
+                  return []
+               # If these are basically equivalent sets of trades, just skip.
+               # This is most likely to happen when multiple sells get split into X and 1.
             else:
                matching_trades = trades
 
@@ -385,6 +396,7 @@ Run this script, giving the name of all PDFs as arguments.""",
    for t in remaining_trades:
       ppdebug(t)
 
+   debug("\nTable:")
    renderer = make_tx_renderer(benefits)
    if args.pretty:
       renderer.render_table()
