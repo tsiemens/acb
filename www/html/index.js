@@ -409,16 +409,12 @@ function addAcbErrorText(err) {
 
 async function asyncRunAcb(filenames, contents) {
    const printFullDollarValues = document.getElementById('print-full-values-checkbox').checked;
-   const noSuperficialLosses = document.getElementById('no-superficial-losses-checkbox').checked;
-   const noPartialSuperficialLosses = document.getElementById('no-partial-superficial-losses-checkbox').checked;
-   const sortBuysBeforeSells = document.getElementById('sort-buys-before-sells-checkbox').checked;
    const initSecs = getInitSecs();
    if (initSecs.invalid.length) {
       return;
    }
    const ret = runAcb(filenames, contents, initSecs.valid,
-                      printFullDollarValues,
-                      noSuperficialLosses, noPartialSuperficialLosses, sortBuysBeforeSells);
+                      printFullDollarValues);
    try {
       const resp = await ret;
       let error = resp.error;
@@ -658,7 +654,7 @@ function initPageJs() {
    });
 
    setupExpandableOptions('extra-options-button', 'extra-options-dropdown');
-   setupExpandableOptions('legacy-options-button', 'legacy-options-dropdown');
+   // setupExpandableOptions('legacy-options-button', 'legacy-options-dropdown');
 
    addInitialSecurityStateRow();
 

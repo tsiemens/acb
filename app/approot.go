@@ -57,17 +57,11 @@ type DescribedReader struct {
 }
 
 type LegacyOptions struct {
-	NoSuperficialLosses        bool
-	NoPartialSuperficialLosses bool
-	SortBuysBeforeSells        bool
+	// None currently
 }
 
 func NewLegacyOptions() LegacyOptions {
-	return LegacyOptions{
-		NoSuperficialLosses:        false,
-		NoPartialSuperficialLosses: false,
-		SortBuysBeforeSells:        false,
-	}
+	return LegacyOptions{}
 }
 
 type Options struct {
@@ -118,13 +112,10 @@ func RunAcbAppToDeltaModels(
 		}
 	}
 
-	allTxs = ptf.SortTxs(allTxs, legacyOptions.SortBuysBeforeSells)
+	allTxs = ptf.SortTxs(allTxs)
 	txsBySec := ptf.SplitTxsBySecurity(allTxs)
 
-	portfolioLegacyOptions := ptf.LegacyOptions{
-		NoSuperficialLosses:        legacyOptions.NoSuperficialLosses,
-		NoPartialSuperficialLosses: legacyOptions.NoPartialSuperficialLosses,
-	}
+	portfolioLegacyOptions := ptf.LegacyOptions{}
 	secModels := make(map[string]*SecurityDeltas)
 
 	for sec, secTxs := range txsBySec {

@@ -9,15 +9,11 @@ import (
 )
 
 type LegacyOptions struct {
-	NoSuperficialLosses        bool
-	NoPartialSuperficialLosses bool
+	// None currently
 }
 
 func NewLegacyOptions() LegacyOptions {
-	return LegacyOptions{
-		NoSuperficialLosses:        false,
-		NoPartialSuperficialLosses: false,
-	}
+	return LegacyOptions{}
 }
 
 type _SuperficialLossInfo struct {
@@ -123,11 +119,8 @@ func AddTx(
 	idx int,
 	txs []*Tx,
 	preTxStatus *PortfolioSecurityStatus,
-	legacyOptions LegacyOptions,
 ) (*TxDelta, *Tx, error) {
 
-	applySuperficialLosses := !legacyOptions.NoSuperficialLosses
-	noPartialSuperficialLosses := legacyOptions.NoPartialSuperficialLosses
 	tx := txs[idx]
 	util.Assertf(tx.Security == preTxStatus.Security,
 		"AddTx: securities do not match (%s and %s)\n", tx.Security, preTxStatus.Security)
@@ -158,18 +151,14 @@ func AddTx(
 		totalPayout := totalLocalSharePrice - (tx.Commission * tx.CommissionCurrToLocalExchangeRate)
 		capitalGains = totalPayout - (preTxStatus.PerShareAcb() * float64(tx.Shares))
 
-		if capitalGains < 0.0 && applySuperficialLosses {
+		if capitalGains < 0.0 {
 			superficialLossRatio = getSuperficialLossRatio(idx, txs, newShareBalance)
 			calculatedSuperficialLoss := 0.0
 			if superficialLossRatio.Valid() {
-				if noPartialSuperficialLosses {
-					superficialLossRatio.Numerator = superficialLossRatio.Denominator
-				}
 				calculatedSuperficialLoss = capitalGains * superficialLossRatio.ToFloat64()
 			}
 
 			if tx.SpecifiedSuperficialLoss.Present() {
-				// TODO check Force for errors
 				superficialLoss = tx.SpecifiedSuperficialLoss.MustGet().SuperficialLoss
 				capitalGains = capitalGains - superficialLoss
 
@@ -283,7 +272,7 @@ func TxsToDeltaList(
 	lastStatus := initialStatus
 
 	for i := 0; i < len(activeTxs); i++ {
-		delta, newTx, err := AddTx(i, activeTxs, lastStatus, legacyOptions)
+		delta, newTx, err := AddTx(i, activeTxs, lastStatus)
 		if err != nil {
 			// Return what we've managed so far, for debugging
 			return deltas, err

@@ -85,27 +85,6 @@ func TestSameDayBuySells(t *testing.T) {
 		rq.Equal(3, len(renderTable.Rows))
 		rq.ElementsMatch([]error{}, renderTable.Errors)
 		rq.Equal("$0.50", getTotalCapGain(renderTable))
-
-		// Try with legacy buys before sell
-		csvReaders = splitCsvRows(splits,
-			"FOO,2016-01-03,2016-01-05,Buy,20,1.5,CAD,,0,",
-			"FOO,2016-01-03,2016-01-05,Sell,5,1.6,CAD,,0,",
-			"FOO,2016-01-03,2016-01-05,Buy,5,1.7,CAD,,0,",
-		)
-
-		renderRes, err = app.RunAcbAppToRenderModel(
-			csvReaders, map[string]*ptf.PortfolioSecurityStatus{},
-			false, false,
-			app.LegacyOptions{SortBuysBeforeSells: true},
-			fx.NewMemRatesCacheAccessor(),
-			&log.StderrErrorPrinter{},
-		)
-
-		rq.Nil(err)
-		renderTable = getAndCheckFooTable(rq, renderRes.SecurityTables)
-		rq.Equal(3, len(renderTable.Rows))
-		rq.ElementsMatch([]error{}, renderTable.Errors)
-		rq.Equal("$0.30", getTotalCapGain(renderTable))
 	}
 }
 

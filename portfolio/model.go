@@ -112,8 +112,6 @@ func (d *TxDelta) AcbDelta() float64 {
 
 type txSorter struct {
 	Txs []*Tx
-	// Settings
-	LegacySortBuysBeforeSells bool
 }
 
 func (s *txSorter) Len() int {
@@ -133,33 +131,13 @@ func (s *txSorter) Less(i, j int) bool {
 		return false
 	}
 
-	if s.LegacySortBuysBeforeSells {
-		// Tie break on order type. Buys always first, so we don't go negative.
-		actionSortVal := func(action TxAction) int {
-			switch action {
-			case BUY:
-				return 0
-			case ROC:
-				return 1
-			case SELL:
-				return 2
-			case SFLA:
-				return 3
-			default:
-				return -1
-			}
-		}
-		return actionSortVal(s.Txs[i].Action) < actionSortVal(s.Txs[j].Action)
-	} else {
-		// Tie break by the order read from file.
-		return s.Txs[i].ReadIndex < s.Txs[j].ReadIndex
-	}
+	// Tie break by the order read from file.
+	return s.Txs[i].ReadIndex < s.Txs[j].ReadIndex
 }
 
-func SortTxs(txs []*Tx, legacySortBuysBeforeSells bool) []*Tx {
+func SortTxs(txs []*Tx) []*Tx {
 	sorter := txSorter{
-		Txs:                       txs,
-		LegacySortBuysBeforeSells: legacySortBuysBeforeSells,
+		Txs: txs,
 	}
 	sort.Sort(&sorter)
 	return sorter.Txs

@@ -126,18 +126,7 @@ func init() {
 		"Summary will include transactions which represent annual capital gains/losses."+helpNl+
 			"Only valid with --summarize-before.")
 
-	// Legacy Options
-	RootCmd.PersistentFlags().BoolVar(&legacyOptions.NoSuperficialLosses,
-		"legacy-no-superficial-losses", false,
-		"Do not apply the superficial loss rule to sold shares (behaviour pre-v0.2).")
-	RootCmd.PersistentFlags().BoolVar(&legacyOptions.NoPartialSuperficialLosses,
-		"legacy-no-partial-superficial-losses", false,
-		"Apply superficial losses in full only (behaviour pre-v0.5).")
-	// Capital gains can be different if you sell before buy, so they can't be
-	// re-ordered arbitrarily.
-	RootCmd.PersistentFlags().BoolVar(&legacyOptions.SortBuysBeforeSells,
-		"legacy-sort-buys-before-sells", false,
-		"Sort all buys before all sells made on the same day (default behaviour pre-v0.4).")
+	// Legacy Options (none currently)
 }
 
 // onInit reads in config file and ENV variables if set, and performs global

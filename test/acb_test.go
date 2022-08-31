@@ -33,8 +33,7 @@ func AlmostEqual(t *testing.T, exp float64, actual float64) {
 
 func AddTxNoErr(t *testing.T, tx *ptf.Tx, preTxStatus *ptf.PortfolioSecurityStatus) *ptf.TxDelta {
 	txs := []*ptf.Tx{tx}
-	plo := ptf.NewLegacyOptions()
-	delta, newTx, err := ptf.AddTx(0, txs, preTxStatus, plo)
+	delta, newTx, err := ptf.AddTx(0, txs, preTxStatus)
 	require.Nil(t, newTx)
 	require.Nil(t, err)
 	return delta
@@ -91,8 +90,7 @@ func TestBasicSellAcbErrors(t *testing.T) {
 		CommissionCurrency: ptf.CAD, CommissionCurrToLocalExchangeRate: 1.0}
 	txs := []*ptf.Tx{tx}
 
-	plo := ptf.NewLegacyOptions()
-	delta, newTx, err := ptf.AddTx(0, txs, sptf, plo)
+	delta, newTx, err := ptf.AddTx(0, txs, sptf)
 	rq.Nil(newTx)
 	rq.Nil(delta)
 	rq.NotNil(err)
@@ -194,10 +192,7 @@ func doTestSuperficialLosses(t *testing.T, partialLosses bool) {
 		AlmostEqual(t, gain, deltas[i].CapitalGain)
 	}
 
-	plo := ptf.LegacyOptions{
-		NoSuperficialLosses:        false,
-		NoPartialSuperficialLosses: !partialLosses,
-	}
+	plo := ptf.LegacyOptions{}
 
 	deltas, err = ptf.TxsToDeltaList(txs, nil, plo)
 	rq.Nil(err)
@@ -227,19 +222,11 @@ func doTestSuperficialLosses(t *testing.T, partialLosses bool) {
 		fmt.Println(i, "Tx:", deltas[i].Tx, "PostStatus:", deltas[i].PostStatus)
 	}
 	validate(0, 10, 12.0, 0)
-	if partialLosses {
-		validate(1, 5, 6.0, -4.0) // $1 superficial
-		validate(2, 5, 7.0, 0.0)  // acb adjust
-		validate(3, 1, 1.4, -3.6) // $1.2 superficial
-		validate(4, 1, 2.6, 0.0)  // acb adjust
-		validate(5, 0, 0.0, -2.4)
-	} else {
-		validate(1, 5, 6.0, 0)  // $5 sfl
-		validate(2, 5, 11.0, 0) // Loss ACB adjust
-		validate(3, 1, 2.2, 0)  // $8 sfl
-		validate(4, 1, 10.2, 0) // Loss ACB adjust
-		validate(5, 0, 0.0, -10.0)
-	}
+	validate(1, 5, 6.0, -4.0) // $1 superficial
+	validate(2, 5, 7.0, 0.0)  // acb adjust
+	validate(3, 1, 1.4, -3.6) // $1.2 superficial
+	validate(4, 1, 2.6, 0.0)  // acb adjust
+	validate(5, 0, 0.0, -2.4)
 
 	/*
 		buy 10
@@ -313,15 +300,9 @@ func doTestSuperficialLosses(t *testing.T, partialLosses bool) {
 	deltas, err = ptf.TxsToDeltaList(txs, nil, plo)
 	rq.Nil(err)
 	validate(0, 100, 302.0, 0)
-	if partialLosses {
-		validate(1, 1, 3.02, -75.479999952) // total loss of 100.98, 25.500000048 is superficial
-		validate(2, 1, 28.520000048, 0.0)   // acb adjust
-		validate(3, 26, 85.520000048, 0)
-	} else {
-		validate(1, 1, 3.02, 0) // total superfical loss of 100.98
-		validate(2, 1, 104, 0)  // sfl ACB adjust
-		validate(3, 26, 161, 0)
-	}
+	validate(1, 1, 3.02, -75.479999952) // total loss of 100.98, 25.500000048 is superficial
+	validate(2, 1, 28.520000048, 0.0)   // acb adjust
+	validate(3, 26, 85.520000048, 0)
 
 	/*
 		buy 10
@@ -342,21 +323,12 @@ func doTestSuperficialLosses(t *testing.T, partialLosses bool) {
 	deltas, err = ptf.TxsToDeltaList(txs, nil, plo)
 	rq.Nil(err)
 	validate(0, 10, 12.0, 0)
-	if partialLosses {
-		validate(1, 0, 0, -7)  // Superficial loss of 3
-		validate(2, 0, 3, 0.0) // acb adjust
-		validate(3, 5, 10.0, 0)
-		validate(4, 3, 6.0, 0.0) // Superficial loss of 3.6
-		validate(5, 3, 9.6, 0.0) // acb adjust
-		validate(6, 0, 0, -9)
-	} else {
-		validate(1, 0, 0.0, 0.0)  // sfl
-		validate(2, 0, 10.0, 0.0) // acb adjust
-		validate(3, 5, 17.0, 0)
-		validate(4, 3, 10.2, 0.0)               // sfl
-		validate(5, 3, 16.599999999999998, 0.0) // acb adjust
-		validate(6, 0, 0, -15.999999999999998)
-	}
+	validate(1, 0, 0, -7)  // Superficial loss of 3
+	validate(2, 0, 3, 0.0) // acb adjust
+	validate(3, 5, 10.0, 0)
+	validate(4, 3, 6.0, 0.0) // Superficial loss of 3.6
+	validate(5, 3, 9.6, 0.0) // acb adjust
+	validate(6, 0, 0, -9)
 
 	/*
 		buy 10
@@ -373,115 +345,111 @@ func doTestSuperficialLosses(t *testing.T, partialLosses bool) {
 	validate(1, 5, 6.0, 4.0)
 
 	// ************** Explicit Superficial Losses ***************************
-	// Only test with partial losses, since we'll deprecate this before the next
-	// release.
-	if partialLosses {
-		// Accurately specify a detected SFL
-		/*
-			USD SFL test.
-			buy 10 (in USD)
-			wait
-			sell 5 (in USD) (superficial loss)
-			buy 5 (in USD)
-		*/
-		tx0 = makeTxWithCurr(1, ptf.BUY, 10, 1.0, ptf.USD, 1.2)
-		// Sell causing superficial loss, because of quick buyback
-		tx1 = makeTxV(50, ptf.SELL, 5, 0.2, ptf.USD, 1.2,
-			util.NewOptional[ptf.SFLInput](ptf.SFLInput{-6.0, false}) /*SFL override in CAD*/)
-		// ACB adjust is partial, as if splitting some to another affiliate.
-		tx2 = makeTxV(50, ptf.SFLA, 5, 0.02, ptf.DEFAULT_CURRENCY, 1.0, util.Optional[ptf.SFLInput]{})
-		tx3 = makeTxWithCurr(51, ptf.BUY, 5, 0.2, ptf.USD, 1.2)
-		txs = []*ptf.Tx{tx0, tx1, tx2, tx3}
+	// Accurately specify a detected SFL
+	/*
+		USD SFL test.
+		buy 10 (in USD)
+		wait
+		sell 5 (in USD) (superficial loss)
+		buy 5 (in USD)
+	*/
+	tx0 = makeTxWithCurr(1, ptf.BUY, 10, 1.0, ptf.USD, 1.2)
+	// Sell causing superficial loss, because of quick buyback
+	tx1 = makeTxV(50, ptf.SELL, 5, 0.2, ptf.USD, 1.2,
+		util.NewOptional[ptf.SFLInput](ptf.SFLInput{-6.0, false}) /*SFL override in CAD*/)
+	// ACB adjust is partial, as if splitting some to another affiliate.
+	tx2 = makeTxV(50, ptf.SFLA, 5, 0.02, ptf.DEFAULT_CURRENCY, 1.0, util.Optional[ptf.SFLInput]{})
+	tx3 = makeTxWithCurr(51, ptf.BUY, 5, 0.2, ptf.USD, 1.2)
+	txs = []*ptf.Tx{tx0, tx1, tx2, tx3}
 
-		deltas, err = ptf.TxsToDeltaList(txs, nil, plo)
+	deltas, err = ptf.TxsToDeltaList(txs, nil, plo)
 
-		rq.Nil(err)
-		validate(0, 10, 14.4, 0) // buy, ACB (CAD) = (10*1.0 + 2) * 1.2
-		validate(1, 5, 7.2, 0.0) // sell for $1 USD, capital loss $-5 USD before SFL deduction, sfl 0.7 CAD
-		validate(2, 5, 7.3, 0)   // sfl ACB adjust 0.02 * 5
-		validate(3, 10, 10.9, 0) // buy
+	rq.Nil(err)
+	validate(0, 10, 14.4, 0) // buy, ACB (CAD) = (10*1.0 + 2) * 1.2
+	validate(1, 5, 7.2, 0.0) // sell for $1 USD, capital loss $-5 USD before SFL deduction, sfl 0.7 CAD
+	validate(2, 5, 7.3, 0)   // sfl ACB adjust 0.02 * 5
+	validate(3, 10, 10.9, 0) // buy
 
-		// Override a detected SFL
-		/*
-			USD SFL test.
-			buy 10 (in USD)
-			wait
-			sell 5 (in USD) (superficial loss)
-			buy 5 (in USD)
-		*/
-		tx0 = makeTxWithCurr(1, ptf.BUY, 10, 1.0, ptf.USD, 1.2)
-		// Sell causing superficial loss, because of quick buyback
-		tx1 = makeTxV(50, ptf.SELL, 5, 0.2, ptf.USD, 1.2,
-			util.NewOptional[ptf.SFLInput](ptf.SFLInput{-0.7, true}) /*SFL override in CAD*/)
-		// ACB adjust is partial, as if splitting some to another affiliate.
-		tx2 = makeTxV(50, ptf.SFLA, 5, 0.02, ptf.DEFAULT_CURRENCY, 1.0, util.Optional[ptf.SFLInput]{})
-		tx3 = makeTxWithCurr(51, ptf.BUY, 5, 0.2, ptf.USD, 1.2)
-		txs = []*ptf.Tx{tx0, tx1, tx2, tx3}
+	// Override a detected SFL
+	/*
+		USD SFL test.
+		buy 10 (in USD)
+		wait
+		sell 5 (in USD) (superficial loss)
+		buy 5 (in USD)
+	*/
+	tx0 = makeTxWithCurr(1, ptf.BUY, 10, 1.0, ptf.USD, 1.2)
+	// Sell causing superficial loss, because of quick buyback
+	tx1 = makeTxV(50, ptf.SELL, 5, 0.2, ptf.USD, 1.2,
+		util.NewOptional[ptf.SFLInput](ptf.SFLInput{-0.7, true}) /*SFL override in CAD*/)
+	// ACB adjust is partial, as if splitting some to another affiliate.
+	tx2 = makeTxV(50, ptf.SFLA, 5, 0.02, ptf.DEFAULT_CURRENCY, 1.0, util.Optional[ptf.SFLInput]{})
+	tx3 = makeTxWithCurr(51, ptf.BUY, 5, 0.2, ptf.USD, 1.2)
+	txs = []*ptf.Tx{tx0, tx1, tx2, tx3}
 
-		deltas, err = ptf.TxsToDeltaList(txs, nil, plo)
+	deltas, err = ptf.TxsToDeltaList(txs, nil, plo)
 
-		rq.Nil(err)
-		validate(0, 10, 14.4, 0)  // buy, ACB (CAD) = (10*1.0 + 2) * 1.2
-		validate(1, 5, 7.2, -5.3) // sell for $1 USD, capital loss $-5 USD before SFL deduction, sfl 0.7 CAD
-		validate(2, 5, 7.3, 0)    // sfl ACB adjust 0.02 * 5
-		validate(3, 10, 10.9, 0)  // buy
+	rq.Nil(err)
+	validate(0, 10, 14.4, 0)  // buy, ACB (CAD) = (10*1.0 + 2) * 1.2
+	validate(1, 5, 7.2, -5.3) // sell for $1 USD, capital loss $-5 USD before SFL deduction, sfl 0.7 CAD
+	validate(2, 5, 7.3, 0)    // sfl ACB adjust 0.02 * 5
+	validate(3, 10, 10.9, 0)  // buy
 
-		// Un-force the override, and check that we emit an error
-		// Expect an error since we did not force.
-		tx1.SpecifiedSuperficialLoss = util.NewOptional[ptf.SFLInput](ptf.SFLInput{-0.7, false})
-		_, err = ptf.TxsToDeltaList(txs, nil, plo)
-		rq.NotNil(err)
+	// Un-force the override, and check that we emit an error
+	// Expect an error since we did not force.
+	tx1.SpecifiedSuperficialLoss = util.NewOptional[ptf.SFLInput](ptf.SFLInput{-0.7, false})
+	_, err = ptf.TxsToDeltaList(txs, nil, plo)
+	rq.NotNil(err)
 
-		// Add an un-detectable SFL (ie, the buy occurred in an untracked affiliate)
-		/*
-			USD SFL test.
-			buy 10 (in USD)
-			wait
-			sell 5 (in USD) (loss)
-		*/
-		tx0 = makeTxWithCurr(1, ptf.BUY, 10, 1.0, ptf.USD, 1.2)
-		// Sell causing superficial loss, because of quick buyback
-		tx1 = makeTxV(50, ptf.SELL, 5, 0.2, ptf.USD, 1.2,
-			util.NewOptional[ptf.SFLInput](ptf.SFLInput{-0.7, true}) /*SFL override in CAD*/)
-		// ACB adjust is partial, as if splitting some to another affiliate.
-		tx2 = makeTxV(50, ptf.SFLA, 5, 0.02, ptf.CAD, 1.0, util.Optional[ptf.SFLInput]{})
-		txs = []*ptf.Tx{tx0, tx1, tx2}
+	// Add an un-detectable SFL (ie, the buy occurred in an untracked affiliate)
+	/*
+		USD SFL test.
+		buy 10 (in USD)
+		wait
+		sell 5 (in USD) (loss)
+	*/
+	tx0 = makeTxWithCurr(1, ptf.BUY, 10, 1.0, ptf.USD, 1.2)
+	// Sell causing superficial loss, because of quick buyback
+	tx1 = makeTxV(50, ptf.SELL, 5, 0.2, ptf.USD, 1.2,
+		util.NewOptional[ptf.SFLInput](ptf.SFLInput{-0.7, true}) /*SFL override in CAD*/)
+	// ACB adjust is partial, as if splitting some to another affiliate.
+	tx2 = makeTxV(50, ptf.SFLA, 5, 0.02, ptf.CAD, 1.0, util.Optional[ptf.SFLInput]{})
+	txs = []*ptf.Tx{tx0, tx1, tx2}
 
-		deltas, err = ptf.TxsToDeltaList(txs, nil, plo)
-		rq.Nil(err)
-		validate(0, 10, 14.4, 0)  // buy, ACB (CAD) = (10*1.0 + 2) * 1.2
-		validate(1, 5, 7.2, -5.3) // sell for $1 USD, capital loss $-5 USD before SFL deduction, sfl 0.7 CAD
-		validate(2, 5, 7.3, 0)    // sfl ACB adjust 0.02 * 5
+	deltas, err = ptf.TxsToDeltaList(txs, nil, plo)
+	rq.Nil(err)
+	validate(0, 10, 14.4, 0)  // buy, ACB (CAD) = (10*1.0 + 2) * 1.2
+	validate(1, 5, 7.2, -5.3) // sell for $1 USD, capital loss $-5 USD before SFL deduction, sfl 0.7 CAD
+	validate(2, 5, 7.3, 0)    // sfl ACB adjust 0.02 * 5
 
-		// Un-force the override, and check that we emit an error
-		// Expect an error since we did not force.
-		tx1.SpecifiedSuperficialLoss = util.NewOptional[ptf.SFLInput](ptf.SFLInput{-0.7, false})
-		_, err = ptf.TxsToDeltaList(txs, nil, plo)
-		rq.NotNil(err)
+	// Un-force the override, and check that we emit an error
+	// Expect an error since we did not force.
+	tx1.SpecifiedSuperficialLoss = util.NewOptional[ptf.SFLInput](ptf.SFLInput{-0.7, false})
+	_, err = ptf.TxsToDeltaList(txs, nil, plo)
+	rq.NotNil(err)
 
-		// Currency errors
-		// Sanity check for ok by itself.
-		tx0 = makeTxV(50, ptf.SFLA, 1, 0.1, ptf.CAD, 1.0, util.Optional[ptf.SFLInput]{})
-		txs = []*ptf.Tx{tx0}
-		deltas, err = ptf.TxsToDeltaList(txs, nil, plo)
-		rq.Nil(err)
-		validate(0, 0, 0.1, 0)
-		tx0 = makeTxV(50, ptf.SFLA, 1, 0.1, ptf.DEFAULT_CURRENCY, 1.0, util.Optional[ptf.SFLInput]{})
-		txs = []*ptf.Tx{tx0}
-		deltas, err = ptf.TxsToDeltaList(txs, nil, plo)
-		rq.Nil(err)
-		validate(0, 0, 0.1, 0)
-		// Non 1.0 exchange rate
-		tx0 = makeTxV(50, ptf.SFLA, 5, 0.02, ptf.USD, 1.0, util.Optional[ptf.SFLInput]{})
-		txs = []*ptf.Tx{tx0}
-		_, err = ptf.TxsToDeltaList(txs, nil, plo)
-		rq.NotNil(err)
-		// Non 1.0 exchange rate
-		tx0 = makeTxV(50, ptf.SFLA, 5, 0.02, ptf.CAD, 1.1, util.Optional[ptf.SFLInput]{})
-		txs = []*ptf.Tx{tx0}
-		_, err = ptf.TxsToDeltaList(txs, nil, plo)
-		rq.NotNil(err)
-	}
+	// Currency errors
+	// Sanity check for ok by itself.
+	tx0 = makeTxV(50, ptf.SFLA, 1, 0.1, ptf.CAD, 1.0, util.Optional[ptf.SFLInput]{})
+	txs = []*ptf.Tx{tx0}
+	deltas, err = ptf.TxsToDeltaList(txs, nil, plo)
+	rq.Nil(err)
+	validate(0, 0, 0.1, 0)
+	tx0 = makeTxV(50, ptf.SFLA, 1, 0.1, ptf.DEFAULT_CURRENCY, 1.0, util.Optional[ptf.SFLInput]{})
+	txs = []*ptf.Tx{tx0}
+	deltas, err = ptf.TxsToDeltaList(txs, nil, plo)
+	rq.Nil(err)
+	validate(0, 0, 0.1, 0)
+	// Non 1.0 exchange rate
+	tx0 = makeTxV(50, ptf.SFLA, 5, 0.02, ptf.USD, 1.0, util.Optional[ptf.SFLInput]{})
+	txs = []*ptf.Tx{tx0}
+	_, err = ptf.TxsToDeltaList(txs, nil, plo)
+	rq.NotNil(err)
+	// Non 1.0 exchange rate
+	tx0 = makeTxV(50, ptf.SFLA, 5, 0.02, ptf.CAD, 1.1, util.Optional[ptf.SFLInput]{})
+	txs = []*ptf.Tx{tx0}
+	_, err = ptf.TxsToDeltaList(txs, nil, plo)
+	rq.NotNil(err)
 }
 
 func TestSuperficialLosses(t *testing.T) {
@@ -503,8 +471,7 @@ func TestBasicRocAcbErrors(t *testing.T) {
 		CommissionCurrency: ptf.CAD, CommissionCurrToLocalExchangeRate: 1.0}
 	txs := []*ptf.Tx{tx}
 
-	plo := ptf.NewLegacyOptions()
-	delta, newTx, err := ptf.AddTx(0, txs, sptf, plo)
+	delta, newTx, err := ptf.AddTx(0, txs, sptf)
 	rq.Nil(delta)
 	rq.Nil(newTx)
 	rq.NotNil(err)
@@ -517,7 +484,7 @@ func TestBasicRocAcbErrors(t *testing.T) {
 		CommissionCurrency: ptf.CAD, CommissionCurrToLocalExchangeRate: 1.0}
 	txs = []*ptf.Tx{tx}
 
-	delta, newTx, err = ptf.AddTx(0, txs, sptf, plo)
+	delta, newTx, err = ptf.AddTx(0, txs, sptf)
 	rq.Nil(delta)
 	rq.Nil(newTx)
 	rq.NotNil(err)
@@ -553,25 +520,6 @@ func TestBasicRocAcb(t *testing.T) {
 	rq.Equal(delta.CapitalGain, 0.0)
 }
 
-func TestTxSortLegacySortBuysBeforeSells(t *testing.T) {
-	txs := []*ptf.Tx{
-		&ptf.Tx{Security: "FOO2", SettlementDate: mkDate(2), Action: ptf.SELL, ReadIndex: 0},
-		&ptf.Tx{Security: "FOO2", SettlementDate: mkDate(2), Action: ptf.BUY, ReadIndex: 3},
-		&ptf.Tx{Security: "FOO3", SettlementDate: mkDate(3), Action: ptf.BUY, ReadIndex: 1},
-		&ptf.Tx{Security: "FOO1", SettlementDate: mkDate(1), Action: ptf.BUY, ReadIndex: 2},
-	}
-
-	expTxs := []*ptf.Tx{
-		&ptf.Tx{Security: "FOO1", SettlementDate: mkDate(1), Action: ptf.BUY, ReadIndex: 2},
-		&ptf.Tx{Security: "FOO2", SettlementDate: mkDate(2), Action: ptf.BUY, ReadIndex: 3},
-		&ptf.Tx{Security: "FOO2", SettlementDate: mkDate(2), Action: ptf.SELL, ReadIndex: 0},
-		&ptf.Tx{Security: "FOO3", SettlementDate: mkDate(3), Action: ptf.BUY, ReadIndex: 1},
-	}
-
-	ptf.SortTxs(txs, true)
-	require.Equal(t, txs, expTxs)
-}
-
 func TestTxSort(t *testing.T) {
 	txs := []*ptf.Tx{
 		&ptf.Tx{Security: "FOO2", SettlementDate: mkDate(2), Action: ptf.SELL, ReadIndex: 0},
@@ -587,6 +535,6 @@ func TestTxSort(t *testing.T) {
 		&ptf.Tx{Security: "FOO3", SettlementDate: mkDate(3), Action: ptf.BUY, ReadIndex: 1},
 	}
 
-	ptf.SortTxs(txs, false)
+	ptf.SortTxs(txs)
 	require.Equal(t, txs, expTxs)
 }
