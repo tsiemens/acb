@@ -3,8 +3,6 @@ package portfolio
 import (
 	"sort"
 
-	"github.com/markphelps/optional"
-
 	"github.com/tsiemens/acb/date"
 	"github.com/tsiemens/acb/util"
 )
@@ -60,6 +58,11 @@ func (s *PortfolioSecurityStatus) PerShareAcb() float64 {
 	return s.TotalAcb / float64(s.ShareBalance)
 }
 
+type SFLInput struct {
+	SuperficialLoss float64
+	Force           bool
+}
+
 type Tx struct {
 	Security                          string
 	TradeDate                         date.Date
@@ -82,7 +85,7 @@ type Tx struct {
 	// SfLA Txs following this one, accounting for all shares experiencing the loss.
 	// NOTE: This is always a negative (or zero) value in CAD, so that it matches the
 	// displayed value
-	SpecifiedSuperficialLoss optional.Float64
+	SpecifiedSuperficialLoss util.Optional[SFLInput]
 
 	// The absolute order in which the Tx was read from file or entered.
 	// Used as a tiebreak in sorting.

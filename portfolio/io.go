@@ -8,10 +8,9 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/markphelps/optional"
-
 	"github.com/tsiemens/acb/date"
 	"github.com/tsiemens/acb/fx"
+	"github.com/tsiemens/acb/util"
 )
 
 const (
@@ -276,6 +275,15 @@ func parseCommissionFx(data string, tx *Tx) error {
 }
 
 func parseSuperficialLoss(data string, tx *Tx) error {
+	// Check for forcing marker (a terminating !)
+	forceFlag := false
+	if len(data) > 0 {
+		forceFlag = data[len(data)-1] == '!'
+		if forceFlag {
+			data = data[:len(data)-1]
+		}
+	}
+
 	sfl, err := strconv.ParseFloat(data, 64)
 	if data != "" {
 		if err != nil {
@@ -285,7 +293,7 @@ func parseSuperficialLoss(data string, tx *Tx) error {
 			return fmt.Errorf(
 				"Error: superficial loss must be specified as a non-positive value: %f", sfl)
 		}
-		tx.SpecifiedSuperficialLoss = optional.NewFloat64(sfl)
+		tx.SpecifiedSuperficialLoss = util.NewOptional[SFLInput](SFLInput{sfl, forceFlag})
 	}
 	return nil
 }

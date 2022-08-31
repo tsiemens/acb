@@ -2,6 +2,7 @@ package portfolio
 
 import (
 	"fmt"
+	"math"
 
 	"github.com/tsiemens/acb/date"
 	"github.com/tsiemens/acb/util"
@@ -159,16 +160,38 @@ func AddTx(
 
 		if capitalGains < 0.0 && applySuperficialLosses {
 			superficialLossRatio = getSuperficialLossRatio(idx, txs, newShareBalance)
-			if tx.SpecifiedSuperficialLoss.Present() {
-				superficialLoss = tx.SpecifiedSuperficialLoss.MustGet()
-				capitalGains = capitalGains - superficialLoss
-				// Loss adjustment must be specified manually in this case.
-			} else if superficialLossRatio.Valid() {
+			calculatedSuperficialLoss := 0.0
+			if superficialLossRatio.Valid() {
 				if noPartialSuperficialLosses {
 					superficialLossRatio.Numerator = superficialLossRatio.Denominator
 				}
-				superficialLoss = capitalGains * superficialLossRatio.ToFloat64()
+				calculatedSuperficialLoss = capitalGains * superficialLossRatio.ToFloat64()
+			}
+
+			if tx.SpecifiedSuperficialLoss.Present() {
+				// TODO check Force for errors
+				superficialLoss = tx.SpecifiedSuperficialLoss.MustGet().SuperficialLoss
 				capitalGains = capitalGains - superficialLoss
+
+				if !tx.SpecifiedSuperficialLoss.MustGet().Force {
+					sflDiff := math.Abs(calculatedSuperficialLoss - superficialLoss)
+					const maxDiff float64 = 0.001
+					if sflDiff > maxDiff {
+						return nil, nil, fmt.Errorf(
+							"Sell order on %v of %s: superficial loss was specified, but "+
+								"the difference between the specified value (%f) and the "+
+								"computed value (%f) is greater than the max allowed "+
+								"discrepancy (%f).\nTo force this SFL value, append an '!' "+
+								"to the value",
+							tx.TradeDate, tx.Security, superficialLoss,
+							calculatedSuperficialLoss, maxDiff)
+					}
+				}
+
+				// ACB adjustment TX must be specified manually in this case.
+			} else if superficialLossRatio.Valid() {
+				superficialLoss = calculatedSuperficialLoss
+				capitalGains = capitalGains - calculatedSuperficialLoss
 
 				// This new Tx will adjust (increase) the ACB for this superficial loss.
 				newTx = &Tx{

@@ -6,6 +6,8 @@ import (
 	"strings"
 
 	tw "github.com/olekukonko/tablewriter"
+
+	"github.com/tsiemens/acb/util"
 )
 
 type _PrintHelper struct {
@@ -66,10 +68,13 @@ func RenderTxTableModel(
 
 	for _, d := range deltas {
 		superficialLossAsterix := ""
+		specifiedSflIsForced := d.Tx.SpecifiedSuperficialLoss.Present() &&
+			d.Tx.SpecifiedSuperficialLoss.MustGet().Force
 		if d.SuperficialLoss != 0.0 {
 			superficialLossAsterix = fmt.Sprintf(
-				" *\n(SfL %s; %d/%d)",
+				" *\n(SfL %s%s; %d/%d)",
 				ph.PlusMinusDollar(d.SuperficialLoss, false),
+				util.Tern[string](specifiedSflIsForced, "!", ""),
 				d.SuperficialLossRatio.Numerator,
 				d.SuperficialLossRatio.Denominator,
 			)

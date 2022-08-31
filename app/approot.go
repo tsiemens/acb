@@ -236,6 +236,8 @@ func WriteRenderResult(renderRes *AppRenderResult, writer io.Writer) {
 	}
 	sort.Strings(secs)
 
+	var secsWithErrors []string
+
 	i := 0
 	for _, sec := range secs {
 		renderTable := secRenderTables[sec]
@@ -243,11 +245,18 @@ func WriteRenderResult(renderRes *AppRenderResult, writer io.Writer) {
 		if i < (nSecs - 1) {
 			fmt.Fprintln(writer, "")
 		}
+		if len(renderTable.Errors) > 0 {
+			secsWithErrors = append(secsWithErrors, sec)
+		}
 		i++
 	}
 
 	fmt.Fprintln(writer, "")
 	ptf.PrintRenderTable("Aggregate Gains", renderRes.AggregateGainsTable, writer)
+
+	if len(secsWithErrors) > 0 {
+		fmt.Println("\n[!] There are errors for the following securities:", strings.Join(secsWithErrors, ", "))
+	}
 }
 
 // Returns an OK flag. Used to signal what exit code to use.
