@@ -10,12 +10,16 @@ import ensure_in_venv
 
 import argparse
 import re
+import sys
 import warnings
 
 from txlib import AcbCsvRenderer, Action, Tx
 
 import openpyxl
 from openpyxl.workbook.workbook import Workbook as XlWorkbook
+
+class SheetParseError(Exception):
+   pass
 
 class QuestradeSheet(AcbCsvRenderer):
    # Column names:
@@ -30,7 +34,7 @@ class QuestradeSheet(AcbCsvRenderer):
 
    def __init__(self, xl_wb: XlWorkbook):
       super().__init__()
-      ignored_actions = {'DIV', 'BRW', 'TFI', 'DEP', None}
+      ignored_actions = {'DIV', 'BRW', 'TFI', 'TF6', 'MGR', 'DEP', None}
       allowed_actions = {'Buy', 'Sell'}
 
       header_row = None
@@ -47,18 +51,23 @@ class QuestradeSheet(AcbCsvRenderer):
             action_str = get('Action')
             if (action_str not in allowed_actions and
                 action_str not in ignored_actions):
-               raise Exception(f"Unrecognized transaction action {repr(action_str)}"
-                               f" in row {repr([c.value for c in row])}")
+               raise SheetParseError(
+                     f"Unrecognized transaction action {repr(action_str)}"
+                     f" in row {repr([c.value for c in row])}")
             if action_str in ignored_actions:
                continue
 
             action = Action(action_str.upper())
             symbol = get('Symbol')
+            account_num = get('Account #')
+            account_type = get('Account Type')
+            account_str = f"{account_type} {account_num}"
+            account_note = f"Questrade {account_str}"
             orig_symbol_note = ''
             if symbol in QuestradeSheet.symbol_aliases:
                orig_symbol = symbol
                symbol, aka = QuestradeSheet.symbol_aliases[symbol]
-               orig_symbol_note = f"{orig_symbol} AKA {aka}. "
+               orig_symbol_note = f"; {orig_symbol} AKA {aka}."
 
             tx = Tx(
                security=symbol,
@@ -71,8 +80,9 @@ class QuestradeSheet(AcbCsvRenderer):
                                                           action),
                commission=abs(float(get('Commission'))),
                currency=get('Currency'),
-               memo=orig_symbol_note,
+               memo=account_note + orig_symbol_note,
                exchange_rate=None,
+               account=account_str,
             )
             self.txs.append(tx)
 
@@ -85,7 +95,7 @@ class QuestradeSheet(AcbCsvRenderer):
       if m:
          return m.group(0)
       else:
-         raise Exception(f"Could not parse date from {repr(qt_date)}")
+         raise SheetParseError(f"Could not parse date from {repr(qt_date)}")
 
    @staticmethod
    def get_quantity_int(quant_str: str, action: Action) -> int:
@@ -95,6 +105,18 @@ class QuestradeSheet(AcbCsvRenderer):
       else:
          # QT's table shows sold shares as a negative quantity.
          return -1 * quant
+
+def filter_and_verify_tx_accounts(account_filter: re.Pattern, sheet: AcbCsvRenderer):
+   if account_filter:
+      filtered_txs = [tx for tx in sheet.txs if account_filter.search(tx.account)]
+      sheet.txs = filtered_txs
+   else:
+      accounts = {tx.account for tx in sheet.txs}
+      if len(accounts) > 1:
+         raise SheetParseError(
+               "No account was specified, and found transactions for "
+               f"multiple accounts ({accounts}). "
+               "If you wish to include all accounts, provide --account=.")
 
 def dump_xl_workbook(wb: XlWorkbook):
    for sheet in wb.worksheets:
@@ -121,10 +143,28 @@ def main():
    parser.add_argument('--usd-exchange-rate', type=float,
          help="Specify an exchange rate to use (rates for more recent"
          " transactions may not be posted yet)")
+   parser.add_argument('--account', help="""
+      Specify the account to export transactions for. Must partially match, and is
+      treated as a regular expression. The account is formatted into
+      '{account type} {account number}'.""")
    parser.add_argument('--pretty', action='store_true')
    args = parser.parse_args()
 
-   sheet = read_xl_file(args.export_file)
+   account_filter = None
+   if args.account is not None:
+      try:
+         account_filter = re.compile(args.account)
+      except re.error as e:
+         print("Error parsing --account value:", e)
+         exit(1)
+
+   try:
+      sheet = read_xl_file(args.export_file)
+      filter_and_verify_tx_accounts(account_filter, sheet)
+   except SheetParseError as e:
+      print("Error:", e, file=sys.stderr)
+      return 1
+
    if not args.no_sort:
       sheet.sort_txs()
 
@@ -139,4 +179,4 @@ def main():
       sheet.render_csv()
 
 if __name__ == '__main__':
-   main()
+   exit(main())

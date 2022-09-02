@@ -27,6 +27,9 @@ class Tx:
    memo: str
    exchange_rate: float
 
+   # optional metadata
+   account: str = None
+
    @staticmethod
    def date_to_str(d: datetime.date) -> str:
       """Returns a yyyy-mm-dd formatted date string"""
