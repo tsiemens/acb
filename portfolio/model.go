@@ -1,7 +1,9 @@
 package portfolio
 
 import (
+	"regexp"
 	"sort"
+	"strings"
 
 	"github.com/tsiemens/acb/date"
 	"github.com/tsiemens/acb/util"
@@ -41,6 +43,74 @@ func (a TxAction) String() string {
 	return str
 }
 
+type Affiliate struct {
+	id         string
+	name       string
+	registered bool
+}
+
+func (a *Affiliate) Id() string {
+	return a.id
+}
+
+func (a *Affiliate) Name() string {
+	return a.name
+}
+
+func (a *Affiliate) Registered() bool {
+	return a.registered
+}
+
+var (
+	registeredRe = regexp.MustCompile(`\([rR]\)`)
+	extraSpaceRe = regexp.MustCompile(`  +`)
+)
+
+func NewUndedupedAffiliate(name string) Affiliate {
+	// Extract registered marker
+	registered := registeredRe.MatchString(name)
+	prettyName := name
+	if registered {
+		prettyName = registeredRe.ReplaceAllString(prettyName, " ")
+	}
+	prettyName = extraSpaceRe.ReplaceAllString(prettyName, " ")
+	prettyName = strings.TrimSpace(prettyName)
+	if prettyName == "" {
+		prettyName = "Default"
+	}
+	id := strings.ToLower(prettyName)
+	if registered {
+		id += " (R)"
+		prettyName += " (R)"
+	}
+
+	return Affiliate{id, prettyName, registered}
+}
+
+type AffiliateDedupTable struct {
+	affiliates map[string]*Affiliate
+}
+
+func NewAffiliateDedupTable() *AffiliateDedupTable {
+	return &AffiliateDedupTable{map[string]*Affiliate{}}
+}
+
+// Used by io.go while loading Txs
+var GlobalAffiliateDedupTable = NewAffiliateDedupTable()
+
+func (t *AffiliateDedupTable) DedupedAffiliate(name string) *Affiliate {
+	preDedupedAffiliate := NewUndedupedAffiliate(name)
+	if affiliate, ok := t.affiliates[preDedupedAffiliate.Id()]; ok {
+		return affiliate
+	}
+
+	// Add to the dedup table
+	affiliate := &Affiliate{}
+	*affiliate = preDedupedAffiliate
+	t.affiliates[affiliate.Id()] = affiliate
+	return affiliate
+}
+
 type PortfolioSecurityStatus struct {
 	Security     string
 	ShareBalance uint32
@@ -76,6 +146,7 @@ type Tx struct {
 	CommissionCurrency                Currency
 	CommissionCurrToLocalExchangeRate float64
 	Memo                              string
+	Affiliate                         *Affiliate
 
 	// More commonly optional fields/columns
 

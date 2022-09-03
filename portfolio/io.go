@@ -35,6 +35,7 @@ var colParserMap = map[string]ColParser{
 	"commission currency":      parseCommissionCurr,
 	"commission exchange rate": parseCommissionFx,
 	"superficial loss":         parseSuperficialLoss,
+	"affiliate":                parseAffiliate,
 	"memo":                     parseMemo,
 }
 
@@ -295,6 +296,11 @@ func parseSuperficialLoss(data string, tx *Tx) error {
 		}
 		tx.SpecifiedSuperficialLoss = util.NewOptional[SFLInput](SFLInput{sfl, forceFlag})
 	}
+	return nil
+}
+
+func parseAffiliate(data string, tx *Tx) error {
+	tx.Affiliate = GlobalAffiliateDedupTable.DedupedAffiliate(data)
 	return nil
 }
 
