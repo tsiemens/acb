@@ -51,6 +51,8 @@ func getSuperficialLossInfo(idx int, txs []*Tx, shareBalanceAfterSell uint32) _S
 		TotalAquiredInPeriod: 0,
 	}
 
+	// TODO fix SFL logic for multiple affiliates.
+
 	didBuyAfterInPeriod := false
 	for i := idx + 1; i < len(txs); i++ {
 		afterTx := txs[i]
@@ -128,15 +130,34 @@ func AddTx(
 	var totalLocalSharePrice float64 = float64(tx.Shares) * tx.AmountPerShare * tx.TxCurrToLocalExchangeRate
 
 	newShareBalance := preTxStatus.ShareBalance
+	newAllAffiliatesShareBalance := preTxStatus.AllAffiliatesShareBalance
+	registered := tx.Affiliate != nil && tx.Affiliate.Registered()
 	var newAcbTotal float64 = preTxStatus.TotalAcb
-	var capitalGains float64 = 0.0
-	var superficialLoss float64 = 0.0
+	var capitalGains float64 = util.Tern[float64](registered, math.NaN(), 0.0)
+	var superficialLoss float64 = util.Tern[float64](registered, math.NaN(), 0.0)
 	superficialLossRatio := util.Uint32Ratio{}
 	var newTx *Tx = nil
+
+	// Sanity checks
+	sanityCheckError := func(fmtStr string, v ...interface{}) error {
+		return fmt.Errorf(
+			"In transaction on %v of %d shares of %s, "+fmtStr,
+			append([]interface{}{tx.TradeDate, tx.Shares, tx.Security}, v...)...)
+	}
+	if preTxStatus.AllAffiliatesShareBalance < preTxStatus.ShareBalance {
+		return nil, nil, sanityCheckError("the share balance across all affiliates "+
+			"(%d) is lower than the share balance for the affiliate of the sale (%d)",
+			preTxStatus.AllAffiliatesShareBalance, preTxStatus.ShareBalance)
+	} else if registered && !math.IsNaN(preTxStatus.TotalAcb) {
+		return nil, nil, sanityCheckError("found an ACB on a registered affiliate")
+	} else if !registered && math.IsNaN(preTxStatus.TotalAcb) {
+		return nil, nil, sanityCheckError("found an invalid ACB (NaN)")
+	}
 
 	switch tx.Action {
 	case BUY:
 		newShareBalance = preTxStatus.ShareBalance + tx.Shares
+		newAllAffiliatesShareBalance = preTxStatus.AllAffiliatesShareBalance + tx.Shares
 		totalPrice := totalLocalSharePrice + (tx.Commission * tx.CommissionCurrToLocalExchangeRate)
 		newAcbTotal = preTxStatus.TotalAcb + (totalPrice)
 	case SELL:
@@ -146,13 +167,15 @@ func AddTx(
 				tx.TradeDate, tx.Shares, tx.Security, preTxStatus.ShareBalance)
 		}
 		newShareBalance = preTxStatus.ShareBalance - tx.Shares
+		newAllAffiliatesShareBalance = preTxStatus.AllAffiliatesShareBalance - tx.Shares
 		// Note commission plays no effect on sell order ACB
 		newAcbTotal = preTxStatus.TotalAcb - (preTxStatus.PerShareAcb() * float64(tx.Shares))
 		totalPayout := totalLocalSharePrice - (tx.Commission * tx.CommissionCurrToLocalExchangeRate)
 		capitalGains = totalPayout - (preTxStatus.PerShareAcb() * float64(tx.Shares))
 
-		if capitalGains < 0.0 {
-			superficialLossRatio = getSuperficialLossRatio(idx, txs, newShareBalance)
+		if !registered && capitalGains < 0.0 {
+			superficialLossRatio = getSuperficialLossRatio(
+				idx, txs, newAllAffiliatesShareBalance)
 			calculatedSuperficialLoss := 0.0
 			if superficialLossRatio.Valid() {
 				calculatedSuperficialLoss = capitalGains * superficialLossRatio.ToFloat64()
@@ -193,6 +216,10 @@ func AddTx(
 					TxCurrency:                CAD,
 					TxCurrToLocalExchangeRate: 1.0,
 					Memo:                      "automatic SfL ACB adjustment",
+					// TODO this should be the affiliate for which all buys occurred.
+					// If buys are spread between affiliates, we should not be automatically
+					// adding this adjustment, and require the user to specify the SFL on the sell.
+					Affiliate: tx.Affiliate,
 				}
 			}
 		} else if tx.SpecifiedSuperficialLoss.Present() {
@@ -201,6 +228,11 @@ func AddTx(
 				tx.TradeDate, tx.Security)
 		}
 	case ROC:
+		if registered {
+			return nil, nil, fmt.Errorf(
+				"Invalid RoC tx on %v: Registered affiliates do not have an ACB to adjust",
+				tx.TradeDate)
+		}
 		if tx.Shares != 0 {
 			return nil, nil, fmt.Errorf("Invalid RoC tx on %v: # of shares is non-zero (%d)",
 				tx.TradeDate, tx.Shares)
@@ -213,6 +245,11 @@ func AddTx(
 				tx.TradeDate, acbReduction, preTxStatus.TotalAcb)
 		}
 	case SFLA:
+		if registered {
+			return nil, nil, fmt.Errorf(
+				"Invalid SfLA tx on %v: Registered affiliates do not have an ACB to adjust",
+				tx.TradeDate)
+		}
 		acbAdjustment := tx.AmountPerShare * float64(tx.Shares) *
 			tx.TxCurrToLocalExchangeRate
 		newAcbTotal = preTxStatus.TotalAcb + acbAdjustment
@@ -227,9 +264,10 @@ func AddTx(
 	}
 
 	newStatus := &PortfolioSecurityStatus{
-		Security:     preTxStatus.Security,
-		ShareBalance: newShareBalance,
-		TotalAcb:     newAcbTotal,
+		Security:                  preTxStatus.Security,
+		ShareBalance:              newShareBalance,
+		AllAffiliatesShareBalance: newAllAffiliatesShareBalance,
+		TotalAcb:                  newAcbTotal,
 	}
 	delta := &TxDelta{
 		Tx:                   tx,
@@ -257,27 +295,56 @@ func TxsToDeltaList(
 	legacyOptions LegacyOptions,
 ) ([]*TxDelta, error) {
 
-	if initialStatus == nil {
-		if len(txs) == 0 {
-			return []*TxDelta{}, nil
+	var allAffiliatesShareBalance uint32 = 0
+
+	makeDefaultPortfolioSecurityStatus := func(def bool, registered bool) *PortfolioSecurityStatus {
+		var affiliateShareBalance uint32 = 0
+		var affiliateTotalAcb float64 = util.Tern[float64](registered, math.NaN(), 0.0)
+		// Initial status only applies to the default affiliate
+		if def && !registered && initialStatus != nil {
+			affiliateShareBalance = initialStatus.ShareBalance
+			affiliateTotalAcb = initialStatus.TotalAcb
 		}
-		initialStatus = &PortfolioSecurityStatus{
-			Security: txs[0].Security, ShareBalance: 0, TotalAcb: 0.0,
+		return &PortfolioSecurityStatus{
+			Security: txs[0].Security, ShareBalance: affiliateShareBalance,
+			AllAffiliatesShareBalance: allAffiliatesShareBalance,
+			TotalAcb:                  affiliateTotalAcb,
 		}
 	}
 
 	var modifiedTxs []*Tx
 	activeTxs := txs
 	deltas := make([]*TxDelta, 0, len(txs))
-	lastStatus := initialStatus
+	// Affiliate Id -> last PortfolioSecurityStatus
+	lastStatusForAffiliate := util.NewDefaultMap[string, *PortfolioSecurityStatus](
+		func(afId string) *PortfolioSecurityStatus {
+			af := GlobalAffiliateDedupTable.MustGet(afId)
+			return makeDefaultPortfolioSecurityStatus(af.Default(), af.Registered())
+		},
+	)
 
 	for i := 0; i < len(activeTxs); i++ {
+		txAffiliate := activeTxs[i].Affiliate
+		if txAffiliate == nil {
+			// This should only really happen in tests
+			txAffiliate = GlobalAffiliateDedupTable.GetDefaultAffiliate()
+		}
+		lastStatus := lastStatusForAffiliate.Get(txAffiliate.Id())
+		if lastStatus.AllAffiliatesShareBalance != allAffiliatesShareBalance {
+			lastStatusCopy := &PortfolioSecurityStatus{}
+			*lastStatusCopy = *lastStatus
+			lastStatusCopy.AllAffiliatesShareBalance = allAffiliatesShareBalance
+			lastStatus = lastStatusCopy
+		}
+
 		delta, newTx, err := AddTx(i, activeTxs, lastStatus)
 		if err != nil {
 			// Return what we've managed so far, for debugging
 			return deltas, err
 		}
 		lastStatus = delta.PostStatus
+		lastStatusForAffiliate.Set(txAffiliate.Id(), lastStatus)
+		allAffiliatesShareBalance = lastStatus.AllAffiliatesShareBalance
 		deltas = append(deltas, delta)
 		if newTx != nil {
 			// Add new Tx into modifiedTxs

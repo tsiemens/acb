@@ -11,8 +11,10 @@ import (
 func TestNewAffiliate(t *testing.T) {
 	rq := require.New(t)
 
-	newAffiliate := func(name string) ptf.Affiliate {
-		return ptf.NewUndedupedAffiliate(name)
+	newAffiliate := func(name string) *ptf.Affiliate {
+		af := &ptf.Affiliate{}
+		*af = ptf.NewUndedupedAffiliate(name)
+		return af
 	}
 	verifyAffiliate := func(name string,
 		expId string, expName string, expRegistered bool) {
@@ -38,6 +40,13 @@ func TestNewAffiliate(t *testing.T) {
 	verifyAffiliate(" My Spouse ", "my spouse", "My Spouse", false)
 	verifyAffiliate(" My     Spouse ", "my spouse", "My Spouse", false)
 	verifyAffiliate(" My  (r)   Spouse ", "my spouse (R)", "My Spouse (R)", true)
+
+	rq.Equal(newAffiliate("").Default(), true)
+	rq.Equal(newAffiliate("Default").Default(), true)
+	rq.Equal(newAffiliate("(R)Default").Default(), true)
+	rq.Equal(newAffiliate("(R)XXX").Default(), false)
+	rq.Equal(newAffiliate("XXX").Default(), false)
+	rq.Equal(newAffiliate("Def(r)ault").Default(), false)
 }
 
 func TestAffiliateDedupTable(t *testing.T) {

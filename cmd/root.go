@@ -115,7 +115,8 @@ func init() {
 		"Format of how dates appear in the csv file. Must represent Jan 2, 2006")
 	RootCmd.Flags().StringSliceVarP(&InitialSymStatusOpt, "symbol-base", "b", []string{},
 		"Base share count and ACBs for symbols, assumed at the beginning of time. "+helpNl+
-			"Formatted as SYM:nShares:totalAcb. Eg. GOOG:20:1000.00 . May be provided multiple times.")
+			"Formatted as SYM:nShares:totalAcb. Eg. GOOG:20:1000.00 . May be provided multiple times. "+helpNl+
+			"Only applies to the default affiliate.")
 	RootCmd.PersistentFlags().BoolVar(&options.RenderFullDollarValues,
 		"print-full-values", false, "Print all digits in output values")
 	RootCmd.Flags().StringVar(&summarizeBeforeStr, "summarize-before", "",

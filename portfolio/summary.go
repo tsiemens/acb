@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/tsiemens/acb/date"
+	"github.com/tsiemens/acb/util"
 )
 
 // Return a slice of Txs which can summarise all txs in `deltas` up to `latestDate`.
@@ -25,6 +26,14 @@ import (
 //
 // Return: summary Txs, user warnings, error
 func MakeSummaryTxs(latestDate date.Date, deltas []*TxDelta, splitAnnualGains bool) ([]*Tx, []string) {
+	// TODO this needs to account for multiple Affiliates.
+	for _, delta := range deltas {
+		util.Assert(
+			delta.Tx.Affiliate == GlobalAffiliateDedupTable.GetDefaultAffiliate() ||
+				delta.Tx.Affiliate == nil, // for tests
+			"Summary not yet supported with non-default affiliates or registered accounts")
+	}
+
 	// Step 1: Find the latest Delta <= latestDate
 	latestDeltaInSummaryRangeIdx := -1
 	for i, delta := range deltas {

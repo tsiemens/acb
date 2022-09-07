@@ -3,6 +3,8 @@ package portfolio
 import (
 	"fmt"
 	"io"
+	"math"
+	"os"
 	"strings"
 
 	tw "github.com/olekukonko/tablewriter"
@@ -14,6 +16,18 @@ type _PrintHelper struct {
 	PrintAllDecimals bool
 }
 
+var displayNanEnvSetting util.Optional[string]
+
+func NaNString() string {
+	if !displayNanEnvSetting.Present() {
+		displayNanEnvSetting.Set(os.Getenv("DISPLAY_NAN"))
+	}
+	if displayNanEnvSetting.MustGet() == "" || displayNanEnvSetting.MustGet() == "0" {
+		return "-"
+	}
+	return "NaN"
+}
+
 func (h _PrintHelper) CurrStr(val float64) string {
 	if h.PrintAllDecimals {
 		return fmt.Sprintf("%f", val)
@@ -21,11 +35,18 @@ func (h _PrintHelper) CurrStr(val float64) string {
 	return fmt.Sprintf("%.2f", val)
 }
 
+func (h _PrintHelper) DollarStr(val float64) string {
+	if math.IsNaN(val) {
+		return NaNString()
+	}
+	return "$" + h.CurrStr(val)
+}
+
 func (h _PrintHelper) CurrWithFxStr(val float64, curr Currency, rateToLocal float64) string {
 	if curr == DEFAULT_CURRENCY {
-		return "$" + h.CurrStr(val)
+		return h.DollarStr(val)
 	}
-	return fmt.Sprintf("$%s\n(%s %s)", h.CurrStr(val*rateToLocal), h.CurrStr(val), curr)
+	return fmt.Sprintf("%s\n(%s %s)", h.DollarStr(val*rateToLocal), h.CurrStr(val), curr)
 }
 
 func strOrDash(useStr bool, str string) string {
@@ -36,6 +57,9 @@ func strOrDash(useStr bool, str string) string {
 }
 
 func (h _PrintHelper) PlusMinusDollar(val float64, showPlus bool) string {
+	if math.IsNaN(val) {
+		return NaNString()
+	}
 	if val < 0.0 {
 		return fmt.Sprintf("-$%s", h.CurrStr(val*-1.0))
 	}
@@ -59,7 +83,7 @@ func RenderTxTableModel(
 	table := &RenderTable{}
 	table.Header = []string{"Security", "Trade Date", "Settl. Date", "TX", "Amount", "Shares", "Amt/Share", "ACB",
 		"Commission", "Cap. Gain", "Share Balance", "ACB +/-", "New ACB", "New ACB/Share",
-		"Memo",
+		"Affiliate", "Memo",
 	}
 
 	ph := _PrintHelper{PrintAllDecimals: renderFullDollarValues}
@@ -70,7 +94,7 @@ func RenderTxTableModel(
 		superficialLossAsterix := ""
 		specifiedSflIsForced := d.Tx.SpecifiedSuperficialLoss.Present() &&
 			d.Tx.SpecifiedSuperficialLoss.MustGet().Force
-		if d.SuperficialLoss != 0.0 {
+		if d.SuperficialLoss != 0.0 && !math.IsNaN(d.SuperficialLoss) {
 			superficialLossAsterix = fmt.Sprintf(
 				" *\n(SfL %s%s; %d/%d)",
 				ph.PlusMinusDollar(d.SuperficialLoss, false),
@@ -87,24 +111,34 @@ func RenderTxTableModel(
 			preAcbPerShare = d.PreStatus.TotalAcb / float64(d.PreStatus.ShareBalance)
 		}
 
+		var affiliateName string
+		if tx.Affiliate != nil {
+			affiliateName = tx.Affiliate.Name()
+		} else {
+			affiliateName = GlobalAffiliateDedupTable.GetDefaultAffiliate().Name()
+		}
+
 		row := []string{d.Tx.Security, tx.TradeDate.String(), tx.SettlementDate.String(), tx.Action.String(),
 			// Amount
 			ph.CurrWithFxStr(float64(tx.Shares)*tx.AmountPerShare, tx.TxCurrency, tx.TxCurrToLocalExchangeRate),
 			fmt.Sprintf("%d", tx.Shares),
 			ph.CurrWithFxStr(tx.AmountPerShare, tx.TxCurrency, tx.TxCurrToLocalExchangeRate),
 			// ACB of sale
-			strOrDash(tx.Action == SELL, "$"+ph.CurrStr(preAcbPerShare*float64(tx.Shares))),
+			strOrDash(tx.Action == SELL, ph.DollarStr(preAcbPerShare*float64(tx.Shares))),
 			// Commission
 			strOrDash(tx.Commission != 0.0,
 				ph.CurrWithFxStr(tx.Commission, tx.CommissionCurrency, tx.CommissionCurrToLocalExchangeRate)),
 			// Cap gains
 			strOrDash(tx.Action == SELL, ph.PlusMinusDollar(d.CapitalGain, false)+superficialLossAsterix),
-			fmt.Sprintf("%d", d.PostStatus.ShareBalance),
+			util.Tern(d.PostStatus.ShareBalance != d.PostStatus.AllAffiliatesShareBalance,
+				fmt.Sprintf("%d / %d", d.PostStatus.ShareBalance, d.PostStatus.AllAffiliatesShareBalance),
+				fmt.Sprintf("%d", d.PostStatus.ShareBalance)),
 			ph.PlusMinusDollar(d.AcbDelta(), true),
-			"$" + ph.CurrStr(d.PostStatus.TotalAcb),
+			ph.DollarStr(d.PostStatus.TotalAcb),
 			// Acb per share
 			strOrDash(d.PostStatus.ShareBalance > 0.0,
-				"$"+ph.CurrStr(d.PostStatus.TotalAcb/float64(d.PostStatus.ShareBalance))),
+				ph.DollarStr(d.PostStatus.TotalAcb/float64(d.PostStatus.ShareBalance))),
+			affiliateName,
 			tx.Memo,
 		}
 		table.Rows = append(table.Rows, row)
@@ -127,7 +161,7 @@ func RenderTxTableModel(
 	}
 
 	table.Footer = []string{"", "", "", "", "", "", "", "",
-		totalFooterLabel, totalFooterValsStr, "", "", "", "", ""}
+		totalFooterLabel, totalFooterValsStr, "", "", "", "", "", ""}
 
 	// Notes
 	if sawSuperficialLoss {

@@ -2,15 +2,21 @@ package test
 
 import (
 	"fmt"
+	"math"
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/tsiemens/acb/date"
 	ptf "github.com/tsiemens/acb/portfolio"
 	"github.com/tsiemens/acb/util"
 )
+
+const DefaultTestSecurity string = "FOO"
+
+var NaN float64 = math.NaN()
 
 func mkDateYD(year uint32, day int) date.Date {
 	tm := date.New(year, time.January, 1)
@@ -21,14 +27,35 @@ func mkDate(day int) date.Date {
 	return mkDateYD(2017, day)
 }
 
-func AlmostEqual(t *testing.T, exp float64, actual float64) {
-	diff := exp - actual
-	if diff < 0.0000001 && diff > -0.0000001 {
-		return
+func IsAlmostEqual(a float64, b float64) bool {
+	if math.IsNaN(a) && math.IsNaN(b) {
+		return true
 	}
-	require.Equal(t, exp, actual)
-	t.Fatal(fmt.Errorf("%f was not almost equal %f (expected)\n", actual, exp))
-	t.FailNow()
+	diff := a - b
+	return diff < 0.0000001 && diff > -0.0000001
+}
+
+func SoftAlmostEqual(t *testing.T, exp float64, actual float64) bool {
+	if IsAlmostEqual(exp, actual) {
+		return true
+	}
+	// This should always fail
+	return assert.Equal(t, exp, actual)
+}
+
+func AlmostEqual(t *testing.T, exp float64, actual float64) {
+	if !SoftAlmostEqual(t, exp, actual) {
+		t.FailNow()
+	}
+}
+
+// Equal will fail with NaN == NaN, so we need some special help to make
+// the failure pretty.
+func RqNaN(t *testing.T, actual float64) {
+	if !math.IsNaN(actual) {
+		// This always fails, but will give some nice ouput
+		require.Equal(t, NaN, actual)
+	}
 }
 
 func AddTxNoErr(t *testing.T, tx *ptf.Tx, preTxStatus *ptf.PortfolioSecurityStatus) *ptf.TxDelta {
@@ -37,6 +64,137 @@ func AddTxNoErr(t *testing.T, tx *ptf.Tx, preTxStatus *ptf.PortfolioSecurityStat
 	require.Nil(t, newTx)
 	require.Nil(t, err)
 	return delta
+}
+
+func AddTxWithErr(t *testing.T, tx *ptf.Tx, preTxStatus *ptf.PortfolioSecurityStatus) error {
+	txs := []*ptf.Tx{tx}
+	delta, newTx, err := ptf.AddTx(0, txs, preTxStatus)
+	require.NotNil(t, err)
+	require.Nil(t, delta)
+	require.Nil(t, newTx)
+	return err
+}
+
+type CurrOpt = util.Optional[ptf.Currency]
+
+// Test Tx
+type TTx struct {
+	Sec          string
+	TDate        date.Date
+	SDate        date.Date
+	Act          ptf.TxAction
+	Shares       uint32
+	Price        float64
+	Comm         float64
+	Currency     CurrOpt
+	FxRate       float64
+	CommCurrency CurrOpt
+	CommFxRate   float64
+	Memo         string
+	Affiliate    *ptf.Affiliate
+	AffName      string
+	SFL          util.Optional[ptf.SFLInput]
+	ReadIndex    uint32
+}
+
+// eXpand to full type.
+func (t TTx) X() *ptf.Tx {
+	fxRate := util.Tern(t.FxRate == 0.0, 1.0, t.FxRate)
+	affiliate := t.Affiliate
+	if affiliate == nil {
+		affiliate = ptf.GlobalAffiliateDedupTable.DedupedAffiliate(t.AffName)
+	} else {
+		util.Assert(t.AffName == "")
+	}
+
+	return &ptf.Tx{
+		Security:                          util.Tern(t.Sec == "", DefaultTestSecurity, t.Sec),
+		TradeDate:                         t.TDate,
+		SettlementDate:                    util.Tern(t.SDate == date.Date{}, t.TDate.AddDays(2), t.SDate),
+		Action:                            t.Act,
+		Shares:                            t.Shares,
+		AmountPerShare:                    t.Price,
+		Commission:                        t.Comm,
+		TxCurrency:                        t.Currency.GetOr(ptf.CAD),
+		TxCurrToLocalExchangeRate:         util.Tern(t.FxRate == 0.0, 1.0, t.FxRate),
+		CommissionCurrency:                t.CommCurrency.GetOr(t.Currency.GetOr(ptf.CAD)),
+		CommissionCurrToLocalExchangeRate: util.Tern(t.CommFxRate == 0.0, fxRate, t.CommFxRate),
+		Memo:                              t.Memo,
+		Affiliate:                         affiliate,
+
+		SpecifiedSuperficialLoss: t.SFL,
+
+		ReadIndex: t.ReadIndex,
+	}
+}
+
+type SimplePtfSecSt struct {
+	Security string
+	Shares   uint32
+	TotalAcb float64
+}
+
+// eXpand to full type.
+func (o SimplePtfSecSt) X() *ptf.PortfolioSecurityStatus {
+	return &ptf.PortfolioSecurityStatus{
+		Security:                  o.Security,
+		ShareBalance:              o.Shares,
+		AllAffiliatesShareBalance: o.Shares,
+		TotalAcb:                  o.TotalAcb,
+	}
+}
+
+// Test PortfolioSecurityStatus
+type TPSS struct {
+	Sec       string
+	Shares    uint32
+	AllShares uint32
+	TotalAcb  float64
+	AcbPerSh  float64
+}
+
+// // eXpand to full type.
+func (o TPSS) X() *ptf.PortfolioSecurityStatus {
+	util.Assert(!(o.TotalAcb != 0.0 && o.AcbPerSh != 0.0))
+
+	return &ptf.PortfolioSecurityStatus{
+		Security:                  util.Tern(o.Sec == "", DefaultTestSecurity, o.Sec),
+		ShareBalance:              o.Shares,
+		AllAffiliatesShareBalance: util.Tern(o.AllShares > 0, o.AllShares, o.Shares),
+		TotalAcb:                  util.Tern(o.AcbPerSh != 0.0, o.AcbPerSh*float64(o.Shares), o.TotalAcb),
+	}
+}
+
+func SoftStEq(
+	t *testing.T,
+	exp *ptf.PortfolioSecurityStatus, actual *ptf.PortfolioSecurityStatus) bool {
+
+	var expCopy ptf.PortfolioSecurityStatus = *exp
+	var actualCopy ptf.PortfolioSecurityStatus = *actual
+
+	// This will represent NaN, but allow us to actually perform an equality check
+	nanVal := -123.0123456789
+	if math.IsNaN(expCopy.TotalAcb) {
+		expCopy.TotalAcb = nanVal
+	}
+	if math.IsNaN(actualCopy.TotalAcb) {
+		actualCopy.TotalAcb = nanVal
+	}
+
+	// For the sake of sanity, allow ourselves to specify approximate float values.
+	if IsAlmostEqual(expCopy.TotalAcb, actualCopy.TotalAcb) {
+		expCopy.TotalAcb = actualCopy.TotalAcb
+	}
+
+	return assert.Equal(t, expCopy, actualCopy)
+}
+
+func StEq(
+	t *testing.T,
+	exp *ptf.PortfolioSecurityStatus, actual *ptf.PortfolioSecurityStatus) {
+	if !SoftStEq(t, exp, actual) {
+		t.FailNow()
+	}
 }
 
 func TestBasicBuyAcb(t *testing.T) {
@@ -50,7 +208,7 @@ func TestBasicBuyAcb(t *testing.T) {
 
 	delta := AddTxNoErr(t, tx, sptf)
 	rq.Equal(delta.PostStatus,
-		&ptf.PortfolioSecurityStatus{Security: "FOO", ShareBalance: 3, TotalAcb: 30.0},
+		SimplePtfSecSt{Security: "FOO", Shares: 3, TotalAcb: 30.0}.X(),
 	)
 	rq.Equal(delta.CapitalGain, 0.0)
 
@@ -62,7 +220,7 @@ func TestBasicBuyAcb(t *testing.T) {
 
 	delta = AddTxNoErr(t, tx, sptf)
 	rq.Equal(delta.PostStatus,
-		&ptf.PortfolioSecurityStatus{Security: "FOO", ShareBalance: 2, TotalAcb: 21.0},
+		SimplePtfSecSt{Security: "FOO", Shares: 2, TotalAcb: 21.0}.X(),
 	)
 	rq.Equal(delta.CapitalGain, 0.0)
 
@@ -74,33 +232,26 @@ func TestBasicBuyAcb(t *testing.T) {
 
 	delta = AddTxNoErr(t, tx, delta.PostStatus)
 	rq.Equal(delta.PostStatus,
-		&ptf.PortfolioSecurityStatus{Security: "FOO", ShareBalance: 5,
-			TotalAcb: 21.0 + (2 * 36.0) + 0.3},
+		SimplePtfSecSt{Security: "FOO", Shares: 5,
+			TotalAcb: 21.0 + (2 * 36.0) + 0.3}.X(),
 	)
 	rq.Equal(delta.CapitalGain, 0.0)
 }
 
 func TestBasicSellAcbErrors(t *testing.T) {
-	rq := require.New(t)
-
-	sptf := &ptf.PortfolioSecurityStatus{Security: "FOO", ShareBalance: 2, TotalAcb: 20.0}
+	sptf := SimplePtfSecSt{Security: "FOO", Shares: 2, TotalAcb: 20.0}.X()
 	tx := &ptf.Tx{Security: "FOO", SettlementDate: mkDate(1), Action: ptf.SELL,
 		Shares: 3, AmountPerShare: 10.0, Commission: 0.0,
 		TxCurrency: ptf.CAD, TxCurrToLocalExchangeRate: 1.0,
 		CommissionCurrency: ptf.CAD, CommissionCurrToLocalExchangeRate: 1.0}
-	txs := []*ptf.Tx{tx}
-
-	delta, newTx, err := ptf.AddTx(0, txs, sptf)
-	rq.Nil(newTx)
-	rq.Nil(delta)
-	rq.NotNil(err)
+	AddTxWithErr(t, tx, sptf)
 }
 
 func TestBasicSellAcb(t *testing.T) {
 	rq := require.New(t)
 
 	// Sell all remaining shares
-	sptf := &ptf.PortfolioSecurityStatus{Security: "FOO", ShareBalance: 2, TotalAcb: 20.0}
+	sptf := SimplePtfSecSt{Security: "FOO", Shares: 2, TotalAcb: 20.0}.X()
 	tx := &ptf.Tx{Security: "FOO", SettlementDate: mkDate(1), Action: ptf.SELL,
 		Shares: 2, AmountPerShare: 15.0, Commission: 0.0,
 		TxCurrency: ptf.CAD, TxCurrToLocalExchangeRate: 1.0,
@@ -108,12 +259,12 @@ func TestBasicSellAcb(t *testing.T) {
 
 	delta := AddTxNoErr(t, tx, sptf)
 	rq.Equal(delta.PostStatus,
-		&ptf.PortfolioSecurityStatus{Security: "FOO", ShareBalance: 0, TotalAcb: 0.0},
+		SimplePtfSecSt{Security: "FOO", Shares: 0, TotalAcb: 0.0}.X(),
 	)
 	rq.Equal(delta.CapitalGain, 10.0)
 
 	// Sell shares with commission
-	sptf = &ptf.PortfolioSecurityStatus{Security: "FOO", ShareBalance: 3, TotalAcb: 30.0}
+	sptf = SimplePtfSecSt{Security: "FOO", Shares: 3, TotalAcb: 30.0}.X()
 	tx = &ptf.Tx{Security: "FOO", SettlementDate: mkDate(1), Action: ptf.SELL,
 		Shares: 2, AmountPerShare: 15.0, Commission: 1.0,
 		TxCurrency: ptf.CAD, TxCurrToLocalExchangeRate: 1.0,
@@ -121,12 +272,12 @@ func TestBasicSellAcb(t *testing.T) {
 
 	delta = AddTxNoErr(t, tx, sptf)
 	rq.Equal(delta.PostStatus,
-		&ptf.PortfolioSecurityStatus{Security: "FOO", ShareBalance: 1, TotalAcb: 10.0},
+		SimplePtfSecSt{Security: "FOO", Shares: 1, TotalAcb: 10.0}.X(),
 	)
 	rq.Equal(delta.CapitalGain, 9.0)
 
 	// Sell shares with exchange rate
-	sptf = &ptf.PortfolioSecurityStatus{Security: "FOO", ShareBalance: 3, TotalAcb: 30.0}
+	sptf = SimplePtfSecSt{Security: "FOO", Shares: 3, TotalAcb: 30.0}.X()
 	tx = &ptf.Tx{Security: "FOO", SettlementDate: mkDate(1), Action: ptf.SELL,
 		Shares: 2, AmountPerShare: 15.0, Commission: 2.0,
 		TxCurrency: "XXX", TxCurrToLocalExchangeRate: 2.0,
@@ -134,12 +285,12 @@ func TestBasicSellAcb(t *testing.T) {
 
 	delta = AddTxNoErr(t, tx, sptf)
 	rq.Equal(delta.PostStatus,
-		&ptf.PortfolioSecurityStatus{Security: "FOO", ShareBalance: 1, TotalAcb: 10.0},
+		SimplePtfSecSt{Security: "FOO", Shares: 1, TotalAcb: 10.0}.X(),
 	)
 	rq.Equal(delta.CapitalGain, (15.0*2.0*2.0)-20.0-0.8)
 }
 
-func doTestSuperficialLosses(t *testing.T, partialLosses bool) {
+func TestSuperficialLosses(t *testing.T) {
 	rq := require.New(t)
 
 	makeTxV := func(
@@ -183,10 +334,10 @@ func doTestSuperficialLosses(t *testing.T, partialLosses bool) {
 	validate := func(i int, shareBalance uint32, totalAcb float64, gain float64) {
 		AlmostEqual(t, totalAcb, deltas[i].PostStatus.TotalAcb)
 		rq.Equal(
-			&ptf.PortfolioSecurityStatus{
-				Security:     "FOO",
-				ShareBalance: shareBalance,
-				TotalAcb:     deltas[i].PostStatus.TotalAcb},
+			SimplePtfSecSt{
+				Security: "FOO",
+				Shares:   shareBalance,
+				TotalAcb: deltas[i].PostStatus.TotalAcb}.X(),
 			deltas[i].PostStatus,
 		)
 		AlmostEqual(t, gain, deltas[i].CapitalGain)
@@ -452,49 +603,36 @@ func doTestSuperficialLosses(t *testing.T, partialLosses bool) {
 	rq.NotNil(err)
 }
 
-func TestSuperficialLosses(t *testing.T) {
-	doTestSuperficialLosses(t, true)
-}
-
-func TestSuperficialLossesWithoutPartials(t *testing.T) {
-	doTestSuperficialLosses(t, false)
-}
-
 func TestBasicRocAcbErrors(t *testing.T) {
-	rq := require.New(t)
-
 	// Test that RoC Txs always have zero shares
-	sptf := &ptf.PortfolioSecurityStatus{Security: "FOO", ShareBalance: 2, TotalAcb: 20.0}
+	sptf := SimplePtfSecSt{Security: "FOO", Shares: 2, TotalAcb: 20.0}.X()
 	tx := &ptf.Tx{Security: "FOO", SettlementDate: mkDate(1), Action: ptf.ROC,
 		Shares: 3, AmountPerShare: 10.0, Commission: 0.0,
 		TxCurrency: ptf.CAD, TxCurrToLocalExchangeRate: 1.0,
 		CommissionCurrency: ptf.CAD, CommissionCurrToLocalExchangeRate: 1.0}
-	txs := []*ptf.Tx{tx}
-
-	delta, newTx, err := ptf.AddTx(0, txs, sptf)
-	rq.Nil(delta)
-	rq.Nil(newTx)
-	rq.NotNil(err)
+	AddTxWithErr(t, tx, sptf)
 
 	// Test that RoC cannot exceed the current ACB
-	sptf = &ptf.PortfolioSecurityStatus{Security: "FOO", ShareBalance: 2, TotalAcb: 20.0}
+	sptf = SimplePtfSecSt{Security: "FOO", Shares: 2, TotalAcb: 20.0}.X()
 	tx = &ptf.Tx{Security: "FOO", SettlementDate: mkDate(1), Action: ptf.ROC,
 		Shares: 0, AmountPerShare: 13.0, Commission: 0.0,
 		TxCurrency: ptf.CAD, TxCurrToLocalExchangeRate: 1.0,
 		CommissionCurrency: ptf.CAD, CommissionCurrToLocalExchangeRate: 1.0}
-	txs = []*ptf.Tx{tx}
+	AddTxWithErr(t, tx, sptf)
 
-	delta, newTx, err = ptf.AddTx(0, txs, sptf)
-	rq.Nil(delta)
-	rq.Nil(newTx)
-	rq.NotNil(err)
+	// Test that RoC cannot occur on registered affiliates, since they have no ACB
+	sptf = TPSS{Shares: 5, TotalAcb: NaN}.X()
+	tx = TTx{Act: ptf.ROC, Shares: 0, Price: 3.0, AffName: "(R)"}.X()
+	AddTxWithErr(t, tx, sptf)
 }
 
 func TestBasicRocAcb(t *testing.T) {
 	rq := require.New(t)
 
-	// Sell all remaining shares
-	sptf := &ptf.PortfolioSecurityStatus{Security: "FOO", ShareBalance: 2, TotalAcb: 20.0}
+	// Test basic ROC with different AllAffiliatesShareBalance
+	sptf := &ptf.PortfolioSecurityStatus{
+		Security: "FOO", ShareBalance: 2, AllAffiliatesShareBalance: 8, TotalAcb: 20.0,
+	}
 	tx := &ptf.Tx{Security: "FOO", SettlementDate: mkDate(1), Action: ptf.ROC,
 		Shares: 0, AmountPerShare: 1.0, Commission: 0.0,
 		TxCurrency: ptf.CAD, TxCurrToLocalExchangeRate: 1.0,
@@ -502,12 +640,14 @@ func TestBasicRocAcb(t *testing.T) {
 
 	delta := AddTxNoErr(t, tx, sptf)
 	rq.Equal(delta.PostStatus,
-		&ptf.PortfolioSecurityStatus{Security: "FOO", ShareBalance: 2, TotalAcb: 18.0},
+		&ptf.PortfolioSecurityStatus{
+			Security: "FOO", ShareBalance: 2, AllAffiliatesShareBalance: 8, TotalAcb: 18.0,
+		},
 	)
 	rq.Equal(delta.CapitalGain, 0.0)
 
 	// Test RoC with exchange
-	sptf = &ptf.PortfolioSecurityStatus{Security: "FOO", ShareBalance: 2, TotalAcb: 20.0}
+	sptf = SimplePtfSecSt{Security: "FOO", Shares: 2, TotalAcb: 20.0}.X()
 	tx = &ptf.Tx{Security: "FOO", SettlementDate: mkDate(1), Action: ptf.ROC,
 		Shares: 0, AmountPerShare: 1.0, Commission: 0.0,
 		TxCurrency: ptf.CAD, TxCurrToLocalExchangeRate: 2.0,
@@ -515,9 +655,205 @@ func TestBasicRocAcb(t *testing.T) {
 
 	delta = AddTxNoErr(t, tx, sptf)
 	rq.Equal(delta.PostStatus,
-		&ptf.PortfolioSecurityStatus{Security: "FOO", ShareBalance: 2, TotalAcb: 16.0},
+		SimplePtfSecSt{Security: "FOO", Shares: 2, TotalAcb: 16.0}.X(),
 	)
 	rq.Equal(delta.CapitalGain, 0.0)
+}
+
+func TestRegisteredAffiliateCapitalGain(t *testing.T) {
+	// Test there are no capital gains in registered accounts
+	sptf := TPSS{Shares: 5, TotalAcb: NaN}.X()
+	tx := TTx{Act: ptf.SELL, Shares: 2, Price: 3.0, AffName: "(R)"}.X()
+	delta := AddTxNoErr(t, tx, sptf)
+	StEq(t, TPSS{Shares: 3, AcbPerSh: NaN}.X(), delta.PostStatus)
+	RqNaN(t, delta.CapitalGain)
+
+	// Test that we fail if registered account sees non-nan acb
+	sptf = TPSS{Shares: 5, TotalAcb: 0.0}.X()
+	tx = TTx{Act: ptf.SELL, Shares: 2, Price: 3.0, AffName: "(R)"}.X()
+	AddTxWithErr(t, tx, sptf)
+	// Same, but non-zero acb
+	sptf = TPSS{Shares: 5, TotalAcb: 1.0}.X()
+	tx = TTx{Act: ptf.SELL, Shares: 2, Price: 3.0, AffName: "(R)"}.X()
+	AddTxWithErr(t, tx, sptf)
+	// Test that non-registered with NaN ACB generates an error as well
+	sptf = TPSS{Shares: 5, TotalAcb: NaN}.X()
+	tx = TTx{Act: ptf.SELL, Shares: 2, Price: 3.0}.X()
+	AddTxWithErr(t, tx, sptf)
+}
+
+/*
+Test cases TODO
+
+- SFL with all sells on different affiliate
+
+negative tests:
+- SfLA Tx on registered affiliate
+
+Functionality TODO
+- SFL with buys split across affiliates
+- Summary TX generation for multiple affiliates
+
+*/
+
+func TestAllAffiliateShareBalanceAddTx(t *testing.T) {
+	rq := require.New(t)
+
+	var sptf *ptf.PortfolioSecurityStatus
+	var tx *ptf.Tx
+	var delta *ptf.TxDelta
+
+	// Basic buy
+	sptf = TPSS{Shares: 3, AllShares: 7, TotalAcb: 15.0}.X()
+	tx = TTx{Act: ptf.BUY, Shares: 2, Price: 5.0}.X()
+	delta = AddTxNoErr(t, tx, sptf)
+	rq.Equal(
+		delta.PostStatus,
+		TPSS{Shares: 5, AllShares: 9, TotalAcb: 25.0}.X())
+
+	// Basic sell
+	sptf = TPSS{Shares: 5, AllShares: 8, AcbPerSh: 3.0}.X()
+	tx = TTx{Act: ptf.SELL, Shares: 2, Price: 5.0}.X()
+	delta = AddTxNoErr(t, tx, sptf)
+	rq.Equal(
+		delta.PostStatus,
+		TPSS{Shares: 3, AllShares: 6, AcbPerSh: 3.0}.X())
+
+	// AllAffiliatesShareBalance too small (error).
+	// In theory this could maybe panic, since it should not be possible, but
+	// safer and easier to debug if we get a nicer error, which is in the API anyway.
+	sptf = TPSS{Shares: 5, AllShares: 2, TotalAcb: 15.0}.X()
+	tx = TTx{Act: ptf.SELL, Shares: 2, Price: 5.0}.X()
+	AddTxWithErr(t, tx, sptf)
+}
+
+// Test Delta
+type TDt struct {
+	PostSt TPSS
+	Gain   float64
+}
+
+func ValidateDeltas(t *testing.T, deltas []*ptf.TxDelta, expDeltas []TDt) {
+	require.Equal(t, len(expDeltas), len(deltas))
+	for i, delta := range deltas {
+		fail := false
+		fail = !SoftStEq(t, expDeltas[i].PostSt.X(), delta.PostStatus) || fail
+		fail = !SoftAlmostEqual(t, expDeltas[i].Gain, deltas[i].CapitalGain) || fail
+		if fail {
+			require.FailNowf(t, "ValidateDeltas failed", "Delta %d", i)
+		}
+	}
+}
+
+func TestMultiAffiliateGains(t *testing.T) {
+	rq := require.New(t)
+	plo := ptf.LegacyOptions{}
+	var txs []*ptf.Tx
+	var deltas []*ptf.TxDelta
+	var err error
+
+	/*
+		Default				Default (R)			B					B (R)
+		--------				------------		---------		------------
+		buy 10            buy 20            buy 30			buy 40
+		sell 1 (gain)
+								sell 2 ("gain")
+														sell 3 (gain)
+																			sell 4 ("gain")
+	*/
+	txs = []*ptf.Tx{
+		// Buys
+		TTx{Act: ptf.BUY, Shares: 10, Price: 1.0, AffName: ""}.X(),
+		TTx{Act: ptf.BUY, Shares: 20, Price: 1.0, AffName: "(R)"}.X(),
+		TTx{Act: ptf.BUY, Shares: 30, Price: 1.0, AffName: "B"}.X(),
+		TTx{Act: ptf.BUY, Shares: 40, Price: 1.0, AffName: "B (R)"}.X(),
+		// Sells
+		TTx{Act: ptf.SELL, Shares: 1, Price: 1.2, AffName: ""}.X(),
+		TTx{Act: ptf.SELL, Shares: 2, Price: 1.3, AffName: "(R)"}.X(),
+		TTx{Act: ptf.SELL, Shares: 3, Price: 1.4, AffName: "B"}.X(),
+		TTx{Act: ptf.SELL, Shares: 4, Price: 1.5, AffName: "B (R)"}.X(),
+	}
+	deltas, err = ptf.TxsToDeltaList(txs, nil, plo)
+	rq.Nil(err)
+	ValidateDeltas(t, deltas, []TDt{
+		// Buys
+		TDt{PostSt: TPSS{Shares: 10, AllShares: 10, AcbPerSh: 1.0}},
+		TDt{PostSt: TPSS{Shares: 20, AllShares: 30, TotalAcb: NaN}, Gain: NaN},
+		TDt{PostSt: TPSS{Shares: 30, AllShares: 60, AcbPerSh: 1.0}},
+		TDt{PostSt: TPSS{Shares: 40, AllShares: 100, TotalAcb: NaN}, Gain: NaN},
+		// Sells
+		TDt{PostSt: TPSS{Shares: 9, AllShares: 99, AcbPerSh: 1.0}, Gain: 1 * 0.2},
+		TDt{PostSt: TPSS{Shares: 18, AllShares: 97, TotalAcb: NaN}, Gain: NaN},
+		TDt{PostSt: TPSS{Shares: 27, AllShares: 94, AcbPerSh: 1.0}, Gain: 3 * 0.4},
+		TDt{PostSt: TPSS{Shares: 36, AllShares: 90, TotalAcb: NaN}, Gain: NaN},
+	})
+}
+
+func TestMultiAffiliateRoC(t *testing.T) {
+	rq := require.New(t)
+	plo := ptf.LegacyOptions{}
+
+	/*
+		Default				B
+		--------				------------
+		buy 10            buy 20
+								ROC
+		sell 10				sell 20
+	*/
+	txs := []*ptf.Tx{
+		// Buys
+		TTx{Act: ptf.BUY, Shares: 10, Price: 1.0, AffName: ""}.X(),
+		TTx{Act: ptf.BUY, Shares: 20, Price: 1.0, AffName: "B"}.X(),
+		// ROC
+		TTx{Act: ptf.ROC, Shares: 0, Price: 0.2, AffName: "B"}.X(),
+		// Sells
+		TTx{Act: ptf.SELL, Shares: 10, Price: 1.1, AffName: ""}.X(),
+		TTx{Act: ptf.SELL, Shares: 20, Price: 1.1, AffName: "B"}.X(),
+	}
+	deltas, err := ptf.TxsToDeltaList(txs, nil, plo)
+	rq.Nil(err)
+	ValidateDeltas(t, deltas, []TDt{
+		// Buys
+		TDt{PostSt: TPSS{Shares: 10, AllShares: 10, AcbPerSh: 1.0}}, // Default
+		TDt{PostSt: TPSS{Shares: 20, AllShares: 30, AcbPerSh: 1.0}}, // B
+		// ROC
+		TDt{PostSt: TPSS{Shares: 20, AllShares: 30, AcbPerSh: 0.8}}, // B
+		// Sells
+		TDt{PostSt: TPSS{Shares: 0, AllShares: 20, AcbPerSh: 0.0}, Gain: 10 * 0.1}, // Default
+		TDt{PostSt: TPSS{Shares: 0, AllShares: 0, AcbPerSh: 0.0}, Gain: 20 * 0.3},  // B
+	})
+}
+
+// TODO re-enable
+func _TestOtherAffiliateSFL(t *testing.T) {
+	rq := require.New(t)
+	plo := ptf.LegacyOptions{}
+
+	/*
+		SFL with all sells on different affiliate
+
+		Default				B
+		--------				------------
+		buy 10				buy 5
+		wait...
+		sell 2 (SFL)
+								buy 2
+	*/
+	txs := []*ptf.Tx{
+		TTx{TDate: mkDate(1), Act: ptf.BUY, Shares: 10, Price: 1.0, AffName: ""}.X(),
+		TTx{TDate: mkDate(1), Act: ptf.BUY, Shares: 5, Price: 1.0, AffName: "B"}.X(),
+		TTx{TDate: mkDate(40), Act: ptf.SELL, Shares: 2, Price: 0.5, AffName: ""}.X(),
+		TTx{TDate: mkDate(41), Act: ptf.BUY, Shares: 2, Price: 1.0, AffName: "B"}.X(),
+	}
+	deltas, err := ptf.TxsToDeltaList(txs, nil, plo)
+	rq.Nil(err)
+	ValidateDeltas(t, deltas, []TDt{
+		TDt{PostSt: TPSS{Shares: 10, AllShares: 10, TotalAcb: 10.0}}, // Buy in Default
+		TDt{PostSt: TPSS{Shares: 5, AllShares: 15, TotalAcb: 5.0}},   // Buy in B
+		TDt{PostSt: TPSS{Shares: 8, AllShares: 13, TotalAcb: 10.0}},  // SFL of 0.5 * 2 shares
+		TDt{PostSt: TPSS{Shares: 5, AllShares: 13, TotalAcb: 6.0}},   // Auto-adjust on B
+		TDt{PostSt: TPSS{Shares: 7, AllShares: 15, TotalAcb: 8.0}},   // B
+	})
 }
 
 func TestTxSort(t *testing.T) {

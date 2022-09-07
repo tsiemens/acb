@@ -54,6 +54,7 @@ func DefaultTx() *Tx {
 		Shares: 0, AmountPerShare: 0.0, Commission: 0.0,
 		TxCurrency: DEFAULT_CURRENCY, TxCurrToLocalExchangeRate: 0.0,
 		CommissionCurrency: DEFAULT_CURRENCY, CommissionCurrToLocalExchangeRate: 0.0,
+		Affiliate: GlobalAffiliateDedupTable.GetDefaultAffiliate(),
 	}
 }
 

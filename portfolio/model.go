@@ -61,6 +61,10 @@ func (a *Affiliate) Registered() bool {
 	return a.registered
 }
 
+func (a *Affiliate) Default() bool {
+	return strings.HasPrefix(a.Id(), "default")
+}
+
 var (
 	registeredRe = regexp.MustCompile(`\([rR]\)`)
 	extraSpaceRe = regexp.MustCompile(`  +`)
@@ -92,7 +96,12 @@ type AffiliateDedupTable struct {
 }
 
 func NewAffiliateDedupTable() *AffiliateDedupTable {
-	return &AffiliateDedupTable{map[string]*Affiliate{}}
+	dt := &AffiliateDedupTable{map[string]*Affiliate{}}
+	// Insert the default affiliates (just to ensure they get a consistent
+	// capitalization)
+	dt.DedupedAffiliate("Default")
+	dt.DedupedAffiliate("Default (R)")
+	return dt
 }
 
 // Used by io.go while loading Txs
@@ -111,10 +120,22 @@ func (t *AffiliateDedupTable) DedupedAffiliate(name string) *Affiliate {
 	return affiliate
 }
 
+func (t *AffiliateDedupTable) MustGet(id string) *Affiliate {
+	af, ok := t.affiliates[id]
+	util.Assertf(ok, "AffiliateDedupTable could not find Affiliate \"%s\"", id)
+	return af
+}
+
+func (t *AffiliateDedupTable) GetDefaultAffiliate() *Affiliate {
+	return t.MustGet("default")
+}
+
 type PortfolioSecurityStatus struct {
-	Security     string
-	ShareBalance uint32
-	TotalAcb     float64
+	Security                  string
+	ShareBalance              uint32
+	AllAffiliatesShareBalance uint32
+	// NaN for registered accounts/affiliates.
+	TotalAcb float64
 }
 
 func NewEmptyPortfolioSecurityStatus(security string) *PortfolioSecurityStatus {
