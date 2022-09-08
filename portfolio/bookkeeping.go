@@ -35,7 +35,8 @@ func GetLastDayInSuperficialLossPeriod(txDate date.Date) date.Date {
 // Checks if there is a Buy action within 30 days before or after the Sell
 // at idx, AND if you hold shares after the 30 day period
 // Also gathers relevant information for partial superficial loss calculation.
-func getSuperficialLossInfo(idx int, txs []*Tx, shareBalanceAfterSell uint32) _SuperficialLossInfo {
+func getSuperficialLossInfo(
+	idx int, txs []*Tx, allAffiliatesShareBalanceAfterSell uint32) _SuperficialLossInfo {
 	tx := txs[idx]
 	util.Assertf(tx.Action == SELL,
 		"getSuperficialLossInfo: Tx was not Sell, but %s", tx.Action)
@@ -47,10 +48,11 @@ func getSuperficialLossInfo(idx int, txs []*Tx, shareBalanceAfterSell uint32) _S
 		IsSuperficial:        false,
 		FirstDateInPeriod:    firstBadBuyDate,
 		LastDateInPeriod:     lastBadBuyDate,
-		SharesAtEndOfPeriod:  shareBalanceAfterSell,
+		SharesAtEndOfPeriod:  allAffiliatesShareBalanceAfterSell,
 		TotalAquiredInPeriod: 0,
 	}
 
+	// buyingAffiliates := util.NewSet[string]()
 	// TODO fix SFL logic for multiple affiliates.
 
 	didBuyAfterInPeriod := false
@@ -65,6 +67,8 @@ func getSuperficialLossInfo(idx int, txs []*Tx, shareBalanceAfterSell uint32) _S
 			didBuyAfterInPeriod = true
 			sli.SharesAtEndOfPeriod += afterTx.Shares
 			sli.TotalAquiredInPeriod += afterTx.Shares
+			// TODO need to fix tests so this is never nil
+			// buyingAffiliates.Add(afterTx.Affiliate.Id())
 		case SELL:
 			sli.SharesAtEndOfPeriod -= afterTx.Shares
 		default:
@@ -100,8 +104,9 @@ func getSuperficialLossInfo(idx int, txs []*Tx, shareBalanceAfterSell uint32) _S
 // the loss is actually superficial.
 //
 // Reference: https://www.adjustedcostbase.ca/blog/applying-the-superficial-loss-rule-for-a-partial-disposition-of-shares/
-func getSuperficialLossRatio(idx int, txs []*Tx, shareBalanceAfterSell uint32) util.Uint32Ratio {
-	sli := getSuperficialLossInfo(idx, txs, shareBalanceAfterSell)
+func getSuperficialLossRatio(
+	idx int, txs []*Tx, allAffiliatesShareBalanceAfterSell uint32) util.Uint32Ratio {
+	sli := getSuperficialLossInfo(idx, txs, allAffiliatesShareBalanceAfterSell)
 
 	if sli.IsSuperficial {
 		tx := txs[idx]

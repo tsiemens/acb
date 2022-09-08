@@ -27,6 +27,11 @@ func mkDate(day int) date.Date {
 	return mkDateYD(2017, day)
 }
 
+func CADSFL(lossVal float64, force bool) util.Optional[ptf.SFLInput] {
+	util.Assert(lossVal <= 0.0)
+	return util.NewOptional[ptf.SFLInput](ptf.SFLInput{lossVal, force})
+}
+
 func IsAlmostEqual(a float64, b float64) bool {
 	if math.IsNaN(a) && math.IsNaN(b) {
 		return true
@@ -75,26 +80,29 @@ func AddTxWithErr(t *testing.T, tx *ptf.Tx, preTxStatus *ptf.PortfolioSecuritySt
 	return err
 }
 
-type CurrOpt = util.Optional[ptf.Currency]
+// Using DEFAULT_CURRENCY in TTx will just result in CAD.
+// If testing actual DEFAULT_CURRENCY, use this.
+const EXP_DEFAULT_CURRENCY ptf.Currency = "EXPLICIT_TEST_DEFAULT_CURRENCY"
 
 // Test Tx
 type TTx struct {
-	Sec          string
-	TDate        date.Date
-	SDate        date.Date
-	Act          ptf.TxAction
-	Shares       uint32
-	Price        float64
-	Comm         float64
-	Currency     CurrOpt
-	FxRate       float64
-	CommCurrency CurrOpt
-	CommFxRate   float64
-	Memo         string
-	Affiliate    *ptf.Affiliate
-	AffName      string
-	SFL          util.Optional[ptf.SFLInput]
-	ReadIndex    uint32
+	Sec        string
+	TDay       int // Convenience for TDate
+	TDate      date.Date
+	SDate      date.Date // Defaults to 2 days after TDate/TDay
+	Act        ptf.TxAction
+	Shares     uint32
+	Price      float64
+	Comm       float64
+	Curr       ptf.Currency
+	FxRate     float64
+	CommCurr   ptf.Currency
+	CommFxRate float64
+	Memo       string
+	Affiliate  *ptf.Affiliate
+	AffName    string
+	SFL        util.Optional[ptf.SFLInput]
+	ReadIndex  uint32
 }
 
 // eXpand to full type.
@@ -107,17 +115,35 @@ func (t TTx) X() *ptf.Tx {
 		util.Assert(t.AffName == "")
 	}
 
+	tradeDate := util.Tern(t.TDay != 0, mkDate(t.TDay), t.TDate)
+	if t.TDay != 0 {
+		util.Assert(t.TDate == date.Date{})
+	}
+
+	getCurr := func(specifiedCurr ptf.Currency, default_ ptf.Currency) ptf.Currency {
+		curr := specifiedCurr
+		if curr == "" {
+			util.Assert(curr == ptf.DEFAULT_CURRENCY)
+			curr = default_
+		} else if curr == EXP_DEFAULT_CURRENCY {
+			curr = ptf.DEFAULT_CURRENCY
+		}
+		return curr
+	}
+	curr := getCurr(t.Curr, ptf.CAD)
+	commCurr := getCurr(t.CommCurr, curr)
+
 	return &ptf.Tx{
 		Security:                          util.Tern(t.Sec == "", DefaultTestSecurity, t.Sec),
-		TradeDate:                         t.TDate,
-		SettlementDate:                    util.Tern(t.SDate == date.Date{}, t.TDate.AddDays(2), t.SDate),
+		TradeDate:                         tradeDate,
+		SettlementDate:                    util.Tern(t.SDate == date.Date{}, tradeDate.AddDays(2), t.SDate),
 		Action:                            t.Act,
 		Shares:                            t.Shares,
 		AmountPerShare:                    t.Price,
 		Commission:                        t.Comm,
-		TxCurrency:                        t.Currency.GetOr(ptf.CAD),
+		TxCurrency:                        curr,
 		TxCurrToLocalExchangeRate:         util.Tern(t.FxRate == 0.0, 1.0, t.FxRate),
-		CommissionCurrency:                t.CommCurrency.GetOr(t.Currency.GetOr(ptf.CAD)),
+		CommissionCurrency:                commCurr,
 		CommissionCurrToLocalExchangeRate: util.Tern(t.CommFxRate == 0.0, fxRate, t.CommFxRate),
 		Memo:                              t.Memo,
 		Affiliate:                         affiliate,
@@ -125,22 +151,6 @@ func (t TTx) X() *ptf.Tx {
 		SpecifiedSuperficialLoss: t.SFL,
 
 		ReadIndex: t.ReadIndex,
-	}
-}
-
-type SimplePtfSecSt struct {
-	Security string
-	Shares   uint32
-	TotalAcb float64
-}
-
-// eXpand to full type.
-func (o SimplePtfSecSt) X() *ptf.PortfolioSecurityStatus {
-	return &ptf.PortfolioSecurityStatus{
-		Security:                  o.Security,
-		ShareBalance:              o.Shares,
-		AllAffiliatesShareBalance: o.Shares,
-		TotalAcb:                  o.TotalAcb,
 	}
 }
 
@@ -197,158 +207,128 @@ func StEq(
 	}
 }
 
+// Test Delta
+type TDt struct {
+	PostSt TPSS
+	Gain   float64
+}
+
+func ValidateDelta(t *testing.T, delta *ptf.TxDelta, expDelta TDt) {
+	fail := false
+	fail = !SoftStEq(t, expDelta.PostSt.X(), delta.PostStatus) || fail
+	fail = !SoftAlmostEqual(t, expDelta.Gain, delta.CapitalGain) || fail
+	if fail {
+		require.FailNow(t, "ValidateDelta failed")
+	}
+}
+
+func ValidateDeltas(t *testing.T, deltas []*ptf.TxDelta, expDeltas []TDt) {
+	require.Equal(t, len(expDeltas), len(deltas))
+	for i, delta := range deltas {
+		fail := false
+		fail = !SoftStEq(t, expDeltas[i].PostSt.X(), delta.PostStatus) || fail
+		fail = !SoftAlmostEqual(t, expDeltas[i].Gain, delta.CapitalGain) || fail
+		if fail {
+			for j, _ := range deltas {
+				fmt.Println(j, "Tx:", deltas[j].Tx, "PostStatus:", deltas[j].PostStatus)
+			}
+			require.FailNowf(t, "ValidateDeltas failed", "Delta %d", i)
+		}
+	}
+}
+
 func TestBasicBuyAcb(t *testing.T) {
-	rq := require.New(t)
+	var sptf *ptf.PortfolioSecurityStatus
+	var tx *ptf.Tx
+	var delta *ptf.TxDelta
 
-	sptf := ptf.NewEmptyPortfolioSecurityStatus("FOO")
-	tx := &ptf.Tx{Security: "FOO", SettlementDate: mkDate(1), Action: ptf.BUY,
-		Shares: 3, AmountPerShare: 10.0, Commission: 0.0,
-		TxCurrency: ptf.CAD, TxCurrToLocalExchangeRate: 1.0,
-		CommissionCurrency: ptf.CAD, CommissionCurrToLocalExchangeRate: 1.0}
-
-	delta := AddTxNoErr(t, tx, sptf)
-	rq.Equal(delta.PostStatus,
-		SimplePtfSecSt{Security: "FOO", Shares: 3, TotalAcb: 30.0}.X(),
-	)
-	rq.Equal(delta.CapitalGain, 0.0)
+	// Basic Buy
+	sptf = ptf.NewEmptyPortfolioSecurityStatus(DefaultTestSecurity)
+	tx = TTx{Act: ptf.BUY, Shares: 3, Price: 10.0}.X()
+	delta = AddTxNoErr(t, tx, sptf)
+	ValidateDelta(t, delta,
+		TDt{PostSt: TPSS{Shares: 3, TotalAcb: 30.0}, Gain: 0.0})
 
 	// Test with commission
-	tx = &ptf.Tx{Security: "FOO", SettlementDate: mkDate(1), Action: ptf.BUY,
-		Shares: 2, AmountPerShare: 10.0, Commission: 1.0,
-		TxCurrency: ptf.CAD, TxCurrToLocalExchangeRate: 1.0,
-		CommissionCurrency: ptf.CAD, CommissionCurrToLocalExchangeRate: 1.0}
-
+	tx = TTx{Act: ptf.BUY, Shares: 2, Price: 10.0, Comm: 1.0}.X()
 	delta = AddTxNoErr(t, tx, sptf)
-	rq.Equal(delta.PostStatus,
-		SimplePtfSecSt{Security: "FOO", Shares: 2, TotalAcb: 21.0}.X(),
-	)
-	rq.Equal(delta.CapitalGain, 0.0)
+	ValidateDelta(t, delta,
+		TDt{PostSt: TPSS{Shares: 2, TotalAcb: 21.0}, Gain: 0.0})
 
 	// Test with exchange rates
-	tx = &ptf.Tx{Security: "FOO", SettlementDate: mkDate(1), Action: ptf.BUY,
-		Shares: 3, AmountPerShare: 12.0, Commission: 1.0,
-		TxCurrency: ptf.USD, TxCurrToLocalExchangeRate: 2.0,
-		CommissionCurrency: "XXX", CommissionCurrToLocalExchangeRate: 0.3}
-
-	delta = AddTxNoErr(t, tx, delta.PostStatus)
-	rq.Equal(delta.PostStatus,
-		SimplePtfSecSt{Security: "FOO", Shares: 5,
-			TotalAcb: 21.0 + (2 * 36.0) + 0.3}.X(),
-	)
-	rq.Equal(delta.CapitalGain, 0.0)
+	sptf = TPSS{Shares: 2, TotalAcb: 21.0}.X()
+	tx = TTx{Act: ptf.BUY, Shares: 3, Price: 12.0, Comm: 1.0,
+		Curr: ptf.USD, FxRate: 2.0,
+		CommCurr: "XXX", CommFxRate: 0.3}.X()
+	delta = AddTxNoErr(t, tx, sptf)
+	ValidateDelta(t, delta,
+		TDt{PostSt: TPSS{Shares: 5, TotalAcb: 21.0 + (2 * 36.0) + 0.3}, Gain: 0.0})
 }
 
 func TestBasicSellAcbErrors(t *testing.T) {
-	sptf := SimplePtfSecSt{Security: "FOO", Shares: 2, TotalAcb: 20.0}.X()
-	tx := &ptf.Tx{Security: "FOO", SettlementDate: mkDate(1), Action: ptf.SELL,
-		Shares: 3, AmountPerShare: 10.0, Commission: 0.0,
-		TxCurrency: ptf.CAD, TxCurrToLocalExchangeRate: 1.0,
-		CommissionCurrency: ptf.CAD, CommissionCurrToLocalExchangeRate: 1.0}
+	sptf := TPSS{Shares: 2, TotalAcb: 20.0}.X()
+	tx := TTx{Act: ptf.SELL, Shares: 3, Price: 10.0}.X()
 	AddTxWithErr(t, tx, sptf)
 }
 
 func TestBasicSellAcb(t *testing.T) {
-	rq := require.New(t)
-
 	// Sell all remaining shares
-	sptf := SimplePtfSecSt{Security: "FOO", Shares: 2, TotalAcb: 20.0}.X()
-	tx := &ptf.Tx{Security: "FOO", SettlementDate: mkDate(1), Action: ptf.SELL,
-		Shares: 2, AmountPerShare: 15.0, Commission: 0.0,
-		TxCurrency: ptf.CAD, TxCurrToLocalExchangeRate: 1.0,
-		CommissionCurrency: ptf.CAD, CommissionCurrToLocalExchangeRate: 1.0}
+	sptf := TPSS{Shares: 2, TotalAcb: 20.0}.X()
+	tx := TTx{Act: ptf.SELL, Shares: 2, Price: 15.0}.X()
 
 	delta := AddTxNoErr(t, tx, sptf)
-	rq.Equal(delta.PostStatus,
-		SimplePtfSecSt{Security: "FOO", Shares: 0, TotalAcb: 0.0}.X(),
-	)
-	rq.Equal(delta.CapitalGain, 10.0)
+	ValidateDelta(t, delta,
+		TDt{PostSt: TPSS{Shares: 0, TotalAcb: 0.0}, Gain: 10.0})
 
 	// Sell shares with commission
-	sptf = SimplePtfSecSt{Security: "FOO", Shares: 3, TotalAcb: 30.0}.X()
-	tx = &ptf.Tx{Security: "FOO", SettlementDate: mkDate(1), Action: ptf.SELL,
-		Shares: 2, AmountPerShare: 15.0, Commission: 1.0,
-		TxCurrency: ptf.CAD, TxCurrToLocalExchangeRate: 1.0,
-		CommissionCurrency: ptf.CAD, CommissionCurrToLocalExchangeRate: 1.0}
+	sptf = TPSS{Shares: 3, TotalAcb: 30.0}.X()
+	tx = TTx{Act: ptf.SELL, Shares: 2, Price: 15.0, Comm: 1.0}.X()
 
 	delta = AddTxNoErr(t, tx, sptf)
-	rq.Equal(delta.PostStatus,
-		SimplePtfSecSt{Security: "FOO", Shares: 1, TotalAcb: 10.0}.X(),
-	)
-	rq.Equal(delta.CapitalGain, 9.0)
+	ValidateDelta(t, delta,
+		TDt{PostSt: TPSS{Shares: 1, TotalAcb: 10.0}, Gain: 9.0})
 
 	// Sell shares with exchange rate
-	sptf = SimplePtfSecSt{Security: "FOO", Shares: 3, TotalAcb: 30.0}.X()
-	tx = &ptf.Tx{Security: "FOO", SettlementDate: mkDate(1), Action: ptf.SELL,
-		Shares: 2, AmountPerShare: 15.0, Commission: 2.0,
-		TxCurrency: "XXX", TxCurrToLocalExchangeRate: 2.0,
-		CommissionCurrency: "YYY", CommissionCurrToLocalExchangeRate: 0.4}
+	sptf = TPSS{Shares: 3, TotalAcb: 30.0}.X()
+	tx = TTx{
+		Act: ptf.SELL, Shares: 2, Price: 15.0, Comm: 2.0,
+		Curr: "XXX", FxRate: 2.0,
+		CommCurr: "YYY", CommFxRate: 0.4}.X()
 
 	delta = AddTxNoErr(t, tx, sptf)
-	rq.Equal(delta.PostStatus,
-		SimplePtfSecSt{Security: "FOO", Shares: 1, TotalAcb: 10.0}.X(),
-	)
-	rq.Equal(delta.CapitalGain, (15.0*2.0*2.0)-20.0-0.8)
+	ValidateDelta(t, delta,
+		TDt{PostSt: TPSS{Shares: 1, TotalAcb: 10.0}, Gain: (15.0 * 2.0 * 2.0) - 20.0 - 0.8})
+}
+
+func TxsToDeltaListNoErr(t *testing.T, txs []*ptf.Tx) []*ptf.TxDelta {
+	deltas, err := ptf.TxsToDeltaList(txs, nil, ptf.LegacyOptions{})
+	require.Nil(t, err)
+	return deltas
+}
+
+func TxsToDeltaListWithErr(t *testing.T, txs []*ptf.Tx) {
+	_, err := ptf.TxsToDeltaList(txs, nil, ptf.LegacyOptions{})
+	require.NotNil(t, err)
 }
 
 func TestSuperficialLosses(t *testing.T) {
-	rq := require.New(t)
-
-	makeTxV := func(
-		day int, action ptf.TxAction, shares uint32, amount float64,
-		curr ptf.Currency, fxRate float64, expSfl util.Optional[ptf.SFLInput],
-	) *ptf.Tx {
-		commission := 0.0
-		if action == ptf.BUY {
-			commission = 2.0
-		}
-		return &ptf.Tx{Security: "FOO", SettlementDate: mkDate(day), Action: action,
-			Shares: shares, AmountPerShare: amount, Commission: commission,
-			TxCurrency: curr, TxCurrToLocalExchangeRate: fxRate,
-			CommissionCurrency: curr, CommissionCurrToLocalExchangeRate: fxRate,
-			SpecifiedSuperficialLoss: expSfl,
-		}
-	}
-	makeTxWithCurr := func(
-		day int, action ptf.TxAction, shares uint32, amount float64,
-		curr ptf.Currency, fxRate float64,
-	) *ptf.Tx {
-		return makeTxV(day, action, shares, amount, curr, fxRate, util.Optional[ptf.SFLInput]{})
-	}
-	makeTx := func(day int, action ptf.TxAction, shares uint32, amount float64) *ptf.Tx {
-		return makeTxWithCurr(day, action, shares, amount, ptf.CAD, 1.0)
-	}
+	var deltas []*ptf.TxDelta
 
 	/*
 		buy 10
 		wait
 		sell 5 (loss, not superficial)
 	*/
-	tx0 := makeTx(1, ptf.BUY, 10, 1.0)
-	// Sell half at a loss a while later, for a total of $1
-	tx1 := makeTx(50, ptf.SELL, 5, 0.2)
-	txs := []*ptf.Tx{tx0, tx1}
-
-	var deltas []*ptf.TxDelta
-	var err error
-
-	validate := func(i int, shareBalance uint32, totalAcb float64, gain float64) {
-		AlmostEqual(t, totalAcb, deltas[i].PostStatus.TotalAcb)
-		rq.Equal(
-			SimplePtfSecSt{
-				Security: "FOO",
-				Shares:   shareBalance,
-				TotalAcb: deltas[i].PostStatus.TotalAcb}.X(),
-			deltas[i].PostStatus,
-		)
-		AlmostEqual(t, gain, deltas[i].CapitalGain)
+	txs := []*ptf.Tx{
+		TTx{TDay: 1, Act: ptf.BUY, Shares: 10, Price: 1.0, Comm: 2.0}.X(),
+		// Sell half at a loss a while later, for a total of $1
+		TTx{TDay: 50, Act: ptf.SELL, Shares: 5, Price: 0.2}.X(),
 	}
-
-	plo := ptf.LegacyOptions{}
-
-	deltas, err = ptf.TxsToDeltaList(txs, nil, plo)
-	rq.Nil(err)
-	validate(0, 10, 12.0, 0)
-	validate(1, 5, 6.0, -5)
+	deltas = TxsToDeltaListNoErr(t, txs)
+	ValidateDeltas(t, deltas, []TDt{
+		TDt{PostSt: TPSS{Shares: 10, TotalAcb: 12.0}, Gain: 0.0},
+		TDt{PostSt: TPSS{Shares: 5, TotalAcb: 6.0}, Gain: -5.0},
+	})
 
 	// (min(#sold, totalAquired, endBalance) / #sold) x (Total Loss)
 
@@ -359,25 +339,23 @@ func TestSuperficialLosses(t *testing.T) {
 		wait
 		sell 1 (loss, not superficial)
 	*/
-	tx0 = makeTx(1, ptf.BUY, 10, 1.0)
-	// Sell soon, causing superficial losses
-	tx1 = makeTx(2, ptf.SELL, 5, 0.2)
-	tx2 := makeTx(15, ptf.SELL, 4, 0.2)
-	// Normal sell a while later
-	tx3 := makeTx(100, ptf.SELL, 1, 0.2)
-	txs = []*ptf.Tx{tx0, tx1, tx2, tx3}
-
-	deltas, err = ptf.TxsToDeltaList(txs, nil, plo)
-	rq.Nil(err)
-	for i, _ := range deltas {
-		fmt.Println(i, "Tx:", deltas[i].Tx, "PostStatus:", deltas[i].PostStatus)
+	txs = []*ptf.Tx{
+		TTx{TDay: 1, Act: ptf.BUY, Shares: 10, Price: 1.0, Comm: 2.0}.X(),
+		// Sell soon, causing superficial losses
+		TTx{TDay: 2, Act: ptf.SELL, Shares: 5, Price: 0.2}.X(),
+		TTx{TDay: 15, Act: ptf.SELL, Shares: 4, Price: 0.2}.X(),
+		// Normal sell a while later
+		TTx{TDay: 100, Act: ptf.SELL, Shares: 1, Price: 0.2}.X(),
 	}
-	validate(0, 10, 12.0, 0)
-	validate(1, 5, 6.0, -4.0) // $1 superficial
-	validate(2, 5, 7.0, 0.0)  // acb adjust
-	validate(3, 1, 1.4, -3.6) // $1.2 superficial
-	validate(4, 1, 2.6, 0.0)  // acb adjust
-	validate(5, 0, 0.0, -2.4)
+	deltas = TxsToDeltaListNoErr(t, txs)
+	ValidateDeltas(t, deltas, []TDt{
+		TDt{PostSt: TPSS{Shares: 10, TotalAcb: 12.0}, Gain: 0},
+		TDt{PostSt: TPSS{Shares: 5, TotalAcb: 6.0}, Gain: -4.0}, // $1 superficial
+		TDt{PostSt: TPSS{Shares: 5, TotalAcb: 7.0}, Gain: 0.0},  // acb adjust
+		TDt{PostSt: TPSS{Shares: 1, TotalAcb: 1.4}, Gain: -3.6}, // $1.2 superficial
+		TDt{PostSt: TPSS{Shares: 1, TotalAcb: 2.6}, Gain: 0.0},  // acb adjust
+		TDt{PostSt: TPSS{Shares: 0, TotalAcb: 0.0}, Gain: -2.4},
+	})
 
 	/*
 		buy 10
@@ -385,18 +363,19 @@ func TestSuperficialLosses(t *testing.T) {
 		sell 5 (superficial loss) -- min(5, 5, 10) / 5 = 1
 		buy 5
 	*/
-	tx0 = makeTx(1, ptf.BUY, 10, 1.0)
-	// Sell causing superficial loss, because of quick buyback
-	tx1 = makeTx(50, ptf.SELL, 5, 0.2)
-	tx2 = makeTx(51, ptf.BUY, 5, 0.2)
-	txs = []*ptf.Tx{tx0, tx1, tx2}
-
-	deltas, err = ptf.TxsToDeltaList(txs, nil, plo)
-	rq.Nil(err)
-	validate(0, 10, 12.0, 0) // buy
-	validate(1, 5, 6.0, 0)   // sell sfl $1
-	validate(2, 5, 11.0, 0)  // sfl ACB adjust
-	validate(3, 10, 14.0, 0) // buy
+	txs = []*ptf.Tx{
+		TTx{TDay: 1, Act: ptf.BUY, Shares: 10, Price: 1.0, Comm: 2.0}.X(),
+		// Sell causing superficial loss, because of quick buyback
+		TTx{TDay: 50, Act: ptf.SELL, Shares: 5, Price: 0.2}.X(),
+		TTx{TDay: 51, Act: ptf.BUY, Shares: 5, Price: 0.2, Comm: 2.0}.X(),
+	}
+	deltas = TxsToDeltaListNoErr(t, txs)
+	ValidateDeltas(t, deltas, []TDt{
+		TDt{PostSt: TPSS{Shares: 10, TotalAcb: 12.0}, Gain: 0}, // buy
+		TDt{PostSt: TPSS{Shares: 5, TotalAcb: 6.0}, Gain: 0},   // sell sfl $1
+		TDt{PostSt: TPSS{Shares: 5, TotalAcb: 11.0}, Gain: 0},  // sfl ACB adjust
+		TDt{PostSt: TPSS{Shares: 10, TotalAcb: 14.0}, Gain: 0}, // buy
+	})
 
 	/*
 		USD SFL test.
@@ -405,18 +384,19 @@ func TestSuperficialLosses(t *testing.T) {
 		sell 5 (in USD) (superficial loss) -- min(5, 5, 10) / 5 = 1
 		buy 5 (in USD)
 	*/
-	tx0 = makeTxWithCurr(1, ptf.BUY, 10, 1.0, ptf.USD, 1.2)
-	// Sell causing superficial loss, because of quick buyback
-	tx1 = makeTxWithCurr(50, ptf.SELL, 5, 0.2, ptf.USD, 1.2)
-	tx2 = makeTxWithCurr(51, ptf.BUY, 5, 0.2, ptf.USD, 1.2)
-	txs = []*ptf.Tx{tx0, tx1, tx2}
-
-	deltas, err = ptf.TxsToDeltaList(txs, nil, plo)
-	rq.Nil(err)
-	validate(0, 10, 14.4, 0) // buy, ACB (CAD) = (10*1.0 + 2) * 1.2
-	validate(1, 5, 7.2, 0)   // sell sfl $1 USD (1.2 CAD)
-	validate(2, 5, 13.2, 0)  // sfl ACB adjust
-	validate(3, 10, 16.8, 0) // buy
+	txs = []*ptf.Tx{
+		TTx{TDay: 1, Act: ptf.BUY, Shares: 10, Price: 1.0, Curr: ptf.USD, FxRate: 1.2, Comm: 2.0}.X(),
+		// Sell causing superficial loss, because of quick buyback
+		TTx{TDay: 50, Act: ptf.SELL, Shares: 5, Price: 0.2, Curr: ptf.USD, FxRate: 1.2}.X(),
+		TTx{TDay: 51, Act: ptf.BUY, Shares: 5, Price: 0.2, Curr: ptf.USD, FxRate: 1.2, Comm: 2.0}.X(),
+	}
+	deltas = TxsToDeltaListNoErr(t, txs)
+	ValidateDeltas(t, deltas, []TDt{
+		TDt{PostSt: TPSS{Shares: 10, TotalAcb: 14.4}, Gain: 0}, // buy, ACB (CAD) = (10*1.0 + 2) * 1.2
+		TDt{PostSt: TPSS{Shares: 5, TotalAcb: 7.2}, Gain: 0},   // sell sfl $1 USD (1.2 CAD)
+		TDt{PostSt: TPSS{Shares: 5, TotalAcb: 13.2}, Gain: 0},  // sfl ACB adjust
+		TDt{PostSt: TPSS{Shares: 10, TotalAcb: 16.8}, Gain: 0}, // buy
+	})
 
 	/*
 		buy 10
@@ -424,17 +404,18 @@ func TestSuperficialLosses(t *testing.T) {
 		sell 5 (loss)
 		sell 5 (loss)
 	*/
-	tx0 = makeTx(1, ptf.BUY, 10, 1.0)
-	// Sell causing superficial loss, because of quick buyback
-	tx1 = makeTx(50, ptf.SELL, 5, 0.2)
-	tx2 = makeTx(51, ptf.SELL, 5, 0.2)
-	txs = []*ptf.Tx{tx0, tx1, tx2}
-
-	deltas, err = ptf.TxsToDeltaList(txs, nil, plo)
-	rq.Nil(err)
-	validate(0, 10, 12.0, 0)
-	validate(1, 5, 6.0, -5.0)
-	validate(2, 0, 0.0, -5.0)
+	txs = []*ptf.Tx{
+		TTx{TDay: 1, Act: ptf.BUY, Shares: 10, Price: 1.0, Comm: 2.0}.X(),
+		// Sell causing superficial loss, because of quick buyback
+		TTx{TDay: 50, Act: ptf.SELL, Shares: 5, Price: 0.2}.X(),
+		TTx{TDay: 51, Act: ptf.SELL, Shares: 5, Price: 0.2}.X(),
+	}
+	deltas = TxsToDeltaListNoErr(t, txs)
+	ValidateDeltas(t, deltas, []TDt{
+		TDt{PostSt: TPSS{Shares: 10, TotalAcb: 12.0}, Gain: 0},
+		TDt{PostSt: TPSS{Shares: 5, TotalAcb: 6.0}, Gain: -5.0},
+		TDt{PostSt: TPSS{Shares: 0, TotalAcb: 0.0}, Gain: -5.0},
+	})
 
 	/*
 		buy 100
@@ -442,18 +423,19 @@ func TestSuperficialLosses(t *testing.T) {
 		sell 99 (superficial loss) -- min(99, 25, 26) / 99 = 0.252525253
 		buy 25
 	*/
-	tx0 = makeTx(1, ptf.BUY, 100, 3.0)
-	// Sell causing superficial loss, because of quick buyback
-	tx1 = makeTx(50, ptf.SELL, 99, 2.0)
-	tx2 = makeTx(51, ptf.BUY, 25, 2.2)
-	txs = []*ptf.Tx{tx0, tx1, tx2}
-
-	deltas, err = ptf.TxsToDeltaList(txs, nil, plo)
-	rq.Nil(err)
-	validate(0, 100, 302.0, 0)
-	validate(1, 1, 3.02, -75.479999952) // total loss of 100.98, 25.500000048 is superficial
-	validate(2, 1, 28.520000048, 0.0)   // acb adjust
-	validate(3, 26, 85.520000048, 0)
+	txs = []*ptf.Tx{
+		TTx{TDay: 1, Act: ptf.BUY, Shares: 100, Price: 3.0, Comm: 2.0}.X(),
+		// Sell causing superficial loss, because of quick buyback
+		TTx{TDay: 50, Act: ptf.SELL, Shares: 99, Price: 2.0}.X(),
+		TTx{TDay: 51, Act: ptf.BUY, Shares: 25, Price: 2.2, Comm: 2.0}.X(),
+	}
+	deltas = TxsToDeltaListNoErr(t, txs)
+	ValidateDeltas(t, deltas, []TDt{
+		TDt{PostSt: TPSS{Shares: 100, TotalAcb: 302.0}, Gain: 0},
+		TDt{PostSt: TPSS{Shares: 1, TotalAcb: 3.02}, Gain: -75.479999952}, // total loss of 100.98, 25.500000048 is superficial
+		TDt{PostSt: TPSS{Shares: 1, TotalAcb: 28.520000048}, Gain: 0.0},   // acb adjust
+		TDt{PostSt: TPSS{Shares: 26, TotalAcb: 85.520000048}, Gain: 0},
+	})
 
 	/*
 		buy 10
@@ -463,37 +445,39 @@ func TestSuperficialLosses(t *testing.T) {
 		wait
 		sell 3 (loss)
 	*/
-	tx0 = makeTx(1, ptf.BUY, 10, 1.0)
-	// Sell all
-	tx1 = makeTx(2, ptf.SELL, 10, 0.2)
-	tx2 = makeTx(3, ptf.BUY, 5, 1.0)
-	tx3 = makeTx(4, ptf.SELL, 2, 0.2)
-	tx4 := makeTx(50, ptf.SELL, 3, 0.2)
-	txs = []*ptf.Tx{tx0, tx1, tx2, tx3, tx4}
-
-	deltas, err = ptf.TxsToDeltaList(txs, nil, plo)
-	rq.Nil(err)
-	validate(0, 10, 12.0, 0)
-	validate(1, 0, 0, -7)  // Superficial loss of 3
-	validate(2, 0, 3, 0.0) // acb adjust
-	validate(3, 5, 10.0, 0)
-	validate(4, 3, 6.0, 0.0) // Superficial loss of 3.6
-	validate(5, 3, 9.6, 0.0) // acb adjust
-	validate(6, 0, 0, -9)
+	txs = []*ptf.Tx{
+		TTx{TDay: 1, Act: ptf.BUY, Shares: 10, Price: 1.0, Comm: 2.0}.X(),
+		// Sell all
+		TTx{TDay: 2, Act: ptf.SELL, Shares: 10, Price: 0.2}.X(),
+		TTx{TDay: 3, Act: ptf.BUY, Shares: 5, Price: 1.0, Comm: 2.0}.X(),
+		TTx{TDay: 4, Act: ptf.SELL, Shares: 2, Price: 0.2}.X(),
+		TTx{TDay: 50, Act: ptf.SELL, Shares: 3, Price: 0.2}.X(),
+	}
+	deltas = TxsToDeltaListNoErr(t, txs)
+	ValidateDeltas(t, deltas, []TDt{
+		TDt{PostSt: TPSS{Shares: 10, TotalAcb: 12.0}, Gain: 0},
+		TDt{PostSt: TPSS{Shares: 0, TotalAcb: 0}, Gain: -7},  // Superficial loss of 3
+		TDt{PostSt: TPSS{Shares: 0, TotalAcb: 3}, Gain: 0.0}, // acb adjust
+		TDt{PostSt: TPSS{Shares: 5, TotalAcb: 10.0}, Gain: 0},
+		TDt{PostSt: TPSS{Shares: 3, TotalAcb: 6.0}, Gain: 0.0}, // Superficial loss of 3.6
+		TDt{PostSt: TPSS{Shares: 3, TotalAcb: 9.6}, Gain: 0.0}, // acb adjust
+		TDt{PostSt: TPSS{Shares: 0, TotalAcb: 0}, Gain: -9},
+	})
 
 	/*
 		buy 10
 		sell 5 (gain)
 	*/
-	tx0 = makeTx(1, ptf.BUY, 10, 1.0)
-	// Sell causing gain
-	tx1 = makeTx(2, ptf.SELL, 5, 2)
-	txs = []*ptf.Tx{tx0, tx1}
-
-	deltas, err = ptf.TxsToDeltaList(txs, nil, plo)
-	rq.Nil(err)
-	validate(0, 10, 12.0, 0)
-	validate(1, 5, 6.0, 4.0)
+	txs = []*ptf.Tx{
+		TTx{TDay: 1, Act: ptf.BUY, Shares: 10, Price: 1.0, Comm: 2.0}.X(),
+		// Sell causing gain
+		TTx{TDay: 2, Act: ptf.SELL, Shares: 5, Price: 2}.X(),
+	}
+	deltas = TxsToDeltaListNoErr(t, txs)
+	ValidateDeltas(t, deltas, []TDt{
+		TDt{PostSt: TPSS{Shares: 10, TotalAcb: 12.0}, Gain: 0},
+		TDt{PostSt: TPSS{Shares: 5, TotalAcb: 6.0}, Gain: 4.0},
+	})
 
 	// ************** Explicit Superficial Losses ***************************
 	// Accurately specify a detected SFL
@@ -504,22 +488,21 @@ func TestSuperficialLosses(t *testing.T) {
 		sell 5 (in USD) (superficial loss)
 		buy 5 (in USD)
 	*/
-	tx0 = makeTxWithCurr(1, ptf.BUY, 10, 1.0, ptf.USD, 1.2)
-	// Sell causing superficial loss, because of quick buyback
-	tx1 = makeTxV(50, ptf.SELL, 5, 0.2, ptf.USD, 1.2,
-		util.NewOptional[ptf.SFLInput](ptf.SFLInput{-6.0, false}) /*SFL override in CAD*/)
-	// ACB adjust is partial, as if splitting some to another affiliate.
-	tx2 = makeTxV(50, ptf.SFLA, 5, 0.02, ptf.DEFAULT_CURRENCY, 1.0, util.Optional[ptf.SFLInput]{})
-	tx3 = makeTxWithCurr(51, ptf.BUY, 5, 0.2, ptf.USD, 1.2)
-	txs = []*ptf.Tx{tx0, tx1, tx2, tx3}
-
-	deltas, err = ptf.TxsToDeltaList(txs, nil, plo)
-
-	rq.Nil(err)
-	validate(0, 10, 14.4, 0) // buy, ACB (CAD) = (10*1.0 + 2) * 1.2
-	validate(1, 5, 7.2, 0.0) // sell for $1 USD, capital loss $-5 USD before SFL deduction, sfl 0.7 CAD
-	validate(2, 5, 7.3, 0)   // sfl ACB adjust 0.02 * 5
-	validate(3, 10, 10.9, 0) // buy
+	txs = []*ptf.Tx{
+		TTx{TDay: 1, Act: ptf.BUY, Shares: 10, Price: 1.0, Curr: ptf.USD, FxRate: 1.2, Comm: 2.0}.X(),
+		// Sell causing superficial loss, because of quick buyback
+		TTx{TDay: 50, Act: ptf.SELL, Shares: 5, Price: 0.2, Curr: ptf.USD, FxRate: 1.2, SFL: CADSFL(-6.0, false)}.X(),
+		// ACB adjust is partial, as if splitting some to another affiliate.
+		TTx{TDay: 50, Act: ptf.SFLA, Shares: 5, Price: 0.02, Curr: EXP_DEFAULT_CURRENCY, FxRate: 1.0}.X(),
+		TTx{TDay: 51, Act: ptf.BUY, Shares: 5, Price: 0.2, Curr: ptf.USD, FxRate: 1.2, Comm: 2.0}.X(),
+	}
+	deltas = TxsToDeltaListNoErr(t, txs)
+	ValidateDeltas(t, deltas, []TDt{
+		TDt{PostSt: TPSS{Shares: 10, TotalAcb: 14.4}, Gain: 0}, // buy, ACB (CAD) = (10*1.0 + 2) * 1.2
+		TDt{PostSt: TPSS{Shares: 5, TotalAcb: 7.2}, Gain: 0.0}, // sell for $1 USD, capital loss $-5 USD before SFL deduction, sfl 0.7 CAD
+		TDt{PostSt: TPSS{Shares: 5, TotalAcb: 7.3}, Gain: 0},   // sfl ACB adjust 0.02 * 5
+		TDt{PostSt: TPSS{Shares: 10, TotalAcb: 10.9}, Gain: 0}, // buy
+	})
 
 	// Override a detected SFL
 	/*
@@ -529,28 +512,26 @@ func TestSuperficialLosses(t *testing.T) {
 		sell 5 (in USD) (superficial loss)
 		buy 5 (in USD)
 	*/
-	tx0 = makeTxWithCurr(1, ptf.BUY, 10, 1.0, ptf.USD, 1.2)
-	// Sell causing superficial loss, because of quick buyback
-	tx1 = makeTxV(50, ptf.SELL, 5, 0.2, ptf.USD, 1.2,
-		util.NewOptional[ptf.SFLInput](ptf.SFLInput{-0.7, true}) /*SFL override in CAD*/)
-	// ACB adjust is partial, as if splitting some to another affiliate.
-	tx2 = makeTxV(50, ptf.SFLA, 5, 0.02, ptf.DEFAULT_CURRENCY, 1.0, util.Optional[ptf.SFLInput]{})
-	tx3 = makeTxWithCurr(51, ptf.BUY, 5, 0.2, ptf.USD, 1.2)
-	txs = []*ptf.Tx{tx0, tx1, tx2, tx3}
-
-	deltas, err = ptf.TxsToDeltaList(txs, nil, plo)
-
-	rq.Nil(err)
-	validate(0, 10, 14.4, 0)  // buy, ACB (CAD) = (10*1.0 + 2) * 1.2
-	validate(1, 5, 7.2, -5.3) // sell for $1 USD, capital loss $-5 USD before SFL deduction, sfl 0.7 CAD
-	validate(2, 5, 7.3, 0)    // sfl ACB adjust 0.02 * 5
-	validate(3, 10, 10.9, 0)  // buy
+	txs = []*ptf.Tx{
+		TTx{TDay: 1, Act: ptf.BUY, Shares: 10, Price: 1.0, Curr: ptf.USD, FxRate: 1.2, Comm: 2.0}.X(),
+		// Sell causing superficial loss, because of quick buyback
+		TTx{TDay: 50, Act: ptf.SELL, Shares: 5, Price: 0.2, Curr: ptf.USD, FxRate: 1.2, SFL: CADSFL(-0.7, true)}.X(),
+		// ACB adjust is partial, as if splitting some to another affiliate.
+		TTx{TDay: 50, Act: ptf.SFLA, Shares: 5, Price: 0.02, Curr: EXP_DEFAULT_CURRENCY, FxRate: 1.0}.X(),
+		TTx{TDay: 51, Act: ptf.BUY, Shares: 5, Price: 0.2, Curr: ptf.USD, FxRate: 1.2, Comm: 2.0}.X(),
+	}
+	deltas = TxsToDeltaListNoErr(t, txs)
+	ValidateDeltas(t, deltas, []TDt{
+		TDt{PostSt: TPSS{Shares: 10, TotalAcb: 14.4}, Gain: 0},  // buy, ACB (CAD) = (10*1.0 + 2) * 1.2
+		TDt{PostSt: TPSS{Shares: 5, TotalAcb: 7.2}, Gain: -5.3}, // sell for $1 USD, capital loss $-5 USD before SFL deduction, sfl 0.7 CAD
+		TDt{PostSt: TPSS{Shares: 5, TotalAcb: 7.3}, Gain: 0},    // sfl ACB adjust 0.02 * 5
+		TDt{PostSt: TPSS{Shares: 10, TotalAcb: 10.9}, Gain: 0},  // buy
+	})
 
 	// Un-force the override, and check that we emit an error
 	// Expect an error since we did not force.
-	tx1.SpecifiedSuperficialLoss = util.NewOptional[ptf.SFLInput](ptf.SFLInput{-0.7, false})
-	_, err = ptf.TxsToDeltaList(txs, nil, plo)
-	rq.NotNil(err)
+	txs[1].SpecifiedSuperficialLoss = CADSFL(-0.7, false)
+	TxsToDeltaListWithErr(t, txs)
 
 	// Add an un-detectable SFL (ie, the buy occurred in an untracked affiliate)
 	/*
@@ -559,65 +540,63 @@ func TestSuperficialLosses(t *testing.T) {
 		wait
 		sell 5 (in USD) (loss)
 	*/
-	tx0 = makeTxWithCurr(1, ptf.BUY, 10, 1.0, ptf.USD, 1.2)
-	// Sell causing superficial loss, because of quick buyback
-	tx1 = makeTxV(50, ptf.SELL, 5, 0.2, ptf.USD, 1.2,
-		util.NewOptional[ptf.SFLInput](ptf.SFLInput{-0.7, true}) /*SFL override in CAD*/)
-	// ACB adjust is partial, as if splitting some to another affiliate.
-	tx2 = makeTxV(50, ptf.SFLA, 5, 0.02, ptf.CAD, 1.0, util.Optional[ptf.SFLInput]{})
-	txs = []*ptf.Tx{tx0, tx1, tx2}
-
-	deltas, err = ptf.TxsToDeltaList(txs, nil, plo)
-	rq.Nil(err)
-	validate(0, 10, 14.4, 0)  // buy, ACB (CAD) = (10*1.0 + 2) * 1.2
-	validate(1, 5, 7.2, -5.3) // sell for $1 USD, capital loss $-5 USD before SFL deduction, sfl 0.7 CAD
-	validate(2, 5, 7.3, 0)    // sfl ACB adjust 0.02 * 5
+	txs = []*ptf.Tx{
+		TTx{TDay: 1, Act: ptf.BUY, Shares: 10, Price: 1.0, Curr: ptf.USD, FxRate: 1.2, Comm: 2.0}.X(),
+		// Sell causing superficial loss, because of quick buyback
+		TTx{TDay: 50, Act: ptf.SELL, Shares: 5, Price: 0.2, Curr: ptf.USD, FxRate: 1.2, SFL: CADSFL(-0.7, true)}.X(),
+		// ACB adjust is partial, as if splitting some to another affiliate.
+		TTx{TDay: 50, Act: ptf.SFLA, Shares: 5, Price: 0.02, Curr: ptf.CAD, FxRate: 1.0}.X(),
+	}
+	deltas = TxsToDeltaListNoErr(t, txs)
+	ValidateDeltas(t, deltas, []TDt{
+		TDt{PostSt: TPSS{Shares: 10, TotalAcb: 14.4}, Gain: 0},  // buy, ACB (CAD) = (10*1.0 + 2) * 1.2
+		TDt{PostSt: TPSS{Shares: 5, TotalAcb: 7.2}, Gain: -5.3}, // sell for $1 USD, capital loss $-5 USD before SFL deduction, sfl 0.7 CAD
+		TDt{PostSt: TPSS{Shares: 5, TotalAcb: 7.3}, Gain: 0},    // sfl ACB adjust 0.02 * 5
+	})
 
 	// Un-force the override, and check that we emit an error
 	// Expect an error since we did not force.
-	tx1.SpecifiedSuperficialLoss = util.NewOptional[ptf.SFLInput](ptf.SFLInput{-0.7, false})
-	_, err = ptf.TxsToDeltaList(txs, nil, plo)
-	rq.NotNil(err)
+	txs[1].SpecifiedSuperficialLoss = CADSFL(-0.7, false)
+	TxsToDeltaListWithErr(t, txs)
 
 	// Currency errors
 	// Sanity check for ok by itself.
-	tx0 = makeTxV(50, ptf.SFLA, 1, 0.1, ptf.CAD, 1.0, util.Optional[ptf.SFLInput]{})
-	txs = []*ptf.Tx{tx0}
-	deltas, err = ptf.TxsToDeltaList(txs, nil, plo)
-	rq.Nil(err)
-	validate(0, 0, 0.1, 0)
-	tx0 = makeTxV(50, ptf.SFLA, 1, 0.1, ptf.DEFAULT_CURRENCY, 1.0, util.Optional[ptf.SFLInput]{})
-	txs = []*ptf.Tx{tx0}
-	deltas, err = ptf.TxsToDeltaList(txs, nil, plo)
-	rq.Nil(err)
-	validate(0, 0, 0.1, 0)
+	txs = []*ptf.Tx{
+		TTx{TDay: 50, Act: ptf.SFLA, Shares: 1, Price: 0.1, Curr: ptf.CAD, FxRate: 1.0}.X(),
+	}
+	deltas = TxsToDeltaListNoErr(t, txs)
+	ValidateDeltas(t, deltas, []TDt{
+		TDt{PostSt: TPSS{Shares: 0, TotalAcb: 0.1}, Gain: 0},
+	})
+
+	txs = []*ptf.Tx{
+		TTx{TDay: 50, Act: ptf.SFLA, Shares: 1, Price: 0.1, Curr: EXP_DEFAULT_CURRENCY, FxRate: 1.0}.X(),
+	}
+	deltas = TxsToDeltaListNoErr(t, txs)
+	ValidateDeltas(t, deltas, []TDt{
+		TDt{PostSt: TPSS{Shares: 0, TotalAcb: 0.1}, Gain: 0},
+	})
 	// Non 1.0 exchange rate
-	tx0 = makeTxV(50, ptf.SFLA, 5, 0.02, ptf.USD, 1.0, util.Optional[ptf.SFLInput]{})
-	txs = []*ptf.Tx{tx0}
-	_, err = ptf.TxsToDeltaList(txs, nil, plo)
-	rq.NotNil(err)
-	// Non 1.0 exchange rate
-	tx0 = makeTxV(50, ptf.SFLA, 5, 0.02, ptf.CAD, 1.1, util.Optional[ptf.SFLInput]{})
-	txs = []*ptf.Tx{tx0}
-	_, err = ptf.TxsToDeltaList(txs, nil, plo)
-	rq.NotNil(err)
+	txs = []*ptf.Tx{
+		TTx{TDay: 50, Act: ptf.SFLA, Shares: 5, Price: 0.02, Curr: ptf.USD, FxRate: 1.0}.X(),
+	}
+	TxsToDeltaListWithErr(t, txs)
+	txs = []*ptf.Tx{
+		// Non 1.0 exchange rate
+		TTx{TDay: 50, Act: ptf.SFLA, Shares: 5, Price: 0.02, Curr: ptf.CAD, FxRate: 1.1}.X(),
+	}
+	TxsToDeltaListWithErr(t, txs)
 }
 
 func TestBasicRocAcbErrors(t *testing.T) {
 	// Test that RoC Txs always have zero shares
-	sptf := SimplePtfSecSt{Security: "FOO", Shares: 2, TotalAcb: 20.0}.X()
-	tx := &ptf.Tx{Security: "FOO", SettlementDate: mkDate(1), Action: ptf.ROC,
-		Shares: 3, AmountPerShare: 10.0, Commission: 0.0,
-		TxCurrency: ptf.CAD, TxCurrToLocalExchangeRate: 1.0,
-		CommissionCurrency: ptf.CAD, CommissionCurrToLocalExchangeRate: 1.0}
+	sptf := TPSS{Shares: 2, TotalAcb: 20.0}.X()
+	tx := TTx{Act: ptf.ROC, Shares: 3, Price: 10.0}.X()
 	AddTxWithErr(t, tx, sptf)
 
 	// Test that RoC cannot exceed the current ACB
-	sptf = SimplePtfSecSt{Security: "FOO", Shares: 2, TotalAcb: 20.0}.X()
-	tx = &ptf.Tx{Security: "FOO", SettlementDate: mkDate(1), Action: ptf.ROC,
-		Shares: 0, AmountPerShare: 13.0, Commission: 0.0,
-		TxCurrency: ptf.CAD, TxCurrToLocalExchangeRate: 1.0,
-		CommissionCurrency: ptf.CAD, CommissionCurrToLocalExchangeRate: 1.0}
+	sptf = TPSS{Shares: 2, TotalAcb: 20.0}.X()
+	tx = TTx{Act: ptf.ROC, Price: 13.0}.X()
 	AddTxWithErr(t, tx, sptf)
 
 	// Test that RoC cannot occur on registered affiliates, since they have no ACB
@@ -627,37 +606,21 @@ func TestBasicRocAcbErrors(t *testing.T) {
 }
 
 func TestBasicRocAcb(t *testing.T) {
-	rq := require.New(t)
-
 	// Test basic ROC with different AllAffiliatesShareBalance
-	sptf := &ptf.PortfolioSecurityStatus{
-		Security: "FOO", ShareBalance: 2, AllAffiliatesShareBalance: 8, TotalAcb: 20.0,
-	}
-	tx := &ptf.Tx{Security: "FOO", SettlementDate: mkDate(1), Action: ptf.ROC,
-		Shares: 0, AmountPerShare: 1.0, Commission: 0.0,
-		TxCurrency: ptf.CAD, TxCurrToLocalExchangeRate: 1.0,
-		CommissionCurrency: ptf.CAD, CommissionCurrToLocalExchangeRate: 1.0}
+	sptf := TPSS{Shares: 2, AllShares: 8, TotalAcb: 20.0}.X()
+	tx := TTx{Act: ptf.ROC, Price: 1.0}.X()
 
 	delta := AddTxNoErr(t, tx, sptf)
-	rq.Equal(delta.PostStatus,
-		&ptf.PortfolioSecurityStatus{
-			Security: "FOO", ShareBalance: 2, AllAffiliatesShareBalance: 8, TotalAcb: 18.0,
-		},
-	)
-	rq.Equal(delta.CapitalGain, 0.0)
+	ValidateDelta(t, delta,
+		TDt{PostSt: TPSS{Shares: 2, AllShares: 8, TotalAcb: 18.0}, Gain: 0.0})
 
 	// Test RoC with exchange
-	sptf = SimplePtfSecSt{Security: "FOO", Shares: 2, TotalAcb: 20.0}.X()
-	tx = &ptf.Tx{Security: "FOO", SettlementDate: mkDate(1), Action: ptf.ROC,
-		Shares: 0, AmountPerShare: 1.0, Commission: 0.0,
-		TxCurrency: ptf.CAD, TxCurrToLocalExchangeRate: 2.0,
-		CommissionCurrency: ptf.CAD, CommissionCurrToLocalExchangeRate: 1.0}
+	sptf = TPSS{Shares: 2, TotalAcb: 20.0}.X()
+	tx = TTx{Act: ptf.ROC, Price: 1.0, FxRate: 2.0}.X()
 
 	delta = AddTxNoErr(t, tx, sptf)
-	rq.Equal(delta.PostStatus,
-		SimplePtfSecSt{Security: "FOO", Shares: 2, TotalAcb: 16.0}.X(),
-	)
-	rq.Equal(delta.CapitalGain, 0.0)
+	ValidateDelta(t, delta,
+		TDt{PostSt: TPSS{Shares: 2, TotalAcb: 16.0}, Gain: 0.0})
 }
 
 func TestRegisteredAffiliateCapitalGain(t *testing.T) {
@@ -697,8 +660,6 @@ Functionality TODO
 */
 
 func TestAllAffiliateShareBalanceAddTx(t *testing.T) {
-	rq := require.New(t)
-
 	var sptf *ptf.PortfolioSecurityStatus
 	var tx *ptf.Tx
 	var delta *ptf.TxDelta
@@ -707,17 +668,15 @@ func TestAllAffiliateShareBalanceAddTx(t *testing.T) {
 	sptf = TPSS{Shares: 3, AllShares: 7, TotalAcb: 15.0}.X()
 	tx = TTx{Act: ptf.BUY, Shares: 2, Price: 5.0}.X()
 	delta = AddTxNoErr(t, tx, sptf)
-	rq.Equal(
-		delta.PostStatus,
-		TPSS{Shares: 5, AllShares: 9, TotalAcb: 25.0}.X())
+	ValidateDelta(t, delta,
+		TDt{PostSt: TPSS{Shares: 5, AllShares: 9, TotalAcb: 25.0}})
 
 	// Basic sell
 	sptf = TPSS{Shares: 5, AllShares: 8, AcbPerSh: 3.0}.X()
 	tx = TTx{Act: ptf.SELL, Shares: 2, Price: 5.0}.X()
 	delta = AddTxNoErr(t, tx, sptf)
-	rq.Equal(
-		delta.PostStatus,
-		TPSS{Shares: 3, AllShares: 6, AcbPerSh: 3.0}.X())
+	ValidateDelta(t, delta,
+		TDt{PostSt: TPSS{Shares: 3, AllShares: 6, AcbPerSh: 3.0}, Gain: 4.0})
 
 	// AllAffiliatesShareBalance too small (error).
 	// In theory this could maybe panic, since it should not be possible, but
@@ -727,30 +686,9 @@ func TestAllAffiliateShareBalanceAddTx(t *testing.T) {
 	AddTxWithErr(t, tx, sptf)
 }
 
-// Test Delta
-type TDt struct {
-	PostSt TPSS
-	Gain   float64
-}
-
-func ValidateDeltas(t *testing.T, deltas []*ptf.TxDelta, expDeltas []TDt) {
-	require.Equal(t, len(expDeltas), len(deltas))
-	for i, delta := range deltas {
-		fail := false
-		fail = !SoftStEq(t, expDeltas[i].PostSt.X(), delta.PostStatus) || fail
-		fail = !SoftAlmostEqual(t, expDeltas[i].Gain, deltas[i].CapitalGain) || fail
-		if fail {
-			require.FailNowf(t, "ValidateDeltas failed", "Delta %d", i)
-		}
-	}
-}
-
 func TestMultiAffiliateGains(t *testing.T) {
-	rq := require.New(t)
-	plo := ptf.LegacyOptions{}
 	var txs []*ptf.Tx
 	var deltas []*ptf.TxDelta
-	var err error
 
 	/*
 		Default				Default (R)			B					B (R)
@@ -773,8 +711,7 @@ func TestMultiAffiliateGains(t *testing.T) {
 		TTx{Act: ptf.SELL, Shares: 3, Price: 1.4, AffName: "B"}.X(),
 		TTx{Act: ptf.SELL, Shares: 4, Price: 1.5, AffName: "B (R)"}.X(),
 	}
-	deltas, err = ptf.TxsToDeltaList(txs, nil, plo)
-	rq.Nil(err)
+	deltas = TxsToDeltaListNoErr(t, txs)
 	ValidateDeltas(t, deltas, []TDt{
 		// Buys
 		TDt{PostSt: TPSS{Shares: 10, AllShares: 10, AcbPerSh: 1.0}},
@@ -790,9 +727,6 @@ func TestMultiAffiliateGains(t *testing.T) {
 }
 
 func TestMultiAffiliateRoC(t *testing.T) {
-	rq := require.New(t)
-	plo := ptf.LegacyOptions{}
-
 	/*
 		Default				B
 		--------				------------
@@ -810,8 +744,7 @@ func TestMultiAffiliateRoC(t *testing.T) {
 		TTx{Act: ptf.SELL, Shares: 10, Price: 1.1, AffName: ""}.X(),
 		TTx{Act: ptf.SELL, Shares: 20, Price: 1.1, AffName: "B"}.X(),
 	}
-	deltas, err := ptf.TxsToDeltaList(txs, nil, plo)
-	rq.Nil(err)
+	deltas := TxsToDeltaListNoErr(t, txs)
 	ValidateDeltas(t, deltas, []TDt{
 		// Buys
 		TDt{PostSt: TPSS{Shares: 10, AllShares: 10, AcbPerSh: 1.0}}, // Default
@@ -826,9 +759,6 @@ func TestMultiAffiliateRoC(t *testing.T) {
 
 // TODO re-enable
 func _TestOtherAffiliateSFL(t *testing.T) {
-	rq := require.New(t)
-	plo := ptf.LegacyOptions{}
-
 	/*
 		SFL with all sells on different affiliate
 
@@ -840,13 +770,12 @@ func _TestOtherAffiliateSFL(t *testing.T) {
 								buy 2
 	*/
 	txs := []*ptf.Tx{
-		TTx{TDate: mkDate(1), Act: ptf.BUY, Shares: 10, Price: 1.0, AffName: ""}.X(),
-		TTx{TDate: mkDate(1), Act: ptf.BUY, Shares: 5, Price: 1.0, AffName: "B"}.X(),
-		TTx{TDate: mkDate(40), Act: ptf.SELL, Shares: 2, Price: 0.5, AffName: ""}.X(),
-		TTx{TDate: mkDate(41), Act: ptf.BUY, Shares: 2, Price: 1.0, AffName: "B"}.X(),
+		TTx{TDay: 1, Act: ptf.BUY, Shares: 10, Price: 1.0, AffName: ""}.X(),
+		TTx{TDay: 1, Act: ptf.BUY, Shares: 5, Price: 1.0, AffName: "B"}.X(),
+		TTx{TDay: 40, Act: ptf.SELL, Shares: 2, Price: 0.5, AffName: ""}.X(),
+		TTx{TDay: 41, Act: ptf.BUY, Shares: 2, Price: 1.0, AffName: "B"}.X(),
 	}
-	deltas, err := ptf.TxsToDeltaList(txs, nil, plo)
-	rq.Nil(err)
+	deltas := TxsToDeltaListNoErr(t, txs)
 	ValidateDeltas(t, deltas, []TDt{
 		TDt{PostSt: TPSS{Shares: 10, AllShares: 10, TotalAcb: 10.0}}, // Buy in Default
 		TDt{PostSt: TPSS{Shares: 5, AllShares: 15, TotalAcb: 5.0}},   // Buy in B
