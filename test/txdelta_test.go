@@ -16,8 +16,6 @@ import (
 
 const DefaultTestSecurity string = "FOO"
 
-var NaN float64 = math.NaN()
-
 func mkDateYD(year uint32, day int) date.Date {
 	tm := date.New(year, time.January, 1)
 	return tm.AddDays(day)
@@ -30,37 +28,6 @@ func mkDate(day int) date.Date {
 func CADSFL(lossVal float64, force bool) util.Optional[ptf.SFLInput] {
 	util.Assert(lossVal <= 0.0)
 	return util.NewOptional[ptf.SFLInput](ptf.SFLInput{lossVal, force})
-}
-
-func IsAlmostEqual(a float64, b float64) bool {
-	if math.IsNaN(a) && math.IsNaN(b) {
-		return true
-	}
-	diff := a - b
-	return diff < 0.0000001 && diff > -0.0000001
-}
-
-func SoftAlmostEqual(t *testing.T, exp float64, actual float64) bool {
-	if IsAlmostEqual(exp, actual) {
-		return true
-	}
-	// This should always fail
-	return assert.Equal(t, exp, actual)
-}
-
-func AlmostEqual(t *testing.T, exp float64, actual float64) {
-	if !SoftAlmostEqual(t, exp, actual) {
-		t.FailNow()
-	}
-}
-
-// Equal will fail with NaN == NaN, so we need some special help to make
-// the failure pretty.
-func RqNaN(t *testing.T, actual float64) {
-	if !math.IsNaN(actual) {
-		// This always fails, but will give some nice ouput
-		require.Equal(t, NaN, actual)
-	}
 }
 
 func AddTxNoErr(t *testing.T, tx *ptf.Tx, preTxStatus *ptf.PortfolioSecurityStatus) *ptf.TxDelta {
@@ -207,16 +174,31 @@ func StEq(
 	}
 }
 
+const EXPLICIT_ZERO_SFL = -0.01010101
+
 // Test Delta
 type TDt struct {
 	PostSt TPSS
 	Gain   float64
+	SFL    float64
+}
+
+func SoftSflAlmostEqual(t *testing.T, expDelta TDt, delta *ptf.TxDelta) bool {
+	if expDelta.SFL != 0.0 {
+		if expDelta.SFL == EXPLICIT_ZERO_SFL {
+			return SoftAlmostEqual(t, 0.0, delta.SuperficialLoss)
+		} else {
+			return SoftAlmostEqual(t, expDelta.SFL, delta.SuperficialLoss)
+		}
+	}
+	return true
 }
 
 func ValidateDelta(t *testing.T, delta *ptf.TxDelta, expDelta TDt) {
 	fail := false
 	fail = !SoftStEq(t, expDelta.PostSt.X(), delta.PostStatus) || fail
 	fail = !SoftAlmostEqual(t, expDelta.Gain, delta.CapitalGain) || fail
+	fail = !SoftSflAlmostEqual(t, expDelta, delta) || fail
 	if fail {
 		require.FailNow(t, "ValidateDelta failed")
 	}
@@ -228,6 +210,7 @@ func ValidateDeltas(t *testing.T, deltas []*ptf.TxDelta, expDeltas []TDt) {
 		fail := false
 		fail = !SoftStEq(t, expDeltas[i].PostSt.X(), delta.PostStatus) || fail
 		fail = !SoftAlmostEqual(t, expDeltas[i].Gain, delta.CapitalGain) || fail
+		fail = !SoftSflAlmostEqual(t, expDeltas[i], delta) || fail
 		if fail {
 			for j, _ := range deltas {
 				fmt.Println(j, "Tx:", deltas[j].Tx, "PostStatus:", deltas[j].PostStatus)
@@ -777,11 +760,11 @@ func _TestOtherAffiliateSFL(t *testing.T) {
 	}
 	deltas := TxsToDeltaListNoErr(t, txs)
 	ValidateDeltas(t, deltas, []TDt{
-		TDt{PostSt: TPSS{Shares: 10, AllShares: 10, TotalAcb: 10.0}}, // Buy in Default
-		TDt{PostSt: TPSS{Shares: 5, AllShares: 15, TotalAcb: 5.0}},   // Buy in B
-		TDt{PostSt: TPSS{Shares: 8, AllShares: 13, TotalAcb: 10.0}},  // SFL of 0.5 * 2 shares
-		TDt{PostSt: TPSS{Shares: 5, AllShares: 13, TotalAcb: 6.0}},   // Auto-adjust on B
-		TDt{PostSt: TPSS{Shares: 7, AllShares: 15, TotalAcb: 8.0}},   // B
+		TDt{PostSt: TPSS{Shares: 10, AllShares: 10, TotalAcb: 10.0}},          // Buy in Default
+		TDt{PostSt: TPSS{Shares: 5, AllShares: 15, TotalAcb: 5.0}},            // Buy in B
+		TDt{PostSt: TPSS{Shares: 8, AllShares: 13, TotalAcb: 8.0}, SFL: -1.0}, // SFL of 0.5 * 2 shares
+		TDt{PostSt: TPSS{Shares: 5, AllShares: 13, TotalAcb: 6.0}},            // Auto-adjust on B
+		TDt{PostSt: TPSS{Shares: 7, AllShares: 15, TotalAcb: 8.0}},            // B
 	})
 }
 

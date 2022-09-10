@@ -16,12 +16,117 @@ func NewLegacyOptions() LegacyOptions {
 	return LegacyOptions{}
 }
 
+func NonNilTxAffiliate(tx *Tx) *Affiliate {
+	txAffiliate := tx.Affiliate
+	if txAffiliate == nil {
+		// This should only really happen in tests
+		txAffiliate = GlobalAffiliateDedupTable.GetDefaultAffiliate()
+	}
+	return txAffiliate
+}
+
+type AffiliatePortfolioSecurityStatuses struct {
+	// Affiliate Id -> last PortfolioSecurityStatus
+	lastPostStatusForAffiliate      map[string]*PortfolioSecurityStatus
+	security                        string
+	latestAllAffiliatesShareBalance uint32
+	latestAffiliate                 *Affiliate
+}
+
+func NewAffiliatePortfolioSecurityStatuses(
+	security string, initialDefaultAffStatus *PortfolioSecurityStatus,
+) *AffiliatePortfolioSecurityStatuses {
+
+	s := &AffiliatePortfolioSecurityStatuses{
+		lastPostStatusForAffiliate:      make(map[string]*PortfolioSecurityStatus),
+		security:                        security,
+		latestAllAffiliatesShareBalance: 0,
+		latestAffiliate:                 GlobalAffiliateDedupTable.GetDefaultAffiliate(),
+	}
+
+	// Initial status only applies to the default affiliate
+	if initialDefaultAffStatus != nil {
+		util.Assert(initialDefaultAffStatus.ShareBalance ==
+			initialDefaultAffStatus.AllAffiliatesShareBalance)
+		s.SetLatestPostStatus(s.latestAffiliate.Id(), initialDefaultAffStatus)
+	}
+	return s
+}
+
+func (s *AffiliatePortfolioSecurityStatuses) makeDefaultPortfolioSecurityStatus(
+	defaultAff bool, registered bool) *PortfolioSecurityStatus {
+	var affiliateShareBalance uint32 = 0
+	var affiliateTotalAcb float64 = util.Tern[float64](registered, math.NaN(), 0.0)
+	return &PortfolioSecurityStatus{
+		Security: s.security, ShareBalance: affiliateShareBalance,
+		AllAffiliatesShareBalance: s.latestAllAffiliatesShareBalance,
+		TotalAcb:                  affiliateTotalAcb,
+	}
+}
+
+func (s *AffiliatePortfolioSecurityStatuses) GetLatestPostStatusForAffiliate(
+	id string) (*PortfolioSecurityStatus, bool) {
+	v, ok := s.lastPostStatusForAffiliate[id]
+	return v, ok
+}
+
+func (s *AffiliatePortfolioSecurityStatuses) GetLatestPostStatus() *PortfolioSecurityStatus {
+	v, ok := s.GetLatestPostStatusForAffiliate(s.latestAffiliate.Id())
+	if !ok {
+		return &PortfolioSecurityStatus{Security: s.security}
+	}
+	return v
+}
+
+func (s *AffiliatePortfolioSecurityStatuses) SetLatestPostStatus(
+	id string, v *PortfolioSecurityStatus) {
+
+	var lastShareBalance uint32 = 0
+	if last, ok := s.lastPostStatusForAffiliate[id]; ok {
+		lastShareBalance = last.ShareBalance
+	}
+	var expectedAllShareBal uint32 = v.ShareBalance + s.latestAllAffiliatesShareBalance - lastShareBalance
+
+	af := GlobalAffiliateDedupTable.MustGet(id)
+	util.Assertf(af.Registered() == math.IsNaN(v.TotalAcb),
+		"In security %s, af %s, TotalAcb has bad NaN value (%f)",
+		s.security, id, v.TotalAcb)
+
+	util.Assertf(v.AllAffiliatesShareBalance == expectedAllShareBal,
+		"In security %s, af %s, v.AllAffiliatesShareBalance (%d) != expectedAllShareBal (%d) "+
+			"(v.ShareBalance (%d) + s.latestAllAffiliatesShareBalance (%d) - lastShareBalance (%d)",
+		s.security, id, v.AllAffiliatesShareBalance, expectedAllShareBal,
+		v.ShareBalance, s.latestAllAffiliatesShareBalance, lastShareBalance)
+
+	s.lastPostStatusForAffiliate[id] = v
+	s.latestAllAffiliatesShareBalance = v.AllAffiliatesShareBalance
+	s.latestAffiliate = GlobalAffiliateDedupTable.MustGet(id)
+}
+
+func (s *AffiliatePortfolioSecurityStatuses) GetNextPreStatus(
+	id string) *PortfolioSecurityStatus {
+
+	lastStatus, ok := s.GetLatestPostStatusForAffiliate(id)
+	if !ok {
+		af := GlobalAffiliateDedupTable.MustGet(id)
+		lastStatus = s.makeDefaultPortfolioSecurityStatus(af.Default(), af.Registered())
+	}
+	nextPreStatus := lastStatus
+	if nextPreStatus.AllAffiliatesShareBalance != s.latestAllAffiliatesShareBalance {
+		nextPreStatus = &PortfolioSecurityStatus{}
+		*nextPreStatus = *lastStatus
+		nextPreStatus.AllAffiliatesShareBalance = s.latestAllAffiliatesShareBalance
+	}
+	return nextPreStatus
+}
+
 type _SuperficialLossInfo struct {
 	IsSuperficial        bool
 	FirstDateInPeriod    date.Date
 	LastDateInPeriod     date.Date
 	SharesAtEndOfPeriod  uint32
 	TotalAquiredInPeriod uint32
+	BuyingAffiliates     *util.Set[string]
 }
 
 func GetFirstDayInSuperficialLossPeriod(txDate date.Date) date.Date {
@@ -52,8 +157,30 @@ func getSuperficialLossInfo(
 		TotalAquiredInPeriod: 0,
 	}
 
-	// buyingAffiliates := util.NewSet[string]()
+	buyingAffiliates := util.NewSet[string]()
 	// TODO fix SFL logic for multiple affiliates.
+	// Some points:
+	// the total share balance across all affiliates is insufficient, since
+	// if you had 3 affiliates, it's possible to retain shares, but in an affiliate
+	// which did not do any of the buys within the period. This should probably
+	// require a manual entry, since I don't know what to do in this case. Is the
+	// loss denied or not? Is the total number of shares only for the affiliates
+	// doing the sell and with the buys?
+	// I think the total shares should only be in the affiliates which did the
+	// sell.
+	// Do we use the shares left in the affiliate with the buy only?
+	// hypothetical:
+	//  A                 B
+	//  BUY 5				BUY 0
+	//	 ...              ...
+	//  SELL 4 (SFL)		BUY 5
+	//							SELL 3
+	// (reminaing: 1)		(remaining: 2)
+	// use 2 or 3 as remaining shares, since it is the min val for proportional SFL.
+	//
+	// However, the safer thing to do might be to use the max shares, but require
+	// manual entry if the number of shares remaining in the sell affiliate is less
+	// than the number of rejected loss shares. <<<<<< Warn of this and possibly suggest an accountant.
 
 	didBuyAfterInPeriod := false
 	for i := idx + 1; i < len(txs); i++ {
@@ -61,6 +188,7 @@ func getSuperficialLossInfo(
 		if afterTx.SettlementDate.After(lastBadBuyDate) {
 			break
 		}
+
 		// Within the 30 day window after
 		switch afterTx.Action {
 		case BUY:
@@ -68,7 +196,11 @@ func getSuperficialLossInfo(
 			sli.SharesAtEndOfPeriod += afterTx.Shares
 			sli.TotalAquiredInPeriod += afterTx.Shares
 			// TODO need to fix tests so this is never nil
-			// buyingAffiliates.Add(afterTx.Affiliate.Id())
+			txAffil := tx.Affiliate
+			if txAffil == nil {
+				txAffil = GlobalAffiliateDedupTable.GetDefaultAffiliate()
+			}
+			buyingAffiliates.Add(txAffil.Id())
 		case SELL:
 			sli.SharesAtEndOfPeriod -= afterTx.Shares
 		default:
@@ -94,6 +226,7 @@ func getSuperficialLossInfo(
 		}
 	}
 
+	sli.BuyingAffiliates = buyingAffiliates
 	sli.IsSuperficial = didBuyBeforeInPeriod || didBuyAfterInPeriod
 	return sli
 }
@@ -300,56 +433,27 @@ func TxsToDeltaList(
 	legacyOptions LegacyOptions,
 ) ([]*TxDelta, error) {
 
-	var allAffiliatesShareBalance uint32 = 0
-
-	makeDefaultPortfolioSecurityStatus := func(def bool, registered bool) *PortfolioSecurityStatus {
-		var affiliateShareBalance uint32 = 0
-		var affiliateTotalAcb float64 = util.Tern[float64](registered, math.NaN(), 0.0)
-		// Initial status only applies to the default affiliate
-		if def && !registered && initialStatus != nil {
-			affiliateShareBalance = initialStatus.ShareBalance
-			affiliateTotalAcb = initialStatus.TotalAcb
-		}
-		return &PortfolioSecurityStatus{
-			Security: txs[0].Security, ShareBalance: affiliateShareBalance,
-			AllAffiliatesShareBalance: allAffiliatesShareBalance,
-			TotalAcb:                  affiliateTotalAcb,
-		}
-	}
-
 	var modifiedTxs []*Tx
 	activeTxs := txs
 	deltas := make([]*TxDelta, 0, len(txs))
-	// Affiliate Id -> last PortfolioSecurityStatus
-	lastStatusForAffiliate := util.NewDefaultMap[string, *PortfolioSecurityStatus](
-		func(afId string) *PortfolioSecurityStatus {
-			af := GlobalAffiliateDedupTable.MustGet(afId)
-			return makeDefaultPortfolioSecurityStatus(af.Default(), af.Registered())
-		},
-	)
+
+	if len(txs) == 0 {
+		return deltas, nil
+	}
+
+	// TODO give this to AddTx
+	lastStatusForAffiliates := NewAffiliatePortfolioSecurityStatuses(
+		txs[0].Security, initialStatus)
 
 	for i := 0; i < len(activeTxs); i++ {
-		txAffiliate := activeTxs[i].Affiliate
-		if txAffiliate == nil {
-			// This should only really happen in tests
-			txAffiliate = GlobalAffiliateDedupTable.GetDefaultAffiliate()
-		}
-		lastStatus := lastStatusForAffiliate.Get(txAffiliate.Id())
-		if lastStatus.AllAffiliatesShareBalance != allAffiliatesShareBalance {
-			lastStatusCopy := &PortfolioSecurityStatus{}
-			*lastStatusCopy = *lastStatus
-			lastStatusCopy.AllAffiliatesShareBalance = allAffiliatesShareBalance
-			lastStatus = lastStatusCopy
-		}
-
-		delta, newTx, err := AddTx(i, activeTxs, lastStatus)
+		txAffiliate := NonNilTxAffiliate(activeTxs[i])
+		preTxStatus := lastStatusForAffiliates.GetNextPreStatus(txAffiliate.Id())
+		delta, newTx, err := AddTx(i, activeTxs, preTxStatus)
 		if err != nil {
 			// Return what we've managed so far, for debugging
 			return deltas, err
 		}
-		lastStatus = delta.PostStatus
-		lastStatusForAffiliate.Set(txAffiliate.Id(), lastStatus)
-		allAffiliatesShareBalance = lastStatus.AllAffiliatesShareBalance
+		lastStatusForAffiliates.SetLatestPostStatus(txAffiliate.Id(), delta.PostStatus)
 		deltas = append(deltas, delta)
 		if newTx != nil {
 			// Add new Tx into modifiedTxs
