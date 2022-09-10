@@ -30,17 +30,27 @@ func CADSFL(lossVal float64, force bool) util.Optional[ptf.SFLInput] {
 	return util.NewOptional[ptf.SFLInput](ptf.SFLInput{lossVal, force})
 }
 
-func AddTxNoErr(t *testing.T, tx *ptf.Tx, preTxStatus *ptf.PortfolioSecurityStatus) *ptf.TxDelta {
+func _addTx(t *testing.T, tx *ptf.Tx, preTxStatus *ptf.PortfolioSecurityStatus) (*ptf.TxDelta, *ptf.Tx, error) {
 	txs := []*ptf.Tx{tx}
-	delta, newTx, err := ptf.AddTx(0, txs, preTxStatus)
+	affil := ptf.NonNilTxAffiliate(tx)
+	ptfStatuses := ptf.NewAffiliatePortfolioSecurityStatuses(tx.Security, nil)
+	shareDiff := preTxStatus.AllAffiliatesShareBalance - preTxStatus.ShareBalance
+	// Set up the previous balance to avoid assert
+	dummyId := ptf.GlobalAffiliateDedupTable.DedupedAffiliate("dummy").Id()
+	ptfStatuses.SetLatestPostStatus(dummyId, TPSS{Shares: shareDiff}.X())
+	ptfStatuses.SetLatestPostStatus(affil.Id(), preTxStatus)
+	return ptf.AddTx(0, txs, ptfStatuses)
+}
+
+func AddTxNoErr(t *testing.T, tx *ptf.Tx, preTxStatus *ptf.PortfolioSecurityStatus) *ptf.TxDelta {
+	delta, newTx, err := _addTx(t, tx, preTxStatus)
 	require.Nil(t, newTx)
 	require.Nil(t, err)
 	return delta
 }
 
 func AddTxWithErr(t *testing.T, tx *ptf.Tx, preTxStatus *ptf.PortfolioSecurityStatus) error {
-	txs := []*ptf.Tx{tx}
-	delta, newTx, err := ptf.AddTx(0, txs, preTxStatus)
+	delta, newTx, err := _addTx(t, tx, preTxStatus)
 	require.NotNil(t, err)
 	require.Nil(t, delta)
 	require.Nil(t, newTx)
@@ -617,15 +627,21 @@ func TestRegisteredAffiliateCapitalGain(t *testing.T) {
 	// Test that we fail if registered account sees non-nan acb
 	sptf = TPSS{Shares: 5, TotalAcb: 0.0}.X()
 	tx = TTx{Act: ptf.SELL, Shares: 2, Price: 3.0, AffName: "(R)"}.X()
-	AddTxWithErr(t, tx, sptf)
+	RqPanicsWithRegexp(t, "bad NaN value", func() {
+		AddTxWithErr(t, tx, sptf)
+	})
 	// Same, but non-zero acb
 	sptf = TPSS{Shares: 5, TotalAcb: 1.0}.X()
 	tx = TTx{Act: ptf.SELL, Shares: 2, Price: 3.0, AffName: "(R)"}.X()
-	AddTxWithErr(t, tx, sptf)
+	RqPanicsWithRegexp(t, "bad NaN value", func() {
+		AddTxWithErr(t, tx, sptf)
+	})
 	// Test that non-registered with NaN ACB generates an error as well
 	sptf = TPSS{Shares: 5, TotalAcb: NaN}.X()
 	tx = TTx{Act: ptf.SELL, Shares: 2, Price: 3.0}.X()
-	AddTxWithErr(t, tx, sptf)
+	RqPanicsWithRegexp(t, "bad NaN value", func() {
+		AddTxWithErr(t, tx, sptf)
+	})
 }
 
 /*

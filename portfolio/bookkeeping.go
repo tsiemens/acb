@@ -258,10 +258,13 @@ func getSuperficialLossRatio(
 func AddTx(
 	idx int,
 	txs []*Tx,
-	preTxStatus *PortfolioSecurityStatus,
+	ptfStatuses *AffiliatePortfolioSecurityStatuses,
 ) (*TxDelta, *Tx, error) {
 
 	tx := txs[idx]
+	txAffiliate := NonNilTxAffiliate(tx)
+	preTxStatus := ptfStatuses.GetNextPreStatus(txAffiliate.Id())
+
 	util.Assertf(tx.Security == preTxStatus.Security,
 		"AddTx: securities do not match (%s and %s)\n", tx.Security, preTxStatus.Security)
 
@@ -441,19 +444,17 @@ func TxsToDeltaList(
 		return deltas, nil
 	}
 
-	// TODO give this to AddTx
-	lastStatusForAffiliates := NewAffiliatePortfolioSecurityStatuses(
+	ptfStatuses := NewAffiliatePortfolioSecurityStatuses(
 		txs[0].Security, initialStatus)
 
 	for i := 0; i < len(activeTxs); i++ {
 		txAffiliate := NonNilTxAffiliate(activeTxs[i])
-		preTxStatus := lastStatusForAffiliates.GetNextPreStatus(txAffiliate.Id())
-		delta, newTx, err := AddTx(i, activeTxs, preTxStatus)
+		delta, newTx, err := AddTx(i, activeTxs, ptfStatuses)
 		if err != nil {
 			// Return what we've managed so far, for debugging
 			return deltas, err
 		}
-		lastStatusForAffiliates.SetLatestPostStatus(txAffiliate.Id(), delta.PostStatus)
+		ptfStatuses.SetLatestPostStatus(txAffiliate.Id(), delta.PostStatus)
 		deltas = append(deltas, delta)
 		if newTx != nil {
 			// Add new Tx into modifiedTxs
