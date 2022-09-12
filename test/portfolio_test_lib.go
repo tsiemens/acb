@@ -54,8 +54,10 @@ const EXP_FLOAT_ZERO = -0.01010101
 // Test Tx
 type TTx struct {
 	Sec        string
-	TDay       int // Convenience for TDate
-	TDate      date.Date
+	TDay       int       // An abitrarily offset day. Convenience for TDate
+	TDate      date.Date // Defaults to 2 days before SDate
+	SYr        uint32    // Year. Convenience for SDate. Must be combined with TDoY
+	SDoY       int       // Day of Year. Convenience for SDate. Must be combined with TYr
 	SDate      date.Date // Defaults to 2 days after TDate/TDay
 	Act        ptf.TxAction
 	Shares     uint32
@@ -90,9 +92,19 @@ func (t TTx) X() *ptf.Tx {
 		util.Assert(t.AffName == "")
 	}
 
+	// Dates
 	tradeDate := util.Tern(t.TDay != 0, mkDate(t.TDay), t.TDate)
 	if t.TDay != 0 {
 		util.Assert(t.TDate == date.Date{})
+	}
+	settlementDate := util.Tern(t.SYr != 0, mkDateYD(t.SYr, t.SDoY), t.SDate)
+	if t.SYr != 0 || t.SDoY != 0 {
+		util.Assert(t.SDate == date.Date{})
+	}
+	if (settlementDate == date.Date{}) && (tradeDate != date.Date{}) {
+		settlementDate = tradeDate.AddDays(2)
+	} else if (tradeDate == date.Date{}) && (settlementDate != date.Date{}) {
+		tradeDate = settlementDate.AddDays(-2)
 	}
 
 	getCurr := func(specifiedCurr ptf.Currency, default_ ptf.Currency) ptf.Currency {
@@ -111,7 +123,7 @@ func (t TTx) X() *ptf.Tx {
 	return &ptf.Tx{
 		Security:                          util.Tern(t.Sec == "", DefaultTestSecurity, t.Sec),
 		TradeDate:                         tradeDate,
-		SettlementDate:                    util.Tern(t.SDate == date.Date{}, tradeDate.AddDays(2), t.SDate),
+		SettlementDate:                    settlementDate,
 		Action:                            t.Act,
 		Shares:                            t.Shares,
 		AmountPerShare:                    t.Price,

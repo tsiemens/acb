@@ -10,18 +10,6 @@ import (
 	ptf "github.com/tsiemens/acb/portfolio"
 )
 
-func makeTxYD(year uint32, dayOfYear int,
-	action ptf.TxAction, shares uint32, amount float64) *ptf.Tx {
-
-	commission := 0.0
-	if action == ptf.BUY {
-		commission = 2.0
-	}
-	dt := mkDateYD(year, dayOfYear)
-	return TTx{TDate: dt.AddDays(-2), SDate: dt, Act: action, Shares: shares, Price: amount,
-		Comm: commission}.X()
-}
-
 func makeSflaTxYD(year uint32, dayOfYear int, shares uint32, amount float64) *ptf.Tx {
 	dt := mkDateYD(year, dayOfYear)
 	return TTx{TDate: dt.AddDays(-2), SDate: dt, Act: ptf.SFLA, Shares: shares, Price: amount,
@@ -76,7 +64,7 @@ func TestSummary(t *testing.T) {
 
 	// TEST: simple one tx to one summary
 	txs := []*ptf.Tx{
-		makeTxYD(2021, 4, ptf.BUY, 10, 1.0), // commission 2.0
+		TTx{SYr: 2021, SDoY: 4, Act: ptf.BUY, Shares: 10, Price: 1.0, Comm: 2.0}.X(),
 	}
 	expSummaryTxs := []*ptf.Tx{
 		makeSummaryTx(2021, 4, 10, 1.2), // commission is added to share ACB
@@ -96,7 +84,7 @@ func TestSummary(t *testing.T) {
 
 	// TEST: only after summary period
 	txs = []*ptf.Tx{
-		makeTxYD(2022, 4, ptf.BUY, 10, 1.0), // commission 2.0
+		TTx{SYr: 2022, SDoY: 4, Act: ptf.BUY, Shares: 10, Price: 1.0, Comm: 2.0}.X(),
 	}
 
 	deltas = th.txsToDeltaList(txs)
@@ -105,8 +93,8 @@ func TestSummary(t *testing.T) {
 
 	// TEST: only after summary period, but there is a close superficial loss
 	txs = []*ptf.Tx{
-		makeTxYD(2022, 4, ptf.BUY, 10, 1.0),  // commission 2.0
-		makeTxYD(2022, 41, ptf.SELL, 5, 0.2), // SFL
+		TTx{SYr: 2022, SDoY: 4, Act: ptf.BUY, Shares: 10, Price: 1.0, Comm: 2.0}.X(),
+		TTx{SYr: 2022, SDoY: 41, Act: ptf.SELL, Shares: 5, Price: 0.2}.X(), // SFL
 	}
 
 	deltas = th.txsToDeltaList(txs)
@@ -115,8 +103,8 @@ func TestSummary(t *testing.T) {
 
 	// TEST: only after summary period, but there is a further superficial loss
 	txs = []*ptf.Tx{
-		makeTxYD(2022, 40, ptf.BUY, 10, 1.0), // commission 2.0
-		makeTxYD(2022, 41, ptf.SELL, 5, 0.2), // SFL
+		TTx{SYr: 2022, SDoY: 40, Act: ptf.BUY, Shares: 10, Price: 1.0, Comm: 2.0}.X(),
+		TTx{SYr: 2022, SDoY: 41, Act: ptf.SELL, Shares: 5, Price: 0.2}.X(), // SFL
 	}
 
 	deltas = th.txsToDeltaList(txs)
@@ -125,8 +113,8 @@ func TestSummary(t *testing.T) {
 
 	// TEST: only before period, and there are terminating superficial losses
 	txs = []*ptf.Tx{
-		makeTxYD(2022, -2, ptf.BUY, 10, 1.0), // commission 2.0
-		makeTxYD(2022, -1, ptf.SELL, 2, 0.2), // SFL
+		TTx{SYr: 2022, SDoY: -2, Act: ptf.BUY, Shares: 10, Price: 1.0, Comm: 2.0}.X(),
+		TTx{SYr: 2022, SDoY: -1, Act: ptf.SELL, Shares: 2, Price: 0.2}.X(), // SFL
 	}
 	expSummaryTxs = []*ptf.Tx{
 		makeSummaryTx(2022, -1, 8, 1.45),
@@ -139,9 +127,9 @@ func TestSummary(t *testing.T) {
 
 	// TEST: present [ SELL ... 2 days || SFL, BUY ] past
 	txs = []*ptf.Tx{
-		makeTxYD(2022, -2, ptf.BUY, 10, 1.0), // commission 2.0
-		makeTxYD(2022, -1, ptf.SELL, 2, 0.2), // SFL
-		makeTxYD(2022, 2, ptf.SELL, 2, 2.0),  // Gain
+		TTx{SYr: 2022, SDoY: -2, Act: ptf.BUY, Shares: 10, Price: 1.0, Comm: 2.0}.X(),
+		TTx{SYr: 2022, SDoY: -1, Act: ptf.SELL, Shares: 2, Price: 0.2}.X(), // SFL
+		TTx{SYr: 2022, SDoY: 2, Act: ptf.SELL, Shares: 2, Price: 2.0}.X(),  // Gain
 	}
 	expSummaryTxs = []*ptf.Tx{
 		makeSummaryTx(2022, -1, 8, 1.45),
@@ -154,10 +142,10 @@ func TestSummary(t *testing.T) {
 
 	// TEST: present [ SFL ... 30 days || SELL(+), BUY ] past
 	txs = []*ptf.Tx{
-		makeTxYD(2022, -2, ptf.BUY, 10, 1.0), // commission 2.0
-		makeTxYD(2022, -1, ptf.SELL, 2, 2.0), // Gain
-		makeTxYD(2022, 30, ptf.SELL, 2, 0.2), // SFL
-		makeTxYD(2022, 31, ptf.BUY, 1, 2.0),  // Causes SFL
+		TTx{SYr: 2022, SDoY: -2, Act: ptf.BUY, Shares: 10, Price: 1.0, Comm: 2.0}.X(),
+		TTx{SYr: 2022, SDoY: -1, Act: ptf.SELL, Shares: 2, Price: 2.0}.X(),           // Gain
+		TTx{SYr: 2022, SDoY: 30, Act: ptf.SELL, Shares: 2, Price: 0.2}.X(),           // SFL
+		TTx{SYr: 2022, SDoY: 31, Act: ptf.BUY, Shares: 1, Price: 2.0, Comm: 2.0}.X(), // Causes SFL
 	}
 	expSummaryTxs = []*ptf.Tx{
 		makeSummaryTx(2022, -1, 8, 1.2),
@@ -171,14 +159,14 @@ func TestSummary(t *testing.T) {
 	// TEST: present [ SFL ... 29 days || SELL(+), 1 day...  BUY ] past
 	// The post SFL will influence the summarizable TXs
 	txs = []*ptf.Tx{
-		makeTxYD(2022, -2, ptf.BUY, 10, 1.0), // commission 2.0
-		makeTxYD(2022, -1, ptf.SELL, 2, 2.0), // Gain
-		makeTxYD(2022, 29, ptf.SELL, 2, 0.2), // SFL
-		makeTxYD(2022, 31, ptf.BUY, 1, 2.0),  // Causes SFL
+		TTx{SYr: 2022, SDoY: -2, Act: ptf.BUY, Shares: 10, Price: 1.0, Comm: 2.0}.X(),
+		TTx{SYr: 2022, SDoY: -1, Act: ptf.SELL, Shares: 2, Price: 2.0}.X(),           // Gain
+		TTx{SYr: 2022, SDoY: 29, Act: ptf.SELL, Shares: 2, Price: 0.2}.X(),           // SFL
+		TTx{SYr: 2022, SDoY: 31, Act: ptf.BUY, Shares: 1, Price: 2.0, Comm: 2.0}.X(), // Causes SFL
 	}
 	expSummaryTxs = []*ptf.Tx{
 		makeSummaryTx(2022, -2, 10, 1.2),
-		makeTxYD(2022, -1, ptf.SELL, 2, 2.0), // Gain
+		TTx{SYr: 2022, SDoY: -1, Act: ptf.SELL, Shares: 2, Price: 2.0}.X(), // Gain
 	}
 
 	deltas = th.txsToDeltaList(txs)
@@ -189,14 +177,14 @@ func TestSummary(t *testing.T) {
 	// TEST: present [ SFL ... 29 days || SELL(+), 0 days...  BUY ] past
 	// The post SFL will influence the summarizable TXs
 	txs = []*ptf.Tx{
-		makeTxYD(2022, -1, ptf.BUY, 10, 1.0), // commission 2.0
-		makeTxYD(2022, -1, ptf.SELL, 2, 2.0), // Gain
-		makeTxYD(2022, 29, ptf.SELL, 2, 0.2), // SFL
-		makeTxYD(2022, 31, ptf.BUY, 1, 2.0),  // Causes SFL
+		TTx{SYr: 2022, SDoY: -1, Act: ptf.BUY, Shares: 10, Price: 1.0, Comm: 2.0}.X(),
+		TTx{SYr: 2022, SDoY: -1, Act: ptf.SELL, Shares: 2, Price: 2.0}.X(),           // Gain
+		TTx{SYr: 2022, SDoY: 29, Act: ptf.SELL, Shares: 2, Price: 0.2}.X(),           // SFL
+		TTx{SYr: 2022, SDoY: 31, Act: ptf.BUY, Shares: 1, Price: 2.0, Comm: 2.0}.X(), // Causes SFL
 	}
 	expSummaryTxs = []*ptf.Tx{
-		makeTxYD(2022, -1, ptf.BUY, 10, 1.0), // commission 2.0
-		makeTxYD(2022, -1, ptf.SELL, 2, 2.0), // Gain
+		TTx{SYr: 2022, SDoY: -1, Act: ptf.BUY, Shares: 10, Price: 1.0, Comm: 2.0}.X(),
+		TTx{SYr: 2022, SDoY: -1, Act: ptf.SELL, Shares: 2, Price: 2.0}.X(), // Gain
 	}
 
 	deltas = th.txsToDeltaList(txs)
@@ -207,16 +195,16 @@ func TestSummary(t *testing.T) {
 	// TEST: present [ SFL ... 29 days || SFL, 29 days... BUY, 1 day... BUY ] past
 	// Unsummarizable SFL will push back the summarizing window.
 	txs = []*ptf.Tx{
-		makeTxYD(2022, -32, ptf.BUY, 8, 1.0), // commission 2.0
-		makeTxYD(2022, -31, ptf.BUY, 2, 1.0), // commission 2.0
-		makeTxYD(2022, -1, ptf.SELL, 2, 0.2), // SFL
-		makeTxYD(2022, 29, ptf.SELL, 2, 0.2), // SFL
-		makeTxYD(2022, 31, ptf.BUY, 1, 2.0),  // Causes SFL
+		TTx{SYr: 2022, SDoY: -32, Act: ptf.BUY, Shares: 8, Price: 1.0, Comm: 2.0}.X(),
+		TTx{SYr: 2022, SDoY: -31, Act: ptf.BUY, Shares: 2, Price: 1.0, Comm: 2.0}.X(),
+		TTx{SYr: 2022, SDoY: -1, Act: ptf.SELL, Shares: 2, Price: 0.2}.X(),           // SFL
+		TTx{SYr: 2022, SDoY: 29, Act: ptf.SELL, Shares: 2, Price: 0.2}.X(),           // SFL
+		TTx{SYr: 2022, SDoY: 31, Act: ptf.BUY, Shares: 1, Price: 2.0, Comm: 2.0}.X(), // Causes SFL
 	}
 	expSummaryTxs = []*ptf.Tx{
 		makeSummaryTx(2022, -32, 8, 1.25),
-		makeTxYD(2022, -31, ptf.BUY, 2, 1.0), // ACB of 14 total after here.
-		makeTxYD(2022, -1, ptf.SELL, 2, 0.2), // SFL of $2.4
+		TTx{SYr: 2022, SDoY: -31, Act: ptf.BUY, Shares: 2, Price: 1.0, Comm: 2.0}.X(), // ACB of 14 total after here.
+		TTx{SYr: 2022, SDoY: -1, Act: ptf.SELL, Shares: 2, Price: 0.2}.X(),            // SFL of $2.4
 		makeSflaTxYD(2022, -1, 2, 1.2),
 	}
 
@@ -228,24 +216,24 @@ func TestSummary(t *testing.T) {
 	// TEST: present [ SFL ... 29 days || <mix of SFLs, BUYs> ] past
 	// Unsummarizable SFL will push back the summarizing window.
 	txs = []*ptf.Tx{
-		makeTxYD(2022, -71, ptf.BUY, 10, 1.0), // commission 2.0
-		makeTxYD(2022, -70, ptf.SELL, 2, 0.2), // SFL
+		TTx{SYr: 2022, SDoY: -71, Act: ptf.BUY, Shares: 10, Price: 1.0, Comm: 2.0}.X(),
+		TTx{SYr: 2022, SDoY: -70, Act: ptf.SELL, Shares: 2, Price: 0.2}.X(), // SFL
 		// unsummarizable below
-		makeTxYD(2022, -45, ptf.BUY, 8, 1.0),  // commission 2.0
-		makeTxYD(2022, -31, ptf.BUY, 2, 1.0),  // commission 2.0
-		makeTxYD(2022, -15, ptf.SELL, 2, 0.2), // SFL
-		makeTxYD(2022, -1, ptf.SELL, 2, 0.2),  // SFL
+		TTx{SYr: 2022, SDoY: -45, Act: ptf.BUY, Shares: 8, Price: 1.0, Comm: 2.0}.X(),
+		TTx{SYr: 2022, SDoY: -31, Act: ptf.BUY, Shares: 2, Price: 1.0, Comm: 2.0}.X(),
+		TTx{SYr: 2022, SDoY: -15, Act: ptf.SELL, Shares: 2, Price: 0.2}.X(), // SFL
+		TTx{SYr: 2022, SDoY: -1, Act: ptf.SELL, Shares: 2, Price: 0.2}.X(),  // SFL
 		// end of summary period
-		makeTxYD(2022, 29, ptf.SELL, 2, 0.2), // SFL
-		makeTxYD(2022, 31, ptf.BUY, 1, 2.0),  // Causes SFL
+		TTx{SYr: 2022, SDoY: 29, Act: ptf.SELL, Shares: 2, Price: 0.2}.X(),           // SFL
+		TTx{SYr: 2022, SDoY: 31, Act: ptf.BUY, Shares: 1, Price: 2.0, Comm: 2.0}.X(), // Causes SFL
 	}
 	expSummaryTxs = []*ptf.Tx{
 		makeSummaryTx(2022, -70, 8, 1.45),
-		makeTxYD(2022, -45, ptf.BUY, 8, 1.0),           // commission 2.0, post ACB = 21.6
-		makeTxYD(2022, -31, ptf.BUY, 2, 1.0),           // commission 2.0, post ACB = 25.6
-		makeTxYD(2022, -15, ptf.SELL, 2, 0.2),          // SFL of 2.4444444444, ACB = 22.755555556
-		makeSflaTxYD(2022, -15, 2, 1.2222222222222223), // ACB of 25.2
-		makeTxYD(2022, -1, ptf.SELL, 2, 0.2),           // SFL of 2.75, ACB = 22.05
+		TTx{SYr: 2022, SDoY: -45, Act: ptf.BUY, Shares: 8, Price: 1.0, Comm: 2.0}.X(), // post ACB = 21.6
+		TTx{SYr: 2022, SDoY: -31, Act: ptf.BUY, Shares: 2, Price: 1.0, Comm: 2.0}.X(), // post ACB = 25.6
+		TTx{SYr: 2022, SDoY: -15, Act: ptf.SELL, Shares: 2, Price: 0.2}.X(),           // SFL of 2.4444444444, ACB = 22.755555556
+		makeSflaTxYD(2022, -15, 2, 1.2222222222222223),                                // ACB of 25.2
+		TTx{SYr: 2022, SDoY: -1, Act: ptf.SELL, Shares: 2, Price: 0.2}.X(),            // SFL of 2.75, ACB = 22.05
 		makeSflaTxYD(2022, -1, 2, 1.3750000000000002),
 	}
 
@@ -256,11 +244,11 @@ func TestSummary(t *testing.T) {
 
 	// TEST: before and after: present [ SFL ... 25 days || ... 5 days, SFL, BUY ] past
 	txs = []*ptf.Tx{
-		makeTxYD(2022, -6, ptf.BUY, 10, 1.0), // commission 2.0
-		makeTxYD(2022, -5, ptf.SELL, 2, 0.2), // SFL
+		TTx{SYr: 2022, SDoY: -6, Act: ptf.BUY, Shares: 10, Price: 1.0, Comm: 2.0}.X(),
+		TTx{SYr: 2022, SDoY: -5, Act: ptf.SELL, Shares: 2, Price: 0.2}.X(), // SFL
 		// end of summary period
-		makeTxYD(2022, 26, ptf.SELL, 2, 0.2), // SFL
-		makeTxYD(2022, 31, ptf.BUY, 1, 2.0),  // Causes SFL
+		TTx{SYr: 2022, SDoY: 26, Act: ptf.SELL, Shares: 2, Price: 0.2}.X(),           // SFL
+		TTx{SYr: 2022, SDoY: 31, Act: ptf.BUY, Shares: 1, Price: 2.0, Comm: 2.0}.X(), // Causes SFL
 	}
 	expSummaryTxs = []*ptf.Tx{
 		makeSummaryTx(2022, -5, 8, 1.45),
@@ -273,21 +261,21 @@ func TestSummary(t *testing.T) {
 
 	// TEST: before and after: present [ SFL ... 2 days || BUY, SFL ... 20 days, BUY ... 10 days, BUY ] past
 	txs = []*ptf.Tx{
-		makeTxYD(2022, -33, ptf.BUY, 10, 1.0), // commission 2.0
+		TTx{SYr: 2022, SDoY: -33, Act: ptf.BUY, Shares: 10, Price: 1.0, Comm: 2.0}.X(),
 		// unsummarizable below
-		makeTxYD(2022, -20, ptf.BUY, 4, 1.0), // commission 2.0
-		makeTxYD(2022, -2, ptf.SELL, 2, 0.2), // SFL
-		makeTxYD(2022, -1, ptf.BUY, 2, 0.2),  // commission 2.0
+		TTx{SYr: 2022, SDoY: -20, Act: ptf.BUY, Shares: 4, Price: 1.0, Comm: 2.0}.X(),
+		TTx{SYr: 2022, SDoY: -2, Act: ptf.SELL, Shares: 2, Price: 0.2}.X(), // SFL
+		TTx{SYr: 2022, SDoY: -1, Act: ptf.BUY, Shares: 2, Price: 0.2, Comm: 2.0}.X(),
 		// end of summary period
-		makeTxYD(2022, 2, ptf.SELL, 2, 0.2), // SFL
-		makeTxYD(2022, 3, ptf.BUY, 1, 2.0),  // Causes SFL
+		TTx{SYr: 2022, SDoY: 2, Act: ptf.SELL, Shares: 2, Price: 0.2}.X(),           // SFL
+		TTx{SYr: 2022, SDoY: 3, Act: ptf.BUY, Shares: 1, Price: 2.0, Comm: 2.0}.X(), // Causes SFL
 	}
 	expSummaryTxs = []*ptf.Tx{
 		makeSummaryTx(2022, -33, 10, 1.2),
-		makeTxYD(2022, -20, ptf.BUY, 4, 1.0), // commission 2.0, ACB = 18
-		makeTxYD(2022, -2, ptf.SELL, 2, 0.2), // SFL of 2.171428571, ACB = 15.428571429
+		TTx{SYr: 2022, SDoY: -20, Act: ptf.BUY, Shares: 4, Price: 1.0, Comm: 2.0}.X(), // ACB = 18
+		TTx{SYr: 2022, SDoY: -2, Act: ptf.SELL, Shares: 2, Price: 0.2}.X(),            // SFL of 2.171428571, ACB = 15.428571429
 		makeSflaTxYD(2022, -2, 2, 1.0857142857142859),
-		makeTxYD(2022, -1, ptf.BUY, 2, 0.2), // commission 2.0
+		TTx{SYr: 2022, SDoY: -1, Act: ptf.BUY, Shares: 2, Price: 0.2, Comm: 2.0}.X(),
 	}
 
 	deltas = th.txsToDeltaList(txs)
@@ -297,13 +285,13 @@ func TestSummary(t *testing.T) {
 
 	// TEST: before and after: present [ SFL ... 30 days || BUY, SFL ... 20 days, BUY ... 10 days, BUY ] past
 	txs = []*ptf.Tx{
-		makeTxYD(2022, -33, ptf.BUY, 10, 1.0), // commission 2.0
-		makeTxYD(2022, -20, ptf.BUY, 10, 1.0), // commission 2.0
-		makeTxYD(2022, -2, ptf.SELL, 2, 0.2),  // SFL
-		makeTxYD(2022, -1, ptf.BUY, 2, 0.6),   // commission 2.0
+		TTx{SYr: 2022, SDoY: -33, Act: ptf.BUY, Shares: 10, Price: 1.0, Comm: 2.0}.X(),
+		TTx{SYr: 2022, SDoY: -20, Act: ptf.BUY, Shares: 10, Price: 1.0, Comm: 2.0}.X(),
+		TTx{SYr: 2022, SDoY: -2, Act: ptf.SELL, Shares: 2, Price: 0.2}.X(), // SFL
+		TTx{SYr: 2022, SDoY: -1, Act: ptf.BUY, Shares: 2, Price: 0.6, Comm: 2.0}.X(),
 		// end of summary period
-		makeTxYD(2022, 30, ptf.SELL, 2, 0.2), // SFL
-		makeTxYD(2022, 31, ptf.BUY, 1, 2.0),  // Causes SFL
+		TTx{SYr: 2022, SDoY: 30, Act: ptf.SELL, Shares: 2, Price: 0.2}.X(),           // SFL
+		TTx{SYr: 2022, SDoY: 31, Act: ptf.BUY, Shares: 1, Price: 2.0, Comm: 2.0}.X(), // Causes SFL
 	}
 	expSummaryTxs = []*ptf.Tx{
 		makeSummaryTx(2022, -1, 20, 1.34),
@@ -316,8 +304,8 @@ func TestSummary(t *testing.T) {
 
 	// TEST: No shares left in summary.
 	txs = []*ptf.Tx{
-		makeTxYD(2021, 4, ptf.BUY, 10, 1.0), // commission 2.0
-		makeTxYD(2021, 4, ptf.SELL, 10, 1.0),
+		TTx{SYr: 2021, SDoY: 4, Act: ptf.BUY, Shares: 10, Price: 1.0, Comm: 2.0}.X(),
+		TTx{SYr: 2021, SDoY: 4, Act: ptf.SELL, Shares: 10, Price: 1.0}.X(),
 	}
 	expSummaryTxs = []*ptf.Tx{}
 
@@ -328,16 +316,16 @@ func TestSummary(t *testing.T) {
 
 	// TEST: No shares left in summarizable region
 	txs = []*ptf.Tx{
-		makeTxYD(2022, -33, ptf.BUY, 10, 1.0),  // commission 2.0
-		makeTxYD(2022, -33, ptf.SELL, 10, 2.0), // Gain
+		TTx{SYr: 2022, SDoY: -33, Act: ptf.BUY, Shares: 10, Price: 1.0, Comm: 2.0}.X(),
+		TTx{SYr: 2022, SDoY: -33, Act: ptf.SELL, Shares: 10, Price: 2.0}.X(), // Gain
 		// unsummarizable below
-		makeTxYD(2022, -20, ptf.BUY, 4, 1.0), // commission 2.0
+		TTx{SYr: 2022, SDoY: -20, Act: ptf.BUY, Shares: 4, Price: 1.0, Comm: 2.0}.X(),
 		// end of summary period
-		makeTxYD(2022, 2, ptf.SELL, 2, 0.2), // SFL
-		makeTxYD(2022, 3, ptf.BUY, 1, 2.0),  // Causes SFL
+		TTx{SYr: 2022, SDoY: 2, Act: ptf.SELL, Shares: 2, Price: 0.2}.X(),           // SFL
+		TTx{SYr: 2022, SDoY: 3, Act: ptf.BUY, Shares: 1, Price: 2.0, Comm: 2.0}.X(), // Causes SFL
 	}
 	expSummaryTxs = []*ptf.Tx{
-		makeTxYD(2022, -20, ptf.BUY, 4, 1.0), // commission 2.0
+		TTx{SYr: 2022, SDoY: -20, Act: ptf.BUY, Shares: 4, Price: 1.0, Comm: 2.0}.X(),
 	}
 
 	deltas = th.txsToDeltaList(txs)
@@ -386,21 +374,21 @@ func TestSummaryYearSplits(t *testing.T) {
 	// TEST: present [ SFL ... 29 days || SFL, 29 days... BUY, 1 day... BUY ... ] past
 	// Unsummarizable SFL will push back the summarizing window.
 	txs := []*ptf.Tx{
-		makeTxYD(2018, 30, ptf.BUY, 8, 1.0),   // commission 2.0
-		makeTxYD(2020, 30, ptf.BUY, 8, 1.0),   // commission 2.0
-		makeTxYD(2020, 31, ptf.SELL, 1, 2.0),  // GAIN
-		makeTxYD(2020, 100, ptf.SELL, 1, 0.9), // LOSS
-		makeTxYD(2021, 100, ptf.SELL, 2, 0.2), // LOSS
-		makeTxYD(2022, -1, ptf.SELL, 2, 0.2),  // SFL
-		makeTxYD(2022, 29, ptf.SELL, 2, 0.2),  // SFL
-		makeTxYD(2022, 31, ptf.BUY, 1, 2.0),   // Causes SFL
+		TTx{SYr: 2018, SDoY: 30, Act: ptf.BUY, Shares: 8, Price: 1.0, Comm: 2.0}.X(),
+		TTx{SYr: 2020, SDoY: 30, Act: ptf.BUY, Shares: 8, Price: 1.0, Comm: 2.0}.X(),
+		TTx{SYr: 2020, SDoY: 31, Act: ptf.SELL, Shares: 1, Price: 2.0}.X(),           // GAIN
+		TTx{SYr: 2020, SDoY: 100, Act: ptf.SELL, Shares: 1, Price: 0.9}.X(),          // LOSS
+		TTx{SYr: 2021, SDoY: 100, Act: ptf.SELL, Shares: 2, Price: 0.2}.X(),          // LOSS
+		TTx{SYr: 2022, SDoY: -1, Act: ptf.SELL, Shares: 2, Price: 0.2}.X(),           // SFL
+		TTx{SYr: 2022, SDoY: 29, Act: ptf.SELL, Shares: 2, Price: 0.2}.X(),           // SFL
+		TTx{SYr: 2022, SDoY: 31, Act: ptf.BUY, Shares: 1, Price: 2.0, Comm: 2.0}.X(), // Causes SFL
 	}
 	summaryAcb := 1.25
 	expSummaryTxs := []*ptf.Tx{
 		makeSummaryBuyTx(2017, 14, summaryAcb), // shares = final shares (12) + N years with gains (2)
 		makeSummaryGainsTx(2020, summaryAcb, 0.4),
 		makeSummaryGainsTx(2021, summaryAcb, -2.1),
-		makeTxYD(2022, -1, ptf.SELL, 2, 0.2), // SFL
+		TTx{SYr: 2022, SDoY: -1, Act: ptf.SELL, Shares: 2, Price: 0.2}.X(), // SFL
 	}
 
 	deltas := th.txsToDeltaList(txs)
