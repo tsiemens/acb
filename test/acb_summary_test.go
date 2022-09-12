@@ -25,7 +25,7 @@ func makeTxYD(year uint32, dayOfYear int,
 func makeSflaTxYD(year uint32, dayOfYear int, shares uint32, amount float64) *ptf.Tx {
 	dt := mkDateYD(year, dayOfYear)
 	return TTx{TDate: dt.AddDays(-2), SDate: dt, Act: ptf.SFLA, Shares: shares, Price: amount,
-		CommCurr: EXP_DEFAULT_CURRENCY, CommFxRate: EXP_FXRATE_ZERO,
+		CommCurr: EXP_DEFAULT_CURRENCY, CommFxRate: EXP_FLOAT_ZERO,
 		Memo: "automatic SfL ACB adjustment"}.X()
 }
 
@@ -408,3 +408,10 @@ func TestSummaryYearSplits(t *testing.T) {
 	th.checkWarnings(1, summaryTxs, warnings)
 	rq.Equal(expSummaryTxs, summaryTxs)
 }
+
+/*
+
+Functionality TODO
+- Summary TX generation for multiple affiliates
+
+*/
