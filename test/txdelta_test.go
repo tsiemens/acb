@@ -60,6 +60,7 @@ func AddTxWithErr(t *testing.T, tx *ptf.Tx, preTxStatus *ptf.PortfolioSecuritySt
 // Using DEFAULT_CURRENCY in TTx will just result in CAD.
 // If testing actual DEFAULT_CURRENCY, use this.
 const EXP_DEFAULT_CURRENCY ptf.Currency = "EXPLICIT_TEST_DEFAULT_CURRENCY"
+const EXP_FXRATE_ZERO = -0.101010101
 
 // Test Tx
 type TTx struct {
@@ -84,7 +85,15 @@ type TTx struct {
 
 // eXpand to full type.
 func (t TTx) X() *ptf.Tx {
-	fxRate := util.Tern(t.FxRate == 0.0, 1.0, t.FxRate)
+	getFxRate := func(rateArg float64, def float64) float64 {
+		if rateArg == 0.0 {
+			return def
+		} else if rateArg == EXP_FXRATE_ZERO {
+			return 0.0
+		}
+		return rateArg
+	}
+	fxRate := getFxRate(t.FxRate, 1.0)
 	affiliate := t.Affiliate
 	if affiliate == nil {
 		affiliate = ptf.GlobalAffiliateDedupTable.DedupedAffiliate(t.AffName)
@@ -119,9 +128,9 @@ func (t TTx) X() *ptf.Tx {
 		AmountPerShare:                    t.Price,
 		Commission:                        t.Comm,
 		TxCurrency:                        curr,
-		TxCurrToLocalExchangeRate:         util.Tern(t.FxRate == 0.0, 1.0, t.FxRate),
+		TxCurrToLocalExchangeRate:         fxRate,
 		CommissionCurrency:                commCurr,
-		CommissionCurrToLocalExchangeRate: util.Tern(t.CommFxRate == 0.0, fxRate, t.CommFxRate),
+		CommissionCurrToLocalExchangeRate: getFxRate(t.CommFxRate, fxRate),
 		Memo:                              t.Memo,
 		Affiliate:                         affiliate,
 
@@ -219,7 +228,8 @@ func ValidateDeltas(t *testing.T, deltas []*ptf.TxDelta, expDeltas []TDt) {
 	for i, delta := range deltas {
 		fail := false
 		fail = !SoftStEq(t, expDeltas[i].PostSt.X(), delta.PostStatus) || fail
-		fail = !SoftAlmostEqual(t, expDeltas[i].Gain, delta.CapitalGain) || fail
+		fail = !SoftAlmostEqual(t, expDeltas[i].Gain, delta.CapitalGain,
+			"Capital Gains were not almost equal") || fail
 		fail = !SoftSflAlmostEqual(t, expDeltas[i], delta) || fail
 		if fail {
 			for j, _ := range deltas {
@@ -259,6 +269,7 @@ func TestBasicBuyAcb(t *testing.T) {
 }
 
 func TestBasicSellAcbErrors(t *testing.T) {
+	// Sell more shares than available
 	sptf := TPSS{Shares: 2, TotalAcb: 20.0}.X()
 	tx := TTx{Act: ptf.SELL, Shares: 3, Price: 10.0}.X()
 	AddTxWithErr(t, tx, sptf)
@@ -299,9 +310,10 @@ func TxsToDeltaListNoErr(t *testing.T, txs []*ptf.Tx) []*ptf.TxDelta {
 	return deltas
 }
 
-func TxsToDeltaListWithErr(t *testing.T, txs []*ptf.Tx) {
+func TxsToDeltaListWithErr(t *testing.T, txs []*ptf.Tx) error {
 	_, err := ptf.TxsToDeltaList(txs, nil, ptf.LegacyOptions{})
 	require.NotNil(t, err)
+	return err
 }
 
 func TestSuperficialLosses(t *testing.T) {
@@ -616,6 +628,15 @@ func TestBasicRocAcb(t *testing.T) {
 		TDt{PostSt: TPSS{Shares: 2, TotalAcb: 16.0}, Gain: 0.0})
 }
 
+func TestBasicSflaErrors(t *testing.T) {
+	rq := require.New(t)
+	// Test than an SfLA on a registered affiliate is invalid
+	sptf := TPSS{Shares: 2, TotalAcb: NaN}.X()
+	tx := TTx{Act: ptf.SFLA, Shares: 2, Price: 1.0, AffName: "(R)"}.X()
+	err := AddTxWithErr(t, tx, sptf)
+	rq.Regexp("Registered affiliates do not have an ACB", err)
+}
+
 func TestRegisteredAffiliateCapitalGain(t *testing.T) {
 	// Test there are no capital gains in registered accounts
 	sptf := TPSS{Shares: 5, TotalAcb: NaN}.X()
@@ -645,15 +666,8 @@ func TestRegisteredAffiliateCapitalGain(t *testing.T) {
 }
 
 /*
-Test cases TODO
-
-- SFL with all sells on different affiliate
-
-negative tests:
-- SfLA Tx on registered affiliate
 
 Functionality TODO
-- SFL with buys split across affiliates
 - Summary TX generation for multiple affiliates
 
 */
@@ -756,17 +770,15 @@ func TestMultiAffiliateRoC(t *testing.T) {
 	})
 }
 
-// TODO re-enable
-func _TestOtherAffiliateSFL(t *testing.T) {
-	/*
-		SFL with all sells on different affiliate
+func TestOtherAffiliateSFL(t *testing.T) {
+	/* SFL with all buys on different affiliate
 
-		Default				B
-		--------				------------
-		buy 10				buy 5
-		wait...
-		sell 2 (SFL)
-								buy 2
+	Default				B
+	--------				------------
+	buy 10				buy 5
+	wait...
+	sell 2 (SFL)
+							buy 2
 	*/
 	txs := []*ptf.Tx{
 		TTx{TDay: 1, Act: ptf.BUY, Shares: 10, Price: 1.0, AffName: ""}.X(),
@@ -781,6 +793,152 @@ func _TestOtherAffiliateSFL(t *testing.T) {
 		TDt{PostSt: TPSS{Shares: 8, AllShares: 13, TotalAcb: 8.0}, SFL: -1.0}, // SFL of 0.5 * 2 shares
 		TDt{PostSt: TPSS{Shares: 5, AllShares: 13, TotalAcb: 6.0}},            // Auto-adjust on B
 		TDt{PostSt: TPSS{Shares: 7, AllShares: 15, TotalAcb: 8.0}},            // B
+	})
+
+	/* SFL with all buys on registered affiliate
+	   (same txs as above)
+	*/
+	txs = []*ptf.Tx{
+		TTx{TDay: 1, Act: ptf.BUY, Shares: 10, Price: 1.0, AffName: ""}.X(),
+		TTx{TDay: 1, Act: ptf.BUY, Shares: 5, Price: 1.0, AffName: "(R)"}.X(),
+		TTx{TDay: 40, Act: ptf.SELL, Shares: 2, Price: 0.5, AffName: ""}.X(),
+		TTx{TDay: 41, Act: ptf.BUY, Shares: 2, Price: 1.0, AffName: "(R)"}.X(),
+	}
+	deltas = TxsToDeltaListNoErr(t, txs)
+	ValidateDeltas(t, deltas, []TDt{
+		TDt{PostSt: TPSS{Shares: 10, AllShares: 10, TotalAcb: 10.0}},          // Buy in Default
+		TDt{PostSt: TPSS{Shares: 5, AllShares: 15, TotalAcb: NaN}, Gain: NaN}, // Buy in (R)
+		TDt{PostSt: TPSS{Shares: 8, AllShares: 13, TotalAcb: 8.0}, SFL: -1.0}, // SFL of 0.5 * 2 shares
+		TDt{PostSt: TPSS{Shares: 7, AllShares: 15, TotalAcb: NaN}, Gain: NaN}, // Buy in (R)
+	})
+
+	/* SFL with all buys on other affiliate B, but sells on a second affiliate (R)
+	Make sure it doesn't interfere or cause errors.
+	*/
+	txs = []*ptf.Tx{
+		TTx{TDay: 1, Act: ptf.BUY, Shares: 10, Price: 1.0, AffName: ""}.X(),
+		TTx{TDay: 1, Act: ptf.BUY, Shares: 5, Price: 1.0, AffName: "B"}.X(),
+		TTx{TDay: 1, Act: ptf.BUY, Shares: 5, Price: 1.0, AffName: "(R)"}.X(),
+		TTx{TDay: 40, Act: ptf.SELL, Shares: 2, Price: 0.5, AffName: ""}.X(),
+		TTx{TDay: 41, Act: ptf.BUY, Shares: 2, Price: 1.0, AffName: "B"}.X(),
+		TTx{TDay: 41, Act: ptf.SELL, Shares: 2, Price: 1.0, AffName: "(R)"}.X(),
+	}
+	deltas = TxsToDeltaListNoErr(t, txs)
+	ValidateDeltas(t, deltas, []TDt{
+		TDt{PostSt: TPSS{Shares: 10, AllShares: 10, TotalAcb: 10.0}},          // Buy in Default
+		TDt{PostSt: TPSS{Shares: 5, AllShares: 15, TotalAcb: 5.0}},            // Buy in B
+		TDt{PostSt: TPSS{Shares: 5, AllShares: 20, TotalAcb: NaN}, Gain: NaN}, // Buy in (R)
+		TDt{PostSt: TPSS{Shares: 8, AllShares: 18, TotalAcb: 8.0}, SFL: -1.0}, // SFL of 0.5 * 2 shares
+		TDt{PostSt: TPSS{Shares: 5, AllShares: 18, TotalAcb: 6.0}},            // Auto-adjust on B
+		TDt{PostSt: TPSS{Shares: 7, AllShares: 20, TotalAcb: 8.0}},            // Buy in B
+		TDt{PostSt: TPSS{Shares: 3, AllShares: 18, TotalAcb: NaN}, Gain: NaN}, // Sell in (R)
+	})
+}
+
+func TestOtherAffiliateExplicitSFL(t *testing.T) {
+	rq := require.New(t)
+
+	/* SFL with sells on two other affiliates (both non-registered)
+	Default			B			C
+	--------			------	-------
+	buy 10			buy 5		buy 7
+	wait...
+	sell 2 (SFL)
+						buy 2		buy 2
+	*/
+	txs := []*ptf.Tx{
+		TTx{TDay: 1, Act: ptf.BUY, Shares: 10, Price: 1.0, AffName: ""}.X(),
+		TTx{TDay: 1, Act: ptf.BUY, Shares: 5, Price: 1.0, AffName: "B"}.X(),
+		TTx{TDay: 1, Act: ptf.BUY, Shares: 7, Price: 1.0, AffName: "C"}.X(),
+		TTx{TDay: 40, Act: ptf.SELL, Shares: 2, Price: 0.5, AffName: ""}.X(),
+		TTx{TDay: 41, Act: ptf.BUY, Shares: 2, Price: 1.0, AffName: "B"}.X(),
+		TTx{TDay: 41, Act: ptf.BUY, Shares: 2, Price: 1.0, AffName: "C"}.X(),
+	}
+	err := TxsToDeltaListWithErr(t, txs)
+	rq.Regexp("multiple affiliates purchased shares", err)
+
+	// Same case as above, but explicit SFL and adjustment
+	txs[3] = TTx{TDay: 40, Act: ptf.SELL, Shares: 2, Price: 0.5, AffName: "", SFL: CADSFL(-1.0, false)}.X()
+	// Insert SFLA
+	txs = append(txs[:5], txs[4:]...)
+	txs[4] = TTx{TDay: 40, Act: ptf.SFLA, Shares: 1, Price: 0.5, AffName: "C"}.X()
+	deltas := TxsToDeltaListNoErr(t, txs)
+	ValidateDeltas(t, deltas, []TDt{
+		TDt{PostSt: TPSS{Shares: 10, AllShares: 10, TotalAcb: 10.0}},          // Buy in Default
+		TDt{PostSt: TPSS{Shares: 5, AllShares: 15, AcbPerSh: 1.0}},            // Buy in B
+		TDt{PostSt: TPSS{Shares: 7, AllShares: 22, TotalAcb: 7.0}},            // Buy in C
+		TDt{PostSt: TPSS{Shares: 8, AllShares: 20, TotalAcb: 8.0}, SFL: -1.0}, // SFL of 0.5 * 2 shares
+		TDt{PostSt: TPSS{Shares: 7, AllShares: 20, TotalAcb: 7.5}},            // Explicit adjust on C
+		TDt{PostSt: TPSS{Shares: 7, AllShares: 22, AcbPerSh: 1.0}},            // Buy in B
+		TDt{PostSt: TPSS{Shares: 9, AllShares: 24, TotalAcb: 9.5}},            // Buy in C
+	})
+
+	/* SFL with sells on two other affiliates (registered/non-registered)
+	Default			(R)		B
+	--------			------	-------
+	buy 10			buy 5		buy 7
+	wait...
+	sell 2 (SFL)
+						buy 2		buy 2
+	*/
+	txs = []*ptf.Tx{
+		TTx{TDay: 1, Act: ptf.BUY, Shares: 10, Price: 1.0, AffName: ""}.X(),
+		TTx{TDay: 1, Act: ptf.BUY, Shares: 5, Price: 1.0, AffName: "(R)"}.X(),
+		TTx{TDay: 1, Act: ptf.BUY, Shares: 7, Price: 1.0, AffName: "B"}.X(),
+		TTx{TDay: 40, Act: ptf.SELL, Shares: 2, Price: 0.5, AffName: ""}.X(),
+		TTx{TDay: 41, Act: ptf.BUY, Shares: 2, Price: 1.0, AffName: "(R)"}.X(),
+		TTx{TDay: 41, Act: ptf.BUY, Shares: 2, Price: 1.0, AffName: "B"}.X(),
+	}
+	err = TxsToDeltaListWithErr(t, txs)
+	rq.Regexp("multiple affiliates purchased shares", err)
+
+	// Same case as above, but explicit SFL and adjustment
+	txs[3] = TTx{TDay: 40, Act: ptf.SELL, Shares: 2, Price: 0.5, AffName: "", SFL: CADSFL(-1.0, false)}.X()
+	// Insert SFLA
+	txs = append(txs[:5], txs[4:]...)
+	txs[4] = TTx{TDay: 40, Act: ptf.SFLA, Shares: 1, Price: 0.5, AffName: "B"}.X()
+	deltas = TxsToDeltaListNoErr(t, txs)
+	ValidateDeltas(t, deltas, []TDt{
+		TDt{PostSt: TPSS{Shares: 10, AllShares: 10, TotalAcb: 10.0}},          // Buy in Default
+		TDt{PostSt: TPSS{Shares: 5, AllShares: 15, AcbPerSh: NaN}, Gain: NaN}, // Buy in (R)
+		TDt{PostSt: TPSS{Shares: 7, AllShares: 22, TotalAcb: 7.0}},            // Buy in B
+		TDt{PostSt: TPSS{Shares: 8, AllShares: 20, TotalAcb: 8.0}, SFL: -1.0}, // SFL of 0.5 * 2 shares
+		TDt{PostSt: TPSS{Shares: 7, AllShares: 20, TotalAcb: 7.5}},            // Explicit adjust on B
+		TDt{PostSt: TPSS{Shares: 7, AllShares: 22, TotalAcb: NaN}, Gain: NaN}, // Buy in (R)
+		TDt{PostSt: TPSS{Shares: 9, AllShares: 24, TotalAcb: 9.5}},            // Buy in B
+	})
+
+	/* SFL with sells on one other affiliate, but insufficient ending shares
+
+	Default			B
+	--------			------------
+	buy 5
+	wait...
+	sell 4 (SFL)
+						buy 2
+						sell 1
+	*/
+	txs = []*ptf.Tx{
+		TTx{TDay: 1, Act: ptf.BUY, Shares: 5, Price: 1.0, AffName: ""}.X(),
+		TTx{TDay: 40, Act: ptf.SELL, Shares: 4, Price: 0.5, AffName: ""}.X(),
+		TTx{TDay: 41, Act: ptf.BUY, Shares: 2, Price: 1.0, AffName: "B"}.X(),
+		TTx{TDay: 42, Act: ptf.SELL, Shares: 1, Price: 2.0, AffName: "B"}.X(),
+	}
+	err = TxsToDeltaListWithErr(t, txs)
+	rq.Regexp("there are not enough shares", err)
+
+	// Same case as above, but explicit SFL and adjustment
+	txs[1] = TTx{TDay: 40, Act: ptf.SELL, Shares: 4, Price: 0.5, AffName: "", SFL: CADSFL(-1.0, false)}.X()
+	// Insert SFLA
+	txs = append(txs[:3], txs[2:]...)
+	txs[2] = TTx{TDay: 40, Act: ptf.SFLA, Shares: 1, Price: 0.5, AffName: "B"}.X()
+	deltas = TxsToDeltaListNoErr(t, txs)
+	ValidateDeltas(t, deltas, []TDt{
+		TDt{PostSt: TPSS{Shares: 5, AllShares: 5, TotalAcb: 5.0}},                        // Buy in Default
+		TDt{PostSt: TPSS{Shares: 1, AllShares: 1, TotalAcb: 1.0}, Gain: -1.0, SFL: -1.0}, // SFL of 0.5 * 2(/4) shares
+		TDt{PostSt: TPSS{Shares: 0, AllShares: 1, TotalAcb: 0.5}},                        // Manual adjust on B
+		TDt{PostSt: TPSS{Shares: 2, AllShares: 3, TotalAcb: 2.5}},                        // Buy in B
+		TDt{PostSt: TPSS{Shares: 1, AllShares: 2, TotalAcb: 1.25}, Gain: 0.75},           // Sell in B
 	})
 }
 

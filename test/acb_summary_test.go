@@ -18,19 +18,15 @@ func makeTxYD(year uint32, dayOfYear int,
 		commission = 2.0
 	}
 	dt := mkDateYD(year, dayOfYear)
-	return &ptf.Tx{Security: "FOO", TradeDate: dt.AddDays(-2), SettlementDate: dt, Action: action,
-		Shares: shares, AmountPerShare: amount, Commission: commission,
-		TxCurrency: ptf.CAD, TxCurrToLocalExchangeRate: 1.0,
-		CommissionCurrency: ptf.CAD, CommissionCurrToLocalExchangeRate: 1.0}
+	return TTx{TDate: dt.AddDays(-2), SDate: dt, Act: action, Shares: shares, Price: amount,
+		Comm: commission}.X()
 }
 
 func makeSflaTxYD(year uint32, dayOfYear int, shares uint32, amount float64) *ptf.Tx {
 	dt := mkDateYD(year, dayOfYear)
-	return &ptf.Tx{Security: "FOO", TradeDate: dt.AddDays(-2), SettlementDate: dt, Action: ptf.SFLA,
-		Shares: shares, AmountPerShare: amount, Commission: 0.0,
-		TxCurrency: ptf.CAD, TxCurrToLocalExchangeRate: 1.0,
-		CommissionCurrency: ptf.DEFAULT_CURRENCY, CommissionCurrToLocalExchangeRate: 0.0,
-		Memo: "automatic SfL ACB adjustment"}
+	return TTx{TDate: dt.AddDays(-2), SDate: dt, Act: ptf.SFLA, Shares: shares, Price: amount,
+		CommCurr: EXP_DEFAULT_CURRENCY, CommFxRate: EXP_FXRATE_ZERO,
+		Memo: "automatic SfL ACB adjustment"}.X()
 }
 
 func makeSummaryTx(year uint32, dayOfYear int, shares uint32, amount float64) *ptf.Tx {
@@ -66,6 +62,8 @@ func (h *SummaryTestHelper) txsToDeltaList(txs []*ptf.Tx) []*ptf.TxDelta {
 
 func TestSummary(t *testing.T) {
 	rq := require.New(t)
+	// Ensure default affiliate exists
+	ptf.GlobalAffiliateDedupTable.DedupedAffiliate("")
 
 	// Ensure we don't think we're too close to the summary date.
 	date.TodaysDateForTest = date.New(3000, 1, 1)

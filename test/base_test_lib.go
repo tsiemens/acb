@@ -18,16 +18,18 @@ func IsAlmostEqual(a float64, b float64) bool {
 	return diff < 0.0000001 && diff > -0.0000001
 }
 
-func SoftAlmostEqual(t *testing.T, exp float64, actual float64) bool {
+func SoftAlmostEqual(t *testing.T, exp float64, actual float64,
+	fmtAndArgs ...interface{}) bool {
+
 	if IsAlmostEqual(exp, actual) {
 		return true
 	}
 	// This should always fail
-	return assert.Equal(t, exp, actual)
+	return assert.Equal(t, exp, actual, fmtAndArgs...)
 }
 
-func AlmostEqual(t *testing.T, exp float64, actual float64) {
-	if !SoftAlmostEqual(t, exp, actual) {
+func AlmostEqual(t *testing.T, exp float64, actual float64, fmtAndArgs ...interface{}) {
+	if !SoftAlmostEqual(t, exp, actual, fmtAndArgs...) {
 		t.FailNow()
 	}
 }

@@ -36,3 +36,15 @@ func (m *DefaultMap[K, V]) EjectMap() map[K]V {
 	m.content = nil
 	return content
 }
+
+func (m *DefaultMap[K, V]) Len() int {
+	return len(m.content)
+}
+
+func (m *DefaultMap[K, V]) ForEach(fn func(K, V) bool) {
+	for k, v := range m.content {
+		if !fn(k, v) {
+			break
+		}
+	}
+}

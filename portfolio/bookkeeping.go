@@ -121,12 +121,13 @@ func (s *AffiliatePortfolioSecurityStatuses) GetNextPreStatus(
 }
 
 type _SuperficialLossInfo struct {
-	IsSuperficial        bool
-	FirstDateInPeriod    date.Date
-	LastDateInPeriod     date.Date
-	SharesAtEndOfPeriod  uint32
-	TotalAquiredInPeriod uint32
-	BuyingAffiliates     *util.Set[string]
+	IsSuperficial              bool
+	FirstDateInPeriod          date.Date
+	LastDateInPeriod           date.Date
+	AllAffSharesAtEndOfPeriod  uint32
+	TotalAquiredInPeriod       uint32
+	BuyingAffiliates           *util.Set[string]
+	BuyingAffiliateSharesAtEOP *util.DefaultMap[string, int]
 }
 
 func GetFirstDayInSuperficialLossPeriod(txDate date.Date) date.Date {
@@ -141,7 +142,7 @@ func GetLastDayInSuperficialLossPeriod(txDate date.Date) date.Date {
 // at idx, AND if you hold shares after the 30 day period
 // Also gathers relevant information for partial superficial loss calculation.
 func getSuperficialLossInfo(
-	idx int, txs []*Tx, allAffiliatesShareBalanceAfterSell uint32) _SuperficialLossInfo {
+	idx int, txs []*Tx, ptfStatuses *AffiliatePortfolioSecurityStatuses) _SuperficialLossInfo {
 	tx := txs[idx]
 	util.Assertf(tx.Action == SELL,
 		"getSuperficialLossInfo: Tx was not Sell, but %s", tx.Action)
@@ -149,16 +150,49 @@ func getSuperficialLossInfo(
 	firstBadBuyDate := GetFirstDayInSuperficialLossPeriod(tx.SettlementDate)
 	lastBadBuyDate := GetLastDayInSuperficialLossPeriod(tx.SettlementDate)
 
+	latestPostStatus := ptfStatuses.GetLatestPostStatus()
+	// The enclosing AddTx logic should have already caught this.
+	util.Assertf(latestPostStatus.AllAffiliatesShareBalance >= tx.Shares,
+		"getSuperficialLossInfo: latest AllAffiliatesShareBalance (%d) is less than sold shares (%d)",
+		latestPostStatus.AllAffiliatesShareBalance, tx.Shares)
+	allAffiliatesShareBalanceAfterSell :=
+		ptfStatuses.GetLatestPostStatus().AllAffiliatesShareBalance - tx.Shares
+
+	buyingAffiliateSharesAtEOP := util.NewDefaultMap[string, int](
+		// Default to post-sale share balance for the affiliate.
+		func(afId string) int {
+			sellTxAffil := NonNilTxAffiliate(tx)
+			if st, ok := ptfStatuses.GetLatestPostStatusForAffiliate(afId); ok {
+				if afId == sellTxAffil.Id() {
+					// The latest post status for the selling affiliate is not yet
+					// saved, so recompute the post-sale share balance.
+					// AddTx would have encountered an oversell if this was to assert.
+					util.Assertf(st.ShareBalance >= tx.Shares,
+						"getSuperficialLossInfo: latest ShareBalance (%d) for affiliate (%s) "+
+							"is less than sold shares (%d)",
+						st.ShareBalance, sellTxAffil.Name(), tx.Shares)
+					return int(st.ShareBalance - tx.Shares)
+				}
+				return int(st.ShareBalance)
+			}
+			// No TXs for this affiliate before or at the current sell.
+			// AddTx would have encountered an oversell if this was to assert.
+			util.Assert(afId != sellTxAffil.Id(),
+				"getSuperficialLossInfo: no existing portfolio status for affiliate %s",
+				sellTxAffil.Name())
+			return 0
+		})
+
 	sli := _SuperficialLossInfo{
-		IsSuperficial:        false,
-		FirstDateInPeriod:    firstBadBuyDate,
-		LastDateInPeriod:     lastBadBuyDate,
-		SharesAtEndOfPeriod:  allAffiliatesShareBalanceAfterSell,
-		TotalAquiredInPeriod: 0,
+		IsSuperficial:              false,
+		FirstDateInPeriod:          firstBadBuyDate,
+		LastDateInPeriod:           lastBadBuyDate,
+		AllAffSharesAtEndOfPeriod:  allAffiliatesShareBalanceAfterSell,
+		TotalAquiredInPeriod:       0,
+		BuyingAffiliates:           util.NewSet[string](),
+		BuyingAffiliateSharesAtEOP: buyingAffiliateSharesAtEOP,
 	}
 
-	buyingAffiliates := util.NewSet[string]()
-	// TODO fix SFL logic for multiple affiliates.
 	// Some points:
 	// the total share balance across all affiliates is insufficient, since
 	// if you had 3 affiliates, it's possible to retain shares, but in an affiliate
@@ -188,27 +222,27 @@ func getSuperficialLossInfo(
 		if afterTx.SettlementDate.After(lastBadBuyDate) {
 			break
 		}
+		afterTxAffil := NonNilTxAffiliate(afterTx)
 
 		// Within the 30 day window after
 		switch afterTx.Action {
 		case BUY:
 			didBuyAfterInPeriod = true
-			sli.SharesAtEndOfPeriod += afterTx.Shares
+			sli.AllAffSharesAtEndOfPeriod += afterTx.Shares
+			buyingAffiliateSharesAtEOP.Set(afterTxAffil.Id(),
+				buyingAffiliateSharesAtEOP.Get(afterTxAffil.Id())+int(afterTx.Shares))
 			sli.TotalAquiredInPeriod += afterTx.Shares
-			// TODO need to fix tests so this is never nil
-			txAffil := tx.Affiliate
-			if txAffil == nil {
-				txAffil = GlobalAffiliateDedupTable.GetDefaultAffiliate()
-			}
-			buyingAffiliates.Add(txAffil.Id())
+			sli.BuyingAffiliates.Add(afterTxAffil.Id())
 		case SELL:
-			sli.SharesAtEndOfPeriod -= afterTx.Shares
+			sli.AllAffSharesAtEndOfPeriod -= afterTx.Shares
+			buyingAffiliateSharesAtEOP.Set(afterTxAffil.Id(),
+				buyingAffiliateSharesAtEOP.Get(afterTxAffil.Id())-int(afterTx.Shares))
 		default:
 			// ignored
 		}
 	}
 
-	if sli.SharesAtEndOfPeriod == 0 {
+	if sli.AllAffSharesAtEndOfPeriod == 0 {
 		// Not superficial
 		return sli
 	}
@@ -219,14 +253,15 @@ func getSuperficialLossInfo(
 		if beforeTx.SettlementDate.Before(firstBadBuyDate) {
 			break
 		}
+		beforeTxAffil := NonNilTxAffiliate(beforeTx)
 		// Within the 30 day window before
 		if beforeTx.Action == BUY {
 			didBuyBeforeInPeriod = true
 			sli.TotalAquiredInPeriod += beforeTx.Shares
+			sli.BuyingAffiliates.Add(beforeTxAffil.Id())
 		}
 	}
 
-	sli.BuyingAffiliates = buyingAffiliates
 	sli.IsSuperficial = didBuyBeforeInPeriod || didBuyAfterInPeriod
 	return sli
 }
@@ -236,20 +271,62 @@ func getSuperficialLossInfo(
 // This function returns the left hand side of this formula, on the condition that
 // the loss is actually superficial.
 //
+// Returns:
+// - the superficial loss ratio (if calculable)
+// - the affiliate to apply an automatic adjustment to (if possible)
+// - an soft error (warning), which only applies when auto-generating the SfLA
+//
 // Reference: https://www.adjustedcostbase.ca/blog/applying-the-superficial-loss-rule-for-a-partial-disposition-of-shares/
 func getSuperficialLossRatio(
-	idx int, txs []*Tx, allAffiliatesShareBalanceAfterSell uint32) util.Uint32Ratio {
-	sli := getSuperficialLossInfo(idx, txs, allAffiliatesShareBalanceAfterSell)
-
+	idx int, txs []*Tx, ptfStatuses *AffiliatePortfolioSecurityStatuses,
+	negativeLoss float64 /*error msg only*/) (util.Uint32Ratio, *Affiliate, error) {
+	sli := getSuperficialLossInfo(idx, txs, ptfStatuses)
 	if sli.IsSuperficial {
 		tx := txs[idx]
-		return util.Uint32Ratio{
-			util.MinUint32(tx.Shares, sli.TotalAquiredInPeriod, sli.SharesAtEndOfPeriod),
+
+		ratio := util.Uint32Ratio{
+			util.MinUint32(tx.Shares, sli.TotalAquiredInPeriod, sli.AllAffSharesAtEndOfPeriod),
 			tx.Shares,
 		}
-	} else {
-		return util.Uint32Ratio{}
+
+		softSflError := func(detailsFmt string, args ...interface{}) error {
+			details := fmt.Sprintf(detailsFmt, args...)
+			return fmt.Errorf(
+				"Sell of %s on %v was determined to be a superficial-loss, but %s. "+
+					"The loss in total was %f CAD, of which %d/%d may be considered "+
+					"superficial. Add a manual SFL value to the Sell entry and SfLA "+
+					"(superficial loss adjustment) entry(ies) to your spreadsheet. "+
+					"Seek professional advice if you are unsure how best to adjust.",
+				tx.Security, tx.TradeDate, details,
+				negativeLoss, ratio.Numerator, ratio.Denominator)
+		}
+
+		if sli.BuyingAffiliates.Len() > 1 {
+			return ratio, nil, softSflError(
+				"multiple affiliates purchased shares within the " +
+					"superficial loss period, which is not supported automatically")
+		}
+
+		util.Assertf(sli.BuyingAffiliates.Len() == 1,
+			"getSuperficialLossRatio: loss was superficial, but no buying affiliates")
+		var buyingAfId string
+		sli.BuyingAffiliates.ForEach(func(afId string) bool {
+			buyingAfId = afId
+			return false // break
+		})
+		buyingAf := GlobalAffiliateDedupTable.MustGet(buyingAfId)
+		afShareBalanceAtEOP := sli.BuyingAffiliateSharesAtEOP.Get(buyingAfId)
+		if afShareBalanceAtEOP < int(ratio.Numerator) {
+			return ratio, buyingAf,
+				softSflError("there are not enough shares remaining under the %s "+
+					"affiliate (%d) to satisfy the %d shares that should be included "+
+					"in the superficial loss. These may be owned by other affiliates "+
+					"which did not buy shares during the SFL period",
+					buyingAf.Name(), afShareBalanceAtEOP, ratio.Numerator)
+		}
+		return ratio, buyingAf, nil
 	}
+	return util.Uint32Ratio{}, nil, nil
 }
 
 // Returns a TxDelta for the Tx at txs[idx].
@@ -315,8 +392,10 @@ func AddTx(
 		capitalGains = totalPayout - (preTxStatus.PerShareAcb() * float64(tx.Shares))
 
 		if !registered && capitalGains < 0.0 {
-			superficialLossRatio = getSuperficialLossRatio(
-				idx, txs, newAllAffiliatesShareBalance)
+			var autoSfLAErr error
+			var autoAdjustAffiliate *Affiliate
+			superficialLossRatio, autoAdjustAffiliate, autoSfLAErr = getSuperficialLossRatio(
+				idx, txs, ptfStatuses, capitalGains)
 			calculatedSuperficialLoss := 0.0
 			if superficialLossRatio.Valid() {
 				calculatedSuperficialLoss = capitalGains * superficialLossRatio.ToFloat64()
@@ -343,24 +422,28 @@ func AddTx(
 
 				// ACB adjustment TX must be specified manually in this case.
 			} else if superficialLossRatio.Valid() {
+				if autoSfLAErr != nil {
+					return nil, nil, autoSfLAErr
+				}
+				util.Assert(autoAdjustAffiliate != nil, "addTx: autoAdjustAffiliate was nil")
+
 				superficialLoss = calculatedSuperficialLoss
 				capitalGains = capitalGains - calculatedSuperficialLoss
 
-				// This new Tx will adjust (increase) the ACB for this superficial loss.
-				newTx = &Tx{
-					Security:                  tx.Security,
-					TradeDate:                 tx.TradeDate,
-					SettlementDate:            tx.SettlementDate,
-					Action:                    SFLA,
-					Shares:                    superficialLossRatio.Numerator,
-					AmountPerShare:            -1.0 * superficialLoss / float64(superficialLossRatio.Numerator),
-					TxCurrency:                CAD,
-					TxCurrToLocalExchangeRate: 1.0,
-					Memo:                      "automatic SfL ACB adjustment",
-					// TODO this should be the affiliate for which all buys occurred.
-					// If buys are spread between affiliates, we should not be automatically
-					// adding this adjustment, and require the user to specify the SFL on the sell.
-					Affiliate: tx.Affiliate,
+				if !autoAdjustAffiliate.Registered() {
+					// This new Tx will adjust (increase) the ACB for this superficial loss.
+					newTx = &Tx{
+						Security:                  tx.Security,
+						TradeDate:                 tx.TradeDate,
+						SettlementDate:            tx.SettlementDate,
+						Action:                    SFLA,
+						Shares:                    superficialLossRatio.Numerator,
+						AmountPerShare:            -1.0 * superficialLoss / float64(superficialLossRatio.Numerator),
+						TxCurrency:                CAD,
+						TxCurrToLocalExchangeRate: 1.0,
+						Memo:                      "automatic SfL ACB adjustment",
+						Affiliate:                 autoAdjustAffiliate,
+					}
 				}
 			}
 		} else if tx.SpecifiedSuperficialLoss.Present() {
