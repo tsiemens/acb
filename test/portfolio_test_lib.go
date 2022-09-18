@@ -173,6 +173,46 @@ type TDt struct {
 // Validation functions
 // **********************************************************************************
 
+// This will represent NaN, but allow us to actually perform an equality check
+const nanVal float64 = -123.0123456789
+
+func SoftTxEq(t *testing.T, exp *ptf.Tx, actual *ptf.Tx) bool {
+	var expCopy ptf.Tx = *exp
+	var actualCopy ptf.Tx = *actual
+
+	if math.IsNaN(expCopy.AmountPerShare) {
+		// Allow us to do equality check with NaN
+		expCopy.AmountPerShare = nanVal
+	}
+	if math.IsNaN(actualCopy.AmountPerShare) {
+		actualCopy.AmountPerShare = nanVal
+	}
+	if IsAlmostEqual(actualCopy.AmountPerShare, expCopy.AmountPerShare) {
+		expCopy.AmountPerShare = actualCopy.AmountPerShare
+	}
+
+	return assert.Equal(t, expCopy, actualCopy)
+}
+
+func ValidateTxs(t *testing.T, expTxs []*ptf.Tx, actualTxs []*ptf.Tx) {
+	if !assert.Equal(t, len(expTxs), len(actualTxs)) {
+		for j, _ := range actualTxs {
+			fmt.Println(j, "Tx:", actualTxs[j], "Af:", actualTxs[j].Affiliate.Id())
+		}
+		require.FailNow(t, "ValidateTxs failed")
+	}
+	for i, tx := range actualTxs {
+		fail := false
+		fail = !SoftTxEq(t, expTxs[i], tx) || fail
+		if fail {
+			for j, _ := range actualTxs {
+				fmt.Println(j, "Tx:", actualTxs[j], "Af:", actualTxs[j].Affiliate.Id())
+			}
+			require.FailNowf(t, "ValidateTxs failed", "Tx %d", i)
+		}
+	}
+}
+
 func SoftStEq(
 	t *testing.T,
 	exp *ptf.PortfolioSecurityStatus, actual *ptf.PortfolioSecurityStatus) bool {
@@ -180,9 +220,8 @@ func SoftStEq(
 	var expCopy ptf.PortfolioSecurityStatus = *exp
 	var actualCopy ptf.PortfolioSecurityStatus = *actual
 
-	// This will represent NaN, but allow us to actually perform an equality check
-	nanVal := -123.0123456789
 	if math.IsNaN(expCopy.TotalAcb) {
+		// Allow us to do equality check with NaN
 		expCopy.TotalAcb = nanVal
 	}
 	if math.IsNaN(actualCopy.TotalAcb) {

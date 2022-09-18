@@ -17,6 +17,12 @@ func (m *Set[T]) Add(val T) {
 	m.set[val] = true
 }
 
+func (m *Set[T]) AddAll(vals []T) {
+	for _, v := range vals {
+		m.Add(v)
+	}
+}
+
 func (m *Set[T]) Len() int {
 	return len(m.set)
 }
@@ -27,4 +33,12 @@ func (m *Set[T]) ForEach(fn func(T) bool) {
 			break
 		}
 	}
+}
+
+func (m *Set[T]) ToSlice() []T {
+	slice := make([]T, 0, len(m.set))
+	for k, _ := range m.set {
+		slice = append(slice, k)
+	}
+	return slice
 }

@@ -1,11 +1,15 @@
 package util
 
-func IntFloat64MapKeys(m map[int]float64) []int {
-	keys := make([]int, 0, len(m))
+func MapKeys[K comparable, V any](m map[K]V) []K {
+	keys := make([]K, 0, len(m))
 	for k := range m {
 		keys = append(keys, k)
 	}
 	return keys
+}
+
+func IntFloat64MapKeys(m map[int]float64) []int {
+	return MapKeys[int, float64](m)
 }
 
 type DefaultMap[K comparable, V any] struct {

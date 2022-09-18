@@ -142,7 +142,7 @@ func ParseTxCsv(reader io.Reader, initialGlobalReadIndex uint32,
 		tx.ReadIndex = globalRowIndex
 		globalRowIndex++
 		for j, col := range record {
-			err = colParsers[j](col, tx)
+			err = colParsers[j](strings.TrimSpace(col), tx)
 			if err != nil {
 				return nil, fmt.Errorf("Error parsing %s at line:col %d:%d: %v", csvDesc, i+1, j, err)
 			}
@@ -326,6 +326,8 @@ func ToCsvString(txs []*Tx) string {
 		"exchange rate",
 		"commission currency",
 		"commission exchange rate",
+		"superficial loss",
+		"affiliate",
 		"memo",
 	}
 	writer.Write(header)
@@ -354,6 +356,14 @@ func ToCsvString(txs []*Tx) string {
 		if rateIsExplicit(tx.CommissionCurrency, tx.CommissionCurrToLocalExchangeRate) {
 			commRate = fmt.Sprintf("%f", tx.CommissionCurrToLocalExchangeRate)
 		}
+		sfl := ""
+		if tx.SpecifiedSuperficialLoss.Present() {
+			sflVal := tx.SpecifiedSuperficialLoss.MustGet()
+			sfl = fmt.Sprintf("%f", sflVal.SuperficialLoss)
+			if sflVal.Force {
+				sfl += "!"
+			}
+		}
 
 		record := []string{
 			tx.Security,
@@ -367,6 +377,8 @@ func ToCsvString(txs []*Tx) string {
 			txRate,
 			currString(tx.CommissionCurrency),
 			commRate,
+			sfl,
+			tx.Affiliate.Name(),
 			tx.Memo,
 		}
 		writer.Write(record)

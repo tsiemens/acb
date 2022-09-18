@@ -2,6 +2,7 @@ package portfolio
 
 import (
 	"fmt"
+	"math"
 	"sort"
 	"time"
 
@@ -26,14 +27,85 @@ import (
 //
 // Return: summary Txs, user warnings, error
 func MakeSummaryTxs(latestDate date.Date, deltas []*TxDelta, splitAnnualGains bool) ([]*Tx, []string) {
-	// TODO this needs to account for multiple Affiliates.
-	for _, delta := range deltas {
-		util.Assert(
-			delta.Tx.Affiliate == GlobalAffiliateDedupTable.GetDefaultAffiliate() ||
-				delta.Tx.Affiliate == nil, // for tests
-			"Summary not yet supported with non-default affiliates or registered accounts")
+	latestDeltaInSummaryRangeIdx, latestSummarizableDeltaIdx, warnings_ :=
+		getSummaryRangeDeltaIndicies(latestDate, deltas)
+	if latestDeltaInSummaryRangeIdx < 0 {
+		return nil, warnings_
 	}
 
+	// Create a map of affiliate to its last summarizable delta index. Not all
+	// affiliates will have one.
+	affilLastSummarizableDeltaIdxs := map[*Affiliate]int{}
+	// affilIds will be sorted alphabetically for determinism
+	affilIds := []string{}
+	for i := latestSummarizableDeltaIdx; i >= 0; i-- {
+		af := NonNilTxAffiliate(deltas[i].Tx)
+		if _, ok := affilLastSummarizableDeltaIdxs[af]; !ok {
+			affilLastSummarizableDeltaIdxs[af] = i
+			affilIds = append(affilIds, af.Id())
+		}
+	}
+	sort.Strings(affilIds)
+
+	var summaryPeriodTxs []*Tx = make([]*Tx, 0, 0)
+	warnings := util.NewSet[string]()
+	for _, afId := range affilIds {
+		af := GlobalAffiliateDedupTable.MustGet(afId)
+		affilLastSummarizableDeltaIdx := affilLastSummarizableDeltaIdxs[af]
+
+		var afSumTxs []*Tx
+		var warns []string
+		if splitAnnualGains {
+			afSumTxs, warns = makeAnnualGainsSummaryTxs(
+				af, deltas, affilLastSummarizableDeltaIdx)
+		} else {
+			afSumTxs, warns = makeSimpleSummaryTxs(
+				af, deltas, affilLastSummarizableDeltaIdx)
+		}
+		summaryPeriodTxs = append(summaryPeriodTxs, afSumTxs...)
+		warnings.AddAll(warns)
+	}
+	for i, tx := range summaryPeriodTxs {
+		tx.ReadIndex = uint32(i)
+	}
+	summaryPeriodTxs = SortTxs(summaryPeriodTxs)
+	for _, tx := range summaryPeriodTxs {
+		tx.ReadIndex = 0
+	}
+
+	unsummarizableTxs := deltas[latestSummarizableDeltaIdx+1 : latestDeltaInSummaryRangeIdx+1]
+	if len(unsummarizableTxs) > 0 {
+		warnings.Add(
+			"Some transactions to be summarized could not be due to superficial-loss conflicts")
+	}
+	for _, delta := range unsummarizableTxs {
+		summaryPeriodTxs = append(summaryPeriodTxs, delta.Tx)
+	}
+
+	today := date.Today()
+	if latestDeltaInSummaryRangeIdx != -1 {
+		lastSummarizableDelta := deltas[latestDeltaInSummaryRangeIdx]
+		// Find the very latest day that could possibly ever affect or be affected by
+		// the last tx. This should be 60 days.
+		lastAffectingDay := GetLastDayInSuperficialLossPeriod(
+			GetLastDayInSuperficialLossPeriod(lastSummarizableDelta.Tx.SettlementDate))
+		if !today.After(lastAffectingDay) {
+			warnings.Add(
+				"The current date is such that new TXs could potentially alter how the " +
+					"summary is created. You should wait 60 days after your latest " +
+					"transaction within the summary period to generate the summary")
+		}
+	}
+
+	var warningsSlice []string
+	if warnings.Len() > 0 {
+		warningsSlice = warnings.ToSlice()
+	}
+	return summaryPeriodTxs, warningsSlice
+}
+
+// Returns: latestDeltaInSummaryRangeIdx, latestSummarizableDeltaIdx, warnings
+func getSummaryRangeDeltaIndicies(latestDate date.Date, deltas []*TxDelta) (int, int, []string) {
 	// Step 1: Find the latest Delta <= latestDate
 	latestDeltaInSummaryRangeIdx := -1
 	for i, delta := range deltas {
@@ -43,7 +115,7 @@ func MakeSummaryTxs(latestDate date.Date, deltas []*TxDelta, splitAnnualGains bo
 		latestDeltaInSummaryRangeIdx = i
 	}
 	if latestDeltaInSummaryRangeIdx == -1 {
-		return nil, []string{"No transactions in the summary period"}
+		return -1, -1, []string{"No transactions in the summary period"}
 	}
 
 	// Step 2: determine if any of the TXs within 30 days of latestDate are
@@ -86,46 +158,22 @@ func MakeSummaryTxs(latestDate date.Date, deltas []*TxDelta, splitAnnualGains bo
 		latestSummarizableDeltaIdx = latestDeltaInSummaryRangeIdx
 	}
 
-	var summaryPeriodTxs []*Tx
-	var warnings []string
-	if splitAnnualGains {
-		summaryPeriodTxs, warnings = makeAnnualGainsSummaryTxs(
-			deltas, latestSummarizableDeltaIdx)
-	} else {
-		summaryPeriodTxs, warnings = makeSimpleSummaryTxs(
-			deltas, latestSummarizableDeltaIdx)
-	}
-
-	unsummarizableTxs := deltas[latestSummarizableDeltaIdx+1 : latestDeltaInSummaryRangeIdx+1]
-	if len(unsummarizableTxs) > 0 {
-		warnings = append(warnings, "Some transactions to be summarized could not be due to superficial-loss conflicts")
-	}
-	for _, delta := range unsummarizableTxs {
-		summaryPeriodTxs = append(summaryPeriodTxs, delta.Tx)
-	}
-
-	today := date.Today()
-	if latestDeltaInSummaryRangeIdx != -1 {
-		lastSummarizableDelta := deltas[latestDeltaInSummaryRangeIdx]
-		// Find the very latest day that could possibly ever affect or be affected by
-		// the last tx. This should be 60 days.
-		lastAffectingDay := GetLastDayInSuperficialLossPeriod(
-			GetLastDayInSuperficialLossPeriod(lastSummarizableDelta.Tx.SettlementDate))
-		if !today.After(lastAffectingDay) {
-			warnings = append(warnings,
-				"The current date is such that new TXs could potentially alter how the "+
-					"summary is created. You should wait 60 days after your latest "+
-					"transaction within the summary period to generate the summary")
-		}
-	}
-
-	return summaryPeriodTxs, warnings
+	return latestDeltaInSummaryRangeIdx, latestSummarizableDeltaIdx, nil
 }
 
 const shareBalanceZeroWarning = "Share balance at the end of the summarized period was zero"
 
+// Summary txs can't have NaN in them for registered accounts. Just use zero
+// where this occurs in emitted summary Txs.
+func realNumOrZero(v float64) float64 {
+	if math.IsNaN(v) {
+		return 0
+	}
+	return v
+}
+
 func makeSimpleSummaryTxs(
-	deltas []*TxDelta, latestSummarizableDeltaIdx int) ([]*Tx, []string) {
+	af *Affiliate, deltas []*TxDelta, latestSummarizableDeltaIdx int) ([]*Tx, []string) {
 
 	var warnings []string
 	summaryPeriodTxs := []*Tx{}
@@ -144,11 +192,12 @@ func makeSimpleSummaryTxs(
 				SettlementDate: tx.SettlementDate,
 				Action:         BUY,
 				Shares:         sumPostStatus.ShareBalance,
-				AmountPerShare: sumPostStatus.TotalAcb / float64(sumPostStatus.ShareBalance),
+				AmountPerShare: realNumOrZero(sumPostStatus.TotalAcb / float64(sumPostStatus.ShareBalance)),
 				Commission:     0.0,
 				TxCurrency:     DEFAULT_CURRENCY, TxCurrToLocalExchangeRate: 0.0,
 				CommissionCurrency: DEFAULT_CURRENCY, CommissionCurrToLocalExchangeRate: 0.0,
 				Memo:      "Summary",
+				Affiliate: af,
 				ReadIndex: 0, // This needs to be the first Tx in the list.
 			}
 
@@ -162,7 +211,7 @@ func makeSimpleSummaryTxs(
 }
 
 func makeAnnualGainsSummaryTxs(
-	deltas []*TxDelta, latestSummarizableDeltaIdx int) ([]*Tx, []string) {
+	af *Affiliate, deltas []*TxDelta, latestSummarizableDeltaIdx int) ([]*Tx, []string) {
 
 	var warnings []string
 	summaryPeriodTxs := []*Tx{}
@@ -174,16 +223,21 @@ func makeAnnualGainsSummaryTxs(
 	yearlyCapGains := map[int]float64{}
 	latestYearDelta := map[int]*TxDelta{}
 	firstYear := deltas[0].Tx.SettlementDate.Year()
-	for _, delta := range deltas[:latestSummarizableDeltaIdx+1] {
-		year := delta.Tx.SettlementDate.Year()
-		if delta.CapitalGain != 0.0 {
-			if _, ok := yearlyCapGains[year]; ok {
-				yearlyCapGains[year] += delta.CapitalGain
-			} else {
-				yearlyCapGains[year] = delta.CapitalGain
+	if !af.Registered() {
+		for _, delta := range deltas[:latestSummarizableDeltaIdx+1] {
+			if NonNilTxAffiliate(delta.Tx) != af {
+				continue
 			}
+			year := delta.Tx.SettlementDate.Year()
+			if delta.CapitalGain != 0.0 {
+				if _, ok := yearlyCapGains[year]; ok {
+					yearlyCapGains[year] += delta.CapitalGain
+				} else {
+					yearlyCapGains[year] = delta.CapitalGain
+				}
+			}
+			latestYearDelta[year] = delta
 		}
-		latestYearDelta[year] = delta
 	}
 
 	yearsWithGains := make([]int, 0, len(yearlyCapGains))
@@ -204,24 +258,29 @@ func makeAnnualGainsSummaryTxs(
 		warnings = append(warnings, shareBalanceZeroWarning)
 	}
 
-	tx := deltas[latestSummarizableDeltaIdx].Tx
-	// Get the earliest year, and use Jan 1 of the previous year for the buy.
-	dt := date.New(uint32(firstYear-1), time.January, 1)
-	setupBuySumTx := &Tx{
-		Security:       tx.Security,
-		TradeDate:      dt,
-		SettlementDate: dt,
-		Action:         BUY,
-		// Add length of yearsWithGains to the share balance, as we'll sell one share per year
-		Shares:         sumPostStatus.ShareBalance + uint32(len(yearsWithGains)),
-		AmountPerShare: baseAcbPerShare,
-		Commission:     0.0,
-		TxCurrency:     DEFAULT_CURRENCY, TxCurrToLocalExchangeRate: 0.0,
-		CommissionCurrency: DEFAULT_CURRENCY, CommissionCurrToLocalExchangeRate: 0.0,
-		Memo:      "Summary base (buy)",
-		ReadIndex: readIndex,
+	// Add length of yearsWithGains to the share balance, as we'll sell one share per year
+	// This will generally always be non-zero for non-registered affiliates
+	nBaseShares := sumPostStatus.ShareBalance + uint32(len(yearsWithGains))
+	if nBaseShares > 0 {
+		tx := deltas[latestSummarizableDeltaIdx].Tx
+		// Get the earliest year, and use Jan 1 of the previous year for the buy.
+		dt := date.New(uint32(firstYear-1), time.January, 1)
+		setupBuySumTx := &Tx{
+			Security:       tx.Security,
+			TradeDate:      dt,
+			SettlementDate: dt,
+			Action:         BUY,
+			Shares:         nBaseShares,
+			AmountPerShare: realNumOrZero(baseAcbPerShare),
+			Commission:     0.0,
+			TxCurrency:     DEFAULT_CURRENCY, TxCurrToLocalExchangeRate: 0.0,
+			CommissionCurrency: DEFAULT_CURRENCY, CommissionCurrToLocalExchangeRate: 0.0,
+			Memo:      "Summary base (buy)",
+			Affiliate: af,
+			ReadIndex: readIndex,
+		}
+		summaryPeriodTxs = append(summaryPeriodTxs, setupBuySumTx)
 	}
-	summaryPeriodTxs = append(summaryPeriodTxs, setupBuySumTx)
 
 	for _, year := range yearsWithGains {
 		gain := yearlyCapGains[year]
@@ -238,11 +297,12 @@ func makeAnnualGainsSummaryTxs(
 			SettlementDate: dt,
 			Action:         SELL,
 			Shares:         1,
-			AmountPerShare: baseAcbPerShare + gain,
+			AmountPerShare: realNumOrZero(baseAcbPerShare + gain),
 			Commission:     loss,
 			TxCurrency:     DEFAULT_CURRENCY, TxCurrToLocalExchangeRate: 0.0,
 			CommissionCurrency: DEFAULT_CURRENCY, CommissionCurrToLocalExchangeRate: 0.0,
 			Memo:      fmt.Sprintf("%d gain summary (sell)", year),
+			Affiliate: af,
 			ReadIndex: readIndex, // This needs to be before the Buy
 		}
 		summaryPeriodTxs = append(summaryPeriodTxs, summaryTx)
