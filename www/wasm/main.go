@@ -147,7 +147,7 @@ func runAcb(
 
 	legacyOptions := app.NewLegacyOptions()
 
-	_, renderRes := app.RunAcbAppToWriter(
+	ok, renderRes := app.RunAcbAppToWriter(
 		&output,
 		csvReaders, allInitStatus, forceDownload, renderFullValues,
 		legacyOptions, &fx.MemRatesCacheAccessor{RatesByYear: globalRatesCache},
@@ -156,11 +156,21 @@ func runAcb(
 
 	outString := output.String()
 
+	var secTables js.Value
+	var aggTable js.Value
+	if ok && renderRes != nil {
+		secTables = renderTablesToJsObject(renderRes.SecurityTables)
+		aggTable = renderTableToJsObject(renderRes.AggregateGainsTable)
+	} else {
+		secTables = js.ValueOf(nil)
+		aggTable = js.ValueOf(nil)
+	}
+
 	outObj := js.ValueOf(map[string]interface{}{
 		"textOutput": outString,
 		"modelOutput": map[string]interface{}{
-			"securityTables":      renderTablesToJsObject(renderRes.SecurityTables),
-			"aggregateGainsTable": renderTableToJsObject(renderRes.AggregateGainsTable),
+			"securityTables":      secTables,
+			"aggregateGainsTable": aggTable,
 		},
 	})
 

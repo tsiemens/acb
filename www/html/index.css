@@ -235,6 +235,9 @@
 .sell-row td {
    background: #eee;
 }
+.sfla-row td {
+   background: #fff5e0;
+}
 
 /* Tooltip container */
 .tooltip {

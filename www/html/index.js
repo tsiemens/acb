@@ -326,11 +326,15 @@ function populateTables(model) {
       const tbody = newElem('tbody');
 
       const addRow = function(rowItems) {
-         let isSell = rowItems[2].search(/sell/i) >= 0;
+         const actionCol = 3
+         let isSell = rowItems[actionCol].search(/sell/i) >= 0;
+         let isSfla = rowItems[actionCol].search(/sfla/i) >= 0;
 
          const rowElem = newElem('tr');
          if (isSell) {
             rowElem.classList.add('sell-row');
+         } else if (isSfla) {
+            rowElem.classList.add('sfla-row');
          }
          for (const item of rowItems) {
             const td = newElem('td', {text: item});
