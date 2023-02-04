@@ -65,6 +65,7 @@ def make_tx_renderer(benefits):
             num_shares=b.acquire_shares,
             commission=0.0,
             currency='USD',
+            affiliate='',
             memo=b.plan_note,
             exchange_rate=None,
          )
@@ -79,6 +80,7 @@ def make_tx_renderer(benefits):
             num_shares=b.sell_to_cover_shares,
             commission=float(b.sell_to_cover_fee),
             currency='USD',
+            affiliate='',
             memo=f"{b.plan_note} sell-to-cover",
             exchange_rate=None,
          )
@@ -89,53 +91,49 @@ def make_tx_renderer(benefits):
    renderer.sort_txs()
    return renderer
 
+class ReSearchError(Exception):
+   pass
+
+def search_for_group(pattern, text, flags=0, group=1, optional=False):
+   m = re.search(pattern, text, flags=flags)
+   if m:
+      return m.group(group)
+   else:
+      if optional:
+         return None
+      raise ReSearchError(f"Could not find {repr(pattern)}")
+
+def search_for_decimal(pattern, text, flags=0, group=1, optional=False):
+   val_str = search_for_group(pattern, text,
+                              flags=flags, group=group, optional=optional)
+   if val_str:
+      return Decimal(val_str.replace(',', ''))
+   return None
+
+
 def text_to_common_data(text: str) -> dict:
    return {
-      "employee id": re.search(r"Employee ID:\s*(\d+)", text).group(1),
-      "account number": re.search(r"Account Number\s*(\d+)", text).group(1),
-      "symbol": re.search(r"Company Name\s*\(Symbol\)*.*\(([A-Za-z\.]+)\)", text, re.S).group(1),
+      "employee id": search_for_group(r"Employee ID:\s*(\d+)", text),
+      "account number": search_for_group(r"Account Number\s*(\d+)", text),
+      "symbol": search_for_group(r"Company Name\s*\(Symbol\)*.*\(([A-Za-z\.]+)\)", text, re.S),
    }
 
 def text_to_rsu_data(text: str) -> dict:
    return text_to_common_data(text) | {
       "release date": datetime.datetime.strptime(
-         re.search(r"Release Date\s*(\d+-\d+-\d+)", text).group(1), "%m-%d-%Y"
+         search_for_group(r"Release Date\s*(\d+-\d+-\d+)", text), "%m-%d-%Y"
       ).date(),
-      "award number": re.search(r"Award Number\s*(R\d+)", text).group(1),
-      "share released": Decimal(
-         re.search(r"Shares Released\s*(\d+\.\d+)", text).group(1)
-      ),
-      "share sold": Decimal(
-         re.search(r"Shares Sold\s*\((\d+\.\d+)\)", text).group(1)
-      ),
-      "share issued": Decimal(
-         re.search(r"Shares Issued\s*(\d+\.\d+)", text).group(1),
-      ),
-      "FMV": Decimal(
-         re.search(r"Market Value Per Share\s*\$(\d+\.\d+)", text).group(1)
-      ),
-      "sale price": Decimal(
-         re.search(r"Sale Price Per Share\s*\$(\d+\.\d+)", text).group(1)
-      ),
-      "market value": Decimal(
-         re.search(r"Market Value\s*\$([\d,]+\.\d+)", text)
-         .group(1)
-         .replace(',', '')
-      ),
-      "total sale price": Decimal(
-         re.search(r"Total Sale Price\s*\$([\d,]+\.\d+)", text)
-         .group(1)
-         .replace(',', '')
-      ),
-      "total tax": Decimal(
-         re.search(r"Total Tax\s*\$([\d,]+\.\d+)", text)
-         .group(1)
-         .replace(',', '')
-      ),
-      "fee": Decimal(re.search(r"Fee\s*\(\$(\d+\.\d+)", text).group(1)),
-      "cash leftover": Decimal(
-         re.search(r"Total Due Participant\s*\$(\d+\.\d+)", text).group(1)
-      ),
+      "award number": search_for_group(r"Award Number\s*(R\d+)", text),
+      "share released": search_for_decimal(r"Shares Released\s*(\d+\.\d+)", text),
+      "share sold": search_for_decimal(r"Shares Sold\s*\((\d+\.\d+)\)", text),
+      "share issued": search_for_decimal(r"Shares Issued\s*(\d+\.\d+)", text),
+      "FMV": search_for_decimal(r"Market Value Per Share\s*\$(\d+\.\d+)", text),
+      "sale price": search_for_decimal(r"Sale Price Per Share\s*\$(\d+\.\d+)", text),
+      "market value": search_for_decimal(r"Market Value\s*\$([\d,]+\.\d+)", text),
+      "total sale price": search_for_decimal(r"Total Sale Price\s*\$([\d,]+\.\d+)", text),
+      "total tax": search_for_decimal(r"Total Tax\s*\$([\d,]+\.\d+)", text),
+      "fee": search_for_decimal(r"Fee\s*\(\$(\d+\.\d+)", text),
+      "cash leftover": search_for_decimal(r"Total Due Participant\s*\$(\d+\.\d+)", text),
    }
 
 def text_to_rsu_entry(text: str) -> BenefitEntry:
@@ -166,65 +164,33 @@ def text_to_rsu_entry(text: str) -> BenefitEntry:
 def text_to_espp_data(text) -> dict:
    return text_to_common_data(text) | {
       "purchase date": datetime.datetime.strptime(
-         re.search(r"Purchase Date\s*(\d+-\d+-\d+)", text).group(1), "%m-%d-%Y"
+         search_for_group(r"Purchase Date\s*(\d+-\d+-\d+)", text), "%m-%d-%Y"
       ).date(),
-      "share purchased": Decimal(
-         re.search(r"Shares Purchased\s*(\d+\.\d+)", text).group(1)
-      ),
-      "share sold": Decimal(
-         re.search(r"Shares Sold to Cover Taxes\s*(\d+\.\d+)", text).group(1)
-      ),
-      "FMV": Decimal(
-         re.search(r"Purchase Value per Share\s*\$(\d+\.\d+)", text).group(1)
-      ),
-      "purchase price": Decimal(
-         re.search(
+      "share purchased": search_for_decimal(r"Shares Purchased\s*(\d+\.\d+)", text),
+      "share sold":
+         search_for_decimal(r"Shares Sold to Cover Taxes\s*(\d+\.\d+)", text),
+      "FMV":
+         search_for_decimal(r"Purchase Value per Share\s*\$(\d+\.\d+)", text),
+      "purchase price":
+         search_for_decimal(
             r"Purchase Price per Share\s*\([^\)]*\)\s*\$(\d+\.\d+)", text, re.S
-         ).group(1)
-      ),
-      "total price": Decimal(
-         re.search(r"Total Price\s*\(\$([\d,]+\.\d+)\)", text)
-         .group(1)
-         .replace(',', '')
-      ),
-      "total value": Decimal(
-         re.search(r"Total Value\s*\$([\d,]+\.\d+)", text)
-         .group(1)
-         .replace(',', '')
-      ),
-      "taxable gain": Decimal(
-         re.search(r"Taxable Gain\s*\$([\d,]+\.\d+)", text)
-         .group(1)
-         .replace(',', '')
-      ),
-      "sale price": Decimal(
-         re.search(
+         ),
+      "total price": search_for_decimal(r"Total Price\s*\(\$([\d,]+\.\d+)\)", text),
+      "total value": search_for_decimal(r"Total Value\s*\$([\d,]+\.\d+)", text),
+      "taxable gain": search_for_decimal(r"Taxable Gain\s*\$([\d,]+\.\d+)", text),
+      "sale price": search_for_decimal(
             r"Sale Price for Shares Sold to Cover Taxes\s*\$(\d+\.\d+)", text
-         ).group(1)
-      ),
-      "fee": Decimal(re.search(r"Fees\s*\(\$(\d+\.\d+)", text).group(1)),
-      "market value at grant": Decimal(
-         re.search(r"Market Value\s*\$([\d,]+\.\d+)", text)
-         .group(1)
-         .replace(',', '')
-      ),
-      "total sale price": Decimal(
-         re.search(r"Value Of Shares Sold\s\$([\d,]+\.\d+)", text)
-         .group(1)
-         .replace(',', '')
-      ),
-      "cash leftover": Decimal(
-         re.search(r"Amount in Excess of Tax Due\s\$(\d+\.\d+)", text).group(
-            1
-         )
-      ),
-      "total tax": Decimal(
-         re.search(
-            r"Total Taxes Collected at purchase\s\(\$([\d,]+\.\d+)\)", text
-         )
-         .group(1)
-         .replace(',', '')
-      ),
+         ),
+      "fee": search_for_decimal(r"Fees\s*\(\$(\d+\.\d+)", text),
+      "total sale price": search_for_decimal(
+         r"Value Of Shares Sold\s\$([\d,]+\.\d+)", text, optional=True),
+      "market value at grant":
+         search_for_decimal(r"Market Value\s*\$([\d,]+\.\d+)", text),
+      "cash leftover":
+         search_for_decimal(r"Amount in Excess of Tax Due\s\$(\d+\.\d+)", text),
+      "total tax": search_for_decimal(
+         r"Total Taxes Collected at purchase\s\(\$([\d,]+\.\d+)\)", text,
+         optional=True),
    }
 
 def text_to_espp_entry(text: str) -> BenefitEntry:
@@ -382,11 +348,15 @@ Run this script, giving the name of all PDFs as arguments.""",
       first = False
       debug("Parsing ", fname)
       with open(fname, 'rb') as f:
-         obj = parse_pdf(f)
-         if isinstance(obj, BenefitEntry):
-            benefits.append(obj)
-         elif isinstance(obj, list) and obj and isinstance(obj[0], TradeConfirmation):
-            trade_confs.extend(obj)
+         try:
+            obj = parse_pdf(f)
+            if isinstance(obj, BenefitEntry):
+               benefits.append(obj)
+            elif isinstance(obj, list) and obj and isinstance(obj[0], TradeConfirmation):
+               trade_confs.extend(obj)
+         except ReSearchError as e:
+            print(f"Error parsing {fname}: {e}", file=sys.stderr)
+            return 1
 
    remaining_trades = amend_benefit_sales(benefits, trade_confs)
    debug("\nAmmended benefit entries:")

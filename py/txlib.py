@@ -26,6 +26,7 @@ class Tx:
    currency: str
    memo: str
    exchange_rate: float
+   affiliate: str
 
    # optional metadata
    account: str = None
@@ -46,12 +47,13 @@ class AcbCsvRenderer:
       for tx in self.txs:
          yield (tx.security, tx.trade_date, tx.settlement_date, tx.action.name,
                 str(tx.amount_per_share),
-                str(tx.num_shares), str(tx.commission), tx.currency, tx.memo,
+                str(tx.num_shares), str(tx.commission), tx.currency,
+                tx.affiliate, tx.memo,
                 str(tx.exchange_rate) if tx.exchange_rate else '')
 
    def header_row(self):
       return ['Security', 'Trade Date', 'Settlement Date', 'Action', 'Amount/Share',
-              'Shares', 'Commission', 'Currency', 'Memo', 'Exchange Rate']
+              'Shares', 'Commission', 'Currency', 'Affiliate', 'Memo', 'Exchange Rate']
 
    def render_csv(self):
       writer = csv.writer(sys.stdout, delimiter=',', quoting=csv.QUOTE_MINIMAL)

@@ -34,7 +34,8 @@ class QuestradeSheet(AcbCsvRenderer):
 
    def __init__(self, xl_wb: XlWorkbook):
       super().__init__()
-      ignored_actions = {'DIV', 'BRW', 'TFI', 'TF6', 'MGR', 'DEP', None}
+      ignored_actions = {'DIV', 'BRW', 'TFI', 'TF6', 'MGR', 'DEP', 'FXT', 'NAC',
+                         'CON', None}
       allowed_actions = {'Buy', 'Sell'}
 
       header_row = None
@@ -69,6 +70,11 @@ class QuestradeSheet(AcbCsvRenderer):
                symbol, aka = QuestradeSheet.symbol_aliases[symbol]
                orig_symbol_note = f"; {orig_symbol} AKA {aka}."
 
+            affiliate = ''
+            if re.search(r'rrsp|tfsa|resp',
+                         account_type, flags=re.I):
+               affiliate = '(R)'
+
             tx = Tx(
                security=symbol,
                trade_date=QuestradeSheet.convert_date_str(get('Transaction Date')),
@@ -80,6 +86,7 @@ class QuestradeSheet(AcbCsvRenderer):
                                                           action),
                commission=abs(float(get('Commission'))),
                currency=get('Currency'),
+               affiliate=affiliate,
                memo=account_note + orig_symbol_note,
                exchange_rate=None,
                account=account_str,
