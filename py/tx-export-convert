@@ -36,7 +36,7 @@ class QuestradeSheet(AcbCsvRenderer):
       super().__init__()
       ignored_actions = {'DIV', 'BRW', 'TFI', 'TF6', 'MGR', 'DEP', 'FXT', 'NAC',
                          'CON', None}
-      allowed_actions = {'Buy', 'Sell'}
+      allowed_actions = {'Buy', 'Sell', 'DIS'}
 
       header_row = None
       col_name_to_index = {}
@@ -57,6 +57,12 @@ class QuestradeSheet(AcbCsvRenderer):
                      f" in row {repr([c.value for c in row])}")
             if action_str in ignored_actions:
                continue
+
+            # Treat stock distributions as free purchases (the amount will be zero).
+            converted_action_note = ''
+            if action_str == 'DIS':
+               action_str = 'BUY'
+               converted_action_note = f"; From DIS action."
 
             action = Action(action_str.upper())
             symbol = get('Symbol')
@@ -87,7 +93,7 @@ class QuestradeSheet(AcbCsvRenderer):
                commission=abs(float(get('Commission'))),
                currency=get('Currency'),
                affiliate=affiliate,
-               memo=account_note + orig_symbol_note,
+               memo=account_note + orig_symbol_note + converted_action_note,
                exchange_rate=None,
                account=account_str,
             )
