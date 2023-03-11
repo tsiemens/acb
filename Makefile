@@ -28,4 +28,7 @@ test-bin:
 	go test ./test -c -o bld/test.test
 	@echo "Test binary file created: 'bld/test.test'. This should be run from the ./test/ directory"
 
+test-py:
+	make -C py test
+
 .PHONY: clean test

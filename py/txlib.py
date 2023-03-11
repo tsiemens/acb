@@ -39,6 +39,7 @@ class Tx:
 class AcbCsvRenderer:
    def __init__(self):
       self.txs = []
+      self.errors = []
 
    def sort_txs(self):
       self.txs = sorted(self.txs, key=lambda t: t.date_and_time)
@@ -66,12 +67,25 @@ class AcbCsvRenderer:
       col_widths = [1] * len(all_rows[0])
       # Determine the max col widths
       for row in all_rows:
+         assert len(row) == len(col_widths)
          for i, col in enumerate(row):
-            col_widths[i] = max(col_widths[i], len(col))
+            col_widths[i] = max(col_widths[i], len(str(col)))
 
       fmt = '|'.join('{:%d}' % w for w in col_widths)
       for row in all_rows:
-         print(fmt.format(*row))
+         row_strs = (str(v) for v in row)
+         print(fmt.format(*row_strs))
+
+   def render_errors(self) -> bool:
+      """
+      Returns True if there were errors
+      """
+      if self.errors:
+         print("\nErrors:", file=sys.stderr)
+         for err in self.errors:
+            print(" -", err, file=sys.stderr)
+         return True
+      return False
 
 @contextmanager
 def StderrSilencer():

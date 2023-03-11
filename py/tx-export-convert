@@ -9,6 +9,7 @@ Currently only supports Questrade.
 import ensure_in_venv
 
 import argparse
+from dataclasses import dataclass
 import re
 import sys
 import warnings
@@ -19,7 +20,179 @@ import openpyxl
 from openpyxl.workbook.workbook import Workbook as XlWorkbook
 
 class SheetParseError(Exception):
-   pass
+   def __init__(self, msg, row: int=None):
+      """
+      row should be 1-based (like in the sheet editor.)
+      """
+      super().__init__(msg)
+      self.row = row
+
+   def __str__(self):
+      return self.err_str()
+
+   def err_str(self, row=None):
+      if row is None:
+         row = self.row
+      base_msg = Exception.__str__(self)
+      return f"Row {row}: {base_msg}"
+
+def parse_float(val_str: str, field: str) -> float:
+   try:
+      return float(val_str)
+   except Exception:
+      raise SheetParseError(f"Unable to parse number from {repr(val_str)} in {field} column")
+
+def parse_int(val_str: str, field: str) -> int:
+   float_val = parse_float(val_str, field)
+   rounded_val = int(round(float_val))
+   if abs(float_val - rounded_val) > 0.00001:
+      raise SheetParseError(f"Unable to parse integer from {repr(val_str)} in {field} column")
+   return rounded_val
+
+class DailyFxChanges:
+   def __init__(self, currency: str, affiliate: str, trade_date: str):
+      self.currency = currency
+      self.affiliate = affiliate
+      self.trade_date = trade_date
+
+      self.cad_amount_change = 0.0
+      self.fc_amount_change = 0.0
+      self.account_notes = set()
+
+@dataclass
+class QtAccount:
+   account_type: str
+   account_num: str
+
+   def account_str(self) -> str:
+      return f"{self.account_type} {self.account_num}"
+
+   def memo_str(self) -> str:
+      return f"Questrade {self.account_str()}"
+
+@dataclass
+class FxtRow:
+   row_num: int
+   currency: str
+   affiliate: str
+   trade_date: str
+   date_and_time: str
+   amount: float
+   account: QtAccount
+
+class FxTracker:
+   """
+   Tracks foreign-exchange transactions.
+
+   FXT transactions for each day are accumulated, and converted to a single
+   transaction purchasing that currency as an artificial security (the quantity
+   is inflated so that it can become an integer).
+
+   Sells and Buys in that currency also affect the daily transaction.
+   """
+   def __init__(self):
+      self.adjacent_fxt: FxtRow = None
+
+      self.txs = []
+
+   def add_fxt_row(self, fxt_row: FxtRow):
+      cad_fxt = None
+      other_fxt = None
+      if self.adjacent_fxt is None:
+         self.adjacent_fxt = fxt_row
+         return
+
+      if self.adjacent_fxt.currency == 'CAD':
+         cad_fxt = self.adjacent_fxt
+         other_fxt = fxt_row
+      else:
+         cad_fxt = fxt_row
+         other_fxt = self.adjacent_fxt
+      self.adjacent_fxt = None
+
+      if cad_fxt.currency != 'CAD' or other_fxt.currency == 'CAD':
+         raise SheetParseError(
+               f"FXTs not supported between {cad_fxt.currency} and "
+               f"{other_fxt.currency}. Exactly one currency must be CAD.")
+
+      if other_fxt.currency == 'CAD':
+         raise SheetParseError(
+               f"FXT on {other_fxt.trade_date} adjacent to CAD row was also CAD")
+      if other_fxt.trade_date != cad_fxt.trade_date:
+         raise SheetParseError(
+               f"adjacent FXT rows on {other_fxt.trade_date} and {cad_fxt.trade_date} were on different dates")
+      if (other_fxt.affiliate != cad_fxt.affiliate or
+          other_fxt.account != cad_fxt.account):
+         raise SheetParseError(
+               f"adjacent FXT rows on {other_fxt.trade_date} were in different accounts")
+      if (cad_fxt.amount * other_fxt.amount) > 0.0:
+         if cad_fxt.amount > 0.0:
+            raise SheetParseError("Both FXTs have positive amounts")
+         else:
+            raise SheetParseError("Both FXTs have negative amounts")
+
+      rate = abs(cad_fxt.amount/other_fxt.amount)
+
+      tx = self.fx_tx(other_fxt.currency, other_fxt.trade_date,
+                      other_fxt.date_and_time, other_fxt.amount,
+                      other_fxt.affiliate, other_fxt.account,
+                      exchange_rate=rate,
+                      memo_extra='FXT')
+      self.txs.append(tx)
+
+   def add_implicit_fxt(self, tx: Tx, account: QtAccount):
+      amount = tx.amount_per_share * tx.num_shares
+      if tx.action == Action.BUY:
+         # We're buying some stock with USD, so our reserve will decrease.
+         amount *= -1
+
+      if amount == 0:
+         # This might happen for DIS actions, which get treated otherwise like a buy.
+         return
+
+      tx = self.fx_tx(tx.currency, tx.trade_date, tx.date_and_time, amount,
+                      tx.affiliate, account,
+                      memo_extra=f'from {tx.security} {tx.action.value}')
+      self.txs.append(tx)
+
+   def fx_tx(self, currency: str, trade_date: str, date_and_time: str,
+             amount: float, affiliate: str, account: QtAccount,
+             exchange_rate=None, memo_extra=None):
+
+      action = Action.BUY if amount > 0.0 else Action.SELL
+      if currency == 'USD':
+         # USD treated as 10x shares (to the cent)
+         shares = int(round(abs(amount * 100)))
+         amount_per_share = 0.01
+      else:
+         raise SheetParseError(f"FX currency {currency} not supported")
+
+      memo = account.memo_str()
+      if memo_extra:
+         memo += '; ' + memo_extra
+
+      return Tx(
+         security=currency + '.FX',
+         trade_date=trade_date,
+         settlement_date=trade_date,
+         date_and_time=date_and_time,
+         action=action,
+         amount_per_share=amount_per_share,
+         num_shares=shares,
+         commission=0.0,
+         currency=currency,
+         affiliate=affiliate,
+         memo=memo,
+         exchange_rate=exchange_rate,
+         account=account.account_str(),
+      )
+
+   def get_fx_txs(self) -> tuple[list[Tx], SheetParseError]:
+      err = None
+      if self.adjacent_fxt is not None:
+         err = SheetParseError("Unpaired FXT", row=self.adjacent_fxt.row_num)
+
+      return self.txs, err
 
 class QuestradeSheet(AcbCsvRenderer):
    # Column names:
@@ -32,20 +205,26 @@ class QuestradeSheet(AcbCsvRenderer):
       'H038778': ('DLR.TO', 'DLR.U.TO'),
    }
 
-   def __init__(self, xl_wb: XlWorkbook):
+   def __init__(self, xl_wb: XlWorkbook, sheet_index=0):
       super().__init__()
-      ignored_actions = {'DIV', 'BRW', 'TFI', 'TF6', 'MGR', 'DEP', 'FXT', 'NAC',
+      ignored_actions = {'DIV', 'BRW', 'TFI', 'TF6', 'MGR', 'DEP', 'NAC',
                          'CON', None}
-      allowed_actions = {'Buy', 'Sell', 'DIS'}
+      allowed_actions = {'Buy', 'Sell', 'DIS', 'FXT'}
+
+      fxtracker = FxTracker()
 
       header_row = None
       col_name_to_index = {}
-      sheet = next(iter(xl_wb.worksheets))
-      for row in sheet.rows:
+      if sheet_index >= len(xl_wb.worksheets):
+         raise SheetParseError(f"Workbook does not have a sheet {sheet_index + 1}")
+      sheet = xl_wb.worksheets[sheet_index]
+      for i, row in enumerate(sheet.rows):
          if header_row is None:
             header_row = [c.value for c in row]
             col_name_to_index = {c: i for i, c in enumerate(header_row)}
-         else:
+            continue
+
+         try:
             def get(name):
                return row[col_name_to_index[name]].value
 
@@ -53,9 +232,31 @@ class QuestradeSheet(AcbCsvRenderer):
             if (action_str not in allowed_actions and
                 action_str not in ignored_actions):
                raise SheetParseError(
-                     f"Unrecognized transaction action {repr(action_str)}"
-                     f" in row {repr([c.value for c in row])}")
+                     f"Unrecognized transaction action {repr(action_str)}")
             if action_str in ignored_actions:
+               continue
+
+
+            trade_date = QuestradeSheet.convert_date_str(get('Transaction Date'))
+            account_type = get('Account Type')
+            account_num = get('Account #')
+            account = QtAccount(account_type, account_num)
+
+            affiliate = ''
+            if re.search(r'rrsp|tfsa|resp',
+                         account_type, flags=re.I):
+               affiliate = '(R)'
+
+            if action_str == 'FXT':
+               fxt_row = FxtRow(
+                  i + 1,
+                  get('Currency'),
+                  affiliate,
+                  trade_date,
+                  get('Transaction Date'),
+                  parse_float(get('Net Amount'), 'Net Amount'),
+                  account)
+               fxtracker.add_fxt_row(fxt_row)
                continue
 
             # Treat stock distributions as free purchases (the amount will be zero).
@@ -66,53 +267,61 @@ class QuestradeSheet(AcbCsvRenderer):
 
             action = Action(action_str.upper())
             symbol = get('Symbol')
-            account_num = get('Account #')
-            account_type = get('Account Type')
-            account_str = f"{account_type} {account_num}"
-            account_note = f"Questrade {account_str}"
+            if symbol is None:
+               raise SheetParseError("Symbol was empty")
             orig_symbol_note = ''
             if symbol in QuestradeSheet.symbol_aliases:
                orig_symbol = symbol
                symbol, aka = QuestradeSheet.symbol_aliases[symbol]
                orig_symbol_note = f"; {orig_symbol} AKA {aka}."
 
-            affiliate = ''
-            if re.search(r'rrsp|tfsa|resp',
-                         account_type, flags=re.I):
-               affiliate = '(R)'
-
             tx = Tx(
                security=symbol,
-               trade_date=QuestradeSheet.convert_date_str(get('Transaction Date')),
+               trade_date=trade_date,
                settlement_date=QuestradeSheet.convert_date_str(get('Settlement Date')),
                date_and_time=get('Settlement Date'),
                action=action,
-               amount_per_share=float(get('Price')),
-               num_shares=QuestradeSheet.get_quantity_int(get('Quantity'),
-                                                          action),
-               commission=abs(float(get('Commission'))),
+               amount_per_share=parse_float(get('Price'), 'Price'),
+               num_shares=abs(parse_int(get('Quantity'), 'Quantity')),
+               commission=abs(parse_float(get('Commission'), 'Commission')),
                currency=get('Currency'),
                affiliate=affiliate,
-               memo=account_note + orig_symbol_note + converted_action_note,
+               memo=account.memo_str() + orig_symbol_note + converted_action_note,
                exchange_rate=None,
-               account=account_str,
+               account=account.account_str(),
             )
             self.txs.append(tx)
+
+            if tx.currency and tx.currency != 'CAD':
+               fxtracker.add_implicit_fxt(tx, account)
+
+         except SheetParseError as e:
+            self.errors.append(e.err_str(i+1))
+      # end for row in sheet.rows
+
+      fx_txs, fx_txs_err = fxtracker.get_fx_txs()
+      if fx_txs is not None:
+         self.txs.extend(fx_txs)
+      if fx_txs_err is not None:
+         self.errors.append(fx_txs_err.err_str())
 
    date_regexp = re.compile(r'^\d{4}-\d{2}-\d{2}')
 
    @staticmethod
    def convert_date_str(qt_date: str) -> str:
       """Returns a yyyy-mm-dd formatted date string"""
-      m = QuestradeSheet.date_regexp.match(qt_date)
-      if m:
-         return m.group(0)
-      else:
-         raise SheetParseError(f"Could not parse date from {repr(qt_date)}")
+      try:
+         m = QuestradeSheet.date_regexp.match(qt_date)
+         if m:
+            return m.group(0)
+      except Exception:
+         pass
+
+      raise SheetParseError(f"Could not parse date from {repr(qt_date)}")
 
    @staticmethod
    def get_quantity_int(quant_str: str, action: Action) -> int:
-      quant = int(float(quant_str))
+      quant = parse_int(quant_str, 'Quantity')
       if action == Action.BUY:
          return quant
       else:
@@ -139,11 +348,11 @@ def dump_xl_workbook(wb: XlWorkbook):
             print(repr(something.value), end='')
          print()
 
-def read_xl_file(fname) -> AcbCsvRenderer:
+def read_xl_file(fname, sheet=1) -> AcbCsvRenderer:
    with warnings.catch_warnings(record=True):
       warnings.simplefilter("always")
       wb = openpyxl.load_workbook(fname, read_only=True, data_only=True)
-   return QuestradeSheet(wb)
+   return QuestradeSheet(wb, sheet_index=sheet - 1)
 
 def main():
    parser = argparse.ArgumentParser(description=__doc__)
@@ -156,11 +365,19 @@ def main():
    parser.add_argument('--usd-exchange-rate', type=float,
          help="Specify an exchange rate to use (rates for more recent"
          " transactions may not be posted yet)")
-   parser.add_argument('--account', help="""
+   parser.add_argument('--account', '-a', help="""
       Specify the account to export transactions for. Must partially match, and is
       treated as a regular expression. The account is formatted into
       '{account type} {account number}'.""")
+   parser.add_argument('--security', '--symbol', type=str,
+         help="Filter output rows to contain only symbol/security matching "
+         "this regular expression")
+   parser.add_argument('--no-fx', action='store_true',
+        help="Do not generate transactions for foreign currency exchanges")
    parser.add_argument('--pretty', action='store_true')
+   parser.add_argument('--sheet', type=int, default=1,
+                       help="Select which sheet in the spreadsheet file to use. "
+                            "Defaults to 1")
    args = parser.parse_args()
 
    account_filter = None
@@ -172,7 +389,7 @@ def main():
          exit(1)
 
    try:
-      sheet = read_xl_file(args.export_file)
+      sheet = read_xl_file(args.export_file, args.sheet)
       filter_and_verify_tx_accounts(account_filter, sheet)
    except SheetParseError as e:
       print("Error:", e, file=sys.stderr)
@@ -186,10 +403,18 @@ def main():
          if tx.currency == 'USD':
             tx.exchange_rate = args.usd_exchange_rate
 
+   if args.security:
+      security_re = re.compile(args.security)
+      sheet.txs = [tx for tx in sheet.txs if security_re.search(tx.security)]
+   if args.no_fx:
+      sheet.txs = [tx for tx in sheet.txs if not tx.security.endswith('.FX')]
+
    if args.pretty:
       sheet.render_table()
    else:
       sheet.render_csv()
+
+   sheet.render_errors()
 
 if __name__ == '__main__':
    exit(main())
