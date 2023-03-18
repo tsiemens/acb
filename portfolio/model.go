@@ -192,7 +192,8 @@ type TxDelta struct {
 
 	SuperficialLoss float64
 	// A ratio, representing <N reacquired shares which suffered SFL> / <N sold shares>
-	SuperficialLossRatio util.Uint32Ratio
+	SuperficialLossRatio      util.Uint32Ratio
+	PotentiallyOverAppliedSfl bool
 }
 
 func (d *TxDelta) AcbDelta() float64 {

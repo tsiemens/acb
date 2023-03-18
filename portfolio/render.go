@@ -89,20 +89,28 @@ func RenderTxTableModel(
 	ph := _PrintHelper{PrintAllDecimals: renderFullDollarValues}
 
 	sawSuperficialLoss := false
+	sawOverAppliedSfl := false
 
 	for _, d := range deltas {
 		superficialLossAsterix := ""
 		specifiedSflIsForced := d.Tx.SpecifiedSuperficialLoss.Present() &&
 			d.Tx.SpecifiedSuperficialLoss.MustGet().Force
 		if d.SuperficialLoss != 0.0 && !math.IsNaN(d.SuperficialLoss) {
+			extraSflNoteStr := ""
+			if d.PotentiallyOverAppliedSfl {
+				extraSflNoteStr = " [1]"
+			}
+
 			superficialLossAsterix = fmt.Sprintf(
-				" *\n(SfL %s%s; %d/%d)",
+				" *\n(SfL %s%s; %d/%d%s)",
 				ph.PlusMinusDollar(d.SuperficialLoss, false),
 				util.Tern[string](specifiedSflIsForced, "!", ""),
 				d.SuperficialLossRatio.Numerator,
 				d.SuperficialLossRatio.Denominator,
+				extraSflNoteStr,
 			)
 			sawSuperficialLoss = true
+			sawOverAppliedSfl = sawOverAppliedSfl || d.PotentiallyOverAppliedSfl
 		}
 		tx := d.Tx
 
@@ -165,7 +173,12 @@ func RenderTxTableModel(
 
 	// Notes
 	if sawSuperficialLoss {
-		table.Notes = append(table.Notes, " */SfL = Superficial loss adjustment")
+		table.Notes = append(table.Notes, " SfL = Superficial loss adjustment")
+	}
+	if sawOverAppliedSfl {
+		table.Notes = append(table.Notes,
+			" [1] Superficial loss was potentially over-applied, resulting in a lower-than-expected allowable capital loss.\n"+
+				"     See I.1 vs I.2 under \"Interpretations of ACB distribution\" at https://github.com/tsiemens/acb/wiki/Superficial-Losses")
 	}
 
 	return table

@@ -10,11 +10,11 @@ import (
 	ptf "github.com/tsiemens/acb/portfolio"
 )
 
-func makeSflaTxYD(year uint32, dayOfYear int, shares uint32, amount float64) *ptf.Tx {
+func makeSflaTxYD(year uint32, dayOfYear int, amount float64) *ptf.Tx {
 	dt := mkDateYD(year, dayOfYear)
-	return TTx{TDate: dt.AddDays(-2), SDate: dt, Act: ptf.SFLA, Shares: shares, Price: amount,
+	return TTx{TDate: dt.AddDays(-2), SDate: dt, Act: ptf.SFLA, Shares: 1, Price: amount,
 		CommCurr: EXP_DEFAULT_CURRENCY, CommFxRate: EXP_FLOAT_ZERO,
-		Memo: "automatic SfL ACB adjustment"}.X()
+		Memo: matchingMemo("Automatic SfL ACB adjustment.*")}.X()
 }
 
 type TSimpleSumTx struct {
@@ -260,13 +260,13 @@ func TestSummary(t *testing.T) {
 		TSimpleSumTx{Year: 2022, DoY: -32, Shares: 8, Amount: 1.25}.X(),
 		TTx{SYr: 2022, SDoY: -31, Act: ptf.BUY, Shares: 2, Price: 1.0, Comm: 2.0}.X(), // ACB of 14 total after here.
 		TTx{SYr: 2022, SDoY: -1, Act: ptf.SELL, Shares: 2, Price: 0.2}.X(),            // SFL of $2.4
-		makeSflaTxYD(2022, -1, 2, 1.2),
+		makeSflaTxYD(2022, -1, 2.4),
 	}
 
 	deltas = th.txsToDeltaList(txs)
 	summaryTxs, warnings = ptf.MakeSummaryTxs(mkDateYD(2022, -1), deltas, false)
 	th.checkWarnings(1, summaryTxs, warnings)
-	rq.Equal(expSummaryTxs, summaryTxs)
+	ValidateTxs(t, expSummaryTxs, summaryTxs)
 
 	// TEST: present [ SFL ... 29 days || <mix of SFLs, BUYs> ] past
 	// Unsummarizable SFL will push back the summarizing window.
@@ -287,15 +287,15 @@ func TestSummary(t *testing.T) {
 		TTx{SYr: 2022, SDoY: -45, Act: ptf.BUY, Shares: 8, Price: 1.0, Comm: 2.0}.X(), // post ACB = 21.6
 		TTx{SYr: 2022, SDoY: -31, Act: ptf.BUY, Shares: 2, Price: 1.0, Comm: 2.0}.X(), // post ACB = 25.6
 		TTx{SYr: 2022, SDoY: -15, Act: ptf.SELL, Shares: 2, Price: 0.2}.X(),           // SFL of 2.4444444444, ACB = 22.755555556
-		makeSflaTxYD(2022, -15, 2, 1.2222222222222223),                                // ACB of 25.2
+		makeSflaTxYD(2022, -15, 2.444444444444444),                                    // ACB of 25.2
 		TTx{SYr: 2022, SDoY: -1, Act: ptf.SELL, Shares: 2, Price: 0.2}.X(),            // SFL of 2.75, ACB = 22.05
-		makeSflaTxYD(2022, -1, 2, 1.3750000000000002),
+		makeSflaTxYD(2022, -1, 2.75),
 	}
 
 	deltas = th.txsToDeltaList(txs)
 	summaryTxs, warnings = ptf.MakeSummaryTxs(mkDateYD(2022, -1), deltas, false)
 	th.checkWarnings(1, summaryTxs, warnings)
-	rq.Equal(expSummaryTxs, summaryTxs)
+	ValidateTxs(t, expSummaryTxs, summaryTxs)
 
 	// TEST: before and after: present [ SFL ... 25 days || ... 5 days, SFL, BUY ] past
 	txs = []*ptf.Tx{
@@ -312,7 +312,7 @@ func TestSummary(t *testing.T) {
 	deltas = th.txsToDeltaList(txs)
 	summaryTxs, warnings = ptf.MakeSummaryTxs(mkDateYD(2022, -1), deltas, false)
 	th.checkOk(summaryTxs, warnings)
-	rq.Equal(expSummaryTxs, summaryTxs)
+	ValidateTxs(t, expSummaryTxs, summaryTxs)
 
 	// TEST: before and after: present [ SFL ... 2 days || BUY, SFL ... 20 days, BUY ... 10 days, BUY ] past
 	txs = []*ptf.Tx{
@@ -329,14 +329,14 @@ func TestSummary(t *testing.T) {
 		TSimpleSumTx{Year: 2022, DoY: -33, Shares: 10, Amount: 1.2}.X(),
 		TTx{SYr: 2022, SDoY: -20, Act: ptf.BUY, Shares: 4, Price: 1.0, Comm: 2.0}.X(), // ACB = 18
 		TTx{SYr: 2022, SDoY: -2, Act: ptf.SELL, Shares: 2, Price: 0.2}.X(),            // SFL of 2.171428571, ACB = 15.428571429
-		makeSflaTxYD(2022, -2, 2, 1.0857142857142859),
+		makeSflaTxYD(2022, -2, 2.171428571),
 		TTx{SYr: 2022, SDoY: -1, Act: ptf.BUY, Shares: 2, Price: 0.2, Comm: 2.0}.X(),
 	}
 
 	deltas = th.txsToDeltaList(txs)
 	summaryTxs, warnings = ptf.MakeSummaryTxs(mkDateYD(2022, -1), deltas, false)
 	th.checkWarnings(1, summaryTxs, warnings)
-	rq.Equal(expSummaryTxs, summaryTxs)
+	ValidateTxs(t, expSummaryTxs, summaryTxs)
 
 	// TEST: before and after: present [ SFL ... 30 days || BUY, SFL ... 20 days, BUY ... 10 days, BUY ] past
 	txs = []*ptf.Tx{
@@ -355,7 +355,7 @@ func TestSummary(t *testing.T) {
 	deltas = th.txsToDeltaList(txs)
 	summaryTxs, warnings = ptf.MakeSummaryTxs(mkDateYD(2022, -1), deltas, false)
 	th.checkOk(summaryTxs, warnings)
-	rq.Equal(expSummaryTxs, summaryTxs)
+	ValidateTxs(t, expSummaryTxs, summaryTxs)
 
 	// TEST: No shares left in summary.
 	txs = []*ptf.Tx{
@@ -367,7 +367,7 @@ func TestSummary(t *testing.T) {
 	deltas = th.txsToDeltaList(txs)
 	summaryTxs, warnings = ptf.MakeSummaryTxs(mkDateYD(2022, -1), deltas, false)
 	th.checkWarnings(1, summaryTxs, warnings)
-	rq.Equal(expSummaryTxs, summaryTxs)
+	ValidateTxs(t, expSummaryTxs, summaryTxs)
 
 	// TEST: No shares left in summarizable region
 	txs = []*ptf.Tx{
@@ -386,7 +386,7 @@ func TestSummary(t *testing.T) {
 	deltas = th.txsToDeltaList(txs)
 	summaryTxs, warnings = ptf.MakeSummaryTxs(mkDateYD(2022, -1), deltas, false)
 	th.checkWarnings(2, summaryTxs, warnings)
-	rq.Equal(expSummaryTxs, summaryTxs)
+	ValidateTxs(t, expSummaryTxs, summaryTxs)
 }
 
 func TestSummaryYearSplits(t *testing.T) {

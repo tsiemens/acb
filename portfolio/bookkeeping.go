@@ -3,6 +3,7 @@ package portfolio
 import (
 	"fmt"
 	"math"
+	"sort"
 
 	"github.com/tsiemens/acb/date"
 	"github.com/tsiemens/acb/util"
@@ -127,7 +128,16 @@ type _SuperficialLossInfo struct {
 	AllAffSharesAtEndOfPeriod  uint32
 	TotalAquiredInPeriod       uint32
 	BuyingAffiliates           *util.Set[string]
-	BuyingAffiliateSharesAtEOP *util.DefaultMap[string, int]
+	ActiveAffiliateSharesAtEOP *util.DefaultMap[string, int]
+}
+
+func (i *_SuperficialLossInfo) BuyingAffiliateSharesAtEOPTotal() int {
+	total := 0
+	i.BuyingAffiliates.ForEach(func(afId string) bool {
+		total += i.ActiveAffiliateSharesAtEOP.Get(afId)
+		return true
+	})
+	return total
 }
 
 func GetFirstDayInSuperficialLossPeriod(txDate date.Date) date.Date {
@@ -158,7 +168,7 @@ func getSuperficialLossInfo(
 	allAffiliatesShareBalanceAfterSell :=
 		ptfStatuses.GetLatestPostStatus().AllAffiliatesShareBalance - tx.Shares
 
-	buyingAffiliateSharesAtEOP := util.NewDefaultMap[string, int](
+	activeAffiliateSharesAtEOP := util.NewDefaultMap[string, int](
 		// Default to post-sale share balance for the affiliate.
 		func(afId string) int {
 			sellTxAffil := NonNilTxAffiliate(tx)
@@ -190,7 +200,7 @@ func getSuperficialLossInfo(
 		AllAffSharesAtEndOfPeriod:  allAffiliatesShareBalanceAfterSell,
 		TotalAquiredInPeriod:       0,
 		BuyingAffiliates:           util.NewSet[string](),
-		BuyingAffiliateSharesAtEOP: buyingAffiliateSharesAtEOP,
+		ActiveAffiliateSharesAtEOP: activeAffiliateSharesAtEOP,
 	}
 
 	// Some points:
@@ -229,14 +239,14 @@ func getSuperficialLossInfo(
 		case BUY:
 			didBuyAfterInPeriod = true
 			sli.AllAffSharesAtEndOfPeriod += afterTx.Shares
-			buyingAffiliateSharesAtEOP.Set(afterTxAffil.Id(),
-				buyingAffiliateSharesAtEOP.Get(afterTxAffil.Id())+int(afterTx.Shares))
+			activeAffiliateSharesAtEOP.Set(afterTxAffil.Id(),
+				activeAffiliateSharesAtEOP.Get(afterTxAffil.Id())+int(afterTx.Shares))
 			sli.TotalAquiredInPeriod += afterTx.Shares
 			sli.BuyingAffiliates.Add(afterTxAffil.Id())
 		case SELL:
 			sli.AllAffSharesAtEndOfPeriod -= afterTx.Shares
-			buyingAffiliateSharesAtEOP.Set(afterTxAffil.Id(),
-				buyingAffiliateSharesAtEOP.Get(afterTxAffil.Id())-int(afterTx.Shares))
+			activeAffiliateSharesAtEOP.Set(afterTxAffil.Id(),
+				activeAffiliateSharesAtEOP.Get(afterTxAffil.Id())-int(afterTx.Shares))
 		default:
 			// ignored
 		}
@@ -266,6 +276,17 @@ func getSuperficialLossInfo(
 	return sli
 }
 
+type _SflRatioResultResult struct {
+	SflRatio                 util.Uint32Ratio
+	AcbAdjustAffiliateRatios map[string]util.Uint32Ratio
+	// ** Notes/warnings to emit later. **
+	// Set when the sum of remaining involved affiliate shares is fewer than
+	// the SFL shares, which means that the selling affiliate probably had some
+	// shares they didn't sell. This can happen because we use interpretation/algo I.1
+	// rather than I.2 (see the sfl wiki page) to determine the loss ratio.
+	FewerRemainingSharesThanSflShares bool
+}
+
 // Calculation of partial superficial losses where
 // Superficial loss = (min(#sold, totalAquired, endBalance) / #sold) x (Total Loss)
 // This function returns the left hand side of this formula, on the condition that
@@ -276,10 +297,14 @@ func getSuperficialLossInfo(
 // - the affiliate to apply an automatic adjustment to (if possible)
 // - an soft error (warning), which only applies when auto-generating the SfLA
 //
+// Uses interpretation I.1 from the link below for splitting loss adjustments.
+//
+// More detailed discussions about adjustment allocation can be found at
+// https://github.com/tsiemens/acb/wiki/Superficial-Losses
+//
 // Reference: https://www.adjustedcostbase.ca/blog/applying-the-superficial-loss-rule-for-a-partial-disposition-of-shares/
 func getSuperficialLossRatio(
-	idx int, txs []*Tx, ptfStatuses *AffiliatePortfolioSecurityStatuses,
-	negativeLoss float64 /*error msg only*/) (util.Uint32Ratio, *Affiliate, error) {
+	idx int, txs []*Tx, ptfStatuses *AffiliatePortfolioSecurityStatuses) *_SflRatioResultResult {
 	sli := getSuperficialLossInfo(idx, txs, ptfStatuses)
 	if sli.IsSuperficial {
 		tx := txs[idx]
@@ -289,44 +314,42 @@ func getSuperficialLossRatio(
 			tx.Shares,
 		}
 
-		softSflError := func(detailsFmt string, args ...interface{}) error {
-			details := fmt.Sprintf(detailsFmt, args...)
-			return fmt.Errorf(
-				"Sell of %s on %v was determined to be a superficial-loss, but %s. "+
-					"The loss in total was %f CAD, of which %d/%d may be considered "+
-					"superficial. Add a manual SFL value to the Sell entry and SfLA "+
-					"(superficial loss adjustment) entry(ies) to your spreadsheet. "+
-					"Seek professional advice if you are unsure how best to adjust.",
-				tx.Security, tx.TradeDate, details,
-				negativeLoss, ratio.Numerator, ratio.Denominator)
-		}
-
-		if sli.BuyingAffiliates.Len() > 1 {
-			return ratio, nil, softSflError(
-				"multiple affiliates purchased shares within the " +
-					"superficial loss period, which is not supported automatically")
-		}
-
-		util.Assertf(sli.BuyingAffiliates.Len() == 1,
+		util.Assertf(sli.BuyingAffiliates.Len() != 0,
 			"getSuperficialLossRatio: loss was superficial, but no buying affiliates")
-		var buyingAfId string
+
+		// Affiliate to percentage of the SFL adjustment is attributed to it.
+		affiliateAdjustmentPortions := make(map[string]util.Uint32Ratio)
+		buyingAffilsShareEOPTotal := sli.BuyingAffiliateSharesAtEOPTotal()
+
 		sli.BuyingAffiliates.ForEach(func(afId string) bool {
-			buyingAfId = afId
-			return false // break
+			afShareBalanceAtEOP := sli.ActiveAffiliateSharesAtEOP.Get(afId)
+			affiliateAdjustmentPortions[afId] = util.Uint32Ratio{
+				uint32(afShareBalanceAtEOP), uint32(buyingAffilsShareEOPTotal)}
+			return true
 		})
-		buyingAf := GlobalAffiliateDedupTable.MustGet(buyingAfId)
-		afShareBalanceAtEOP := sli.BuyingAffiliateSharesAtEOP.Get(buyingAfId)
-		if afShareBalanceAtEOP < int(ratio.Numerator) {
-			return ratio, buyingAf,
-				softSflError("there are not enough shares remaining under the %s "+
-					"affiliate (%d) to satisfy the %d shares that should be included "+
-					"in the superficial loss. These may be owned by other affiliates "+
-					"which did not buy shares during the SFL period",
-					buyingAf.Name(), afShareBalanceAtEOP, ratio.Numerator)
+
+		return &_SflRatioResultResult{
+			SflRatio:                          ratio,
+			AcbAdjustAffiliateRatios:          affiliateAdjustmentPortions,
+			FewerRemainingSharesThanSflShares: buyingAffilsShareEOPTotal < int(ratio.Numerator),
 		}
-		return ratio, buyingAf, nil
 	}
-	return util.Uint32Ratio{}, nil, nil
+	return &_SflRatioResultResult{}
+}
+
+// The algorithm to use to determine automatic superficial-loss adjustment
+// distribution.
+type AutoSflaAlgo int
+
+const (
+	// Do not allow automatic SLFA with multiple affiliates.
+	SFLA_ALGO_REQUIRE_MANUAL AutoSflaAlgo = iota
+	SFLA_ALGO_REJECT_IF_ANY_REGISTERED
+	SFLA_ALGO_DISTRIB_BUY_RATIOS
+)
+
+type AddTxOptions struct {
+	autoSflaAlgo AutoSflaAlgo
 }
 
 // Returns a TxDelta for the Tx at txs[idx].
@@ -336,7 +359,7 @@ func AddTx(
 	idx int,
 	txs []*Tx,
 	ptfStatuses *AffiliatePortfolioSecurityStatuses,
-) (*TxDelta, *Tx, error) {
+) (*TxDelta, []*Tx, error) {
 
 	tx := txs[idx]
 	txAffiliate := NonNilTxAffiliate(tx)
@@ -354,7 +377,8 @@ func AddTx(
 	var capitalGains float64 = util.Tern[float64](registered, math.NaN(), 0.0)
 	var superficialLoss float64 = util.Tern[float64](registered, math.NaN(), 0.0)
 	superficialLossRatio := util.Uint32Ratio{}
-	var newTx *Tx = nil
+	potentiallyOverAppliedSfl := false
+	var newTxs []*Tx = nil
 
 	// Sanity checks
 	sanityCheckError := func(fmtStr string, v ...interface{}) error {
@@ -392,10 +416,8 @@ func AddTx(
 		capitalGains = totalPayout - (preTxStatus.PerShareAcb() * float64(tx.Shares))
 
 		if !registered && capitalGains < 0.0 {
-			var autoSfLAErr error
-			var autoAdjustAffiliate *Affiliate
-			superficialLossRatio, autoAdjustAffiliate, autoSfLAErr = getSuperficialLossRatio(
-				idx, txs, ptfStatuses, capitalGains)
+			sflRatioResult := getSuperficialLossRatio(idx, txs, ptfStatuses)
+			superficialLossRatio = sflRatioResult.SflRatio
 			calculatedSuperficialLoss := 0.0
 			if superficialLossRatio.Valid() {
 				calculatedSuperficialLoss = capitalGains * superficialLossRatio.ToFloat64()
@@ -422,27 +444,38 @@ func AddTx(
 
 				// ACB adjustment TX must be specified manually in this case.
 			} else if superficialLossRatio.Valid() {
-				if autoSfLAErr != nil {
-					return nil, nil, autoSfLAErr
-				}
-				util.Assert(autoAdjustAffiliate != nil, "addTx: autoAdjustAffiliate was nil")
+				util.Assert(sflRatioResult.AcbAdjustAffiliateRatios != nil,
+					"addTx: sflRatioResult.AcbAdjustAffiliateRatios was nil")
+				util.Assert(len(sflRatioResult.AcbAdjustAffiliateRatios) > 0,
+					"addTx: sflRatioResult.AcbAdjustAffiliateRatios was empty")
 
 				superficialLoss = calculatedSuperficialLoss
 				capitalGains = capitalGains - calculatedSuperficialLoss
+				potentiallyOverAppliedSfl = sflRatioResult.FewerRemainingSharesThanSflShares
 
-				if !autoAdjustAffiliate.Registered() {
-					// This new Tx will adjust (increase) the ACB for this superficial loss.
-					newTx = &Tx{
-						Security:                  tx.Security,
-						TradeDate:                 tx.TradeDate,
-						SettlementDate:            tx.SettlementDate,
-						Action:                    SFLA,
-						Shares:                    superficialLossRatio.Numerator,
-						AmountPerShare:            -1.0 * superficialLoss / float64(superficialLossRatio.Numerator),
-						TxCurrency:                CAD,
-						TxCurrToLocalExchangeRate: 1.0,
-						Memo:                      "automatic SfL ACB adjustment",
-						Affiliate:                 autoAdjustAffiliate,
+				acbAdjustAffiliates := util.MapKeys[string, util.Uint32Ratio](sflRatioResult.AcbAdjustAffiliateRatios)
+				sort.Strings(acbAdjustAffiliates)
+				for _, afId := range acbAdjustAffiliates {
+					ratioOfSfl := sflRatioResult.AcbAdjustAffiliateRatios[afId]
+					autoAdjustAffiliate := GlobalAffiliateDedupTable.MustGet(afId)
+					if ratioOfSfl.Valid() && !autoAdjustAffiliate.Registered() {
+						// This new Tx will adjust (increase) the ACB for this superficial loss.
+						newTxs = append(newTxs, &Tx{
+							Security:                  tx.Security,
+							TradeDate:                 tx.TradeDate,
+							SettlementDate:            tx.SettlementDate,
+							Action:                    SFLA,
+							Shares:                    1,
+							AmountPerShare:            -1.0 * superficialLoss * ratioOfSfl.ToFloat64(),
+							TxCurrency:                CAD,
+							TxCurrToLocalExchangeRate: 1.0,
+							Memo: fmt.Sprintf(
+								"Automatic SfL ACB adjustment. %.2f%% (%d/%d) of SfL, which was %d/%d of sale shares.",
+								ratioOfSfl.ToFloat64()*100.0, ratioOfSfl.Numerator, ratioOfSfl.Denominator,
+								superficialLossRatio.Numerator, superficialLossRatio.Denominator,
+							),
+							Affiliate: autoAdjustAffiliate,
+						})
 					}
 				}
 			}
@@ -494,14 +527,15 @@ func AddTx(
 		TotalAcb:                  newAcbTotal,
 	}
 	delta := &TxDelta{
-		Tx:                   tx,
-		PreStatus:            preTxStatus,
-		PostStatus:           newStatus,
-		CapitalGain:          capitalGains,
-		SuperficialLoss:      superficialLoss,
-		SuperficialLossRatio: superficialLossRatio,
+		Tx:                        tx,
+		PreStatus:                 preTxStatus,
+		PostStatus:                newStatus,
+		CapitalGain:               capitalGains,
+		SuperficialLoss:           superficialLoss,
+		SuperficialLossRatio:      superficialLossRatio,
+		PotentiallyOverAppliedSfl: potentiallyOverAppliedSfl,
 	}
-	return delta, newTx, nil
+	return delta, newTxs, nil
 }
 
 // Insert tx at index i and return the resulting slice
@@ -532,14 +566,14 @@ func TxsToDeltaList(
 
 	for i := 0; i < len(activeTxs); i++ {
 		txAffiliate := NonNilTxAffiliate(activeTxs[i])
-		delta, newTx, err := AddTx(i, activeTxs, ptfStatuses)
+		delta, newTxs, err := AddTx(i, activeTxs, ptfStatuses)
 		if err != nil {
 			// Return what we've managed so far, for debugging
 			return deltas, err
 		}
 		ptfStatuses.SetLatestPostStatus(txAffiliate.Id(), delta.PostStatus)
 		deltas = append(deltas, delta)
-		if newTx != nil {
+		if newTxs != nil {
 			// Add new Tx into modifiedTxs
 			if modifiedTxs == nil {
 				// Copy Txs, as we now need to modify
@@ -548,7 +582,9 @@ func TxsToDeltaList(
 				activeTxs = modifiedTxs
 			}
 			// Insert into modifiedTxs after the current Tx
-			modifiedTxs = insertTx(modifiedTxs, newTx, i+1)
+			for newTxI, newTx := range newTxs {
+				modifiedTxs = insertTx(modifiedTxs, newTx, i+newTxI+1)
+			}
 			activeTxs = modifiedTxs
 		}
 	}

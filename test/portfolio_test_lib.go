@@ -3,6 +3,8 @@ package test
 import (
 	"fmt"
 	"math"
+	"regexp"
+	"strings"
 	"testing"
 	"time"
 
@@ -30,7 +32,7 @@ func CADSFL(lossVal float64, force bool) util.Optional[ptf.SFLInput] {
 	return util.NewOptional[ptf.SFLInput](ptf.SFLInput{lossVal, force})
 }
 
-func addTx(tx *ptf.Tx, preTxStatus *ptf.PortfolioSecurityStatus) (*ptf.TxDelta, *ptf.Tx, error) {
+func addTx(tx *ptf.Tx, preTxStatus *ptf.PortfolioSecurityStatus) (*ptf.TxDelta, []*ptf.Tx, error) {
 	txs := []*ptf.Tx{tx}
 	affil := ptf.NonNilTxAffiliate(tx)
 	ptfStatuses := ptf.NewAffiliatePortfolioSecurityStatuses(tx.Security, nil)
@@ -164,9 +166,10 @@ func (o TPSS) X() *ptf.PortfolioSecurityStatus {
 
 // Test Delta
 type TDt struct {
-	PostSt TPSS
-	Gain   float64
-	SFL    float64
+	PostSt                    TPSS
+	Gain                      float64
+	SFL                       float64
+	PotentiallyOverAppliedSfl bool
 }
 
 // **********************************************************************************
@@ -175,6 +178,12 @@ type TDt struct {
 
 // This will represent NaN, but allow us to actually perform an equality check
 const nanVal float64 = -123.0123456789
+
+const matchingMemoPrefix string = "TEST_MEMO_MATCHES:"
+
+func matchingMemo(pattern string) string {
+	return matchingMemoPrefix + pattern
+}
 
 func SoftTxEq(t *testing.T, exp *ptf.Tx, actual *ptf.Tx) bool {
 	var expCopy ptf.Tx = *exp
@@ -189,6 +198,13 @@ func SoftTxEq(t *testing.T, exp *ptf.Tx, actual *ptf.Tx) bool {
 	}
 	if IsAlmostEqual(actualCopy.AmountPerShare, expCopy.AmountPerShare) {
 		expCopy.AmountPerShare = actualCopy.AmountPerShare
+	}
+	// To match the memo using a regex, set the expected memo with matchingMemo()
+	if strings.HasPrefix(expCopy.Memo, matchingMemoPrefix) {
+		pattern := strings.TrimPrefix(expCopy.Memo, matchingMemoPrefix)
+		if regexp.MustCompile(pattern).MatchString(actualCopy.Memo) {
+			expCopy.Memo = actualCopy.Memo
+		}
 	}
 
 	return assert.Equal(t, expCopy, actualCopy)
@@ -266,16 +282,24 @@ func ValidateDelta(t *testing.T, delta *ptf.TxDelta, expDelta TDt) {
 }
 
 func ValidateDeltas(t *testing.T, deltas []*ptf.TxDelta, expDeltas []TDt) {
-	require.Equal(t, len(expDeltas), len(deltas))
+	if len(expDeltas) != len(deltas) {
+		for j, _ := range deltas {
+			fmt.Println(j, "Tx:", deltas[j].Tx, "PostStatus:", deltas[j].PostStatus)
+		}
+		require.Equal(t, len(expDeltas), len(deltas), "Num deltas did not match")
+	}
 	for i, delta := range deltas {
 		fail := false
 		fail = !SoftStEq(t, expDeltas[i].PostSt.X(), delta.PostStatus) || fail
 		fail = !SoftAlmostEqual(t, expDeltas[i].Gain, delta.CapitalGain,
 			"Capital Gains were not almost equal") || fail
 		fail = !SoftSflAlmostEqual(t, expDeltas[i], delta) || fail
+		fail = (expDeltas[i].PotentiallyOverAppliedSfl != delta.PotentiallyOverAppliedSfl) || fail
 		if fail {
 			for j, _ := range deltas {
-				fmt.Println(j, "Tx:", deltas[j].Tx, "PostStatus:", deltas[j].PostStatus)
+				fmt.Println(j, "Tx:", deltas[j].Tx, "PostStatus:", deltas[j].PostStatus,
+					"Gain:", deltas[j].CapitalGain, "SFL:", deltas[j].SuperficialLoss,
+					"PotentiallyOverAppliedSfl:", deltas[j].PotentiallyOverAppliedSfl)
 			}
 			require.FailNowf(t, "ValidateDeltas failed", "Delta %d", i)
 		}
