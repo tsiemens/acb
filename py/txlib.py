@@ -18,7 +18,8 @@ class Tx:
    security: str
    trade_date: str
    settlement_date: str # Settlement date
-   date_and_time: str # Just used for sorting
+   trade_date_and_time: str # Just used for storage
+   settlement_date_and_time: str # Just used for sorting
    action: Action
    amount_per_share: float
    num_shares: int
@@ -28,8 +29,11 @@ class Tx:
    exchange_rate: float
    affiliate: str
 
+   row_num: int
    # optional metadata
    account: str = None
+   # optional
+   sort_tiebreak: int = 0
 
    @staticmethod
    def date_to_str(d: datetime.date) -> str:
@@ -42,7 +46,9 @@ class AcbCsvRenderer:
       self.errors = []
 
    def sort_txs(self):
-      self.txs = sorted(self.txs, key=lambda t: t.date_and_time)
+      self.txs = sorted(self.txs, key=lambda t: (t.settlement_date_and_time,
+                                                 t.sort_tiebreak,
+                                                 t.row_num))
 
    def rows(self):
       for tx in self.txs:

@@ -93,21 +93,22 @@ Security,Trade Date,Settlement Date,Action,Amount/Share,Shares,Commission,Curren
 CCO     ,2023-01-04,2023-01-05     ,BUY   ,10.0        ,2     ,3.99      ,CAD     ,(R)      ,Questrade Individual TFSA 10000001                       ,
 DLR.TO  ,2023-01-06,2023-01-07     ,BUY   ,1.0         ,3     ,0.0       ,CAD     ,(R)      ,Questrade Individual RRSP 10000002                       ,
 CCO     ,2023-01-08,2023-01-09     ,BUY   ,10.0        ,4     ,1.0       ,CAD     ,         ,Questrade Individual margin 10000003                     ,
+USD.FX  ,2023-01-10,2023-01-10     ,SELL  ,0.01        ,5100  ,0.0       ,USD     ,(R)      ,Questrade Individual TFSA 10000001; from DLR.TO BUY      ,
 DLR.TO  ,2023-01-10,2023-01-11     ,BUY   ,10.0        ,5     ,1.0       ,USD     ,(R)      ,Questrade Individual TFSA 10000001; H038778 AKA DLR.U.TO.,
-USD.FX  ,2023-01-10,2023-01-10     ,SELL  ,0.01        ,5000  ,0.0       ,USD     ,(R)      ,Questrade Individual TFSA 10000001; from DLR.TO BUY      ,
-UCO     ,2023-01-12,2023-01-13     ,BUY   ,10.0        ,6     ,0.0       ,USD     ,(R)      ,Questrade Individual RRSP 10000002                       ,
 USD.FX  ,2023-01-12,2023-01-12     ,SELL  ,0.01        ,6000  ,0.0       ,USD     ,(R)      ,Questrade Individual RRSP 10000002; from UCO BUY         ,
+UCO     ,2023-01-12,2023-01-13     ,BUY   ,10.0        ,6     ,0.0       ,USD     ,(R)      ,Questrade Individual RRSP 10000002                       ,
+USD.FX  ,2023-01-14,2023-01-14     ,SELL  ,0.01        ,7100  ,0.0       ,USD     ,         ,Questrade Individual margin 10000003; from UCO BUY       ,
 UCO     ,2023-01-14,2023-01-15     ,BUY   ,10.0        ,7     ,1.0       ,USD     ,         ,Questrade Individual margin 10000003                     ,
-USD.FX  ,2023-01-14,2023-01-14     ,SELL  ,0.01        ,7000  ,0.0       ,USD     ,         ,Questrade Individual margin 10000003; from UCO BUY       ,
 CCO     ,2023-01-16,2023-01-17     ,SELL  ,10.0        ,8     ,1.0       ,CAD     ,(R)      ,Questrade Individual TFSA 10000001                       ,
 CCO     ,2023-01-18,2023-01-19     ,SELL  ,10.0        ,9     ,1.0       ,CAD     ,(R)      ,Questrade Individual RRSP 10000002                       ,
 CCO     ,2023-01-20,2023-01-21     ,SELL  ,10.0        ,10    ,1.0       ,CAD     ,         ,Questrade Individual margin 10000003                     ,
+USD.FX  ,2023-01-22,2023-01-22     ,BUY   ,0.01        ,10900 ,0.0       ,USD     ,(R)      ,Questrade Individual TFSA 10000001; from UCO SELL        ,
 UCO     ,2023-01-22,2023-01-23     ,SELL  ,10.0        ,11    ,1.0       ,USD     ,(R)      ,Questrade Individual TFSA 10000001                       ,
-USD.FX  ,2023-01-22,2023-01-22     ,BUY   ,0.01        ,11000 ,0.0       ,USD     ,(R)      ,Questrade Individual TFSA 10000001; from UCO SELL        ,
+USD.FX  ,2023-01-24,2023-01-24     ,BUY   ,0.01        ,11900 ,0.0       ,USD     ,(R)      ,Questrade Individual RRSP 10000002; from UCO SELL        ,
 UCO     ,2023-01-24,2023-01-25     ,SELL  ,10.0        ,12    ,1.0       ,USD     ,(R)      ,Questrade Individual RRSP 10000002                       ,
-USD.FX  ,2023-01-24,2023-01-24     ,BUY   ,0.01        ,12000 ,0.0       ,USD     ,(R)      ,Questrade Individual RRSP 10000002; from UCO SELL        ,
+USD.FX  ,2023-01-26,2023-01-26     ,BUY   ,0.01        ,12900 ,0.0       ,USD     ,         ,Questrade Individual margin 10000003; from UCO SELL      ,
 UCO     ,2023-01-26,2023-01-27     ,SELL  ,10.0        ,13    ,1.0       ,USD     ,         ,Questrade Individual margin 10000003                     ,
-USD.FX  ,2023-01-26,2023-01-26     ,BUY   ,0.01        ,13000 ,0.0       ,USD     ,         ,Questrade Individual margin 10000003; from UCO SELL      ,
+USD.FX  ,2023-01-28,2023-01-28     ,BUY   ,0.01        ,3050  ,0.0       ,USD     ,         ,Questrade Individual margin 10000003; DIV from UCO       ,
 UCO     ,2023-01-28,2023-01-29     ,BUY   ,0.0         ,20    ,0.0       ,USD     ,         ,Questrade Individual margin 10000003; From DIS action.   ,
 """
 
@@ -202,3 +203,23 @@ FOO     ,2023-01-04,2023-01-05     ,BUY   ,10.0        ,2     ,3.99      ,CAD   
  - Row 21: FXTs not supported between UNK2 and UNK1. Exactly one currency must be CAD.
  - Row 22: Unpaired FXT
 """)
+
+def test_sort():
+   lines, errs = run_and_get_lines(['-a', '.', '--sheet', '5'])
+
+   verify_csv_from_text(lines, """
+Security,Trade Date,Settlement Date,Action,Amount/Share,Shares,Commission,Currency,Affiliate,Memo,Exchange Rate
+UCO,2023-01-12,2023-01-12,BUY,10.0,1,0.0,USD,,Questrade Individual margin 10000003,
+UCO,2023-01-12,2023-01-12,SELL,10.0,3,0.0,USD,,Questrade Individual margin 10000003,
+USD.FX,2023-01-12,2023-01-12,BUY,0.01,10000,0.0,USD,,Questrade Individual margin 10000003; FXT,1.3
+USD.FX,2023-01-12,2023-01-12,BUY,0.01,3000,0.0,USD,,Questrade Individual margin 10000003; from UCO SELL,
+USD.FX,2023-01-12,2023-01-12,BUY,0.01,4000,0.0,USD,,Questrade Individual margin 10000003; from UCO SELL,
+USD.FX,2023-01-12,2023-01-12,SELL,0.01,20000,0.0,USD,,Questrade Individual margin 10000003; FXT,1.25
+USD.FX,2023-01-12,2023-01-12,SELL,0.01,1000,0.0,USD,,Questrade Individual margin 10000003; from UCO BUY,
+USD.FX,2023-01-12,2023-01-12,SELL,0.01,2000,0.0,USD,,Questrade Individual margin 10000003; from UCO BUY,
+UCO,2023-01-12,2023-01-13,BUY,10.0,2,0.0,USD,,Questrade Individual margin 10000003,
+UCO,2023-01-12,2023-01-13,SELL,10.0,4,0.0,USD,,Questrade Individual margin 10000003,
+UCO,2023-01-13,2023-01-13,SELL,10.0,5,0.0,USD,,Questrade Individual margin 10000003,
+USD.FX,2023-01-13,2023-01-13,BUY,0.01,5000,0.0,USD,,Questrade Individual margin 10000003; from UCO SELL,
+""")
+   assert errs == []

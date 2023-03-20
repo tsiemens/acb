@@ -76,7 +76,7 @@ class FxtRow:
    currency: str
    affiliate: str
    trade_date: str
-   date_and_time: str
+   trade_date_and_time: str
    amount: float
    account: QtAccount
 
@@ -134,29 +134,31 @@ class FxTracker:
       rate = abs(cad_fxt.amount/other_fxt.amount)
 
       tx = self.fx_tx(other_fxt.currency, other_fxt.trade_date,
-                      other_fxt.date_and_time, other_fxt.amount,
-                      other_fxt.affiliate, other_fxt.account,
+                      other_fxt.trade_date_and_time, other_fxt.amount,
+                      other_fxt.affiliate, fxt_row.row_num, other_fxt.account,
                       exchange_rate=rate,
                       memo_extra='FXT')
       self.txs.append(tx)
 
    def add_implicit_fxt(self, tx: Tx, account: QtAccount):
-      amount = tx.amount_per_share * tx.num_shares
+      amount = (tx.amount_per_share * tx.num_shares)
       if tx.action == Action.BUY:
          # We're buying some stock with USD, so our reserve will decrease.
          amount *= -1
+
+      amount -= tx.commission
 
       if amount == 0:
          # This might happen for DIS actions, which get treated otherwise like a buy.
          return
 
-      tx = self.fx_tx(tx.currency, tx.trade_date, tx.date_and_time, amount,
-                      tx.affiliate, account,
+      tx = self.fx_tx(tx.currency, tx.trade_date, tx.trade_date_and_time, amount,
+                      tx.affiliate, tx.row_num, account,
                       memo_extra=f'from {tx.security} {tx.action.value}')
       self.txs.append(tx)
 
-   def fx_tx(self, currency: str, trade_date: str, date_and_time: str,
-             amount: float, affiliate: str, account: QtAccount,
+   def fx_tx(self, currency: str, trade_date: str, trade_date_and_time: str,
+             amount: float, affiliate: str, row_num: int, account: QtAccount,
              exchange_rate=None, memo_extra=None):
 
       action = Action.BUY if amount > 0.0 else Action.SELL
@@ -175,7 +177,10 @@ class FxTracker:
          security=currency + '.FX',
          trade_date=trade_date,
          settlement_date=trade_date,
-         date_and_time=date_and_time,
+         trade_date_and_time=trade_date_and_time,
+         # FXTs always settle immediately, and must sort by trade date anyway,
+         # else we'll have incorrect balances.
+         settlement_date_and_time=trade_date_and_time,
          action=action,
          amount_per_share=amount_per_share,
          num_shares=shares,
@@ -184,7 +189,10 @@ class FxTracker:
          affiliate=affiliate,
          memo=memo,
          exchange_rate=exchange_rate,
+         row_num=row_num,
          account=account.account_str(),
+         # We need all FX to buy first, then sell. Otherwise we have quantity issues
+         sort_tiebreak=1 if action == Action.BUY else 2,
       )
 
    def get_fx_txs(self) -> tuple[list[Tx], SheetParseError]:
@@ -207,9 +215,9 @@ class QuestradeSheet(AcbCsvRenderer):
 
    def __init__(self, xl_wb: XlWorkbook, sheet_index=0):
       super().__init__()
-      ignored_actions = {'DIV', 'BRW', 'TFI', 'TF6', 'MGR', 'DEP', 'NAC',
+      ignored_actions = {'BRW', 'TFI', 'TF6', 'MGR', 'DEP', 'NAC',
                          'CON', None}
-      allowed_actions = {'Buy', 'Sell', 'DIS', 'FXT'}
+      allowed_actions = {'Buy', 'Sell', 'DIS', 'FXT', 'DIV'}
 
       fxtracker = FxTracker()
 
@@ -247,6 +255,21 @@ class QuestradeSheet(AcbCsvRenderer):
                          account_type, flags=re.I):
                affiliate = '(R)'
 
+            symbol = get('Symbol')
+
+            if action_str == 'DIV':
+               if get('Currency') == 'USD':
+                  div_tx = fxtracker.fx_tx('USD',
+                                           trade_date,
+                                           get('Transaction Date'),
+                                           parse_float(get('Net Amount'), 'Net Amount'),
+                                           affiliate,
+                                           i + 1,
+                                           account,
+                                           memo_extra=f"DIV from {symbol}")
+                  fxtracker.txs.append(div_tx)
+               continue
+
             if action_str == 'FXT':
                fxt_row = FxtRow(
                   i + 1,
@@ -266,7 +289,6 @@ class QuestradeSheet(AcbCsvRenderer):
                converted_action_note = f"; From DIS action."
 
             action = Action(action_str.upper())
-            symbol = get('Symbol')
             if symbol is None:
                raise SheetParseError("Symbol was empty")
             orig_symbol_note = ''
@@ -279,7 +301,8 @@ class QuestradeSheet(AcbCsvRenderer):
                security=symbol,
                trade_date=trade_date,
                settlement_date=QuestradeSheet.convert_date_str(get('Settlement Date')),
-               date_and_time=get('Settlement Date'),
+               trade_date_and_time=get('Transaction Date'),
+               settlement_date_and_time=get('Settlement Date'),
                action=action,
                amount_per_share=parse_float(get('Price'), 'Price'),
                num_shares=abs(parse_int(get('Quantity'), 'Quantity')),
@@ -288,6 +311,7 @@ class QuestradeSheet(AcbCsvRenderer):
                affiliate=affiliate,
                memo=account.memo_str() + orig_symbol_note + converted_action_note,
                exchange_rate=None,
+               row_num=i + 1,
                account=account.account_str(),
             )
             self.txs.append(tx)
