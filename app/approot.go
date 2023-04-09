@@ -19,7 +19,7 @@ import (
 // reference for when the last time the app was updated.
 // Major version is kept at 0, since the app is perpetually in 'beta' due to there
 // not being a tax-lawer on staff to verify anything.
-var AcbVersion = "0.22.09"
+var AcbVersion = "0.23.04"
 
 /* Takes a list of security status strings, each formatted as:
  * SYM:nShares:totalAcb. Eg. GOOG:20:1000.00
