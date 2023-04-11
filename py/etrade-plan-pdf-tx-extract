@@ -14,9 +14,9 @@ import itertools
 from pprint import pprint
 import re
 import sys
-from typing import Union
+from typing import Union, List
 
-from txlib import AcbCsvRenderer, Action, StderrSilencer, Tx
+from txlib import AcbCsvRenderer, Action, Tx
 
 import PyPDF2
 
@@ -47,9 +47,9 @@ class BenefitEntry:
 
    plan_note: str
 
-def make_tx_renderer(benefits):
+def make_tx_renderer(benefits: List[BenefitEntry]):
    renderer = AcbCsvRenderer()
-   for b in benefits:
+   for row, b in enumerate(benefits):
       if b.sell_to_cover_tx_date is None or b.sell_to_cover_settle_date is None:
          print("Error: No trade or settlement date found for sell-to-cover for "
                f"{b.acquire_shares} shares of {b.security} aquired on {b.acquire_tx_date}")
@@ -59,13 +59,15 @@ def make_tx_renderer(benefits):
             security=b.security,
             trade_date=Tx.date_to_str(b.acquire_tx_date),
             settlement_date=Tx.date_to_str(b.acquire_settle_date),
-            date_and_time=Tx.date_to_str(b.acquire_settle_date),
+            trade_date_and_time=Tx.date_to_str(b.acquire_tx_date),
+            settlement_date_and_time=Tx.date_to_str(b.acquire_settle_date),
             action=Action.BUY,
             amount_per_share=float(b.acquire_share_price),
             num_shares=b.acquire_shares,
             commission=0.0,
             currency='USD',
             affiliate='',
+            row_num=row+1,
             memo=b.plan_note,
             exchange_rate=None,
          )
@@ -74,13 +76,15 @@ def make_tx_renderer(benefits):
             security=b.security,
             trade_date=Tx.date_to_str(b.sell_to_cover_tx_date),
             settlement_date=Tx.date_to_str(b.sell_to_cover_settle_date),
-            date_and_time=Tx.date_to_str(b.sell_to_cover_settle_date),
+            trade_date_and_time=Tx.date_to_str(b.sell_to_cover_tx_date),
+            settlement_date_and_time=Tx.date_to_str(b.sell_to_cover_settle_date),
             action=Action.SELL,
             amount_per_share=float(b.sell_to_cover_price),
             num_shares=b.sell_to_cover_shares,
             commission=float(b.sell_to_cover_fee),
             currency='USD',
             affiliate='',
+            row_num=row+1,
             memo=f"{b.plan_note} sell-to-cover",
             exchange_rate=None,
          )
@@ -245,8 +249,7 @@ def text_to_trade_confirmation_objs(text: str):
 
 def parse_pdf(f: io.BufferedReader) -> Union[BenefitEntry, TradeConfirmation]:
    reader = PyPDF2.PdfReader(f)
-   with StderrSilencer():
-      text = reader.getPage(0).extractText()
+   text = reader.pages[0].extract_text()
 
    if re.search(r'Plan\s*ESP2', text):
       obj = text_to_espp_entry(text)
