@@ -14,7 +14,7 @@ import itertools
 from pprint import pprint
 import re
 import sys
-from typing import Union, List
+from typing import Optional, Union, List
 
 from txlib import AcbCsvRenderer, Action, Tx
 
@@ -39,22 +39,17 @@ class BenefitEntry:
    acquire_share_price: Decimal
    acquire_shares: int
 
-   sell_to_cover_tx_date: datetime.date
-   sell_to_cover_settle_date: datetime.date
-   sell_to_cover_price: Decimal
-   sell_to_cover_shares: int
-   sell_to_cover_fee: Decimal
+   sell_to_cover_tx_date: Optional[datetime.date]
+   sell_to_cover_settle_date: Optional[datetime.date]
+   sell_to_cover_price: Optional[Decimal]
+   sell_to_cover_shares: Optional[int]
+   sell_to_cover_fee: Optional[Decimal]
 
    plan_note: str
 
 def make_tx_renderer(benefits: List[BenefitEntry]):
    renderer = AcbCsvRenderer()
    for row, b in enumerate(benefits):
-      if b.sell_to_cover_tx_date is None or b.sell_to_cover_settle_date is None:
-         print("Error: No trade or settlement date found for sell-to-cover for "
-               f"{b.acquire_shares} shares of {b.security} aquired on {b.acquire_tx_date}")
-         exit(1)
-
       buy_tx = Tx(
             security=b.security,
             trade_date=Tx.date_to_str(b.acquire_tx_date),
@@ -72,25 +67,27 @@ def make_tx_renderer(benefits: List[BenefitEntry]):
             exchange_rate=None,
          )
 
-      sell_tx = Tx(
-            security=b.security,
-            trade_date=Tx.date_to_str(b.sell_to_cover_tx_date),
-            settlement_date=Tx.date_to_str(b.sell_to_cover_settle_date),
-            trade_date_and_time=Tx.date_to_str(b.sell_to_cover_tx_date),
-            settlement_date_and_time=Tx.date_to_str(b.sell_to_cover_settle_date),
-            action=Action.SELL,
-            amount_per_share=float(b.sell_to_cover_price),
-            num_shares=b.sell_to_cover_shares,
-            commission=float(b.sell_to_cover_fee),
-            currency='USD',
-            affiliate='',
-            row_num=row+1,
-            memo=f"{b.plan_note} sell-to-cover",
-            exchange_rate=None,
-         )
-
       renderer.txs.append(buy_tx)
-      renderer.txs.append(sell_tx)
+
+      if b.sell_to_cover_shares is not None:
+         sell_tx = Tx(
+               security=b.security,
+               trade_date=Tx.date_to_str(b.sell_to_cover_tx_date),
+               settlement_date=Tx.date_to_str(b.sell_to_cover_settle_date),
+               trade_date_and_time=Tx.date_to_str(b.sell_to_cover_tx_date),
+               settlement_date_and_time=Tx.date_to_str(b.sell_to_cover_settle_date),
+               action=Action.SELL,
+               amount_per_share=float(b.sell_to_cover_price),
+               num_shares=b.sell_to_cover_shares,
+               commission=float(b.sell_to_cover_fee),
+               currency='USD',
+               affiliate='',
+               row_num=row+1,
+               memo=f"{b.plan_note} sell-to-cover",
+               exchange_rate=None,
+            )
+
+         renderer.txs.append(sell_tx)
 
    renderer.sort_txs()
    return renderer
@@ -172,7 +169,7 @@ def text_to_espp_data(text) -> dict:
       ).date(),
       "share purchased": search_for_decimal(r"Shares Purchased\s*(\d+\.\d+)", text),
       "share sold":
-         search_for_decimal(r"Shares Sold to Cover Taxes\s*(\d+\.\d+)", text),
+         search_for_decimal(r"Shares Sold to Cover Taxes\s*(\d+\.\d+)", text, optional=True),
       "FMV":
          search_for_decimal(r"Purchase Value per Share\s*\$(\d+\.\d+)", text),
       "purchase price":
@@ -183,15 +180,16 @@ def text_to_espp_data(text) -> dict:
       "total value": search_for_decimal(r"Total Value\s*\$([\d,]+\.\d+)", text),
       "taxable gain": search_for_decimal(r"Taxable Gain\s*\$([\d,]+\.\d+)", text),
       "sale price": search_for_decimal(
-            r"Sale Price for Shares Sold to Cover Taxes\s*\$(\d+\.\d+)", text
+            r"Sale Price for Shares Sold to Cover Taxes\s*\$(\d+\.\d+)", text,
+            optional=True,
          ),
-      "fee": search_for_decimal(r"Fees\s*\(\$(\d+\.\d+)", text),
+      "fee": search_for_decimal(r"Fees\s*\(\$(\d+\.\d+)", text, optional=True),
       "total sale price": search_for_decimal(
          r"Value Of Shares Sold\s\$([\d,]+\.\d+)", text, optional=True),
       "market value at grant":
          search_for_decimal(r"Market Value\s*\$([\d,]+\.\d+)", text),
       "cash leftover":
-         search_for_decimal(r"Amount in Excess of Tax Due\s\$(\d+\.\d+)", text),
+         search_for_decimal(r"Amount in Excess of Tax Due\s\$(\d+\.\d+)", text, optional=True),
       "total tax": search_for_decimal(
          r"Total Taxes Collected at purchase\s\(\$([\d,]+\.\d+)\)", text,
          optional=True),
@@ -215,7 +213,7 @@ def text_to_espp_entry(text: str) -> BenefitEntry:
          sell_to_cover_tx_date=None,
          sell_to_cover_settle_date=None,
          sell_to_cover_price=data['sale price'],
-         sell_to_cover_shares=int(data['share sold']),
+         sell_to_cover_shares=int(data['share sold']) if data['share sold'] else None,
          sell_to_cover_fee=data['fee'],
 
          plan_note="ESPP",
