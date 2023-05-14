@@ -69,7 +69,23 @@ def make_tx_renderer(benefits: List[BenefitEntry]):
 
       renderer.txs.append(buy_tx)
 
-      if b.sell_to_cover_shares is not None:
+      # Keys here are human-readable
+      sell_to_cover_attrs = {
+         "trade date": b.sell_to_cover_tx_date,
+         "settlement date": b.sell_to_cover_settle_date,
+         "shares sold": b.sell_to_cover_shares,
+         "price": b.sell_to_cover_price,
+         "fee": b.sell_to_cover_fee,
+      }
+
+      if any(v is not None for v in sell_to_cover_attrs.values()):
+         if not all(v is not None for v in sell_to_cover_attrs.values()):
+            stcInfo = ', '.join(f"{k}: {v}" for k, v in sell_to_cover_attrs.items())
+            print("Error: Some, but not all, sell-to-cover fields were found for "
+                  f"{b.acquire_shares} shares of {b.security} aquired on {b.acquire_tx_date}. "
+                  f"StC {stcInfo}")
+            exit(1)
+
          sell_tx = Tx(
                security=b.security,
                trade_date=Tx.date_to_str(b.sell_to_cover_tx_date),
