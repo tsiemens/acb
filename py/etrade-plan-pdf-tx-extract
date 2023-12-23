@@ -9,12 +9,13 @@ import argparse
 from dataclasses import dataclass
 import datetime
 from decimal import Decimal
+import inspect
 import io
 import itertools
 from pprint import pprint
 import re
 import sys
-from typing import Optional, Union, List
+from typing import Optional, Union
 
 from txlib import AcbCsvRenderer, Action, Tx
 
@@ -22,9 +23,31 @@ import PyPDF2
 
 _debug = False
 
+def frame_name(n: int = 0) -> str:
+   def _frame_name(frame, n_: int) -> str:
+      if n_ == 0:
+         # Extract the name of the function from the frame
+         return frame.f_code.co_name
+      else:
+         parent_frame = frame.f_back
+         # Recurse up the stackframe
+         return _frame_name(parent_frame, n_ - 1)
+
+   # Get the current stack frame
+   frame = inspect.currentframe()
+   try:
+      return _frame_name(frame, n+1)
+   finally:
+      # Explicitly delete to avoid reference cycles (?)
+      del frame
+
 def debug(*args):
    if _debug:
       print(*args)
+
+def fdebug(*args):
+   if _debug:
+      print(f"{frame_name(1)}:", *args)
 
 def ppdebug(obj):
    if _debug:
@@ -47,7 +70,24 @@ class BenefitEntry:
 
    plan_note: str
 
-def make_tx_renderer(benefits: List[BenefitEntry]):
+@dataclass
+class TradeConfirmation:
+   security: str
+   action: Action
+   tx_date: datetime.date
+   settle_date: datetime.date
+   shares: int
+   amount_per_share: float
+   commission: float
+   fee: float
+
+   def total_commission(self) -> float:
+      return self.commission + self.fee
+
+   def __hash__(self):
+      return hash(repr(self))
+
+def make_tx_renderer(benefits: list[BenefitEntry], remaining_trades:list[TradeConfirmation]):
    renderer = AcbCsvRenderer()
    for row, b in enumerate(benefits):
       buy_tx = Tx(
@@ -104,6 +144,28 @@ def make_tx_renderer(benefits: List[BenefitEntry]):
             )
 
          renderer.txs.append(sell_tx)
+
+   row = len(benefits) + 1
+   for trade in remaining_trades:
+      tx = Tx(
+            security=trade.security,
+            trade_date=Tx.date_to_str(trade.tx_date),
+            settlement_date=Tx.date_to_str(trade.settle_date),
+            trade_date_and_time=Tx.date_to_str(trade.tx_date),
+            settlement_date_and_time=Tx.date_to_str(trade.settle_date),
+            action=trade.action,
+            amount_per_share=float(trade.amount_per_share),
+            num_shares=trade.shares,
+            commission=trade.total_commission(),
+            currency='USD',
+            affiliate='',
+            row_num=row,
+            memo=f"manual trade",
+            exchange_rate=None,
+         )
+      row += 1
+
+      renderer.txs.append(tx)
 
    renderer.sort_txs()
    return renderer
@@ -235,49 +297,104 @@ def text_to_espp_entry(text: str) -> BenefitEntry:
          plan_note="ESPP",
       )
 
-@dataclass
-class TradeConfirmation:
-   security: str
-   action: str
-   tx_date: datetime.date
-   settle_date: datetime.date
-   shares: int
+def re_group_or(match, group_name:str, default):
+   if match.group(group_name) is None:
+      return default
+   return match.group(group_name)
 
-   def __hash__(self):
-      return hash(repr(self))
-
-def text_to_trade_confirmation_objs(text: str):
+def old_etrade_text_to_trade_confirmation_objs(text: str):
+   """
+   Trade confirmation form before Morgan Stanley aquired ETRADE
+   (mid 2023 and before)
+   """
    ms = re.finditer(r'(?P<txdate>\d+/\d+/\d+)\s+(?P<sdate>\d+/\d+/\d+)\s+(?P<cpt>\d+)\s+'
-                    r'(?P<sym>\S+)\s+(?P<act>\S+)\s+(?P<nshares>\d+)\s+\$(\d+\.\d+)',
+                    r'(?P<sym>\S+)\s+(?P<act>\S+)\s+(?P<nshares>\d+)\s+\$(?P<price>\d+\.\d+)[^\n]*\n'
+                    r'[^\n]*(COMMISSION\s+\$(?P<commission>\d+\.\d+)[^\n]*\n)?'
+                    r'[^\n]*(FEE\s+\$(?P<fee>\d+\.\d+)[^\n]*\n)?'
+                    r'[^\n]*NET\s+AMOUNT',
                     text)
+
    objs = []
    for m in ms:
       objs.append(TradeConfirmation(
             security=m.group('sym'),
-            action=m.group('act'),
+            action=Action(m.group('act')),
             tx_date=datetime.datetime.strptime(m.group('txdate'), '%m/%d/%y').date(),
             settle_date=datetime.datetime.strptime(m.group('sdate'), '%m/%d/%y').date(),
             shares=int(m.group('nshares')),
+            amount_per_share=float(m.group('price')),
+            commission=float(re_group_or(m, 'commission', '0')),
+            fee=float(re_group_or(m, 'fee', '0')),
          ))
    return objs
 
-def parse_pdf(f: io.BufferedReader) -> Union[BenefitEntry, TradeConfirmation]:
+def ms_etrade_text_to_trade_confirmation_objs(text: str):
+   """Trade confirmation form after Morgan Stanley aquired ETRADE (2023)"""
+   m = re.search(r'Trade\s+Date\s+Settlement\s+Date\s+Quantity\s+Price\s+Settlement\s+Amount\s+'
+                 r'(?P<txdate>\d+/\d+/\d+)\s+(?P<sdate>\d+/\d+/\d+)\s+(?P<nshares>\d+)\s+'
+                 r'(?P<price>\d+\.\d+)\s+'
+                 r'Transaction\s+Type:\s*(?P<act>\S+)\s*'
+                 r'Description.*\n.*ISIN:\s*(?P<sym>\S+)'
+                 r'([\s\S]*Commission\s+\$(?P<commission>\d+\.\d+))?'
+                 r'([\s\S]*Transaction\s+Fee\s+\$(?P<fee>\d+\.\d+))?',
+                 text)
+   if m:
+      action = None
+      if m.group('act') == 'Sold':
+         action = Action.SELL
+      elif m.group('act') == 'Bought':
+         action = Action.BUY
+      else:
+         print(f"Error in MS ETRADE trade confirmation PDF: unrecognized action '{m.group('act')}'",
+               file=sys.stderr)
+         exit(1)
+      return [TradeConfirmation(
+            security=m.group('sym'),
+            action=action,
+            tx_date=datetime.datetime.strptime(m.group('txdate'), '%m/%d/%Y').date(),
+            settle_date=datetime.datetime.strptime(m.group('sdate'), '%m/%d/%Y').date(),
+            shares=int(m.group('nshares')),
+            amount_per_share=float(m.group('price')),
+            commission=float(re_group_or(m, 'commission', '0')),
+            fee=float(re_group_or(m, 'fee', '0')),
+         )]
+   return []
+
+def parse_pdf(f: io.BufferedReader, fname: str) -> Union[BenefitEntry, list[TradeConfirmation]]:
    reader = PyPDF2.PdfReader(f)
    text = reader.pages[0].extract_text()
+
+   fdebug("Extracted PDF text:")
+   ppdebug(text)
+
+   error = None
 
    if re.search(r'Plan\s*ESP2', text):
       obj = text_to_espp_entry(text)
    elif re.search(r'STOCK\s+PLAN\s+RELEASE\s+CONFIRMATION', text):
       obj = text_to_rsu_entry(text)
    elif re.search(r'TRADE\s*CONFIRMATION', text):
-      obj = text_to_trade_confirmation_objs(text)
+      # Original independent ETRADE trade confirmation.
+      obj = old_etrade_text_to_trade_confirmation_objs(text)
+      if not obj:
+         error = f"could not find any trade confirmations in old ETRADE PDF {fname}"
+   elif re.search(r'This\s+transaction\s+is\s+confirmed', text):
+      # Updated Morgan Stanley trade confirmation document
+      obj = ms_etrade_text_to_trade_confirmation_objs(text)
+      if not obj:
+         error = f"could not find any trade confirmations in MS/ETRADE PDF {fname}"
    else:
-      pprint(text, stream=sys.stderr)
-      print("Error: Unrecognized PDF format", file=sys.stderr)
+      error = f"cannot categorize layout of PDF {fname}"
+
+   if error:
+      print(f"Error: etrade-plan-pfd-tx-extract {error}.\n"
+            "       Script may require updating. Run with --debug to show extracted text.",
+            file=sys.stderr)
       exit(1)
 
    if _debug:
       pprint(obj)
+
    return obj
 
 def find_and_apply_sell_to_cover_trade_set(benefit, trade_confs):
@@ -309,10 +426,17 @@ def find_and_apply_sell_to_cover_trade_set(benefit, trade_confs):
                pprint(t_, stream=sys.stderr)
       benefit.sell_to_cover_tx_date=t0.tx_date
       benefit.sell_to_cover_settle_date=t0.settle_date
+      fdebug("Found matching trade confirmations for benefit:")
+      ppdebug(benefit)
+      for t in matching_trades:
+         ppdebug(t)
       return matching_trades
    else:
       print(f"Error: Found no trades matching the sell-to-cover for {benefit.plan_note} "
             f"{benefit.acquire_tx_date}", file=sys.stderr)
+      fdebug("Candidates:")
+      for t in trade_confs:
+         ppdebug(t)
       return []
 
 def amend_benefit_sales(benefits, trade_confs):
@@ -322,7 +446,7 @@ def amend_benefit_sales(benefits, trade_confs):
       latest_day = benefit.acquire_tx_date + datetime.timedelta(days=5)
       candidate_trades = []
       for trade in trade_confs:
-         if trade.action == 'SELL' and \
+         if trade.action == Action.SELL and \
             benefit.acquire_tx_date <= trade.tx_date and trade.tx_date <= latest_day:
             candidate_trades.append(trade)
 
@@ -336,7 +460,7 @@ def amend_benefit_sales(benefits, trade_confs):
 def main():
    ap = argparse.ArgumentParser(description="""\
 Instructions:
-Go to us.etrade.com, log into your account, and go to 'Stock Plan', then to
+Go to us.etrade.com, log into your account, and go to 'At Work', then to
 'Holdings'. In ESPP and RS sections, click 'Benefit History'. Expand each relevant
 section, and donwload (right-click and 'save link as') each
 'View confirmation of purchase' or 'View confirmation of release' link PDF.
@@ -366,11 +490,13 @@ Run this script, giving the name of all PDFs as arguments.""",
       debug("Parsing ", fname)
       with open(fname, 'rb') as f:
          try:
-            obj = parse_pdf(f)
+            obj = parse_pdf(f, fname)
             if isinstance(obj, BenefitEntry):
                benefits.append(obj)
             elif isinstance(obj, list) and obj and isinstance(obj[0], TradeConfirmation):
                trade_confs.extend(obj)
+            else:
+               assert False, f"parse_pdf produced a result of type {type(obj)}, which is not recognized"
          except ReSearchError as e:
             print(f"Error parsing {fname}: {e}", file=sys.stderr)
             return 1
@@ -384,7 +510,7 @@ Run this script, giving the name of all PDFs as arguments.""",
       ppdebug(t)
 
    debug("\nTable:")
-   renderer = make_tx_renderer(benefits)
+   renderer = make_tx_renderer(benefits, remaining_trades)
    if args.pretty:
       renderer.render_table()
    else:
