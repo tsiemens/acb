@@ -123,7 +123,8 @@ def make_tx_renderer(benefits: list[BenefitEntry], remaining_trades:list[TradeCo
             stcInfo = ', '.join(f"{k}: {v}" for k, v in sell_to_cover_attrs.items())
             print("Error: Some, but not all, sell-to-cover fields were found for "
                   f"{b.acquire_shares} shares of {b.security} aquired on {b.acquire_tx_date}. "
-                  f"StC {stcInfo}")
+                  f"StC {stcInfo}",
+                  file=sys.stderr)
             exit(1)
 
          sell_tx = Tx(
