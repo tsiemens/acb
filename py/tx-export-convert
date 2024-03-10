@@ -217,7 +217,7 @@ class QuestradeSheet(AcbCsvRenderer):
       super().__init__()
       ignored_actions = {'BRW', 'TFI', 'TF6', 'MGR', 'DEP', 'NAC',
                          'CON', None}
-      allowed_actions = {'Buy', 'Sell', 'DIS', 'FXT', 'DIV'}
+      allowed_actions = {'BUY', 'SELL', 'DIS', 'LIQ', 'FXT', 'DIV'}
 
       fxtracker = FxTracker()
 
@@ -237,10 +237,12 @@ class QuestradeSheet(AcbCsvRenderer):
                return row[col_name_to_index[name]].value
 
             action_str = get('Action')
+            if action_str is not None:
+               action_str = action_str.upper()
             if (action_str not in allowed_actions and
                 action_str not in ignored_actions):
                raise SheetParseError(
-                     f"Unrecognized transaction action {repr(action_str)}")
+                     f"Unrecognized transaction action {repr(get('Action'))}")
             if action_str in ignored_actions:
                continue
 
@@ -287,6 +289,10 @@ class QuestradeSheet(AcbCsvRenderer):
             if action_str == 'DIS':
                action_str = 'BUY'
                converted_action_note = f"; From DIS action."
+            # Treat stock liquidations as sales
+            if action_str == 'LIQ':
+               action_str = 'SELL'
+               converted_action_note = f"; From LIQ action."
 
             action = Action(action_str.upper())
             if symbol is None:

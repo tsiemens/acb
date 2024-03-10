@@ -110,6 +110,7 @@ USD.FX  ,2023-01-26,2023-01-26     ,BUY   ,0.01        ,12900 ,0.0       ,USD   
 UCO     ,2023-01-26,2023-01-27     ,SELL  ,10.0        ,13    ,1.0       ,USD     ,         ,Questrade Individual margin 10000003                     ,
 USD.FX  ,2023-01-28,2023-01-28     ,BUY   ,0.01        ,3050  ,0.0       ,USD     ,         ,Questrade Individual margin 10000003; DIV from UCO       ,
 UCO     ,2023-01-28,2023-01-29     ,BUY   ,0.0         ,20    ,0.0       ,USD     ,         ,Questrade Individual margin 10000003; From DIS action.   ,
+UCO     ,2023-01-28,2023-01-29     ,SELL  ,0.0         ,19    ,0.0       ,USD     ,         ,Questrade Individual margin 10000003; From LIQ action.   ,
 """
 
    verify_csv_from_text(lines, exp_csv)
