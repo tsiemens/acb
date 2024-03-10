@@ -1,6 +1,13 @@
 #!/usr/bin/env python3
 
+import argparse
+import re
 import sys
+
+desc="""\
+To piped output from `acb`, or a file containing the output, colour buys
+and sells differently to help more easily fill in tax forms.
+"""
 
 class Colors:
    BLACK = "\033[0;30m"
@@ -29,23 +36,53 @@ class Colors:
    RESET = "\033[0m"
 
 def main():
+   ap = argparse.ArgumentParser(description=desc)
+   ap.add_argument( 'fname', nargs='?',
+      help="ACB output text file. If not provided, or '-', reads from stdin" )
+   ap.add_argument( '--year', '-y', help="Only color txs in this year" )
+   ap.add_argument( '--non-registered-only', '-R', action='store_true',
+                    help="Only color txs for non-registered accounts" )
+   args = ap.parse_args()
+
+   using_stdin = (not args.fname or args.fname == '-')
+
+   def get_lines():
+      if using_stdin:
+         return sys.stdin.readlines()
+      else:
+         with open(args.fname) as f:
+            lines = list(f.readlines())
+         return lines
+
+   def filter_in_line(line):
+      if args.year and ( args.year + '-' ) not in line:
+         return False
+      if args.non_registered_only and re.search( r'\(R\)\s*\|', line ):
+         return False
+      return True
+
    sell_row = False
    buy_row = False
-   for line in sys.stdin.readlines():
-      if "| Sell" in line:
-         sell_row = True
-      elif "| Buy" in line:
-         buy_row = True
-      elif line.startswith('+---'):
-         sell_row = False
-         buy_row = False
+   try:
+      for line in get_lines():
+         if "| Sell" in line:
+            if filter_in_line(line):
+               sell_row = True
+         elif "| Buy" in line:
+            if filter_in_line(line):
+               buy_row = True
+         elif '+---' in line:
+            sell_row = False
+            buy_row = False
 
-      if sell_row:
-         line = Colors.BROWN + line + Colors.RESET
-      elif buy_row:
-         line = Colors.BLUE + line + Colors.RESET
+         if sell_row:
+            line = Colors.BROWN + line + Colors.RESET
+         elif buy_row:
+            line = Colors.BLUE + line + Colors.RESET
 
-      print(line, end='')
+         print(line, end='')
+   except BrokenPipeError:
+      pass
 
 if __name__ == '__main__':
    main()
