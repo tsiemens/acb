@@ -213,7 +213,7 @@ def text_to_rsu_data(text: str) -> dict:
       "total sale price": search_for_decimal(r"Total Sale Price\s*\$([\d,]+\.\d+)", text),
       "total tax": search_for_decimal(r"Total Tax\s*\$([\d,]+\.\d+)", text),
       "fee": search_for_decimal(r"Fee\s*\(\$(\d+\.\d+)", text),
-      "cash leftover": search_for_decimal(r"Total Due Participant\s*\$(\d+\.\d+)", text),
+      "cash leftover": search_for_decimal(r"Total Due Participant\s*\$([\d,]+\.\d+)", text),
    }
 
 def text_to_rsu_entry(text: str) -> BenefitEntry:
