@@ -3,10 +3,12 @@ package portfolio
 import (
 	"fmt"
 	"math"
+	"os"
 	"sort"
 	"time"
 
 	"github.com/tsiemens/acb/date"
+	"github.com/tsiemens/acb/log"
 	"github.com/tsiemens/acb/util"
 )
 
@@ -75,11 +77,25 @@ func MakeSummaryTxs(latestDate date.Date, deltas []*TxDelta, splitAnnualGains bo
 
 	unsummarizableTxs := deltas[latestSummarizableDeltaIdx+1 : latestDeltaInSummaryRangeIdx+1]
 	if len(unsummarizableTxs) > 0 {
-		warnings.Add(
-			"Some transactions to be summarized could not be due to superficial-loss conflicts")
+		warn := fmt.Sprintf(
+			"Some transactions to be summarized (between %s and %s) could not be due to superficial-loss conflicts",
+			unsummarizableTxs[0].Tx.TradeDate.String(),
+			unsummarizableTxs[len(unsummarizableTxs)-1].Tx.TradeDate.String(),
+		)
+		warnings.Add(warn)
 	}
 	for _, delta := range unsummarizableTxs {
-		summaryPeriodTxs = append(summaryPeriodTxs, delta.Tx)
+		unsumTx := delta.Tx
+		if delta.IsSuperficialLoss() {
+			// The proess of generating the deltas will create Sfla Tx/Deltas, so
+			// if we emit these as a csv, we MUST convert all SFL sales to have
+			// explicit superficial losses.
+			// Copy, and add add SFL
+			unsumTx = &*delta.Tx
+			unsumTx.SpecifiedSuperficialLoss = util.NewOptional[SFLInput](
+				SFLInput{delta.SuperficialLoss, false /* force */})
+		}
+		summaryPeriodTxs = append(summaryPeriodTxs, unsumTx)
 	}
 
 	today := date.Today()
@@ -123,11 +139,21 @@ func getSummaryRangeDeltaIndicies(latestDate date.Date, deltas []*TxDelta) (int,
 	// If any are, save the date 30 days prior to it (firstSuperficialLossPeriodDay)
 	txInSummaryOverlapsSuperficialLoss := false
 	firstSuperficialLossPeriodDay := date.New(3000, time.January, 1)
-	latestInSummaryDate := deltas[latestDeltaInSummaryRangeIdx].Tx.SettlementDate
+	latestInSummaryTx := deltas[latestDeltaInSummaryRangeIdx].Tx
+	latestInSummaryDate := latestInSummaryTx.SettlementDate
 	for _, delta := range deltas[latestDeltaInSummaryRangeIdx+1:] {
-		if delta.SuperficialLoss != 0.0 {
+		if delta.IsSuperficialLoss() {
 			firstSuperficialLossPeriodDay = GetFirstDayInSuperficialLossPeriod(delta.Tx.SettlementDate)
 			txInSummaryOverlapsSuperficialLoss = !latestInSummaryDate.Before(firstSuperficialLossPeriodDay)
+			if txInSummaryOverlapsSuperficialLoss {
+				log.Fverbosef(os.Stderr,
+					"getSummaryRangeDeltaIndicies: %s tx in %s settled on %s is in SFL period "+
+						"(starting %s) of tx settled on %s (SFL of %f)\n",
+					latestInSummaryTx.Security, latestInSummaryTx.Affiliate.Name(),
+					latestInSummaryTx.SettlementDate, firstSuperficialLossPeriodDay.String(),
+					delta.Tx.SettlementDate, delta.SuperficialLoss,
+				)
+			}
 			break
 		}
 	}
@@ -141,19 +167,23 @@ func getSummaryRangeDeltaIndicies(latestDate date.Date, deltas []*TxDelta) (int,
 		// This will be any tx within the 30 day period of the first superficial loss
 		// after the summary boundary, but also every tx within the 30 period
 		// of any superficial loss at the end of the summary range.
+		var latestSummarizableDate date.Date
 		for i := latestDeltaInSummaryRangeIdx; i >= 0; i-- {
 			delta := deltas[i]
 			if delta.Tx.SettlementDate.Before(firstSuperficialLossPeriodDay) {
 				latestSummarizableDeltaIdx = i
+				latestSummarizableDate = delta.Tx.SettlementDate
 				break
 			}
-			if delta.SuperficialLoss != 0.0 {
+			if delta.IsSuperficialLoss() {
 				// We've encountered another superficial loss within the summary
 				// range. This can be affected by previous txs, so we need to now push
 				// up the period where we can't find any txs.
 				firstSuperficialLossPeriodDay = GetFirstDayInSuperficialLossPeriod(delta.Tx.SettlementDate)
 			}
 		}
+		log.Fverbosef(os.Stderr, "   latestSummarizableDeltaIdx: %d (%s)\n",
+			latestSummarizableDeltaIdx, latestSummarizableDate.String())
 	} else {
 		latestSummarizableDeltaIdx = latestDeltaInSummaryRangeIdx
 	}

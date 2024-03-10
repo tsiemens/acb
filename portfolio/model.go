@@ -1,6 +1,7 @@
 package portfolio
 
 import (
+	"math"
 	"regexp"
 	"sort"
 	"strings"
@@ -201,6 +202,10 @@ func (d *TxDelta) AcbDelta() float64 {
 		return d.PostStatus.TotalAcb
 	}
 	return d.PostStatus.TotalAcb - d.PreStatus.TotalAcb
+}
+
+func (d *TxDelta) IsSuperficialLoss() bool {
+	return d.SuperficialLoss != 0.0 && !math.IsNaN(d.SuperficialLoss)
 }
 
 type txSorter struct {

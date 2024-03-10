@@ -95,7 +95,7 @@ func RenderTxTableModel(
 		superficialLossAsterix := ""
 		specifiedSflIsForced := d.Tx.SpecifiedSuperficialLoss.Present() &&
 			d.Tx.SpecifiedSuperficialLoss.MustGet().Force
-		if d.SuperficialLoss != 0.0 && !math.IsNaN(d.SuperficialLoss) {
+		if d.IsSuperficialLoss() {
 			extraSflNoteStr := ""
 			if d.PotentiallyOverAppliedSfl {
 				extraSflNoteStr = " [1]"

@@ -258,8 +258,8 @@ func TestSummary(t *testing.T) {
 	}
 	expSummaryTxs = []*ptf.Tx{
 		TSimpleSumTx{Year: 2022, DoY: -32, Shares: 8, Amount: 1.25}.X(),
-		TTx{SYr: 2022, SDoY: -31, Act: ptf.BUY, Shares: 2, Price: 1.0, Comm: 2.0}.X(), // ACB of 14 total after here.
-		TTx{SYr: 2022, SDoY: -1, Act: ptf.SELL, Shares: 2, Price: 0.2}.X(),            // SFL of $2.4
+		TTx{SYr: 2022, SDoY: -31, Act: ptf.BUY, Shares: 2, Price: 1.0, Comm: 2.0}.X(),                // ACB of 14 total after here.
+		TTx{SYr: 2022, SDoY: -1, Act: ptf.SELL, Shares: 2, Price: 0.2, SFL: CADSFL(-2.4, false)}.X(), // SFL of $2.4
 		makeSflaTxYD(2022, -1, 2.4),
 	}
 
@@ -284,11 +284,11 @@ func TestSummary(t *testing.T) {
 	}
 	expSummaryTxs = []*ptf.Tx{
 		TSimpleSumTx{Year: 2022, DoY: -70, Shares: 8, Amount: 1.45}.X(),
-		TTx{SYr: 2022, SDoY: -45, Act: ptf.BUY, Shares: 8, Price: 1.0, Comm: 2.0}.X(), // post ACB = 21.6
-		TTx{SYr: 2022, SDoY: -31, Act: ptf.BUY, Shares: 2, Price: 1.0, Comm: 2.0}.X(), // post ACB = 25.6
-		TTx{SYr: 2022, SDoY: -15, Act: ptf.SELL, Shares: 2, Price: 0.2}.X(),           // SFL of 2.4444444444, ACB = 22.755555556
-		makeSflaTxYD(2022, -15, 2.444444444444444),                                    // ACB of 25.2
-		TTx{SYr: 2022, SDoY: -1, Act: ptf.SELL, Shares: 2, Price: 0.2}.X(),            // SFL of 2.75, ACB = 22.05
+		TTx{SYr: 2022, SDoY: -45, Act: ptf.BUY, Shares: 8, Price: 1.0, Comm: 2.0}.X(),                                // post ACB = 21.6
+		TTx{SYr: 2022, SDoY: -31, Act: ptf.BUY, Shares: 2, Price: 1.0, Comm: 2.0}.X(),                                // post ACB = 25.6
+		TTx{SYr: 2022, SDoY: -15, Act: ptf.SELL, Shares: 2, Price: 0.2, SFL: CADSFL(-2.4444444444444446, false)}.X(), // ACB = 22.755555556
+		makeSflaTxYD(2022, -15, 2.444444444444444),                                                                   // ACB of 25.2
+		TTx{SYr: 2022, SDoY: -1, Act: ptf.SELL, Shares: 2, Price: 0.2, SFL: CADSFL(-2.7500000000000004, false)}.X(),  // ACB = 22.05
 		makeSflaTxYD(2022, -1, 2.75),
 	}
 
@@ -316,7 +316,8 @@ func TestSummary(t *testing.T) {
 
 	// TEST: before and after: present [ SFL ... 2 days || BUY, SFL ... 20 days, BUY ... 10 days, BUY ] past
 	txs = []*ptf.Tx{
-		TTx{SYr: 2022, SDoY: -33, Act: ptf.BUY, Shares: 10, Price: 1.0, Comm: 2.0}.X(),
+		TTx{SYr: 2022, SDoY: -34, Act: ptf.BUY, Shares: 1, Price: 1.0, Comm: 1.0}.X(),
+		TTx{SYr: 2022, SDoY: -33, Act: ptf.BUY, Shares: 9, Price: 1.0, Comm: 1.0}.X(),
 		// unsummarizable below
 		TTx{SYr: 2022, SDoY: -20, Act: ptf.BUY, Shares: 4, Price: 1.0, Comm: 2.0}.X(),
 		TTx{SYr: 2022, SDoY: -2, Act: ptf.SELL, Shares: 2, Price: 0.2}.X(), // SFL
@@ -327,8 +328,8 @@ func TestSummary(t *testing.T) {
 	}
 	expSummaryTxs = []*ptf.Tx{
 		TSimpleSumTx{Year: 2022, DoY: -33, Shares: 10, Amount: 1.2}.X(),
-		TTx{SYr: 2022, SDoY: -20, Act: ptf.BUY, Shares: 4, Price: 1.0, Comm: 2.0}.X(), // ACB = 18
-		TTx{SYr: 2022, SDoY: -2, Act: ptf.SELL, Shares: 2, Price: 0.2}.X(),            // SFL of 2.171428571, ACB = 15.428571429
+		TTx{SYr: 2022, SDoY: -20, Act: ptf.BUY, Shares: 4, Price: 1.0, Comm: 2.0}.X(),                               // ACB = 18
+		TTx{SYr: 2022, SDoY: -2, Act: ptf.SELL, Shares: 2, Price: 0.2, SFL: CADSFL(-2.1714285714285717, false)}.X(), // ACB = 15.428571429
 		makeSflaTxYD(2022, -2, 2.171428571),
 		TTx{SYr: 2022, SDoY: -1, Act: ptf.BUY, Shares: 2, Price: 0.2, Comm: 2.0}.X(),
 	}
@@ -584,5 +585,83 @@ func TestMultiAffiliateSummary(t *testing.T) {
 	deltas = th.txsToDeltaList(txs)
 	summaryTxs, warnings = ptf.MakeSummaryTxs(mkDateYD(2020, 104), deltas, false /* year gains*/)
 	th.checkWarnings(1, summaryTxs, warnings) // zero warning
+	ValidateTxs(t, expSummaryTxs, summaryTxs)
+
+	// Case: Superficial loss after summary period, and presence of registered
+	//       affiliate (where all of their Deltas have a SuperficialLoss of NaN)
+	txs = []*ptf.Tx{
+		TTx{SYr: 2018, SDoY: 30, Act: ptf.BUY, Shares: 8, Price: 1.0, Comm: 2.0}.X(),
+		TTx{SYr: 2018, SDoY: 31, Act: ptf.BUY, Shares: 7, Price: 1.1, Comm: 2.0, AffName: "(R)"}.X(),
+		TTx{SYr: 2020, SDoY: 59, Act: ptf.SELL, Shares: 2, Price: 2.0}.X(),
+		TTx{SYr: 2020, SDoY: 60, Act: ptf.SELL, Shares: 2, Price: 1.1, Comm: 2.0, AffName: "(R)"}.X(),
+		// ^^ Summarizable period ^^
+		TTx{SYr: 2020, SDoY: 102, Act: ptf.SELL, Shares: 3, Price: 1.1, Comm: 2.0, AffName: "(R)"}.X(),
+		TTx{SYr: 2020, SDoY: 103, Act: ptf.BUY, Shares: 3, Price: 2.0}.X(),
+		// ^^ Requested summary period ^^
+		TTx{SYr: 2020, SDoY: 105, Act: ptf.SELL, Shares: 2, Price: 0.9, SFL: CADSFL(-1.2, false)}.X(),
+	}
+	expSummaryTxs = []*ptf.Tx{
+		TSimpleSumTx{Year: 2020, DoY: 59, Shares: 6, Amount: 10.0 / 8.0}.X(),
+		TSimpleSumTx{Year: 2020, DoY: 60, Shares: 5, Amount: 0.0, AffName: "(R)"}.X(),
+		// ^^ Summarizable period ^^
+		TTx{SYr: 2020, SDoY: 102, Act: ptf.SELL, Shares: 3, Price: 1.1, Comm: 2.0, AffName: "(R)"}.X(),
+		TTx{SYr: 2020, SDoY: 103, Act: ptf.BUY, Shares: 3, Price: 2.0}.X(),
+		// ^^ Requested summary period ^^
+	}
+	deltas = th.txsToDeltaList(txs)
+	summaryTxs, warnings = ptf.MakeSummaryTxs(mkDateYD(2020, 104), deltas, false /* year gains*/)
+	th.checkWarnings(1, summaryTxs, warnings) // zero warning
+	ValidateTxs(t, expSummaryTxs, summaryTxs)
+
+	// Case: Superficial loss after summary period, and presence of registered
+	//       affiliate (where all of their Deltas have a SuperficialLoss of NaN) sales
+	//			at least every 30 days until beginning of time. (verifies that the
+	//			summarizable period doesn't keep getting pushed backwards).
+	txs = []*ptf.Tx{
+		TTx{SYr: 2020, SDoY: 50, Act: ptf.BUY, Shares: 7, Price: 1.1, Comm: 2.0, AffName: "(R)"}.X(),
+		TTx{SYr: 2020, SDoY: 51, Act: ptf.BUY, Shares: 8, Price: 1.0, Comm: 2.0}.X(),
+		TTx{SYr: 2020, SDoY: 59, Act: ptf.SELL, Shares: 2, Price: 2.0}.X(),
+		TTx{SYr: 2020, SDoY: 60, Act: ptf.SELL, Shares: 1, Price: 1.1, Comm: 2.0, AffName: "(R)"}.X(),
+		TTx{SYr: 2020, SDoY: 70, Act: ptf.SELL, Shares: 1, Price: 1.1, Comm: 2.0, AffName: "(R)"}.X(),
+		// ^^ Summarizable period ^^
+		TTx{SYr: 2020, SDoY: 85, Act: ptf.SELL, Shares: 3, Price: 1.1, Comm: 2.0, AffName: "(R)"}.X(),
+		TTx{SYr: 2020, SDoY: 103, Act: ptf.BUY, Shares: 3, Price: 2.0}.X(),
+		// ^^ Requested summary period ^^
+		TTx{SYr: 2020, SDoY: 105, Act: ptf.SELL, Shares: 2, Price: 0.9, SFL: CADSFL(-1.2, false)}.X(),
+	}
+	expSummaryTxs = []*ptf.Tx{
+		TSimpleSumTx{Year: 2020, DoY: 59, Shares: 6, Amount: 10.0 / 8.0}.X(),
+		TSimpleSumTx{Year: 2020, DoY: 70, Shares: 5, Amount: 0.0, AffName: "(R)"}.X(),
+		// ^^ Summarizable period ^^
+		TTx{SYr: 2020, SDoY: 85, Act: ptf.SELL, Shares: 3, Price: 1.1, Comm: 2.0, AffName: "(R)"}.X(),
+		TTx{SYr: 2020, SDoY: 103, Act: ptf.BUY, Shares: 3, Price: 2.0}.X(),
+		// ^^ Requested summary period ^^
+	}
+	deltas = th.txsToDeltaList(txs)
+	summaryTxs, warnings = ptf.MakeSummaryTxs(mkDateYD(2020, 104), deltas, false /* year gains*/)
+	th.checkWarnings(1, summaryTxs, warnings) // zero warning
+	ValidateTxs(t, expSummaryTxs, summaryTxs)
+
+	// Case: Only registered sales after summary period. Verify not treated as
+	//			superficial losses (because their SuperficialLoss is NaN).
+	txs = []*ptf.Tx{
+		TTx{SYr: 2018, SDoY: 30, Act: ptf.BUY, Shares: 8, Price: 1.0, Comm: 2.0}.X(),
+		TTx{SYr: 2018, SDoY: 31, Act: ptf.BUY, Shares: 7, Price: 1.1, Comm: 2.0, AffName: "(R)"}.X(),
+		TTx{SYr: 2020, SDoY: 59, Act: ptf.SELL, Shares: 2, Price: 2.0}.X(),
+		TTx{SYr: 2020, SDoY: 60, Act: ptf.SELL, Shares: 2, Price: 1.1, Comm: 2.0, AffName: "(R)"}.X(),
+		TTx{SYr: 2020, SDoY: 102, Act: ptf.SELL, Shares: 3, Price: 1.1, Comm: 2.0, AffName: "(R)"}.X(),
+		TTx{SYr: 2020, SDoY: 103, Act: ptf.BUY, Shares: 3, Price: 2.0}.X(),
+		// ^^ Requested summary period ^^
+		TTx{SYr: 2020, SDoY: 105, Act: ptf.SELL, Shares: 2, Price: 1.1, Comm: 2.0, AffName: "(R)"}.X(),
+	}
+	expSummaryTxs = []*ptf.Tx{
+		TSimpleSumTx{Year: 2020, DoY: 102, Shares: 2, Amount: 0.0, AffName: "(R)"}.X(),
+		TSimpleSumTx{Year: 2020, DoY: 103, Shares: 9, Amount: 1.5}.X(),
+		// ^^ Summarizable period ^^
+		// ^^ Requested summary period ^^
+	}
+	deltas = th.txsToDeltaList(txs)
+	summaryTxs, warnings = ptf.MakeSummaryTxs(mkDateYD(2020, 104), deltas, false /* year gains*/)
+	th.checkOk(summaryTxs, warnings) // zero warning
 	ValidateTxs(t, expSummaryTxs, summaryTxs)
 }
