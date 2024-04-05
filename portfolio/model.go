@@ -1,12 +1,12 @@
 package portfolio
 
 import (
-	"math"
 	"regexp"
 	"sort"
 	"strings"
 
 	"github.com/tsiemens/acb/date"
+	decimal "github.com/tsiemens/acb/decimal_value"
 	"github.com/tsiemens/acb/util"
 )
 
@@ -133,25 +133,24 @@ func (t *AffiliateDedupTable) GetDefaultAffiliate() *Affiliate {
 
 type PortfolioSecurityStatus struct {
 	Security                  string
-	ShareBalance              uint32
-	AllAffiliatesShareBalance uint32
-	// NaN for registered accounts/affiliates.
-	TotalAcb float64
+	ShareBalance              decimal.Decimal
+	AllAffiliatesShareBalance decimal.Decimal
+	TotalAcb                  decimal.Decimal
 }
 
 func NewEmptyPortfolioSecurityStatus(security string) *PortfolioSecurityStatus {
-	return &PortfolioSecurityStatus{Security: security, ShareBalance: 0, TotalAcb: 0.0}
+	return &PortfolioSecurityStatus{Security: security}
 }
 
-func (s *PortfolioSecurityStatus) PerShareAcb() float64 {
-	if s.ShareBalance == 0 {
-		return 0
+func (s *PortfolioSecurityStatus) PerShareAcb() decimal.Decimal {
+	if s.ShareBalance.IsZero() {
+		return decimal.Zero
 	}
-	return s.TotalAcb / float64(s.ShareBalance)
+	return s.TotalAcb.Div(s.ShareBalance)
 }
 
 type SFLInput struct {
-	SuperficialLoss float64
+	SuperficialLoss decimal.Decimal
 	Force           bool
 }
 
@@ -160,13 +159,13 @@ type Tx struct {
 	TradeDate                         date.Date
 	SettlementDate                    date.Date
 	Action                            TxAction
-	Shares                            uint32
-	AmountPerShare                    float64
-	Commission                        float64
+	Shares                            decimal.Decimal
+	AmountPerShare                    decimal.Decimal
+	Commission                        decimal.Decimal
 	TxCurrency                        Currency
-	TxCurrToLocalExchangeRate         float64
+	TxCurrToLocalExchangeRate         decimal.Decimal
 	CommissionCurrency                Currency
-	CommissionCurrToLocalExchangeRate float64
+	CommissionCurrToLocalExchangeRate decimal.Decimal
 	Memo                              string
 	Affiliate                         *Affiliate
 
@@ -189,23 +188,23 @@ type TxDelta struct {
 	Tx          *Tx
 	PreStatus   *PortfolioSecurityStatus
 	PostStatus  *PortfolioSecurityStatus
-	CapitalGain float64
+	CapitalGain decimal.Decimal
 
-	SuperficialLoss float64
+	SuperficialLoss decimal.Decimal
 	// A ratio, representing <N reacquired shares which suffered SFL> / <N sold shares>
-	SuperficialLossRatio      util.Uint32Ratio
+	SuperficialLossRatio      util.DecimalRatio
 	PotentiallyOverAppliedSfl bool
 }
 
-func (d *TxDelta) AcbDelta() float64 {
+func (d *TxDelta) AcbDelta() decimal.Decimal {
 	if d.PreStatus == nil {
 		return d.PostStatus.TotalAcb
 	}
-	return d.PostStatus.TotalAcb - d.PreStatus.TotalAcb
+	return d.PostStatus.TotalAcb.Sub(d.PreStatus.TotalAcb)
 }
 
 func (d *TxDelta) IsSuperficialLoss() bool {
-	return d.SuperficialLoss != 0.0 && !math.IsNaN(d.SuperficialLoss)
+	return !d.SuperficialLoss.IsNull && !d.SuperficialLoss.IsZero()
 }
 
 type txSorter struct {

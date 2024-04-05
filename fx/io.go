@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/tsiemens/acb/date"
+	decimal "github.com/tsiemens/acb/decimal_value"
 	"github.com/tsiemens/acb/log"
 	"github.com/tsiemens/acb/util"
 )
@@ -104,14 +105,14 @@ func (l *JsonRemoteRateLoader) GetRemoteUsdCadRates(year uint32) ([]DailyRate, e
 		}
 
 		if usdCadNoonVal != 0.0 {
-			dRate = DailyRate{date, usdCadNoonVal}
+			dRate = DailyRate{date, decimal.NewFromFloat(usdCadNoonVal)}
 		} else {
 			usdCadVal, err := obs.UsdCad.Val()
 			if err != nil {
 				l.ErrPrinter.Ln("Failed to parse USDCAD rate for", date, ":", obs.UsdCad.ValStr)
 				continue
 			}
-			dRate = DailyRate{date, 1.0 / usdCadVal}
+			dRate = DailyRate{date, decimal.NewFromInt(1).Div(decimal.NewFromFloat(usdCadVal))}
 		}
 		rates = append(rates, dRate)
 	}
@@ -170,7 +171,7 @@ func FillInUnknownDayRates(rates []DailyRate, year uint32) []DailyRate {
 	dateToFill := date.New(year, time.January, 1)
 	for _, rate := range rates {
 		for dateToFill.Before(rate.Date) {
-			filledRates = append(filledRates, DailyRate{dateToFill, 0.0})
+			filledRates = append(filledRates, DailyRate{dateToFill, decimal.Zero})
 			dateToFill = dateToFill.AddDays(1)
 		}
 		filledRates = append(filledRates, rate)
@@ -179,7 +180,7 @@ func FillInUnknownDayRates(rates []DailyRate, year uint32) []DailyRate {
 
 	today := date.Today()
 	for dateToFill.Before(today) && uint32(dateToFill.Year()) == year {
-		filledRates = append(filledRates, DailyRate{dateToFill, 0.0})
+		filledRates = append(filledRates, DailyRate{dateToFill, decimal.Zero})
 		dateToFill = dateToFill.AddDays(1)
 	}
 	return filledRates
@@ -201,7 +202,7 @@ func (c *CsvRatesCache) getRatesFromCsv(r io.Reader) ([]DailyRate, error) {
 			c.ErrPrinter.Ln("Unable to parse date:", err)
 			continue
 		}
-		rate, err := strconv.ParseFloat(record[1], 64)
+		rate, err := decimal.NewFromString(record[1])
 		if err != nil {
 			c.ErrPrinter.Ln("Unable to parse rate:", err)
 			continue
@@ -381,7 +382,7 @@ func (cr *RateLoader) findUsdCadPrecedingRelevantSpotRate(
 		"from the preceding day for which such a rate is quoted should be " +
 		"used if no rate is quoted on the day the trade."
 
-	util.Assertf(foundRate == DailyRate{tradeDate, 0.0},
+	util.Assertf(foundRate == DailyRate{tradeDate, decimal.Zero},
 		"findUsdCadPrecedingRelevantSpotRate: rate for %s must be explicitly "+
 			"marked as 'markets closed' with a rate of zero\n",
 		tradeDate)
@@ -395,7 +396,7 @@ func (cr *RateLoader) findUsdCadPrecedingRelevantSpotRate(
 		if err != nil {
 			break
 		}
-		if rate.ForeignToLocalRate != 0.0 {
+		if !rate.ForeignToLocalRate.IsZero() {
 			return rate, nil
 		}
 	}
@@ -437,7 +438,7 @@ func (cr *RateLoader) GetExactUsdCadRate(tradeDate date.Date) (DailyRate, error)
 func (cr *RateLoader) GetEffectiveUsdCadRate(tradeDate date.Date) (DailyRate, error) {
 	rate, err := cr.GetExactUsdCadRate(tradeDate)
 	if err == nil {
-		if rate.ForeignToLocalRate == 0.0 {
+		if rate.ForeignToLocalRate.IsZero() {
 			rate, err = cr.findUsdCadPrecedingRelevantSpotRate(tradeDate, rate)
 			if err == nil {
 				return rate, nil

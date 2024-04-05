@@ -2,10 +2,10 @@ package portfolio
 
 import (
 	"fmt"
-	"math"
 	"sort"
 
 	"github.com/tsiemens/acb/date"
+	decimal "github.com/tsiemens/acb/decimal_value"
 	"github.com/tsiemens/acb/util"
 )
 
@@ -30,7 +30,7 @@ type AffiliatePortfolioSecurityStatuses struct {
 	// Affiliate Id -> last PortfolioSecurityStatus
 	lastPostStatusForAffiliate      map[string]*PortfolioSecurityStatus
 	security                        string
-	latestAllAffiliatesShareBalance uint32
+	latestAllAffiliatesShareBalance decimal.Decimal
 	latestAffiliate                 *Affiliate
 }
 
@@ -41,14 +41,15 @@ func NewAffiliatePortfolioSecurityStatuses(
 	s := &AffiliatePortfolioSecurityStatuses{
 		lastPostStatusForAffiliate:      make(map[string]*PortfolioSecurityStatus),
 		security:                        security,
-		latestAllAffiliatesShareBalance: 0,
+		latestAllAffiliatesShareBalance: decimal.Zero,
 		latestAffiliate:                 GlobalAffiliateDedupTable.GetDefaultAffiliate(),
 	}
 
 	// Initial status only applies to the default affiliate
 	if initialDefaultAffStatus != nil {
-		util.Assert(initialDefaultAffStatus.ShareBalance ==
-			initialDefaultAffStatus.AllAffiliatesShareBalance)
+		util.Assert(
+			initialDefaultAffStatus.ShareBalance.Equal(initialDefaultAffStatus.AllAffiliatesShareBalance),
+		)
 		s.SetLatestPostStatus(s.latestAffiliate.Id(), initialDefaultAffStatus)
 	}
 	return s
@@ -56,8 +57,8 @@ func NewAffiliatePortfolioSecurityStatuses(
 
 func (s *AffiliatePortfolioSecurityStatuses) makeDefaultPortfolioSecurityStatus(
 	defaultAff bool, registered bool) *PortfolioSecurityStatus {
-	var affiliateShareBalance uint32 = 0
-	var affiliateTotalAcb float64 = util.Tern[float64](registered, math.NaN(), 0.0)
+	var affiliateShareBalance decimal.Decimal
+	var affiliateTotalAcb decimal.Decimal = util.Tern[decimal.Decimal](registered, decimal.Null, decimal.NewFromInt(0))
 	return &PortfolioSecurityStatus{
 		Security: s.security, ShareBalance: affiliateShareBalance,
 		AllAffiliatesShareBalance: s.latestAllAffiliatesShareBalance,
@@ -82,22 +83,22 @@ func (s *AffiliatePortfolioSecurityStatuses) GetLatestPostStatus() *PortfolioSec
 func (s *AffiliatePortfolioSecurityStatuses) SetLatestPostStatus(
 	id string, v *PortfolioSecurityStatus) {
 
-	var lastShareBalance uint32 = 0
+	var lastShareBalance decimal.Decimal
 	if last, ok := s.lastPostStatusForAffiliate[id]; ok {
 		lastShareBalance = last.ShareBalance
 	}
-	var expectedAllShareBal uint32 = v.ShareBalance + s.latestAllAffiliatesShareBalance - lastShareBalance
+	var expectedAllShareBal decimal.Decimal = v.ShareBalance.Add(s.latestAllAffiliatesShareBalance).Sub(lastShareBalance)
 
 	af := GlobalAffiliateDedupTable.MustGet(id)
-	util.Assertf(af.Registered() == math.IsNaN(v.TotalAcb),
-		"In security %s, af %s, TotalAcb has bad NaN value (%f)",
-		s.security, id, v.TotalAcb)
+	util.Assertf(af.Registered() == v.TotalAcb.IsNull,
+		"In security %s, af %s, TotalAcb has bad null optional value (%s)",
+		s.security, id, v.TotalAcb.String())
 
-	util.Assertf(v.AllAffiliatesShareBalance == expectedAllShareBal,
-		"In security %s, af %s, v.AllAffiliatesShareBalance (%d) != expectedAllShareBal (%d) "+
-			"(v.ShareBalance (%d) + s.latestAllAffiliatesShareBalance (%d) - lastShareBalance (%d)",
-		s.security, id, v.AllAffiliatesShareBalance, expectedAllShareBal,
-		v.ShareBalance, s.latestAllAffiliatesShareBalance, lastShareBalance)
+	util.Assertf(v.AllAffiliatesShareBalance.Equal(expectedAllShareBal),
+		"In security %s, af %s, v.AllAffiliatesShareBalance (%s) != expectedAllShareBal (%s) "+
+			"(v.ShareBalance (%s) + s.latestAllAffiliatesShareBalance (%s) - lastShareBalance (%s)",
+		s.security, id, v.AllAffiliatesShareBalance.String(), expectedAllShareBal.String(),
+		v.ShareBalance.String(), s.latestAllAffiliatesShareBalance.String(), lastShareBalance.String())
 
 	s.lastPostStatusForAffiliate[id] = v
 	s.latestAllAffiliatesShareBalance = v.AllAffiliatesShareBalance
@@ -113,7 +114,7 @@ func (s *AffiliatePortfolioSecurityStatuses) GetNextPreStatus(
 		lastStatus = s.makeDefaultPortfolioSecurityStatus(af.Default(), af.Registered())
 	}
 	nextPreStatus := lastStatus
-	if nextPreStatus.AllAffiliatesShareBalance != s.latestAllAffiliatesShareBalance {
+	if !nextPreStatus.AllAffiliatesShareBalance.Equal(s.latestAllAffiliatesShareBalance) {
 		nextPreStatus = &PortfolioSecurityStatus{}
 		*nextPreStatus = *lastStatus
 		nextPreStatus.AllAffiliatesShareBalance = s.latestAllAffiliatesShareBalance
@@ -125,16 +126,16 @@ type _SuperficialLossInfo struct {
 	IsSuperficial              bool
 	FirstDateInPeriod          date.Date
 	LastDateInPeriod           date.Date
-	AllAffSharesAtEndOfPeriod  uint32
-	TotalAquiredInPeriod       uint32
+	AllAffSharesAtEndOfPeriod  decimal.Decimal
+	TotalAquiredInPeriod       decimal.Decimal
 	BuyingAffiliates           *util.Set[string]
-	ActiveAffiliateSharesAtEOP *util.DefaultMap[string, int]
+	ActiveAffiliateSharesAtEOP *util.DefaultMap[string, decimal.Decimal]
 }
 
-func (i *_SuperficialLossInfo) BuyingAffiliateSharesAtEOPTotal() int {
-	total := 0
+func (i *_SuperficialLossInfo) BuyingAffiliateSharesAtEOPTotal() decimal.Decimal {
+	total := decimal.Zero
 	i.BuyingAffiliates.ForEach(func(afId string) bool {
-		total += i.ActiveAffiliateSharesAtEOP.Get(afId)
+		total = total.Add(i.ActiveAffiliateSharesAtEOP.Get(afId))
 		return true
 	})
 	return total
@@ -162,35 +163,35 @@ func getSuperficialLossInfo(
 
 	latestPostStatus := ptfStatuses.GetLatestPostStatus()
 	// The enclosing AddTx logic should have already caught this.
-	util.Assertf(latestPostStatus.AllAffiliatesShareBalance >= tx.Shares,
+	util.Assertf(latestPostStatus.AllAffiliatesShareBalance.GreaterThanOrEqual(tx.Shares),
 		"getSuperficialLossInfo: latest AllAffiliatesShareBalance (%d) is less than sold shares (%d)",
-		latestPostStatus.AllAffiliatesShareBalance, tx.Shares)
+		latestPostStatus.AllAffiliatesShareBalance.String(), tx.Shares.String())
 	allAffiliatesShareBalanceAfterSell :=
-		ptfStatuses.GetLatestPostStatus().AllAffiliatesShareBalance - tx.Shares
+		ptfStatuses.GetLatestPostStatus().AllAffiliatesShareBalance.Sub(tx.Shares)
 
-	activeAffiliateSharesAtEOP := util.NewDefaultMap[string, int](
+	activeAffiliateSharesAtEOP := util.NewDefaultMap[string, decimal.Decimal](
 		// Default to post-sale share balance for the affiliate.
-		func(afId string) int {
+		func(afId string) decimal.Decimal {
 			sellTxAffil := NonNilTxAffiliate(tx)
 			if st, ok := ptfStatuses.GetLatestPostStatusForAffiliate(afId); ok {
 				if afId == sellTxAffil.Id() {
 					// The latest post status for the selling affiliate is not yet
 					// saved, so recompute the post-sale share balance.
 					// AddTx would have encountered an oversell if this was to assert.
-					util.Assertf(st.ShareBalance >= tx.Shares,
+					util.Assertf(st.ShareBalance.GreaterThanOrEqual(tx.Shares),
 						"getSuperficialLossInfo: latest ShareBalance (%d) for affiliate (%s) "+
 							"is less than sold shares (%d)",
-						st.ShareBalance, sellTxAffil.Name(), tx.Shares)
-					return int(st.ShareBalance - tx.Shares)
+						st.ShareBalance, sellTxAffil.Name(), tx.Shares.String())
+					return st.ShareBalance.Sub(tx.Shares)
 				}
-				return int(st.ShareBalance)
+				return st.ShareBalance
 			}
 			// No TXs for this affiliate before or at the current sell.
 			// AddTx would have encountered an oversell if this was to assert.
 			util.Assert(afId != sellTxAffil.Id(),
 				"getSuperficialLossInfo: no existing portfolio status for affiliate %s",
 				sellTxAffil.Name())
-			return 0
+			return decimal.Zero
 		})
 
 	sli := _SuperficialLossInfo{
@@ -198,7 +199,7 @@ func getSuperficialLossInfo(
 		FirstDateInPeriod:          firstBadBuyDate,
 		LastDateInPeriod:           lastBadBuyDate,
 		AllAffSharesAtEndOfPeriod:  allAffiliatesShareBalanceAfterSell,
-		TotalAquiredInPeriod:       0,
+		TotalAquiredInPeriod:       decimal.Zero,
 		BuyingAffiliates:           util.NewSet[string](),
 		ActiveAffiliateSharesAtEOP: activeAffiliateSharesAtEOP,
 	}
@@ -238,21 +239,21 @@ func getSuperficialLossInfo(
 		switch afterTx.Action {
 		case BUY:
 			didBuyAfterInPeriod = true
-			sli.AllAffSharesAtEndOfPeriod += afterTx.Shares
+			sli.AllAffSharesAtEndOfPeriod = sli.AllAffSharesAtEndOfPeriod.Add(afterTx.Shares)
 			activeAffiliateSharesAtEOP.Set(afterTxAffil.Id(),
-				activeAffiliateSharesAtEOP.Get(afterTxAffil.Id())+int(afterTx.Shares))
-			sli.TotalAquiredInPeriod += afterTx.Shares
+				activeAffiliateSharesAtEOP.Get(afterTxAffil.Id()).Add(afterTx.Shares))
+			sli.TotalAquiredInPeriod = sli.TotalAquiredInPeriod.Add(afterTx.Shares)
 			sli.BuyingAffiliates.Add(afterTxAffil.Id())
 		case SELL:
-			sli.AllAffSharesAtEndOfPeriod -= afterTx.Shares
+			sli.AllAffSharesAtEndOfPeriod = sli.AllAffSharesAtEndOfPeriod.Sub(afterTx.Shares)
 			activeAffiliateSharesAtEOP.Set(afterTxAffil.Id(),
-				activeAffiliateSharesAtEOP.Get(afterTxAffil.Id())-int(afterTx.Shares))
+				activeAffiliateSharesAtEOP.Get(afterTxAffil.Id()).Sub(afterTx.Shares))
 		default:
 			// ignored
 		}
 	}
 
-	if sli.AllAffSharesAtEndOfPeriod == 0 {
+	if sli.AllAffSharesAtEndOfPeriod.IsZero() {
 		// Not superficial
 		return sli
 	}
@@ -267,7 +268,7 @@ func getSuperficialLossInfo(
 		// Within the 30 day window before
 		if beforeTx.Action == BUY {
 			didBuyBeforeInPeriod = true
-			sli.TotalAquiredInPeriod += beforeTx.Shares
+			sli.TotalAquiredInPeriod = sli.TotalAquiredInPeriod.Add(beforeTx.Shares)
 			sli.BuyingAffiliates.Add(beforeTxAffil.Id())
 		}
 	}
@@ -277,8 +278,8 @@ func getSuperficialLossInfo(
 }
 
 type _SflRatioResultResult struct {
-	SflRatio                 util.Uint32Ratio
-	AcbAdjustAffiliateRatios map[string]util.Uint32Ratio
+	SflRatio                 util.DecimalRatio
+	AcbAdjustAffiliateRatios map[string]util.DecimalRatio
 	// ** Notes/warnings to emit later. **
 	// Set when the sum of remaining involved affiliate shares is fewer than
 	// the SFL shares, which means that the selling affiliate probably had some
@@ -309,8 +310,8 @@ func getSuperficialLossRatio(
 	if sli.IsSuperficial {
 		tx := txs[idx]
 
-		ratio := util.Uint32Ratio{
-			util.MinUint32(tx.Shares, sli.TotalAquiredInPeriod, sli.AllAffSharesAtEndOfPeriod),
+		ratio := util.DecimalRatio{
+			decimal.Min(tx.Shares, sli.TotalAquiredInPeriod, sli.AllAffSharesAtEndOfPeriod),
 			tx.Shares,
 		}
 
@@ -318,20 +319,20 @@ func getSuperficialLossRatio(
 			"getSuperficialLossRatio: loss was superficial, but no buying affiliates")
 
 		// Affiliate to percentage of the SFL adjustment is attributed to it.
-		affiliateAdjustmentPortions := make(map[string]util.Uint32Ratio)
+		affiliateAdjustmentPortions := make(map[string]util.DecimalRatio)
 		buyingAffilsShareEOPTotal := sli.BuyingAffiliateSharesAtEOPTotal()
 
 		sli.BuyingAffiliates.ForEach(func(afId string) bool {
 			afShareBalanceAtEOP := sli.ActiveAffiliateSharesAtEOP.Get(afId)
-			affiliateAdjustmentPortions[afId] = util.Uint32Ratio{
-				uint32(afShareBalanceAtEOP), uint32(buyingAffilsShareEOPTotal)}
+			affiliateAdjustmentPortions[afId] = util.DecimalRatio{
+				afShareBalanceAtEOP, buyingAffilsShareEOPTotal}
 			return true
 		})
 
 		return &_SflRatioResultResult{
 			SflRatio:                          ratio,
 			AcbAdjustAffiliateRatios:          affiliateAdjustmentPortions,
-			FewerRemainingSharesThanSflShares: buyingAffilsShareEOPTotal < int(ratio.Numerator),
+			FewerRemainingSharesThanSflShares: buyingAffilsShareEOPTotal.LessThan(ratio.Numerator),
 		}
 	}
 	return &_SflRatioResultResult{}
@@ -368,15 +369,15 @@ func AddTx(
 	util.Assertf(tx.Security == preTxStatus.Security,
 		"AddTx: securities do not match (%s and %s)\n", tx.Security, preTxStatus.Security)
 
-	var totalLocalSharePrice float64 = float64(tx.Shares) * tx.AmountPerShare * tx.TxCurrToLocalExchangeRate
+	var totalLocalSharePrice decimal.Decimal = tx.Shares.Mul(tx.AmountPerShare).Mul(tx.TxCurrToLocalExchangeRate)
 
 	newShareBalance := preTxStatus.ShareBalance
 	newAllAffiliatesShareBalance := preTxStatus.AllAffiliatesShareBalance
 	registered := tx.Affiliate != nil && tx.Affiliate.Registered()
-	var newAcbTotal float64 = preTxStatus.TotalAcb
-	var capitalGains float64 = util.Tern[float64](registered, math.NaN(), 0.0)
-	var superficialLoss float64 = util.Tern[float64](registered, math.NaN(), 0.0)
-	superficialLossRatio := util.Uint32Ratio{}
+	var newAcbTotal decimal.Decimal = preTxStatus.TotalAcb
+	var capitalGains decimal.Decimal = util.Tern[decimal.Decimal](registered, decimal.Null, decimal.Zero)
+	var superficialLoss decimal.Decimal = util.Tern[decimal.Decimal](registered, decimal.Null, decimal.Zero)
+	superficialLossRatio := util.DecimalRatio{}
 	potentiallyOverAppliedSfl := false
 	var newTxs []*Tx = nil
 
@@ -386,59 +387,59 @@ func AddTx(
 			"In transaction on %v of %d shares of %s, "+fmtStr,
 			append([]interface{}{tx.TradeDate, tx.Shares, tx.Security}, v...)...)
 	}
-	if preTxStatus.AllAffiliatesShareBalance < preTxStatus.ShareBalance {
+	if preTxStatus.AllAffiliatesShareBalance.LessThan(preTxStatus.ShareBalance) {
 		return nil, nil, sanityCheckError("the share balance across all affiliates "+
 			"(%d) is lower than the share balance for the affiliate of the sale (%d)",
 			preTxStatus.AllAffiliatesShareBalance, preTxStatus.ShareBalance)
-	} else if registered && !math.IsNaN(preTxStatus.TotalAcb) {
+	} else if registered && !preTxStatus.TotalAcb.IsNull {
 		return nil, nil, sanityCheckError("found an ACB on a registered affiliate")
-	} else if !registered && math.IsNaN(preTxStatus.TotalAcb) {
-		return nil, nil, sanityCheckError("found an invalid ACB (NaN)")
+	} else if !registered && preTxStatus.TotalAcb.IsNull {
+		return nil, nil, sanityCheckError("found an invalid ACB (null)")
 	}
 
 	switch tx.Action {
 	case BUY:
-		newShareBalance = preTxStatus.ShareBalance + tx.Shares
-		newAllAffiliatesShareBalance = preTxStatus.AllAffiliatesShareBalance + tx.Shares
-		totalPrice := totalLocalSharePrice + (tx.Commission * tx.CommissionCurrToLocalExchangeRate)
-		newAcbTotal = preTxStatus.TotalAcb + (totalPrice)
+		newShareBalance = preTxStatus.ShareBalance.Add(tx.Shares)
+		newAllAffiliatesShareBalance = preTxStatus.AllAffiliatesShareBalance.Add(tx.Shares)
+		totalPrice := totalLocalSharePrice.Add(tx.Commission.Mul(tx.CommissionCurrToLocalExchangeRate))
+		newAcbTotal = preTxStatus.TotalAcb.Add(totalPrice)
 	case SELL:
-		if tx.Shares > preTxStatus.ShareBalance {
+		if tx.Shares.GreaterThan(preTxStatus.ShareBalance) {
 			return nil, nil, fmt.Errorf(
 				"Sell order on %v of %d shares of %s is more than the current holdings (%d)",
-				tx.TradeDate, tx.Shares, tx.Security, preTxStatus.ShareBalance)
+				tx.TradeDate, tx.Shares.String(), tx.Security, preTxStatus.ShareBalance.String())
 		}
-		newShareBalance = preTxStatus.ShareBalance - tx.Shares
-		newAllAffiliatesShareBalance = preTxStatus.AllAffiliatesShareBalance - tx.Shares
+		newShareBalance = preTxStatus.ShareBalance.Sub(tx.Shares)
+		newAllAffiliatesShareBalance = preTxStatus.AllAffiliatesShareBalance.Sub(tx.Shares)
 		// Note commission plays no effect on sell order ACB
-		newAcbTotal = preTxStatus.TotalAcb - (preTxStatus.PerShareAcb() * float64(tx.Shares))
-		totalPayout := totalLocalSharePrice - (tx.Commission * tx.CommissionCurrToLocalExchangeRate)
-		capitalGains = totalPayout - (preTxStatus.PerShareAcb() * float64(tx.Shares))
+		newAcbTotal = preTxStatus.TotalAcb.Sub(preTxStatus.PerShareAcb().Mul(tx.Shares))
+		totalPayout := totalLocalSharePrice.Sub(tx.Commission.Mul(tx.CommissionCurrToLocalExchangeRate))
+		capitalGains = totalPayout.Sub(preTxStatus.PerShareAcb().Mul(tx.Shares))
 
-		if !registered && capitalGains < 0.0 {
+		if !registered && capitalGains.IsNegative() {
 			sflRatioResult := getSuperficialLossRatio(idx, txs, ptfStatuses)
 			superficialLossRatio = sflRatioResult.SflRatio
-			calculatedSuperficialLoss := 0.0
+			calculatedSuperficialLoss := decimal.Zero
 			if superficialLossRatio.Valid() {
-				calculatedSuperficialLoss = capitalGains * superficialLossRatio.ToFloat64()
+				calculatedSuperficialLoss = capitalGains.Mul(superficialLossRatio.ToDecimal())
 			}
 
 			if tx.SpecifiedSuperficialLoss.Present() {
 				superficialLoss = tx.SpecifiedSuperficialLoss.MustGet().SuperficialLoss
-				capitalGains = capitalGains - superficialLoss
+				capitalGains = capitalGains.Sub(superficialLoss)
 
 				if !tx.SpecifiedSuperficialLoss.MustGet().Force {
-					sflDiff := math.Abs(calculatedSuperficialLoss - superficialLoss)
-					const maxDiff float64 = 0.001
-					if sflDiff > maxDiff {
+					sflDiff := decimal.Abs(calculatedSuperficialLoss.Sub(superficialLoss))
+					var maxDiff decimal.Decimal = decimal.NewFromFloat(0.001)
+					if sflDiff.GreaterThan(maxDiff) {
 						return nil, nil, fmt.Errorf(
 							"Sell order on %v of %s: superficial loss was specified, but "+
 								"the difference between the specified value (%f) and the "+
 								"computed value (%f) is greater than the max allowed "+
 								"discrepancy (%f).\nTo force this SFL value, append an '!' "+
 								"to the value",
-							tx.TradeDate, tx.Security, superficialLoss,
-							calculatedSuperficialLoss, maxDiff)
+							tx.TradeDate, tx.Security, superficialLoss.String(),
+							calculatedSuperficialLoss.String(), maxDiff.String())
 					}
 				}
 
@@ -450,10 +451,10 @@ func AddTx(
 					"addTx: sflRatioResult.AcbAdjustAffiliateRatios was empty")
 
 				superficialLoss = calculatedSuperficialLoss
-				capitalGains = capitalGains - calculatedSuperficialLoss
+				capitalGains = capitalGains.Sub(calculatedSuperficialLoss)
 				potentiallyOverAppliedSfl = sflRatioResult.FewerRemainingSharesThanSflShares
 
-				acbAdjustAffiliates := util.MapKeys[string, util.Uint32Ratio](sflRatioResult.AcbAdjustAffiliateRatios)
+				acbAdjustAffiliates := util.MapKeys[string, util.DecimalRatio](sflRatioResult.AcbAdjustAffiliateRatios)
 				sort.Strings(acbAdjustAffiliates)
 				for _, afId := range acbAdjustAffiliates {
 					ratioOfSfl := sflRatioResult.AcbAdjustAffiliateRatios[afId]
@@ -465,13 +466,13 @@ func AddTx(
 							TradeDate:                 tx.TradeDate,
 							SettlementDate:            tx.SettlementDate,
 							Action:                    SFLA,
-							Shares:                    1,
-							AmountPerShare:            -1.0 * superficialLoss * ratioOfSfl.ToFloat64(),
+							Shares:                    decimal.NewFromInt(1),
+							AmountPerShare:            decimal.NewFromFloat(-1.0).Mul(superficialLoss).Mul(ratioOfSfl.ToDecimal()),
 							TxCurrency:                CAD,
-							TxCurrToLocalExchangeRate: 1.0,
+							TxCurrToLocalExchangeRate: decimal.NewFromInt(1),
 							Memo: fmt.Sprintf(
 								"Automatic SfL ACB adjustment. %.2f%% (%d/%d) of SfL, which was %d/%d of sale shares.",
-								ratioOfSfl.ToFloat64()*100.0, ratioOfSfl.Numerator, ratioOfSfl.Denominator,
+								ratioOfSfl.ToDecimal().Mul(decimal.NewFromInt(100)), ratioOfSfl.Numerator, ratioOfSfl.Denominator,
 								superficialLossRatio.Numerator, superficialLossRatio.Denominator,
 							),
 							Affiliate: autoAdjustAffiliate,
@@ -490,16 +491,15 @@ func AddTx(
 				"Invalid RoC tx on %v: Registered affiliates do not have an ACB to adjust",
 				tx.TradeDate)
 		}
-		if tx.Shares != 0 {
+		if !tx.Shares.IsZero() {
 			return nil, nil, fmt.Errorf("Invalid RoC tx on %v: # of shares is non-zero (%d)",
-				tx.TradeDate, tx.Shares)
+				tx.TradeDate, tx.Shares.String())
 		}
-		acbReduction := tx.AmountPerShare * float64(preTxStatus.ShareBalance) *
-			tx.TxCurrToLocalExchangeRate
-		newAcbTotal = preTxStatus.TotalAcb - acbReduction
-		if newAcbTotal < 0.0 {
+		acbReduction := tx.AmountPerShare.Mul(preTxStatus.ShareBalance).Mul(tx.TxCurrToLocalExchangeRate)
+		newAcbTotal = preTxStatus.TotalAcb.Sub(acbReduction)
+		if newAcbTotal.IsNegative() {
 			return nil, nil, fmt.Errorf("Invalid RoC tx on %v: RoC (%f) exceeds the current ACB (%f)",
-				tx.TradeDate, acbReduction, preTxStatus.TotalAcb)
+				tx.TradeDate, acbReduction.String(), preTxStatus.TotalAcb.String())
 		}
 	case SFLA:
 		if registered {
@@ -507,11 +507,10 @@ func AddTx(
 				"Invalid SfLA tx on %v: Registered affiliates do not have an ACB to adjust",
 				tx.TradeDate)
 		}
-		acbAdjustment := tx.AmountPerShare * float64(tx.Shares) *
-			tx.TxCurrToLocalExchangeRate
-		newAcbTotal = preTxStatus.TotalAcb + acbAdjustment
+		acbAdjustment := tx.AmountPerShare.Mul(tx.Shares).Mul(tx.TxCurrToLocalExchangeRate)
+		newAcbTotal = preTxStatus.TotalAcb.Add(acbAdjustment)
 		if !(tx.TxCurrency == CAD || tx.TxCurrency == DEFAULT_CURRENCY) ||
-			tx.TxCurrToLocalExchangeRate != 1.0 {
+			!tx.TxCurrToLocalExchangeRate.Equal(decimal.NewFromInt(1)) {
 			return nil, nil, fmt.Errorf(
 				"Invalid SfLA tx on %v: Currency is not CAD/default, and/or exchange rate is not 1",
 				tx.TradeDate)

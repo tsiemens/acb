@@ -3,12 +3,12 @@ package portfolio
 import (
 	"fmt"
 	"io"
-	"math"
 	"os"
 	"strings"
 
 	tw "github.com/olekukonko/tablewriter"
 
+	decimal "github.com/tsiemens/acb/decimal_value"
 	"github.com/tsiemens/acb/util"
 )
 
@@ -28,25 +28,25 @@ func NaNString() string {
 	return "NaN"
 }
 
-func (h _PrintHelper) CurrStr(val float64) string {
+func (h _PrintHelper) CurrStr(val decimal.Decimal) string {
 	if h.PrintAllDecimals {
-		return fmt.Sprintf("%f", val)
+		return val.String()
 	}
-	return fmt.Sprintf("%.2f", val)
+	return val.Decimal.StringFixed(2)
 }
 
-func (h _PrintHelper) DollarStr(val float64) string {
-	if math.IsNaN(val) {
+func (h _PrintHelper) DollarStr(val decimal.Decimal) string {
+	if val.IsNull {
 		return NaNString()
 	}
 	return "$" + h.CurrStr(val)
 }
 
-func (h _PrintHelper) CurrWithFxStr(val float64, curr Currency, rateToLocal float64) string {
+func (h _PrintHelper) CurrWithFxStr(val decimal.Decimal, curr Currency, rateToLocal decimal.Decimal) string {
 	if curr == DEFAULT_CURRENCY {
 		return h.DollarStr(val)
 	}
-	return fmt.Sprintf("%s\n(%s %s)", h.DollarStr(val*rateToLocal), h.CurrStr(val), curr)
+	return fmt.Sprintf("%s\n(%s %s)", h.DollarStr(val.Mul(rateToLocal)), h.CurrStr(val), curr)
 }
 
 func strOrDash(useStr bool, str string) string {
@@ -56,12 +56,12 @@ func strOrDash(useStr bool, str string) string {
 	return "-"
 }
 
-func (h _PrintHelper) PlusMinusDollar(val float64, showPlus bool) string {
-	if math.IsNaN(val) {
+func (h _PrintHelper) PlusMinusDollar(val decimal.Decimal, showPlus bool) string {
+	if val.IsNull {
 		return NaNString()
 	}
-	if val < 0.0 {
-		return fmt.Sprintf("-$%s", h.CurrStr(val*-1.0))
+	if val.IsNegative() {
+		return fmt.Sprintf("-$%s", h.CurrStr(val.Mul(decimal.NewFromInt(-1))))
 	}
 	plus := ""
 	if showPlus {
@@ -114,9 +114,9 @@ func RenderTxTableModel(
 		}
 		tx := d.Tx
 
-		var preAcbPerShare float64 = 0.0
-		if tx.Action == SELL && d.PreStatus.ShareBalance > 0 {
-			preAcbPerShare = d.PreStatus.TotalAcb / float64(d.PreStatus.ShareBalance)
+		var preAcbPerShare decimal.Decimal
+		if tx.Action == SELL && d.PreStatus.ShareBalance.IsPositive() {
+			preAcbPerShare = d.PreStatus.TotalAcb.Div(d.PreStatus.ShareBalance)
 		}
 
 		var affiliateName string
@@ -128,24 +128,24 @@ func RenderTxTableModel(
 
 		row := []string{d.Tx.Security, tx.TradeDate.String(), tx.SettlementDate.String(), tx.Action.String(),
 			// Amount
-			ph.CurrWithFxStr(float64(tx.Shares)*tx.AmountPerShare, tx.TxCurrency, tx.TxCurrToLocalExchangeRate),
-			fmt.Sprintf("%d", tx.Shares),
+			ph.CurrWithFxStr(tx.Shares.Mul(tx.AmountPerShare), tx.TxCurrency, tx.TxCurrToLocalExchangeRate),
+			tx.Shares.String(),
 			ph.CurrWithFxStr(tx.AmountPerShare, tx.TxCurrency, tx.TxCurrToLocalExchangeRate),
 			// ACB of sale
-			strOrDash(tx.Action == SELL, ph.DollarStr(preAcbPerShare*float64(tx.Shares))),
+			strOrDash(tx.Action == SELL, ph.DollarStr(preAcbPerShare.Mul(tx.Shares))),
 			// Commission
-			strOrDash(tx.Commission != 0.0,
+			strOrDash(!tx.Commission.IsZero(),
 				ph.CurrWithFxStr(tx.Commission, tx.CommissionCurrency, tx.CommissionCurrToLocalExchangeRate)),
 			// Cap gains
 			strOrDash(tx.Action == SELL, ph.PlusMinusDollar(d.CapitalGain, false)+superficialLossAsterix),
-			util.Tern(d.PostStatus.ShareBalance != d.PostStatus.AllAffiliatesShareBalance,
-				fmt.Sprintf("%d / %d", d.PostStatus.ShareBalance, d.PostStatus.AllAffiliatesShareBalance),
-				fmt.Sprintf("%d", d.PostStatus.ShareBalance)),
+			util.Tern(d.PostStatus.ShareBalance.Equal(d.PostStatus.AllAffiliatesShareBalance),
+				d.PostStatus.ShareBalance.String(),
+				fmt.Sprintf("%s / %s", d.PostStatus.ShareBalance, d.PostStatus.AllAffiliatesShareBalance)),
 			ph.PlusMinusDollar(d.AcbDelta(), true),
 			ph.DollarStr(d.PostStatus.TotalAcb),
 			// Acb per share
-			strOrDash(d.PostStatus.ShareBalance > 0.0,
-				ph.DollarStr(d.PostStatus.TotalAcb/float64(d.PostStatus.ShareBalance))),
+			strOrDash(d.PostStatus.ShareBalance.IsPositive(),
+				ph.DollarStr(d.PostStatus.TotalAcb.Div(d.PostStatus.ShareBalance))),
 			affiliateName,
 			tx.Memo,
 		}

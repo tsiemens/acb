@@ -7,6 +7,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/tsiemens/acb/date"
+	decimal "github.com/tsiemens/acb/decimal_value"
 	"github.com/tsiemens/acb/fx"
 	"github.com/tsiemens/acb/log"
 )
@@ -59,9 +60,9 @@ func TestFillInUnknownDayRates(t *testing.T) {
 	rq := require.New(t)
 
 	rates := []fx.DailyRate{
-		fx.DailyRate{mkDateYD(2022, 0), 1.0},
-		fx.DailyRate{mkDateYD(2022, 1), 1.1},
-		fx.DailyRate{mkDateYD(2022, 2), 1.2},
+		fx.DailyRate{mkDateYD(2022, 0), decimal.NewFromFloat(1.0)},
+		fx.DailyRate{mkDateYD(2022, 1), decimal.NewFromFloat(1.1)},
+		fx.DailyRate{mkDateYD(2022, 2), decimal.NewFromFloat(1.2)},
 	}
 
 	// Simple no fills
@@ -69,9 +70,9 @@ func TestFillInUnknownDayRates(t *testing.T) {
 	rq.Equal(
 		fx.FillInUnknownDayRates(rates, 2022),
 		[]fx.DailyRate{
-			fx.DailyRate{mkDateYD(2022, 0), 1.0},
-			fx.DailyRate{mkDateYD(2022, 1), 1.1},
-			fx.DailyRate{mkDateYD(2022, 2), 1.2},
+			fx.DailyRate{mkDateYD(2022, 0), decimal.NewFromFloat(1.0)},
+			fx.DailyRate{mkDateYD(2022, 1), decimal.NewFromFloat(1.1)},
+			fx.DailyRate{mkDateYD(2022, 2), decimal.NewFromFloat(1.2)},
 		},
 	)
 
@@ -79,9 +80,9 @@ func TestFillInUnknownDayRates(t *testing.T) {
 	rq.Equal(
 		fx.FillInUnknownDayRates(rates, 2022),
 		[]fx.DailyRate{
-			fx.DailyRate{mkDateYD(2022, 0), 1.0},
-			fx.DailyRate{mkDateYD(2022, 1), 1.1},
-			fx.DailyRate{mkDateYD(2022, 2), 1.2},
+			fx.DailyRate{mkDateYD(2022, 0), decimal.NewFromFloat(1.0)},
+			fx.DailyRate{mkDateYD(2022, 1), decimal.NewFromFloat(1.1)},
+			fx.DailyRate{mkDateYD(2022, 2), decimal.NewFromFloat(1.2)},
 		},
 	)
 
@@ -90,10 +91,10 @@ func TestFillInUnknownDayRates(t *testing.T) {
 	rq.Equal(
 		fx.FillInUnknownDayRates(rates, 2022),
 		[]fx.DailyRate{
-			fx.DailyRate{mkDateYD(2022, 0), 1.0},
-			fx.DailyRate{mkDateYD(2022, 1), 1.1},
-			fx.DailyRate{mkDateYD(2022, 2), 1.2},
-			fx.DailyRate{mkDateYD(2022, 3), 0.0},
+			fx.DailyRate{mkDateYD(2022, 0), decimal.NewFromFloat(1.0)},
+			fx.DailyRate{mkDateYD(2022, 1), decimal.NewFromFloat(1.1)},
+			fx.DailyRate{mkDateYD(2022, 2), decimal.NewFromFloat(1.2)},
+			fx.DailyRate{mkDateYD(2022, 3), decimal.Zero},
 		},
 	)
 
@@ -107,27 +108,27 @@ func TestFillInUnknownDayRates(t *testing.T) {
 	// Middle and front fills
 	rates = []fx.DailyRate{
 		// fx.DailyRate{mkDateYD(2022, 0), 1.0},
-		fx.DailyRate{mkDateYD(2022, 1), 1.1},
+		fx.DailyRate{mkDateYD(2022, 1), decimal.NewFromFloat(1.1)},
 		// fx.DailyRate{mkDateYD(2022, 2), 1.2},
-		fx.DailyRate{mkDateYD(2022, 3), 1.3},
-		fx.DailyRate{mkDateYD(2022, 4), 1.4},
+		fx.DailyRate{mkDateYD(2022, 3), decimal.NewFromFloat(1.3)},
+		fx.DailyRate{mkDateYD(2022, 4), decimal.NewFromFloat(1.4)},
 		// fx.DailyRate{mkDateYD(2022, 5), 1.2},
 		// fx.DailyRate{mkDateYD(2022, 6), 1.2},
-		fx.DailyRate{mkDateYD(2022, 7), 1.7},
+		fx.DailyRate{mkDateYD(2022, 7), decimal.NewFromFloat(1.7)},
 	}
 
 	date.TodaysDateForTest = mkDateYD(2022, 7)
 	rq.Equal(
 		fx.FillInUnknownDayRates(rates, 2022),
 		[]fx.DailyRate{
-			fx.DailyRate{mkDateYD(2022, 0), 0.0},
-			fx.DailyRate{mkDateYD(2022, 1), 1.1},
-			fx.DailyRate{mkDateYD(2022, 2), 0.0},
-			fx.DailyRate{mkDateYD(2022, 3), 1.3},
-			fx.DailyRate{mkDateYD(2022, 4), 1.4},
-			fx.DailyRate{mkDateYD(2022, 5), 0.0},
-			fx.DailyRate{mkDateYD(2022, 6), 0.0},
-			fx.DailyRate{mkDateYD(2022, 7), 1.7},
+			fx.DailyRate{mkDateYD(2022, 0), decimal.Zero},
+			fx.DailyRate{mkDateYD(2022, 1), decimal.NewFromFloat(1.1)},
+			fx.DailyRate{mkDateYD(2022, 2), decimal.Zero},
+			fx.DailyRate{mkDateYD(2022, 3), decimal.NewFromFloat(1.3)},
+			fx.DailyRate{mkDateYD(2022, 4), decimal.NewFromFloat(1.4)},
+			fx.DailyRate{mkDateYD(2022, 5), decimal.Zero},
+			fx.DailyRate{mkDateYD(2022, 6), decimal.Zero},
+			fx.DailyRate{mkDateYD(2022, 7), decimal.NewFromFloat(1.7)},
 		},
 	)
 
@@ -141,11 +142,11 @@ func TestGetEffectiveUsdCadRateFreshCache(t *testing.T) {
 	rateLoader, ratesCache, remote := NewTestRateLoader(false)
 	ratesCache.RatesByYear[2022] = []fx.DailyRate{}
 	remote.RemoteYearRates[2022] = []fx.DailyRate{
-		fx.DailyRate{mkDateYD(2022, 0), 1.0},
+		fx.DailyRate{mkDateYD(2022, 0), decimal.NewFromFloat(1.0)},
 		// fx.DailyRate{mkDateYD(2022, 1), 1.1}, // Expect fill here
-		fx.DailyRate{mkDateYD(2022, 2), 1.2},
+		fx.DailyRate{mkDateYD(2022, 2), decimal.NewFromFloat(1.2)},
 		// Expect 9 days fill here (unrealistic)
-		fx.DailyRate{mkDateYD(2022, 12), 2.2},
+		fx.DailyRate{mkDateYD(2022, 12), decimal.NewFromFloat(2.2)},
 	}
 
 	// Test failure to get from remote.
@@ -157,27 +158,27 @@ func TestGetEffectiveUsdCadRateFreshCache(t *testing.T) {
 	rateLoader, ratesCache = NewTestRateLoaderWithRemote(false, remote)
 	rate, err = rateLoader.GetEffectiveUsdCadRate(mkDateYD(2022, 0))
 	rq.Nil(err)
-	rq.Equal(rate, fx.DailyRate{mkDateYD(2022, 0), 1.0})
+	rq.Equal(rate, fx.DailyRate{mkDateYD(2022, 0), decimal.NewFromFloat(1.0)})
 	// Test fall back to previous day rate
 	rateLoader, ratesCache = NewTestRateLoaderWithRemote(false, remote)
 	rate, err = rateLoader.GetEffectiveUsdCadRate(mkDateYD(2022, 1))
 	rq.Nil(err)
-	rq.Equal(rate, fx.DailyRate{mkDateYD(2022, 0), 1.0})
+	rq.Equal(rate, fx.DailyRate{mkDateYD(2022, 0), decimal.NewFromFloat(1.0)})
 	// Test exact match after a fill day
 	rateLoader, ratesCache = NewTestRateLoaderWithRemote(false, remote)
 	rate, err = rateLoader.GetEffectiveUsdCadRate(mkDateYD(2022, 2))
 	rq.Nil(err)
-	rq.Equal(rate, fx.DailyRate{mkDateYD(2022, 2), 1.2})
+	rq.Equal(rate, fx.DailyRate{mkDateYD(2022, 2), decimal.NewFromFloat(1.2)})
 	// Test fall back with the day ahead also not being present
 	rateLoader, ratesCache = NewTestRateLoaderWithRemote(false, remote)
 	rate, err = rateLoader.GetEffectiveUsdCadRate(mkDateYD(2022, 7))
 	rq.Nil(err)
-	rq.Equal(rate, fx.DailyRate{mkDateYD(2022, 2), 1.2})
+	rq.Equal(rate, fx.DailyRate{mkDateYD(2022, 2), decimal.NewFromFloat(1.2)})
 	// Test fall back 7 days (the max allowed)
 	rateLoader, ratesCache = NewTestRateLoaderWithRemote(false, remote)
 	rate, err = rateLoader.GetEffectiveUsdCadRate(mkDateYD(2022, 9))
 	rq.Nil(err)
-	rq.Equal(rate, fx.DailyRate{mkDateYD(2022, 2), 1.2})
+	rq.Equal(rate, fx.DailyRate{mkDateYD(2022, 2), decimal.NewFromFloat(1.2)})
 	// Test fall back 8 days (more than allowed)
 	rateLoader, ratesCache = NewTestRateLoaderWithRemote(false, remote)
 	rate, err = rateLoader.GetEffectiveUsdCadRate(mkDateYD(2022, 10))
@@ -188,7 +189,7 @@ func TestGetEffectiveUsdCadRateFreshCache(t *testing.T) {
 	rateLoader, ratesCache = NewTestRateLoaderWithRemote(false, remote)
 	rate, err = rateLoader.GetEffectiveUsdCadRate(mkDateYD(2022, 12))
 	rq.Nil(err)
-	rq.Equal(rate, fx.DailyRate{mkDateYD(2022, 12), 2.2})
+	rq.Equal(rate, fx.DailyRate{mkDateYD(2022, 12), decimal.NewFromFloat(2.2)})
 
 	// Test lookup for today's (undetermined) rate
 	date.TodaysDateForTest = mkDateYD(2022, 13)
@@ -204,7 +205,7 @@ func TestGetEffectiveUsdCadRateFreshCache(t *testing.T) {
 	rateLoader, ratesCache = NewTestRateLoaderWithRemote(false, remote)
 	rate, err = rateLoader.GetEffectiveUsdCadRate(mkDateYD(2022, 13))
 	rq.Nil(err)
-	rq.Equal(rate, fx.DailyRate{mkDateYD(2022, 12), 2.2})
+	rq.Equal(rate, fx.DailyRate{mkDateYD(2022, 12), decimal.NewFromFloat(2.2)})
 }
 
 func TestGetEffectiveUsdCadRateWithCache(t *testing.T) {
@@ -212,9 +213,9 @@ func TestGetEffectiveUsdCadRateWithCache(t *testing.T) {
 
 	rateLoader, ratesCache, _ := NewTestRateLoader(false)
 	ratesCache.RatesByYear[2022] = []fx.DailyRate{
-		fx.DailyRate{mkDateYD(2022, 1), 1.1},
-		fx.DailyRate{mkDateYD(2022, 2), 0.0}, // Filled (markets closed)
-		fx.DailyRate{mkDateYD(2022, 3), 0.0}, // Filled (markets closed)
+		fx.DailyRate{mkDateYD(2022, 1), decimal.NewFromFloat(1.1)},
+		fx.DailyRate{mkDateYD(2022, 2), decimal.NewFromFloat(0.0)}, // Filled (markets closed)
+		fx.DailyRate{mkDateYD(2022, 3), decimal.NewFromFloat(0.0)}, // Filled (markets closed)
 	}
 
 	// Test lookup of well-known cached value for tomorrow, today, yesterday
@@ -222,7 +223,7 @@ func TestGetEffectiveUsdCadRateWithCache(t *testing.T) {
 		date.TodaysDateForTest = mkDateYD(2022, i)
 		rate, err := rateLoader.GetEffectiveUsdCadRate(mkDateYD(2022, 1))
 		rq.Nil(err)
-		rq.Equal(rate, fx.DailyRate{mkDateYD(2022, 1), 1.1})
+		rq.Equal(rate, fx.DailyRate{mkDateYD(2022, 1), decimal.NewFromFloat(1.1)})
 	}
 	// Test lookup of defined markets closed cached value for tomorrow, today, yesterday,
 	// where later values are present.
@@ -230,7 +231,7 @@ func TestGetEffectiveUsdCadRateWithCache(t *testing.T) {
 		date.TodaysDateForTest = mkDateYD(2022, i)
 		rate, err := rateLoader.GetEffectiveUsdCadRate(mkDateYD(2022, 2))
 		rq.Nil(err)
-		rq.Equal(rate, fx.DailyRate{mkDateYD(2022, 1), 1.1})
+		rq.Equal(rate, fx.DailyRate{mkDateYD(2022, 1), decimal.NewFromFloat(1.1)})
 	}
 	// Test lookup of defined markets closed cached value for tomorrow, today, yesterday,
 	// where this is the last cached value.
@@ -238,7 +239,7 @@ func TestGetEffectiveUsdCadRateWithCache(t *testing.T) {
 		date.TodaysDateForTest = mkDateYD(2022, i)
 		rate, err := rateLoader.GetEffectiveUsdCadRate(mkDateYD(2022, 3))
 		rq.Nil(err)
-		rq.Equal(rate, fx.DailyRate{mkDateYD(2022, 1), 1.1})
+		rq.Equal(rate, fx.DailyRate{mkDateYD(2022, 1), decimal.NewFromFloat(1.1)})
 	}
 }
 
@@ -249,17 +250,17 @@ func TestGetEffectiveUsdCadRateCacheInvalidation(t *testing.T) {
 	// no remote value
 	rateLoader, ratesCache, remote := NewTestRateLoader(false)
 	ratesCache.RatesByYear[2022] = []fx.DailyRate{
-		fx.DailyRate{mkDateYD(2022, 1), 1.1},
+		fx.DailyRate{mkDateYD(2022, 1), decimal.NewFromFloat(1.1)},
 	}
 	remote.RemoteYearRates[2022] = []fx.DailyRate{
-		fx.DailyRate{mkDateYD(2022, 1), 1.4}, // Value change.
+		fx.DailyRate{mkDateYD(2022, 1), decimal.NewFromFloat(1.4)}, // Value change.
 	}
 	date.TodaysDateForTest = mkDateYD(2022, 2)
 	_, err := rateLoader.GetEffectiveUsdCadRate(mkDateYD(2022, 2))
 	rq.Equal(ratesCache.RatesByYear[2022],
 		[]fx.DailyRate{
-			fx.DailyRate{mkDateYD(2022, 0), 0.0}, // fill
-			fx.DailyRate{mkDateYD(2022, 1), 1.4},
+			fx.DailyRate{mkDateYD(2022, 0), decimal.NewFromFloat(0.0)}, // fill
+			fx.DailyRate{mkDateYD(2022, 1), decimal.NewFromFloat(1.4)},
 		})
 	rq.NotNil(err) // Can't use today unless it's been published or specified.
 
@@ -267,53 +268,53 @@ func TestGetEffectiveUsdCadRateCacheInvalidation(t *testing.T) {
 	// a remote value
 	rateLoader, ratesCache, remote = NewTestRateLoader(false)
 	ratesCache.RatesByYear[2022] = []fx.DailyRate{
-		fx.DailyRate{mkDateYD(2022, 0), 1.0},
+		fx.DailyRate{mkDateYD(2022, 0), decimal.NewFromFloat(1.0)},
 	}
 	remote.RemoteYearRates[2022] = []fx.DailyRate{
-		fx.DailyRate{mkDateYD(2022, 0), 1.0},
-		fx.DailyRate{mkDateYD(2022, 1), 1.1},
+		fx.DailyRate{mkDateYD(2022, 0), decimal.NewFromFloat(1.0)},
+		fx.DailyRate{mkDateYD(2022, 1), decimal.NewFromFloat(1.1)},
 	}
 	date.TodaysDateForTest = mkDateYD(2022, 1)
 	rate, err := rateLoader.GetEffectiveUsdCadRate(mkDateYD(2022, 1))
 	rq.Nil(err)
 	rq.Equal(ratesCache.RatesByYear[2022], remote.RemoteYearRates[2022])
-	rq.Equal(rate, fx.DailyRate{mkDateYD(2022, 1), 1.1})
+	rq.Equal(rate, fx.DailyRate{mkDateYD(2022, 1), decimal.NewFromFloat(1.1)})
 
 	// Test cache invalidates when querying a previous day with no cached value.
 	rateLoader, ratesCache, remote = NewTestRateLoader(false)
 	ratesCache.RatesByYear[2022] = []fx.DailyRate{
-		fx.DailyRate{mkDateYD(2022, 0), 1.0},
+		fx.DailyRate{mkDateYD(2022, 0), decimal.NewFromFloat(1.0)},
 	}
 	remote.RemoteYearRates[2022] = []fx.DailyRate{
-		fx.DailyRate{mkDateYD(2022, 0), 1.0},
-		fx.DailyRate{mkDateYD(2022, 1), 1.1},
+		fx.DailyRate{mkDateYD(2022, 0), decimal.NewFromFloat(1.0)},
+		fx.DailyRate{mkDateYD(2022, 1), decimal.NewFromFloat(1.1)},
 	}
 	date.TodaysDateForTest = mkDateYD(2022, 4)
 	rate, err = rateLoader.GetEffectiveUsdCadRate(mkDateYD(2022, 1))
 	rq.Nil(err)
 	rq.Equal(ratesCache.RatesByYear[2022],
 		[]fx.DailyRate{
-			fx.DailyRate{mkDateYD(2022, 0), 1.0},
-			fx.DailyRate{mkDateYD(2022, 1), 1.1},
-			fx.DailyRate{mkDateYD(2022, 2), 0.0}, // fill to yesterday
-			fx.DailyRate{mkDateYD(2022, 3), 0.0}, // fill to yesterday
+			fx.DailyRate{mkDateYD(2022, 0), decimal.NewFromFloat(1.0)},
+			fx.DailyRate{mkDateYD(2022, 1), decimal.NewFromFloat(1.1)},
+			fx.DailyRate{mkDateYD(2022, 2), decimal.NewFromFloat(0.0)}, // fill to yesterday
+			fx.DailyRate{mkDateYD(2022, 3), decimal.NewFromFloat(0.0)}, // fill to yesterday
 		})
-	rq.Equal(rate, fx.DailyRate{mkDateYD(2022, 1), 1.1})
+	rq.Equal(rate, fx.DailyRate{mkDateYD(2022, 1), decimal.NewFromFloat(1.1)})
 
 	// Test cache does not invalidate when querying today with no cached value,
 	// after we already invalidated and refreshed the cache with this Loader instance.
 	remote.RemoteYearRates[2022] = []fx.DailyRate{
-		fx.DailyRate{mkDateYD(2022, 0), 99.0},
-		fx.DailyRate{mkDateYD(2022, 1), 99.1},
+		fx.DailyRate{mkDateYD(2022, 0), decimal.NewFromFloat(99.0)},
+		fx.DailyRate{mkDateYD(2022, 1), decimal.NewFromFloat(99.1)},
 	}
 	_, err = rateLoader.GetEffectiveUsdCadRate(mkDateYD(2022, 4))
 	// Cache should be unchanged
 	rq.Equal(ratesCache.RatesByYear[2022],
 		[]fx.DailyRate{
-			fx.DailyRate{mkDateYD(2022, 0), 1.0},
-			fx.DailyRate{mkDateYD(2022, 1), 1.1},
-			fx.DailyRate{mkDateYD(2022, 2), 0.0},
-			fx.DailyRate{mkDateYD(2022, 3), 0.0},
+			fx.DailyRate{mkDateYD(2022, 0), decimal.NewFromFloat(1.0)},
+			fx.DailyRate{mkDateYD(2022, 1), decimal.NewFromFloat(1.1)},
+			fx.DailyRate{mkDateYD(2022, 2), decimal.NewFromFloat(0.0)},
+			fx.DailyRate{mkDateYD(2022, 3), decimal.NewFromFloat(0.0)},
 		})
 	rq.NotNil(err) // Can't use today unless it's been published or specified.
 
@@ -321,14 +322,14 @@ func TestGetEffectiveUsdCadRateCacheInvalidation(t *testing.T) {
 	rateLoader, ratesCache, remote = NewTestRateLoader(false)
 	rateLoader.ForceDownload = true
 	ratesCache.RatesByYear[2022] = []fx.DailyRate{
-		fx.DailyRate{mkDateYD(2022, 0), 1.0},
+		fx.DailyRate{mkDateYD(2022, 0), decimal.NewFromFloat(1.0)},
 	}
 	remote.RemoteYearRates[2022] = []fx.DailyRate{
-		fx.DailyRate{mkDateYD(2022, 0), 99.0},
+		fx.DailyRate{mkDateYD(2022, 0), decimal.NewFromFloat(99.0)},
 	}
 	date.TodaysDateForTest = mkDateYD(2022, 1)
 	rate, err = rateLoader.GetEffectiveUsdCadRate(mkDateYD(2022, 0))
 	rq.Nil(err)
 	rq.Equal(ratesCache.RatesByYear[2022], remote.RemoteYearRates[2022])
-	rq.Equal(rate, fx.DailyRate{mkDateYD(2022, 0), 99.0})
+	rq.Equal(rate, fx.DailyRate{mkDateYD(2022, 0), decimal.NewFromFloat(99.0)})
 }
