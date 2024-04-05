@@ -1,24 +1,18 @@
 package util
 
-func MinUint32(val0 uint32, vals ...uint32) uint32 {
-	min := val0
-	for _, v := range vals {
-		if v < min {
-			min = v
-		}
-	}
-	return min
+import (
+	decimal "github.com/tsiemens/acb/decimal_value"
+)
+
+type DecimalRatio struct {
+	Numerator   decimal.Decimal
+	Denominator decimal.Decimal
 }
 
-type Uint32Ratio struct {
-	Numerator   uint32
-	Denominator uint32
+func (r *DecimalRatio) Valid() bool {
+	return !r.Denominator.IsZero()
 }
 
-func (r *Uint32Ratio) Valid() bool {
-	return r.Denominator != 0
-}
-
-func (r *Uint32Ratio) ToFloat64() float64 {
-	return float64(r.Numerator) / float64(r.Denominator)
+func (r *DecimalRatio) ToDecimal() decimal.Decimal {
+	return r.Numerator.Div(r.Denominator)
 }

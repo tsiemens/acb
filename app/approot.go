@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/tsiemens/acb/date"
+	decimal "github.com/tsiemens/acb/decimal_value"
 	"github.com/tsiemens/acb/fx"
 	"github.com/tsiemens/acb/log"
 	ptf "github.com/tsiemens/acb/portfolio"
@@ -33,7 +34,7 @@ func ParseInitialStatus(
 			return nil, fmt.Errorf("Invalid ACB format '%s'", opt)
 		}
 		symbol := parts[0]
-		shares, err := strconv.ParseUint(parts[1], 10, 32)
+		shares, err := strconv.ParseFloat(parts[1], 10)
 		if err != nil {
 			return nil, fmt.Errorf("Invalid shares format '%s'. %v", opt, err)
 		}
@@ -46,7 +47,7 @@ func ParseInitialStatus(
 			return nil, fmt.Errorf("Symbol %s specified multiple times", symbol)
 		}
 		stati[symbol] = &ptf.PortfolioSecurityStatus{
-			Security: symbol, ShareBalance: uint32(shares), TotalAcb: acb}
+			Security: symbol, ShareBalance: decimal.NewFromFloat(shares), TotalAcb: decimal.NewFromFloat(acb)}
 	}
 	return stati, nil
 }

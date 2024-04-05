@@ -1,32 +1,33 @@
 package portfolio
 
 import (
-	"math"
 	"sort"
 
+	_ "github.com/shopspring/decimal"
+	decimal "github.com/tsiemens/acb/decimal_value"
 	"github.com/tsiemens/acb/util"
 )
 
 type CumulativeCapitalGains struct {
-	CapitalGainsTotal      float64
-	CapitalGainsYearTotals map[int]float64
+	CapitalGainsTotal      decimal.Decimal
+	CapitalGainsYearTotals map[int]decimal.Decimal
 }
 
 func (g *CumulativeCapitalGains) CapitalGainsYearTotalsKeysSorted() []int {
-	years := util.IntFloat64MapKeys(g.CapitalGainsYearTotals)
+	years := util.IntDecimalMapKeys(g.CapitalGainsYearTotals)
 	sort.Ints(years)
 	return years
 }
 
 func CalcSecurityCumulativeCapitalGains(deltas []*TxDelta) *CumulativeCapitalGains {
-	var capGainsTotal float64 = 0.0
-	capGainsYearTotals := util.NewDefaultMap[int, float64](func(_ int) float64 { return 0.0 })
+	var capGainsTotal decimal.Decimal
+	capGainsYearTotals := util.NewDefaultMap[int, decimal.Decimal](func(_ int) decimal.Decimal { return decimal.Zero })
 
 	for _, d := range deltas {
-		if !math.IsNaN(d.CapitalGain) {
-			capGainsTotal += d.CapitalGain
+		if !d.CapitalGain.IsNull {
+			capGainsTotal = capGainsTotal.Add(d.CapitalGain)
 			yearTotalSoFar := capGainsYearTotals.Get(d.Tx.SettlementDate.Year())
-			capGainsYearTotals.Set(d.Tx.SettlementDate.Year(), yearTotalSoFar+d.CapitalGain)
+			capGainsYearTotals.Set(d.Tx.SettlementDate.Year(), yearTotalSoFar.Add(d.CapitalGain))
 		}
 	}
 
@@ -34,14 +35,14 @@ func CalcSecurityCumulativeCapitalGains(deltas []*TxDelta) *CumulativeCapitalGai
 }
 
 func CalcCumulativeCapitalGains(secGains map[string]*CumulativeCapitalGains) *CumulativeCapitalGains {
-	var capGainsTotal float64 = 0.0
-	capGainsYearTotals := util.NewDefaultMap[int, float64](func(_ int) float64 { return 0.0 })
+	var capGainsTotal decimal.Decimal
+	capGainsYearTotals := util.NewDefaultMap[int, decimal.Decimal](func(_ int) decimal.Decimal { return decimal.Zero })
 
 	for _, gains := range secGains {
-		capGainsTotal += gains.CapitalGainsTotal
+		capGainsTotal = capGainsTotal.Add(gains.CapitalGainsTotal)
 		for year, yearGains := range gains.CapitalGainsYearTotals {
 			yearTotalSoFar := capGainsYearTotals.Get(year)
-			capGainsYearTotals.Set(year, yearTotalSoFar+yearGains)
+			capGainsYearTotals.Set(year, yearTotalSoFar.Add(yearGains))
 		}
 	}
 
