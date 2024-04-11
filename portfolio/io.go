@@ -215,7 +215,7 @@ func parseShares(data string, tx *Tx) error {
 	if err != nil {
 		return fmt.Errorf("Error parsing # shares: %v", err)
 	}
-	tx.Shares = decimal_value.Decimal{Decimal: shares}
+	tx.Shares = decimal_value.New(shares)
 	return nil
 }
 
@@ -224,7 +224,7 @@ func parseAmountPerShare(data string, tx *Tx) error {
 	if err != nil {
 		return fmt.Errorf("Error parsing price/share: %v", err)
 	}
-	tx.AmountPerShare = decimal_value.Decimal{Decimal: aps}
+	tx.AmountPerShare = decimal_value.New(aps)
 	return nil
 }
 
@@ -237,7 +237,7 @@ func parseCommission(data string, tx *Tx) error {
 			return fmt.Errorf("Error parsing commission: %v", err)
 		}
 	}
-	tx.Commission = decimal_value.Decimal{Decimal: c}
+	tx.Commission = decimal_value.New(c)
 	return nil
 }
 
@@ -255,7 +255,7 @@ func parseTxFx(data string, tx *Tx) error {
 			return fmt.Errorf("Error parsing exchange rate: %v", err)
 		}
 	}
-	tx.TxCurrToLocalExchangeRate = decimal_value.Decimal{Decimal: fx}
+	tx.TxCurrToLocalExchangeRate = decimal_value.New(fx)
 	return nil
 }
 
@@ -273,7 +273,7 @@ func parseCommissionFx(data string, tx *Tx) error {
 			return fmt.Errorf("Error parsing commission exchange rate: %v", err)
 		}
 	}
-	tx.CommissionCurrToLocalExchangeRate = decimal_value.Decimal{Decimal: fx}
+	tx.CommissionCurrToLocalExchangeRate = decimal_value.New(fx)
 	return nil
 }
 
@@ -296,7 +296,7 @@ func parseSuperficialLoss(data string, tx *Tx) error {
 			return fmt.Errorf(
 				"Error: superficial loss must be specified as a non-positive value: %f", sfl)
 		}
-		tx.SpecifiedSuperficialLoss = util.NewOptional[SFLInput](SFLInput{decimal_value.Decimal{Decimal: sfl}, forceFlag})
+		tx.SpecifiedSuperficialLoss = util.NewOptional[SFLInput](SFLInput{decimal_value.New(sfl), forceFlag})
 	}
 	return nil
 }

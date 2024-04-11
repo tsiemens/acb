@@ -12,6 +12,10 @@ type Decimal struct {
 	IsNull bool
 }
 
+func New(value decimal.Decimal) Decimal {
+	return Decimal{Decimal: value}
+}
+
 func NewFromInt(value int64) Decimal {
 	return Decimal{Decimal: decimal.NewFromInt(value)}
 }
