@@ -140,7 +140,7 @@ func (d Decimal) LessThanOrEqual(d2 Decimal) bool {
 
 func (d Decimal) IsZero() bool {
 	if d.IsNull {
-		return true
+		return false
 	}
 
 	return d.Decimal.IsZero()
