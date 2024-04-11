@@ -214,32 +214,9 @@ func ValidateTxs(t *testing.T, expTxs []*ptf.Tx, actualTxs []*ptf.Tx) {
 	}
 }
 
-func SoftStEq(
-	t *testing.T,
-	exp *ptf.PortfolioSecurityStatus, actual *ptf.PortfolioSecurityStatus) bool {
-
-	var expCopy ptf.PortfolioSecurityStatus = *exp
-	var actualCopy ptf.PortfolioSecurityStatus = *actual
-
-	return assert.Equal(t, expCopy, actualCopy)
-}
-
-func StEq(
-	t *testing.T,
-	exp *ptf.PortfolioSecurityStatus, actual *ptf.PortfolioSecurityStatus) {
-	if !SoftStEq(t, exp, actual) {
-		t.FailNow()
-	}
-}
-
-// TODO: remove
-func SoftSflAlmostEqual(t *testing.T, expDelta TDt, delta *ptf.TxDelta) bool {
-	return expDelta.SFL.Equal(delta.SuperficialLoss)
-}
-
 func ValidateDelta(t *testing.T, delta *ptf.TxDelta, expDelta TDt) {
 	fail := false
-	fail = !SoftStEq(t, expDelta.PostSt.X(), delta.PostStatus) || fail
+	fail = !assert.Equal(t, expDelta.PostSt.X(), delta.PostStatus) || fail
 	fail = !expDelta.Gain.Equal(delta.CapitalGain) || fail
 	fail = !expDelta.SFL.Equal(delta.SuperficialLoss) || fail
 	if fail {
@@ -256,7 +233,7 @@ func ValidateDeltas(t *testing.T, deltas []*ptf.TxDelta, expDeltas []TDt) {
 	}
 	for i, delta := range deltas {
 		fail := false
-		fail = !SoftStEq(t, expDeltas[i].PostSt.X(), delta.PostStatus) || fail
+		fail = !assert.Equal(t, expDeltas[i].PostSt.X(), delta.PostStatus) || fail
 		fail = !expDeltas[i].Gain.Equal(delta.CapitalGain) || fail
 		fail = (expDeltas[i].PotentiallyOverAppliedSfl != delta.PotentiallyOverAppliedSfl) || fail
 		if fail {
