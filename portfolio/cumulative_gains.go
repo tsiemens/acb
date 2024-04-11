@@ -3,7 +3,6 @@ package portfolio
 import (
 	"sort"
 
-	_ "github.com/shopspring/decimal"
 	decimal "github.com/tsiemens/acb/decimal_value"
 	"github.com/tsiemens/acb/util"
 )

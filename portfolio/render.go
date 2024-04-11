@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	tw "github.com/olekukonko/tablewriter"
-	_ "github.com/shopspring/decimal"
 
 	decimal "github.com/tsiemens/acb/decimal_value"
 	"github.com/tsiemens/acb/util"

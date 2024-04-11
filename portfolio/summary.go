@@ -6,7 +6,6 @@ import (
 	"sort"
 	"time"
 
-	_ "github.com/shopspring/decimal"
 	"github.com/tsiemens/acb/date"
 	decimal "github.com/tsiemens/acb/decimal_value"
 	"github.com/tsiemens/acb/log"
