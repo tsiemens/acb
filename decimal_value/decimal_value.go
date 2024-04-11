@@ -42,6 +42,10 @@ func RequireFromString(value string) Decimal {
 }
 
 func Abs(d Decimal) Decimal {
+	if d.IsNull {
+		return Null
+	}
+
 	return Decimal{Decimal: d.Decimal.Abs()}
 }
 
