@@ -371,7 +371,7 @@ func ToCsvString(txs []*Tx) string {
 			tx.TradeDate.String(),
 			tx.SettlementDate.String(),
 			tx.Action.String(),
-			tx.Shares.String(), // TODO formatting
+			tx.Shares.String(),
 			tx.AmountPerShare.String(),
 			tx.Commission.String(),
 			currString(tx.TxCurrency),
