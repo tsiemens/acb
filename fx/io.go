@@ -13,8 +13,9 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/shopspring/decimal"
+
 	"github.com/tsiemens/acb/date"
-	decimal "github.com/tsiemens/acb/decimal_value"
 	"github.com/tsiemens/acb/log"
 	"github.com/tsiemens/acb/util"
 )
@@ -382,7 +383,7 @@ func (cr *RateLoader) findUsdCadPrecedingRelevantSpotRate(
 		"from the preceding day for which such a rate is quoted should be " +
 		"used if no rate is quoted on the day the trade."
 
-	util.Assertf(foundRate == DailyRate{tradeDate, decimal.Zero},
+	util.Assertf(foundRate.Equal(DailyRate{tradeDate, decimal.Zero}),
 		"findUsdCadPrecedingRelevantSpotRate: rate for %s must be explicitly "+
 			"marked as 'markets closed' with a rate of zero\n",
 		tradeDate)

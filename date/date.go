@@ -32,6 +32,10 @@ func (d Date) isPureUtcDate() bool {
 	return d == other
 }
 
+func (d Date) Equal(other Date) bool {
+	return d.time.Equal(other.time)
+}
+
 func Parse(dFmt string, dateStr string) (Date, error) {
 	tm, err := time.Parse(dFmt, dateStr)
 	if err != nil {

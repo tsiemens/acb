@@ -25,15 +25,17 @@ func TestToCsvString(t *testing.T) {
 		header := "security,trade date,settlement date,action,shares,amount/share,commission,currency," +
 			"exchange rate,commission currency,commission exchange rate,superficial loss,affiliate,memo\n"
 
-		txRows := "FOO,2016-01-03,2016-01-05,Sell,5,1.600000,0.000000,CAD,,CAD,,,Default,a memo\n" +
-			"BAR,2016-01-03,2016-01-06,Buy,7,1.700000,1.000000,USD,1.110000,USD,1.110000,,Default,a memo 2\n" +
-			"AA,2016-01-04,2016-01-07,Sell,1,1.700000,1.000000,USD,1.110000,USD,1.110000,-1.200000,Default,M3\n" +
-			"BB,2016-01-05,2016-01-08,Sell,2,1.700000,1.000000,USD,1.110000,USD,1.110000,-1.300000!,Default (R),M4\n" +
-			"CC,2016-01-08,2016-01-10,SfLA,2,1.300000,0.000000,CAD,,CAD,,,B,M5\n"
+		txRows := "FOO,2016-01-03,2016-01-05,Sell,5,1.6,0,CAD,,CAD,,,Default,a memo\n" +
+			"BAR,2016-01-03,2016-01-06,Buy,7,1.7,1,USD,1.11,USD,1.11,,Default,a memo 2\n" +
+			"AA,2016-01-04,2016-01-07,Sell,1,1.7,1,USD,1.11,USD,1.11,-1.2,Default,M3\n" +
+			"BB,2016-01-05,2016-01-08,Sell,2,1.7,1,USD,1.11,USD,1.11,-1.3!,Default (R),M4\n" +
+			"CC,2016-01-08,2016-01-10,SfLA,2,1.3,0,CAD,,CAD,,,B,M5\n"
 
 		rq.Equal(len(txs), strings.Count(txRows, "\n"))
 		csvOut := ptf.ToCsvString(txs)
-		rq.Equal(header+txRows, csvOut)
+
+		crq := NewCustomRequire(t)
+		crq.LinesEqual(header+txRows, csvOut)
 	}
 
 	// Modern input with trade and settlement dates.

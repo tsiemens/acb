@@ -7,8 +7,9 @@ import (
 	"strings"
 
 	tw "github.com/olekukonko/tablewriter"
+	"github.com/shopspring/decimal"
 
-	decimal "github.com/tsiemens/acb/decimal_value"
+	decimal_opt "github.com/tsiemens/acb/decimal_value"
 	"github.com/tsiemens/acb/util"
 )
 
@@ -32,21 +33,28 @@ func (h _PrintHelper) CurrStr(val decimal.Decimal) string {
 	if h.PrintAllDecimals {
 		return val.String()
 	}
-	return val.Decimal.StringFixed(2)
+	return val.StringFixed(2)
 }
 
-func (h _PrintHelper) DollarStr(val decimal.Decimal) string {
+func (h _PrintHelper) OptCurrStr(val decimal_opt.DecimalOpt) string {
+	if val.IsNull {
+		return val.String()
+	}
+	return h.CurrStr(val.Decimal)
+}
+
+func (h _PrintHelper) DollarStr(val decimal_opt.DecimalOpt) string {
 	if val.IsNull {
 		return NaNString()
 	}
-	return "$" + h.CurrStr(val)
+	return "$" + h.OptCurrStr(val)
 }
 
 func (h _PrintHelper) CurrWithFxStr(val decimal.Decimal, curr Currency, rateToLocal decimal.Decimal) string {
 	if curr == DEFAULT_CURRENCY {
-		return h.DollarStr(val)
+		return h.DollarStr(decimal_opt.New(val))
 	}
-	return fmt.Sprintf("%s\n(%s %s)", h.DollarStr(val.Mul(rateToLocal)), h.CurrStr(val), curr)
+	return fmt.Sprintf("%s\n(%s %s)", h.DollarStr(decimal_opt.New(val.Mul(rateToLocal))), h.CurrStr(val), curr)
 }
 
 func strOrDash(useStr bool, str string) string {
@@ -56,18 +64,18 @@ func strOrDash(useStr bool, str string) string {
 	return "-"
 }
 
-func (h _PrintHelper) PlusMinusDollar(val decimal.Decimal, showPlus bool) string {
+func (h _PrintHelper) PlusMinusDollar(val decimal_opt.DecimalOpt, showPlus bool) string {
 	if val.IsNull {
 		return NaNString()
 	}
 	if val.IsNegative() {
-		return fmt.Sprintf("-$%s", h.CurrStr(val.Mul(decimal.NewFromInt(-1))))
+		return fmt.Sprintf("-$%s", h.OptCurrStr(val.Neg()))
 	}
 	plus := ""
 	if showPlus {
 		plus = "+"
 	}
-	return fmt.Sprintf("%s$%s", plus, h.CurrStr(val))
+	return fmt.Sprintf("%s$%s", plus, h.OptCurrStr(val))
 }
 
 type RenderTable struct {
@@ -114,9 +122,9 @@ func RenderTxTableModel(
 		}
 		tx := d.Tx
 
-		var preAcbPerShare decimal.Decimal
+		var preAcbPerShare decimal_opt.DecimalOpt
 		if tx.Action == SELL && d.PreStatus.ShareBalance.IsPositive() {
-			preAcbPerShare = d.PreStatus.TotalAcb.Div(d.PreStatus.ShareBalance)
+			preAcbPerShare = d.PreStatus.TotalAcb.DivD(d.PreStatus.ShareBalance)
 		}
 
 		var affiliateName string
@@ -132,7 +140,7 @@ func RenderTxTableModel(
 			tx.Shares.String(),
 			ph.CurrWithFxStr(tx.AmountPerShare, tx.TxCurrency, tx.TxCurrToLocalExchangeRate),
 			// ACB of sale
-			strOrDash(tx.Action == SELL, ph.DollarStr(preAcbPerShare.Mul(tx.Shares))),
+			strOrDash(tx.Action == SELL, ph.DollarStr(preAcbPerShare.MulD(tx.Shares))),
 			// Commission
 			strOrDash(!tx.Commission.IsZero(),
 				ph.CurrWithFxStr(tx.Commission, tx.CommissionCurrency, tx.CommissionCurrToLocalExchangeRate)),
@@ -145,7 +153,7 @@ func RenderTxTableModel(
 			ph.DollarStr(d.PostStatus.TotalAcb),
 			// Acb per share
 			strOrDash(d.PostStatus.ShareBalance.IsPositive(),
-				ph.DollarStr(d.PostStatus.TotalAcb.Div(d.PostStatus.ShareBalance))),
+				ph.DollarStr(d.PostStatus.TotalAcb.DivD(d.PostStatus.ShareBalance))),
 			affiliateName,
 			tx.Memo,
 		}

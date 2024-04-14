@@ -6,8 +6,10 @@ import (
 	"sort"
 	"time"
 
+	"github.com/shopspring/decimal"
+
 	"github.com/tsiemens/acb/date"
-	decimal "github.com/tsiemens/acb/decimal_value"
+	decimal_opt "github.com/tsiemens/acb/decimal_value"
 	"github.com/tsiemens/acb/log"
 	"github.com/tsiemens/acb/util"
 )
@@ -92,7 +94,7 @@ func MakeSummaryTxs(latestDate date.Date, deltas []*TxDelta, splitAnnualGains bo
 			// explicit superficial losses.
 			// Copy, and add add SFL
 			unsumTx = &*delta.Tx
-			unsumTx.SpecifiedSuperficialLoss = util.NewOptional[SFLInput](
+			unsumTx.SpecifiedSuperficialLoss = NewSFLInputOpt(
 				SFLInput{delta.SuperficialLoss, false /* force */})
 		}
 		summaryPeriodTxs = append(summaryPeriodTxs, unsumTx)
@@ -213,9 +215,10 @@ func makeSimpleSummaryTxs(
 				SettlementDate: tx.SettlementDate,
 				Action:         BUY,
 				Shares:         sumPostStatus.ShareBalance,
-				AmountPerShare: sumPostStatus.TotalAcb.Div(sumPostStatus.ShareBalance),
-				Commission:     decimal.Zero,
-				TxCurrency:     DEFAULT_CURRENCY, TxCurrToLocalExchangeRate: decimal.Zero,
+				AmountPerShare: util.Tern[decimal.Decimal](
+					sumPostStatus.TotalAcb.IsNull, decimal.Zero, sumPostStatus.TotalAcb.DivD(sumPostStatus.ShareBalance).Decimal),
+				Commission: decimal.Zero,
+				TxCurrency: DEFAULT_CURRENCY, TxCurrToLocalExchangeRate: decimal.Zero,
 				CommissionCurrency: DEFAULT_CURRENCY, CommissionCurrToLocalExchangeRate: decimal.Zero,
 				Memo:      "Summary",
 				Affiliate: af,
@@ -241,7 +244,7 @@ func makeAnnualGainsSummaryTxs(
 		return summaryPeriodTxs, warnings
 	}
 
-	yearlyCapGains := map[int]decimal.Decimal{}
+	yearlyCapGains := map[int]decimal_opt.DecimalOpt{}
 	latestYearDelta := map[int]*TxDelta{}
 	firstYear := deltas[0].Tx.SettlementDate.Year()
 	if !af.Registered() {
@@ -270,9 +273,9 @@ func makeAnnualGainsSummaryTxs(
 	readIndex := uint32(0)
 
 	sumPostStatus := deltas[latestSummarizableDeltaIdx].PostStatus
-	baseAcbPerShare := decimal.Zero
+	baseAcbPerShare := decimal_opt.Zero
 	if !sumPostStatus.ShareBalance.IsZero() {
-		baseAcbPerShare = sumPostStatus.TotalAcb.Div(sumPostStatus.ShareBalance)
+		baseAcbPerShare = sumPostStatus.TotalAcb.DivD(sumPostStatus.ShareBalance)
 	}
 
 	if sumPostStatus.ShareBalance.IsZero() {
@@ -292,7 +295,7 @@ func makeAnnualGainsSummaryTxs(
 			SettlementDate: dt,
 			Action:         BUY,
 			Shares:         nBaseShares,
-			AmountPerShare: baseAcbPerShare,
+			AmountPerShare: util.Tern[decimal.Decimal](baseAcbPerShare.IsNull, decimal.Zero, baseAcbPerShare.Decimal),
 			Commission:     decimal.Zero,
 			TxCurrency:     DEFAULT_CURRENCY, TxCurrToLocalExchangeRate: decimal.Zero,
 			CommissionCurrency: DEFAULT_CURRENCY, CommissionCurrToLocalExchangeRate: decimal.Zero,
@@ -307,18 +310,22 @@ func makeAnnualGainsSummaryTxs(
 		gain := yearlyCapGains[year]
 		loss := decimal.Zero
 		if gain.IsNegative() {
-			loss = gain.Neg()
-			gain = decimal.Zero
+			loss = gain.Neg().Decimal
+			gain = decimal_opt.Zero
 		}
 		tx := latestYearDelta[year].Tx
 		dt := date.New(uint32(tx.SettlementDate.Year()), time.January, 1)
+		amount := baseAcbPerShare.Add(gain)
+		if amount.IsNull {
+			amount = decimal_opt.Zero
+		}
 		summaryTx := &Tx{
 			Security:       tx.Security,
 			TradeDate:      dt,
 			SettlementDate: dt,
 			Action:         SELL,
 			Shares:         decimal.NewFromInt(1),
-			AmountPerShare: baseAcbPerShare.Add(gain),
+			AmountPerShare: amount.Decimal,
 			Commission:     loss,
 			TxCurrency:     DEFAULT_CURRENCY, TxCurrToLocalExchangeRate: decimal.Zero,
 			CommissionCurrency: DEFAULT_CURRENCY, CommissionCurrToLocalExchangeRate: decimal.Zero,

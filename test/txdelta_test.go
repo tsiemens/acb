@@ -3,9 +3,10 @@ package test
 import (
 	"testing"
 
+	"github.com/shopspring/decimal"
 	"github.com/stretchr/testify/require"
 
-	decimal "github.com/tsiemens/acb/decimal_value"
+	decimal_opt "github.com/tsiemens/acb/decimal_value"
 	ptf "github.com/tsiemens/acb/portfolio"
 )
 
@@ -31,61 +32,63 @@ func TestBasicBuyAcb(t *testing.T) {
 
 	// Basic Buy
 	sptf = ptf.NewEmptyPortfolioSecurityStatus(DefaultTestSecurity)
-	tx = TTx{Act: ptf.BUY, Shares: decimal.NewFromInt(3), Price: decimal.NewFromFloat(10.0)}.X()
+	tx = TTx{Act: ptf.BUY, Shares: DInt(3), Price: DFlt(10.0)}.X()
 	delta = AddTxNoErr(t, tx, sptf)
 	ValidateDelta(t, delta,
-		TDt{PostSt: TPSS{Shares: decimal.NewFromInt(3), TotalAcb: decimal.NewFromFloat(30.0)}, Gain: decimal.NewFromFloat(0.0)})
+		TDt{PostSt: TPSS{Shares: DInt(3), TotalAcb: DOFlt(30.0)}, Gain: decimal_opt.Zero})
 
 	// Test with commission
-	tx = TTx{Act: ptf.BUY, Shares: decimal.NewFromInt(2), Price: decimal.NewFromFloat(10.0), Comm: decimal.NewFromFloat(1.0)}.X()
+	tx = TTx{Act: ptf.BUY, Shares: DInt(2), Price: DFlt(10.0), Comm: DFlt(1.0)}.X()
 	delta = AddTxNoErr(t, tx, sptf)
 	ValidateDelta(t, delta,
-		TDt{PostSt: TPSS{Shares: decimal.NewFromInt(2), TotalAcb: decimal.NewFromFloat(21.0)}, Gain: decimal.NewFromFloat(0.0)})
+		TDt{PostSt: TPSS{Shares: DInt(2), TotalAcb: DOFlt(21.0)}, Gain: decimal_opt.Zero})
 
 	// Test with exchange rates
-	sptf = TPSS{Shares: decimal.NewFromInt(2), TotalAcb: decimal.NewFromFloat(21.0)}.X()
-	tx = TTx{Act: ptf.BUY, Shares: decimal.NewFromInt(3), Price: decimal.NewFromFloat(12.0), Comm: decimal.NewFromFloat(1.0),
-		Curr: ptf.USD, FxRate: decimal.NewFromFloat(2.0),
-		CommCurr: "XXX", CommFxRate: decimal.NewFromFloat(0.3)}.X()
+	sptf = TPSS{Shares: DInt(2), TotalAcb: DOFlt(21.0)}.X()
+	tx = TTx{Act: ptf.BUY, Shares: DInt(3), Price: DFlt(12.0), Comm: DFlt(1.0),
+		Curr: ptf.USD, FxRate: DFlt(2.0),
+		CommCurr: "XXX", CommFxRate: DFlt(0.3)}.X()
 	delta = AddTxNoErr(t, tx, sptf)
 	ValidateDelta(t, delta,
-		TDt{PostSt: TPSS{Shares: decimal.NewFromInt(5), TotalAcb: decimal.NewFromFloat(21.0).Add(decimal.NewFromFloat(2 * 36.0)).Add(decimal.NewFromFloat(0.3))}, Gain: decimal.NewFromFloat(0.0)})
+		TDt{PostSt: TPSS{Shares: DInt(5),
+			TotalAcb: DOFlt(21.0).AddD(DFlt(2 * 36.0)).AddD(DFlt(0.3))},
+			Gain: decimal_opt.Zero})
 }
 
 func TestBasicSellAcbErrors(t *testing.T) {
 	// Sell more shares than available
-	sptf := TPSS{Shares: decimal.NewFromInt(2), TotalAcb: decimal.NewFromFloat(20.0)}.X()
-	tx := TTx{Act: ptf.SELL, Shares: decimal.NewFromInt(3), Price: decimal.NewFromFloat(10.0)}.X()
+	sptf := TPSS{Shares: DInt(2), TotalAcb: DOFlt(20.0)}.X()
+	tx := TTx{Act: ptf.SELL, Shares: DInt(3), Price: DFlt(10.0)}.X()
 	AddTxWithErr(t, tx, sptf)
 }
 
 func TestBasicSellAcb(t *testing.T) {
 	// Sell all remaining shares
-	sptf := TPSS{Shares: decimal.NewFromInt(2), TotalAcb: decimal.NewFromFloat(20.0)}.X()
-	tx := TTx{Act: ptf.SELL, Shares: decimal.NewFromInt(2), Price: decimal.NewFromFloat(15.0)}.X()
+	sptf := TPSS{Shares: DInt(2), TotalAcb: DOFlt(20.0)}.X()
+	tx := TTx{Act: ptf.SELL, Shares: DInt(2), Price: DFlt(15.0)}.X()
 
 	delta := AddTxNoErr(t, tx, sptf)
 	ValidateDelta(t, delta,
-		TDt{PostSt: TPSS{Shares: decimal.Zero, TotalAcb: decimal.Zero}, Gain: decimal.NewFromFloat(10.0)})
+		TDt{PostSt: TPSS{Shares: decimal.Zero, TotalAcb: decimal_opt.Zero}, Gain: DOFlt(10.0)})
 
 	// Sell shares with commission
-	sptf = TPSS{Shares: decimal.NewFromInt(3), TotalAcb: decimal.NewFromFloat(30.0)}.X()
-	tx = TTx{Act: ptf.SELL, Shares: decimal.NewFromInt(2), Price: decimal.NewFromFloat(15.0), Comm: decimal.NewFromFloat(1.0)}.X()
+	sptf = TPSS{Shares: DInt(3), TotalAcb: DOFlt(30.0)}.X()
+	tx = TTx{Act: ptf.SELL, Shares: DInt(2), Price: DFlt(15.0), Comm: DFlt(1.0)}.X()
 
 	delta = AddTxNoErr(t, tx, sptf)
 	ValidateDelta(t, delta,
-		TDt{PostSt: TPSS{Shares: decimal.NewFromInt(1), TotalAcb: decimal.NewFromFloat(10.0)}, Gain: decimal.NewFromFloat(9.0)})
+		TDt{PostSt: TPSS{Shares: DInt(1), TotalAcb: DOFlt(10.0)}, Gain: DOFlt(9.0)})
 
 	// Sell shares with exchange rate
-	sptf = TPSS{Shares: decimal.NewFromInt(3), TotalAcb: decimal.NewFromFloat(30.0)}.X()
+	sptf = TPSS{Shares: DInt(3), TotalAcb: DOFlt(30.0)}.X()
 	tx = TTx{
-		Act: ptf.SELL, Shares: decimal.NewFromInt(2), Price: decimal.NewFromFloat(15.0), Comm: decimal.NewFromFloat(2.0),
-		Curr: "XXX", FxRate: decimal.NewFromFloat(2.0),
-		CommCurr: "YYY", CommFxRate: decimal.NewFromFloat(0.4)}.X()
+		Act: ptf.SELL, Shares: DInt(2), Price: DFlt(15.0), Comm: DFlt(2.0),
+		Curr: "XXX", FxRate: DFlt(2.0),
+		CommCurr: "YYY", CommFxRate: DFlt(0.4)}.X()
 
 	delta = AddTxNoErr(t, tx, sptf)
 	ValidateDelta(t, delta,
-		TDt{PostSt: TPSS{Shares: decimal.NewFromInt(1), TotalAcb: decimal.NewFromFloat(10.0)}, Gain: decimal.NewFromFloat((15.0 * 2.0 * 2.0) - 20.0 - 0.8)})
+		TDt{PostSt: TPSS{Shares: DInt(1), TotalAcb: DOFlt(10.0)}, Gain: DOFlt((15.0 * 2.0 * 2.0) - 20.0 - 0.8)})
 }
 
 func TxsToDeltaListNoErr(t *testing.T, txs []*ptf.Tx) []*ptf.TxDelta {
@@ -109,14 +112,14 @@ func TestSuperficialLosses(t *testing.T) {
 		sell 5 (loss, not superficial)
 	*/
 	txs := []*ptf.Tx{
-		TTx{TDay: 1, Act: ptf.BUY, Shares: decimal.NewFromInt(10), Price: decimal.NewFromFloat(1.0), Comm: decimal.NewFromFloat(2.0)}.X(),
+		TTx{TDay: 1, Act: ptf.BUY, Shares: DInt(10), Price: DFlt(1.0), Comm: DFlt(2.0)}.X(),
 		// Sell half at a loss a while later, for a total of $1
-		TTx{TDay: 50, Act: ptf.SELL, Shares: decimal.NewFromInt(5), Price: decimal.NewFromFloat(0.2)}.X(),
+		TTx{TDay: 50, Act: ptf.SELL, Shares: DInt(5), Price: DFlt(0.2)}.X(),
 	}
 	deltas = TxsToDeltaListNoErr(t, txs)
 	ValidateDeltas(t, deltas, []TDt{
-		TDt{PostSt: TPSS{Shares: decimal.NewFromInt(10), TotalAcb: decimal.NewFromFloat(12.0)}, Gain: decimal.NewFromFloat(0.0)},
-		TDt{PostSt: TPSS{Shares: decimal.NewFromInt(5), TotalAcb: decimal.NewFromFloat(6.0)}, Gain: decimal.NewFromFloat(-5.0)},
+		TDt{PostSt: TPSS{Shares: DInt(10), TotalAcb: DOFlt(12.0)}, Gain: decimal_opt.Zero},
+		TDt{PostSt: TPSS{Shares: DInt(5), TotalAcb: DOFlt(6.0)}, Gain: DOFlt(-5.0)},
 	})
 
 	// (min(#sold, totalAquired, endBalance) / #sold) x (Total Loss)
@@ -129,21 +132,21 @@ func TestSuperficialLosses(t *testing.T) {
 		sell 1 (loss, not superficial)
 	*/
 	txs = []*ptf.Tx{
-		TTx{TDay: 1, Act: ptf.BUY, Shares: decimal.NewFromInt(10), Price: decimal.NewFromFloat(1.0), Comm: decimal.NewFromFloat(2.0)}.X(),
+		TTx{TDay: 1, Act: ptf.BUY, Shares: DInt(10), Price: DFlt(1.0), Comm: DFlt(2.0)}.X(),
 		// Sell soon, causing superficial losses
-		TTx{TDay: 2, Act: ptf.SELL, Shares: decimal.NewFromInt(5), Price: decimal.NewFromFloat(0.2)}.X(),
-		TTx{TDay: 15, Act: ptf.SELL, Shares: decimal.NewFromFloat(4), Price: decimal.NewFromFloat(0.2)}.X(),
+		TTx{TDay: 2, Act: ptf.SELL, Shares: DInt(5), Price: DFlt(0.2)}.X(),
+		TTx{TDay: 15, Act: ptf.SELL, Shares: DFlt(4), Price: DFlt(0.2)}.X(),
 		// Normal sell a while later
-		TTx{TDay: 100, Act: ptf.SELL, Shares: decimal.NewFromInt(1), Price: decimal.NewFromFloat(0.2)}.X(),
+		TTx{TDay: 100, Act: ptf.SELL, Shares: DInt(1), Price: DFlt(0.2)}.X(),
 	}
 	deltas = TxsToDeltaListNoErr(t, txs)
 	ValidateDeltas(t, deltas, []TDt{
-		TDt{PostSt: TPSS{Shares: decimal.NewFromInt(10), TotalAcb: decimal.NewFromFloat(12.0)}, Gain: decimal.Zero},
-		TDt{PostSt: TPSS{Shares: decimal.NewFromInt(5), TotalAcb: decimal.NewFromFloat(6.0)}, Gain: decimal.NewFromFloat(-4.0)}, // $1 superficial
-		TDt{PostSt: TPSS{Shares: decimal.NewFromInt(5), TotalAcb: decimal.NewFromFloat(7.0)}, Gain: decimal.Zero},               // acb adjust
-		TDt{PostSt: TPSS{Shares: decimal.NewFromInt(1), TotalAcb: decimal.NewFromFloat(1.4)}, Gain: decimal.NewFromFloat(-3.6)}, // $1.2 superficial
-		TDt{PostSt: TPSS{Shares: decimal.NewFromInt(1), TotalAcb: decimal.NewFromFloat(2.6)}, Gain: decimal.Zero},               // acb adjust
-		TDt{PostSt: TPSS{Shares: decimal.Zero, TotalAcb: decimal.Zero}, Gain: decimal.NewFromFloat(-2.4)},
+		TDt{PostSt: TPSS{Shares: DInt(10), TotalAcb: DOFlt(12.0)}, Gain: decimal_opt.Zero},
+		TDt{PostSt: TPSS{Shares: DInt(5), TotalAcb: DOFlt(6.0)}, Gain: DOFlt(-4.0)},      // $1 superficial
+		TDt{PostSt: TPSS{Shares: DInt(5), TotalAcb: DOFlt(7.0)}, Gain: decimal_opt.Zero}, // acb adjust
+		TDt{PostSt: TPSS{Shares: DInt(1), TotalAcb: DOFlt(1.4)}, Gain: DOFlt(-3.6)},      // $1.2 superficial
+		TDt{PostSt: TPSS{Shares: DInt(1), TotalAcb: DOFlt(2.6)}, Gain: decimal_opt.Zero}, // acb adjust
+		TDt{PostSt: TPSS{Shares: decimal.Zero, TotalAcb: decimal_opt.Zero}, Gain: DOFlt(-2.4)},
 	})
 
 	/*
@@ -153,17 +156,17 @@ func TestSuperficialLosses(t *testing.T) {
 		buy 5
 	*/
 	txs = []*ptf.Tx{
-		TTx{TDay: 1, Act: ptf.BUY, Shares: decimal.NewFromInt(10), Price: decimal.NewFromFloat(1.0), Comm: decimal.NewFromFloat(2.0)}.X(),
+		TTx{TDay: 1, Act: ptf.BUY, Shares: DInt(10), Price: DFlt(1.0), Comm: DFlt(2.0)}.X(),
 		// Sell causing superficial loss, because of quick buyback
-		TTx{TDay: 50, Act: ptf.SELL, Shares: decimal.NewFromInt(5), Price: decimal.NewFromFloat(0.2)}.X(),
-		TTx{TDay: 51, Act: ptf.BUY, Shares: decimal.NewFromInt(5), Price: decimal.NewFromFloat(0.2), Comm: decimal.NewFromFloat(2.0)}.X(),
+		TTx{TDay: 50, Act: ptf.SELL, Shares: DInt(5), Price: DFlt(0.2)}.X(),
+		TTx{TDay: 51, Act: ptf.BUY, Shares: DInt(5), Price: DFlt(0.2), Comm: DFlt(2.0)}.X(),
 	}
 	deltas = TxsToDeltaListNoErr(t, txs)
 	ValidateDeltas(t, deltas, []TDt{
-		TDt{PostSt: TPSS{Shares: decimal.NewFromInt(10), TotalAcb: decimal.NewFromFloat(12.0)}, Gain: decimal.Zero}, // buy
-		TDt{PostSt: TPSS{Shares: decimal.NewFromInt(5), TotalAcb: decimal.NewFromFloat(6.0)}, Gain: decimal.Zero},   // sell sfl $1
-		TDt{PostSt: TPSS{Shares: decimal.NewFromInt(5), TotalAcb: decimal.NewFromFloat(11.0)}, Gain: decimal.Zero},  // sfl ACB adjust
-		TDt{PostSt: TPSS{Shares: decimal.NewFromInt(10), TotalAcb: decimal.NewFromFloat(14.0)}, Gain: decimal.Zero}, // buy
+		TDt{PostSt: TPSS{Shares: DInt(10), TotalAcb: DOFlt(12.0)}, Gain: decimal_opt.Zero}, // buy
+		TDt{PostSt: TPSS{Shares: DInt(5), TotalAcb: DOFlt(6.0)}, Gain: decimal_opt.Zero},   // sell sfl $1
+		TDt{PostSt: TPSS{Shares: DInt(5), TotalAcb: DOFlt(11.0)}, Gain: decimal_opt.Zero},  // sfl ACB adjust
+		TDt{PostSt: TPSS{Shares: DInt(10), TotalAcb: DOFlt(14.0)}, Gain: decimal_opt.Zero}, // buy
 	})
 
 	/*
@@ -174,17 +177,17 @@ func TestSuperficialLosses(t *testing.T) {
 		buy 5 (in USD)
 	*/
 	txs = []*ptf.Tx{
-		TTx{TDay: 1, Act: ptf.BUY, Shares: decimal.NewFromInt(10), Price: decimal.NewFromFloat(1.0), Curr: ptf.USD, FxRate: decimal.NewFromFloat(1.2), Comm: decimal.NewFromFloat(2.0)}.X(),
+		TTx{TDay: 1, Act: ptf.BUY, Shares: DInt(10), Price: DFlt(1.0), Curr: ptf.USD, FxRate: DFlt(1.2), Comm: DFlt(2.0)}.X(),
 		// Sell causing superficial loss, because of quick buyback
-		TTx{TDay: 50, Act: ptf.SELL, Shares: decimal.NewFromInt(5), Price: decimal.NewFromFloat(0.2), Curr: ptf.USD, FxRate: decimal.NewFromFloat(1.2)}.X(),
-		TTx{TDay: 51, Act: ptf.BUY, Shares: decimal.NewFromInt(5), Price: decimal.NewFromFloat(0.2), Curr: ptf.USD, FxRate: decimal.NewFromFloat(1.2), Comm: decimal.NewFromFloat(2.0)}.X(),
+		TTx{TDay: 50, Act: ptf.SELL, Shares: DInt(5), Price: DFlt(0.2), Curr: ptf.USD, FxRate: DFlt(1.2)}.X(),
+		TTx{TDay: 51, Act: ptf.BUY, Shares: DInt(5), Price: DFlt(0.2), Curr: ptf.USD, FxRate: DFlt(1.2), Comm: DFlt(2.0)}.X(),
 	}
 	deltas = TxsToDeltaListNoErr(t, txs)
 	ValidateDeltas(t, deltas, []TDt{
-		TDt{PostSt: TPSS{Shares: decimal.NewFromInt(10), TotalAcb: decimal.NewFromFloat(14.4)}, Gain: decimal.Zero}, // buy, ACB (CAD) = (10*1.0 + 2) * 1.2
-		TDt{PostSt: TPSS{Shares: decimal.NewFromInt(5), TotalAcb: decimal.NewFromFloat(7.2)}, Gain: decimal.Zero},   // sell sfl $1 USD (1.2 CAD)
-		TDt{PostSt: TPSS{Shares: decimal.NewFromInt(5), TotalAcb: decimal.NewFromFloat(13.2)}, Gain: decimal.Zero},  // sfl ACB adjust
-		TDt{PostSt: TPSS{Shares: decimal.NewFromInt(10), TotalAcb: decimal.NewFromFloat(16.8)}, Gain: decimal.Zero}, // buy
+		TDt{PostSt: TPSS{Shares: DInt(10), TotalAcb: DOFlt(14.4)}, Gain: decimal_opt.Zero}, // buy, ACB (CAD) = (10*1.0 + 2) * 1.2
+		TDt{PostSt: TPSS{Shares: DInt(5), TotalAcb: DOFlt(7.2)}, Gain: decimal_opt.Zero},   // sell sfl $1 USD (1.2 CAD)
+		TDt{PostSt: TPSS{Shares: DInt(5), TotalAcb: DOFlt(13.2)}, Gain: decimal_opt.Zero},  // sfl ACB adjust
+		TDt{PostSt: TPSS{Shares: DInt(10), TotalAcb: DOFlt(16.8)}, Gain: decimal_opt.Zero}, // buy
 	})
 
 	/*
@@ -194,16 +197,16 @@ func TestSuperficialLosses(t *testing.T) {
 		sell 5 (loss)
 	*/
 	txs = []*ptf.Tx{
-		TTx{TDay: 1, Act: ptf.BUY, Shares: decimal.NewFromInt(10), Price: decimal.NewFromFloat(1.0), Comm: decimal.NewFromFloat(2.0)}.X(),
+		TTx{TDay: 1, Act: ptf.BUY, Shares: DInt(10), Price: DFlt(1.0), Comm: DFlt(2.0)}.X(),
 		// Sell causing superficial loss, because of quick buyback
-		TTx{TDay: 50, Act: ptf.SELL, Shares: decimal.NewFromInt(5), Price: decimal.NewFromFloat(0.2)}.X(),
-		TTx{TDay: 51, Act: ptf.SELL, Shares: decimal.NewFromInt(5), Price: decimal.NewFromFloat(0.2)}.X(),
+		TTx{TDay: 50, Act: ptf.SELL, Shares: DInt(5), Price: DFlt(0.2)}.X(),
+		TTx{TDay: 51, Act: ptf.SELL, Shares: DInt(5), Price: DFlt(0.2)}.X(),
 	}
 	deltas = TxsToDeltaListNoErr(t, txs)
 	ValidateDeltas(t, deltas, []TDt{
-		TDt{PostSt: TPSS{Shares: decimal.NewFromInt(10), TotalAcb: decimal.NewFromFloat(12.0)}, Gain: decimal.Zero},
-		TDt{PostSt: TPSS{Shares: decimal.NewFromInt(5), TotalAcb: decimal.NewFromFloat(6.0)}, Gain: decimal.NewFromFloat(-5.0)},
-		TDt{PostSt: TPSS{Shares: decimal.Zero, TotalAcb: decimal.Zero}, Gain: decimal.NewFromFloat(-5.0)},
+		TDt{PostSt: TPSS{Shares: DInt(10), TotalAcb: DOFlt(12.0)}, Gain: decimal_opt.Zero},
+		TDt{PostSt: TPSS{Shares: DInt(5), TotalAcb: DOFlt(6.0)}, Gain: DOFlt(-5.0)},
+		TDt{PostSt: TPSS{Shares: decimal.Zero, TotalAcb: decimal_opt.Zero}, Gain: DOFlt(-5.0)},
 	})
 
 	/*
@@ -213,16 +216,16 @@ func TestSuperficialLosses(t *testing.T) {
 		buy 25
 	*/
 	txs = []*ptf.Tx{
-		TTx{TDay: 1, Act: ptf.BUY, Shares: decimal.NewFromFloat(100), Price: decimal.NewFromFloat(3.0), Comm: decimal.NewFromFloat(2.0)}.X(), // Sell causing superficial loss, because of quick buyback
-		TTx{TDay: 50, Act: ptf.SELL, Shares: decimal.NewFromFloat(99), Price: decimal.NewFromFloat(2.0)}.X(),
-		TTx{TDay: 51, Act: ptf.BUY, Shares: decimal.NewFromFloat(25), Price: decimal.NewFromFloat(2.2), Comm: decimal.NewFromFloat(2.0)}.X(),
+		TTx{TDay: 1, Act: ptf.BUY, Shares: DFlt(100), Price: DFlt(3.0), Comm: DFlt(2.0)}.X(), // Sell causing superficial loss, because of quick buyback
+		TTx{TDay: 50, Act: ptf.SELL, Shares: DFlt(99), Price: DFlt(2.0)}.X(),
+		TTx{TDay: 51, Act: ptf.BUY, Shares: DFlt(25), Price: DFlt(2.2), Comm: DFlt(2.0)}.X(),
 	}
 	deltas = TxsToDeltaListNoErr(t, txs)
 	ValidateDeltas(t, deltas, []TDt{
-		TDt{PostSt: TPSS{Shares: decimal.NewFromFloat(100), TotalAcb: decimal.NewFromFloat(302.0)}, Gain: decimal.Zero},
-		TDt{PostSt: TPSS{Shares: decimal.NewFromInt(1), TotalAcb: decimal.NewFromFloat(3.02)}, Gain: decimal.NewFromFloat(-75.479999952)}, // total loss of 100.98, 25.500000048 is superficial
-		TDt{PostSt: TPSS{Shares: decimal.NewFromInt(1), TotalAcb: decimal.NewFromFloat(28.520000048)}, Gain: decimal.Zero},                // acb adjust
-		TDt{PostSt: TPSS{Shares: decimal.NewFromFloat(26), TotalAcb: decimal.NewFromFloat(85.520000048)}, Gain: decimal.Zero},
+		TDt{PostSt: TPSS{Shares: DFlt(100), TotalAcb: DOFlt(302.0)}, Gain: decimal_opt.Zero},
+		TDt{PostSt: TPSS{Shares: DInt(1), TotalAcb: DOFlt(3.02)}, Gain: DOFlt(-75.479999952)},     // total loss of 100.98, 25.500000048 is superficial
+		TDt{PostSt: TPSS{Shares: DInt(1), TotalAcb: DOFlt(28.520000048)}, Gain: decimal_opt.Zero}, // acb adjust
+		TDt{PostSt: TPSS{Shares: DFlt(26), TotalAcb: DOFlt(85.520000048)}, Gain: decimal_opt.Zero},
 	})
 
 	/*
@@ -234,22 +237,22 @@ func TestSuperficialLosses(t *testing.T) {
 		sell 3 (loss)
 	*/
 	txs = []*ptf.Tx{
-		TTx{TDay: 1, Act: ptf.BUY, Shares: decimal.NewFromInt(10), Price: decimal.NewFromFloat(1.0), Comm: decimal.NewFromFloat(2.0)}.X(),
+		TTx{TDay: 1, Act: ptf.BUY, Shares: DInt(10), Price: DFlt(1.0), Comm: DFlt(2.0)}.X(),
 		// Sell all
-		TTx{TDay: 2, Act: ptf.SELL, Shares: decimal.NewFromInt(10), Price: decimal.NewFromFloat(0.2)}.X(),
-		TTx{TDay: 3, Act: ptf.BUY, Shares: decimal.NewFromInt(5), Price: decimal.NewFromFloat(1.0), Comm: decimal.NewFromFloat(2.0)}.X(),
-		TTx{TDay: 4, Act: ptf.SELL, Shares: decimal.NewFromInt(2), Price: decimal.NewFromFloat(0.2)}.X(),
-		TTx{TDay: 50, Act: ptf.SELL, Shares: decimal.NewFromInt(3), Price: decimal.NewFromFloat(0.2)}.X(),
+		TTx{TDay: 2, Act: ptf.SELL, Shares: DInt(10), Price: DFlt(0.2)}.X(),
+		TTx{TDay: 3, Act: ptf.BUY, Shares: DInt(5), Price: DFlt(1.0), Comm: DFlt(2.0)}.X(),
+		TTx{TDay: 4, Act: ptf.SELL, Shares: DInt(2), Price: DFlt(0.2)}.X(),
+		TTx{TDay: 50, Act: ptf.SELL, Shares: DInt(3), Price: DFlt(0.2)}.X(),
 	}
 	deltas = TxsToDeltaListNoErr(t, txs)
 	ValidateDeltas(t, deltas, []TDt{
-		TDt{PostSt: TPSS{Shares: decimal.NewFromInt(10), TotalAcb: decimal.NewFromFloat(12.0)}, Gain: decimal.Zero},
-		TDt{PostSt: TPSS{Shares: decimal.NewFromFloat(0), TotalAcb: decimal.NewFromFloat(0)}, Gain: decimal.NewFromFloat(-7)}, // Superficial loss of 3
-		TDt{PostSt: TPSS{Shares: decimal.NewFromFloat(0), TotalAcb: decimal.NewFromFloat(3)}, Gain: decimal.Zero},             // acb adjust
-		TDt{PostSt: TPSS{Shares: decimal.NewFromInt(5), TotalAcb: decimal.NewFromFloat(10.0)}, Gain: decimal.Zero},
-		TDt{PostSt: TPSS{Shares: decimal.NewFromInt(3), TotalAcb: decimal.NewFromFloat(6.0)}, Gain: decimal.Zero}, // Superficial loss of 3.6
-		TDt{PostSt: TPSS{Shares: decimal.NewFromInt(3), TotalAcb: decimal.NewFromFloat(9.6)}, Gain: decimal.Zero}, // acb adjust
-		TDt{PostSt: TPSS{Shares: decimal.Zero, TotalAcb: decimal.Zero}, Gain: decimal.NewFromFloat(-9)},
+		TDt{PostSt: TPSS{Shares: DInt(10), TotalAcb: DOFlt(12.0)}, Gain: decimal_opt.Zero},
+		TDt{PostSt: TPSS{Shares: DFlt(0), TotalAcb: DOFlt(0)}, Gain: DOFlt(-7)},        // Superficial loss of 3
+		TDt{PostSt: TPSS{Shares: DFlt(0), TotalAcb: DOFlt(3)}, Gain: decimal_opt.Zero}, // acb adjust
+		TDt{PostSt: TPSS{Shares: DInt(5), TotalAcb: DOFlt(10.0)}, Gain: decimal_opt.Zero},
+		TDt{PostSt: TPSS{Shares: DInt(3), TotalAcb: DOFlt(6.0)}, Gain: decimal_opt.Zero}, // Superficial loss of 3.6
+		TDt{PostSt: TPSS{Shares: DInt(3), TotalAcb: DOFlt(9.6)}, Gain: decimal_opt.Zero}, // acb adjust
+		TDt{PostSt: TPSS{Shares: decimal.Zero, TotalAcb: decimal_opt.Zero}, Gain: DOFlt(-9)},
 	})
 
 	/*
@@ -257,14 +260,14 @@ func TestSuperficialLosses(t *testing.T) {
 		sell 5 (gain)
 	*/
 	txs = []*ptf.Tx{
-		TTx{TDay: 1, Act: ptf.BUY, Shares: decimal.NewFromInt(10), Price: decimal.NewFromFloat(1.0), Comm: decimal.NewFromFloat(2.0)}.X(),
+		TTx{TDay: 1, Act: ptf.BUY, Shares: DInt(10), Price: DFlt(1.0), Comm: DFlt(2.0)}.X(),
 		// Sell causing gain
-		TTx{TDay: 2, Act: ptf.SELL, Shares: decimal.NewFromInt(5), Price: decimal.NewFromFloat(2.0)}.X(),
+		TTx{TDay: 2, Act: ptf.SELL, Shares: DInt(5), Price: DFlt(2.0)}.X(),
 	}
 	deltas = TxsToDeltaListNoErr(t, txs)
 	ValidateDeltas(t, deltas, []TDt{
-		TDt{PostSt: TPSS{Shares: decimal.NewFromInt(10), TotalAcb: decimal.NewFromFloat(12.0)}, Gain: decimal.Zero},
-		TDt{PostSt: TPSS{Shares: decimal.NewFromInt(5), TotalAcb: decimal.NewFromFloat(6.0)}, Gain: decimal.NewFromFloat(4.0)},
+		TDt{PostSt: TPSS{Shares: DInt(10), TotalAcb: DOFlt(12.0)}, Gain: decimal_opt.Zero},
+		TDt{PostSt: TPSS{Shares: DInt(5), TotalAcb: DOFlt(6.0)}, Gain: DOFlt(4.0)},
 	})
 
 	// ************** Explicit Superficial Losses ***************************
@@ -277,19 +280,19 @@ func TestSuperficialLosses(t *testing.T) {
 		buy 5 (in USD)
 	*/
 	txs = []*ptf.Tx{
-		TTx{TDay: 1, Act: ptf.BUY, Shares: decimal.NewFromInt(10), Price: decimal.NewFromFloat(1.0), Curr: ptf.USD, FxRate: decimal.NewFromFloat(1.2), Comm: decimal.NewFromFloat(2.0)}.X(),
+		TTx{TDay: 1, Act: ptf.BUY, Shares: DInt(10), Price: DFlt(1.0), Curr: ptf.USD, FxRate: DFlt(1.2), Comm: DFlt(2.0)}.X(),
 		// Sell causing superficial loss, because of quick buyback
-		TTx{TDay: 50, Act: ptf.SELL, Shares: decimal.NewFromInt(5), Price: decimal.NewFromFloat(0.2), Curr: ptf.USD, FxRate: decimal.NewFromFloat(1.2), SFL: CADSFL(decimal.NewFromFloat(-6.0), false)}.X(),
+		TTx{TDay: 50, Act: ptf.SELL, Shares: DInt(5), Price: DFlt(0.2), Curr: ptf.USD, FxRate: DFlt(1.2), SFL: CADSFL(DFlt(-6.0), false)}.X(),
 		// ACB adjust is partial, as if splitting some to another affiliate.
-		TTx{TDay: 50, Act: ptf.SFLA, Shares: decimal.NewFromInt(5), Price: decimal.NewFromFloat(0.02), Curr: EXP_DEFAULT_CURRENCY, FxRate: decimal.NewFromFloat(1.0)}.X(),
-		TTx{TDay: 51, Act: ptf.BUY, Shares: decimal.NewFromInt(5), Price: decimal.NewFromFloat(0.2), Curr: ptf.USD, FxRate: decimal.NewFromFloat(1.2), Comm: decimal.NewFromFloat(2.0)}.X(),
+		TTx{TDay: 50, Act: ptf.SFLA, Shares: DInt(5), Price: DFlt(0.02), Curr: EXP_DEFAULT_CURRENCY, FxRate: DFlt(1.0)}.X(),
+		TTx{TDay: 51, Act: ptf.BUY, Shares: DInt(5), Price: DFlt(0.2), Curr: ptf.USD, FxRate: DFlt(1.2), Comm: DFlt(2.0)}.X(),
 	}
 	deltas = TxsToDeltaListNoErr(t, txs)
 	ValidateDeltas(t, deltas, []TDt{
-		TDt{PostSt: TPSS{Shares: decimal.NewFromInt(10), TotalAcb: decimal.NewFromFloat(14.4)}, Gain: decimal.Zero}, // buy, ACB (CAD) = (10*1.0 + 2) * 1.2
-		TDt{PostSt: TPSS{Shares: decimal.NewFromInt(5), TotalAcb: decimal.NewFromFloat(7.2)}, Gain: decimal.Zero},   // sell for $1 USD, capital loss $-5 USD before SFL deduction, sfl 0.7 CAD
-		TDt{PostSt: TPSS{Shares: decimal.NewFromInt(5), TotalAcb: decimal.NewFromFloat(7.3)}, Gain: decimal.Zero},   // sfl ACB adjust 0.02 * 5
-		TDt{PostSt: TPSS{Shares: decimal.NewFromInt(10), TotalAcb: decimal.NewFromFloat(10.9)}, Gain: decimal.Zero}, // buy
+		TDt{PostSt: TPSS{Shares: DInt(10), TotalAcb: DOFlt(14.4)}, Gain: decimal_opt.Zero}, // buy, ACB (CAD) = (10*1.0 + 2) * 1.2
+		TDt{PostSt: TPSS{Shares: DInt(5), TotalAcb: DOFlt(7.2)}, Gain: decimal_opt.Zero},   // sell for $1 USD, capital loss $-5 USD before SFL deduction, sfl 0.7 CAD
+		TDt{PostSt: TPSS{Shares: DInt(5), TotalAcb: DOFlt(7.3)}, Gain: decimal_opt.Zero},   // sfl ACB adjust 0.02 * 5
+		TDt{PostSt: TPSS{Shares: DInt(10), TotalAcb: DOFlt(10.9)}, Gain: decimal_opt.Zero}, // buy
 	})
 
 	// Override a detected SFL
@@ -301,24 +304,24 @@ func TestSuperficialLosses(t *testing.T) {
 		buy 5 (in USD)
 	*/
 	txs = []*ptf.Tx{
-		TTx{TDay: 1, Act: ptf.BUY, Shares: decimal.NewFromInt(10), Price: decimal.NewFromFloat(1.0), Curr: ptf.USD, FxRate: decimal.NewFromFloat(1.2), Comm: decimal.NewFromFloat(2.0)}.X(),
+		TTx{TDay: 1, Act: ptf.BUY, Shares: DInt(10), Price: DFlt(1.0), Curr: ptf.USD, FxRate: DFlt(1.2), Comm: DFlt(2.0)}.X(),
 		// Sell causing superficial loss, because of quick buyback
-		TTx{TDay: 50, Act: ptf.SELL, Shares: decimal.NewFromInt(5), Price: decimal.NewFromFloat(0.2), Curr: ptf.USD, FxRate: decimal.NewFromFloat(1.2), SFL: CADSFL(decimal.NewFromFloat(-0.7), true)}.X(),
+		TTx{TDay: 50, Act: ptf.SELL, Shares: DInt(5), Price: DFlt(0.2), Curr: ptf.USD, FxRate: DFlt(1.2), SFL: CADSFL(DFlt(-0.7), true)}.X(),
 		// ACB adjust is partial, as if splitting some to another affiliate.
-		TTx{TDay: 50, Act: ptf.SFLA, Shares: decimal.NewFromInt(5), Price: decimal.NewFromFloat(0.02), Curr: EXP_DEFAULT_CURRENCY, FxRate: decimal.NewFromFloat(1.0)}.X(),
-		TTx{TDay: 51, Act: ptf.BUY, Shares: decimal.NewFromInt(5), Price: decimal.NewFromFloat(0.2), Curr: ptf.USD, FxRate: decimal.NewFromFloat(1.2), Comm: decimal.NewFromFloat(2.0)}.X(),
+		TTx{TDay: 50, Act: ptf.SFLA, Shares: DInt(5), Price: DFlt(0.02), Curr: EXP_DEFAULT_CURRENCY, FxRate: DFlt(1.0)}.X(),
+		TTx{TDay: 51, Act: ptf.BUY, Shares: DInt(5), Price: DFlt(0.2), Curr: ptf.USD, FxRate: DFlt(1.2), Comm: DFlt(2.0)}.X(),
 	}
 	deltas = TxsToDeltaListNoErr(t, txs)
 	ValidateDeltas(t, deltas, []TDt{
-		TDt{PostSt: TPSS{Shares: decimal.NewFromInt(10), TotalAcb: decimal.NewFromFloat(14.4)}, Gain: decimal.Zero},             // buy, ACB (CAD) = (10*1.0 + 2) * 1.2
-		TDt{PostSt: TPSS{Shares: decimal.NewFromInt(5), TotalAcb: decimal.NewFromFloat(7.2)}, Gain: decimal.NewFromFloat(-5.3)}, // sell for $1 USD, capital loss $-5 USD before SFL deduction, sfl 0.7 CAD
-		TDt{PostSt: TPSS{Shares: decimal.NewFromInt(5), TotalAcb: decimal.NewFromFloat(7.3)}, Gain: decimal.Zero},               // sfl ACB adjust 0.02 * 5
-		TDt{PostSt: TPSS{Shares: decimal.NewFromInt(10), TotalAcb: decimal.NewFromFloat(10.9)}, Gain: decimal.Zero},             // buy
+		TDt{PostSt: TPSS{Shares: DInt(10), TotalAcb: DOFlt(14.4)}, Gain: decimal_opt.Zero}, // buy, ACB (CAD) = (10*1.0 + 2) * 1.2
+		TDt{PostSt: TPSS{Shares: DInt(5), TotalAcb: DOFlt(7.2)}, Gain: DOFlt(-5.3)},        // sell for $1 USD, capital loss $-5 USD before SFL deduction, sfl 0.7 CAD
+		TDt{PostSt: TPSS{Shares: DInt(5), TotalAcb: DOFlt(7.3)}, Gain: decimal_opt.Zero},   // sfl ACB adjust 0.02 * 5
+		TDt{PostSt: TPSS{Shares: DInt(10), TotalAcb: DOFlt(10.9)}, Gain: decimal_opt.Zero}, // buy
 	})
 
 	// Un-force the override, and check that we emit an error
 	// Expect an error since we did not force.
-	txs[1].SpecifiedSuperficialLoss = CADSFL(decimal.NewFromFloat(-0.7), false)
+	txs[1].SpecifiedSuperficialLoss = CADSFL(DFlt(-0.7), false)
 	TxsToDeltaListWithErr(t, txs)
 
 	// Add an un-detectable SFL (ie, the buy occurred in an untracked affiliate)
@@ -329,122 +332,122 @@ func TestSuperficialLosses(t *testing.T) {
 		sell 5 (in USD) (loss)
 	*/
 	txs = []*ptf.Tx{
-		TTx{TDay: 1, Act: ptf.BUY, Shares: decimal.NewFromInt(10), Price: decimal.NewFromFloat(1.0), Curr: ptf.USD, FxRate: decimal.NewFromFloat(1.2), Comm: decimal.NewFromFloat(2.0)}.X(),
+		TTx{TDay: 1, Act: ptf.BUY, Shares: DInt(10), Price: DFlt(1.0), Curr: ptf.USD, FxRate: DFlt(1.2), Comm: DFlt(2.0)}.X(),
 		// Sell causing superficial loss, because of quick buyback
-		TTx{TDay: 50, Act: ptf.SELL, Shares: decimal.NewFromInt(5), Price: decimal.NewFromFloat(0.2), Curr: ptf.USD, FxRate: decimal.NewFromFloat(1.2), SFL: CADSFL(decimal.NewFromFloat(-0.7), true)}.X(),
+		TTx{TDay: 50, Act: ptf.SELL, Shares: DInt(5), Price: DFlt(0.2), Curr: ptf.USD, FxRate: DFlt(1.2), SFL: CADSFL(DFlt(-0.7), true)}.X(),
 		// ACB adjust is partial, as if splitting some to another affiliate.
-		TTx{TDay: 50, Act: ptf.SFLA, Shares: decimal.NewFromInt(5), Price: decimal.NewFromFloat(0.02), Curr: ptf.CAD, FxRate: decimal.NewFromFloat(1.0)}.X(),
+		TTx{TDay: 50, Act: ptf.SFLA, Shares: DInt(5), Price: DFlt(0.02), Curr: ptf.CAD, FxRate: DFlt(1.0)}.X(),
 	}
 	deltas = TxsToDeltaListNoErr(t, txs)
 	ValidateDeltas(t, deltas, []TDt{
-		TDt{PostSt: TPSS{Shares: decimal.NewFromInt(10), TotalAcb: decimal.NewFromFloat(14.4)}, Gain: decimal.Zero},             // buy, ACB (CAD) = (10*1.0 + 2) * 1.2
-		TDt{PostSt: TPSS{Shares: decimal.NewFromInt(5), TotalAcb: decimal.NewFromFloat(7.2)}, Gain: decimal.NewFromFloat(-5.3)}, // sell for $1 USD, capital loss $-5 USD before SFL deduction, sfl 0.7 CAD
-		TDt{PostSt: TPSS{Shares: decimal.NewFromInt(5), TotalAcb: decimal.NewFromFloat(7.3)}, Gain: decimal.Zero},               // sfl ACB adjust 0.02 * 5
+		TDt{PostSt: TPSS{Shares: DInt(10), TotalAcb: DOFlt(14.4)}, Gain: decimal_opt.Zero}, // buy, ACB (CAD) = (10*1.0 + 2) * 1.2
+		TDt{PostSt: TPSS{Shares: DInt(5), TotalAcb: DOFlt(7.2)}, Gain: DOFlt(-5.3)},        // sell for $1 USD, capital loss $-5 USD before SFL deduction, sfl 0.7 CAD
+		TDt{PostSt: TPSS{Shares: DInt(5), TotalAcb: DOFlt(7.3)}, Gain: decimal_opt.Zero},   // sfl ACB adjust 0.02 * 5
 	})
 
 	// Un-force the override, and check that we emit an error
 	// Expect an error since we did not force.
-	txs[1].SpecifiedSuperficialLoss = CADSFL(decimal.NewFromFloat(-0.7), false)
+	txs[1].SpecifiedSuperficialLoss = CADSFL(DFlt(-0.7), false)
 	TxsToDeltaListWithErr(t, txs)
 
 	// Currency errors
 	// Sanity check for ok by itself.
 	txs = []*ptf.Tx{
-		TTx{TDay: 50, Act: ptf.SFLA, Shares: decimal.NewFromInt(1), Price: decimal.NewFromFloat(0.1), Curr: ptf.CAD, FxRate: decimal.NewFromFloat(1.0)}.X(),
+		TTx{TDay: 50, Act: ptf.SFLA, Shares: DInt(1), Price: DFlt(0.1), Curr: ptf.CAD, FxRate: DFlt(1.0)}.X(),
 	}
 	deltas = TxsToDeltaListNoErr(t, txs)
 	ValidateDeltas(t, deltas, []TDt{
-		TDt{PostSt: TPSS{Shares: decimal.Zero, TotalAcb: decimal.NewFromFloat(0.1)}, Gain: decimal.Zero},
+		TDt{PostSt: TPSS{Shares: decimal.Zero, TotalAcb: DOFlt(0.1)}, Gain: decimal_opt.Zero},
 	})
 
 	txs = []*ptf.Tx{
-		TTx{TDay: 50, Act: ptf.SFLA, Shares: decimal.NewFromInt(1), Price: decimal.NewFromFloat(0.1), Curr: EXP_DEFAULT_CURRENCY, FxRate: decimal.NewFromFloat(1.0)}.X(),
+		TTx{TDay: 50, Act: ptf.SFLA, Shares: DInt(1), Price: DFlt(0.1), Curr: EXP_DEFAULT_CURRENCY, FxRate: DFlt(1.0)}.X(),
 	}
 	deltas = TxsToDeltaListNoErr(t, txs)
 	ValidateDeltas(t, deltas, []TDt{
-		TDt{PostSt: TPSS{Shares: decimal.Zero, TotalAcb: decimal.NewFromFloat(0.1)}, Gain: decimal.Zero},
+		TDt{PostSt: TPSS{Shares: decimal.Zero, TotalAcb: DOFlt(0.1)}, Gain: decimal_opt.Zero},
 	})
 	// Non 1.0 exchange rate
 	txs = []*ptf.Tx{
-		TTx{TDay: 50, Act: ptf.SFLA, Shares: decimal.NewFromInt(5), Price: decimal.NewFromFloat(0.02), Curr: ptf.USD, FxRate: decimal.NewFromFloat(1.0)}.X(),
+		TTx{TDay: 50, Act: ptf.SFLA, Shares: DInt(5), Price: DFlt(0.02), Curr: ptf.USD, FxRate: DFlt(1.0)}.X(),
 	}
 	TxsToDeltaListWithErr(t, txs)
 	txs = []*ptf.Tx{
 		// Non 1.0 exchange rate
-		TTx{TDay: 50, Act: ptf.SFLA, Shares: decimal.NewFromInt(5), Price: decimal.NewFromFloat(0.02), Curr: ptf.CAD, FxRate: decimal.NewFromFloat(1.1)}.X(),
+		TTx{TDay: 50, Act: ptf.SFLA, Shares: DInt(5), Price: DFlt(0.02), Curr: ptf.CAD, FxRate: DFlt(1.1)}.X(),
 	}
 	TxsToDeltaListWithErr(t, txs)
 }
 
 func TestBasicRocAcbErrors(t *testing.T) {
 	// Test that RoC Txs always have zero shares
-	sptf := TPSS{Shares: decimal.NewFromInt(2), TotalAcb: decimal.NewFromFloat(20.0)}.X()
-	tx := TTx{Act: ptf.ROC, Shares: decimal.NewFromInt(3), Price: decimal.NewFromFloat(10.0)}.X()
+	sptf := TPSS{Shares: DInt(2), TotalAcb: DOFlt(20.0)}.X()
+	tx := TTx{Act: ptf.ROC, Shares: DInt(3), Price: DFlt(10.0)}.X()
 	AddTxWithErr(t, tx, sptf)
 
 	// Test that RoC cannot exceed the current ACB
-	sptf = TPSS{Shares: decimal.NewFromInt(2), TotalAcb: decimal.NewFromFloat(20.0)}.X()
-	tx = TTx{Act: ptf.ROC, Price: decimal.NewFromFloat(13.0)}.X()
+	sptf = TPSS{Shares: DInt(2), TotalAcb: DOFlt(20.0)}.X()
+	tx = TTx{Act: ptf.ROC, Price: DFlt(13.0)}.X()
 	AddTxWithErr(t, tx, sptf)
 
 	// Test that RoC cannot occur on registered affiliates, since they have no ACB
-	sptf = TPSS{Shares: decimal.NewFromInt(5), TotalAcb: decimal.Null}.X()
-	tx = TTx{Act: ptf.ROC, Shares: decimal.Zero, Price: decimal.NewFromFloat(3.0), AffName: "(R)"}.X()
+	sptf = TPSS{Shares: DInt(5), TotalAcb: decimal_opt.Null}.X()
+	tx = TTx{Act: ptf.ROC, Shares: decimal.Zero, Price: DFlt(3.0), AffName: "(R)"}.X()
 	AddTxWithErr(t, tx, sptf)
 }
 
 func TestBasicRocAcb(t *testing.T) {
 	// Test basic ROC with different AllAffiliatesShareBalance
-	sptf := TPSS{Shares: decimal.NewFromInt(2), AllShares: decimal.NewFromInt(8), TotalAcb: decimal.NewFromFloat(20.0)}.X()
-	tx := TTx{Act: ptf.ROC, Price: decimal.NewFromFloat(1.0)}.X()
+	sptf := TPSS{Shares: DInt(2), AllShares: DInt(8), TotalAcb: DOFlt(20.0)}.X()
+	tx := TTx{Act: ptf.ROC, Price: DFlt(1.0)}.X()
 
 	delta := AddTxNoErr(t, tx, sptf)
 	ValidateDelta(t, delta,
-		TDt{PostSt: TPSS{Shares: decimal.NewFromInt(2), AllShares: decimal.NewFromInt(8), TotalAcb: decimal.NewFromFloat(18.0)}, Gain: decimal.Zero})
+		TDt{PostSt: TPSS{Shares: DInt(2), AllShares: DInt(8), TotalAcb: DOFlt(18.0)}, Gain: decimal_opt.Zero})
 
 	// Test RoC with exchange
-	sptf = TPSS{Shares: decimal.NewFromInt(2), TotalAcb: decimal.NewFromFloat(20.0)}.X()
-	tx = TTx{Act: ptf.ROC, Price: decimal.NewFromFloat(1.0), FxRate: decimal.NewFromFloat(2.0)}.X()
+	sptf = TPSS{Shares: DInt(2), TotalAcb: DOFlt(20.0)}.X()
+	tx = TTx{Act: ptf.ROC, Price: DFlt(1.0), FxRate: DFlt(2.0)}.X()
 
 	delta = AddTxNoErr(t, tx, sptf)
 	ValidateDelta(t, delta,
-		TDt{PostSt: TPSS{Shares: decimal.NewFromInt(2), TotalAcb: decimal.NewFromFloat(16.0)}, Gain: decimal.Zero})
+		TDt{PostSt: TPSS{Shares: DInt(2), TotalAcb: DOFlt(16.0)}, Gain: decimal_opt.Zero})
 }
 
 func TestBasicSflaErrors(t *testing.T) {
 	rq := require.New(t)
 	// Test than an SfLA on a registered affiliate is invalid
-	sptf := TPSS{Shares: decimal.NewFromInt(2), TotalAcb: decimal.Null}.X()
-	tx := TTx{Act: ptf.SFLA, Shares: decimal.NewFromInt(2), Price: decimal.NewFromFloat(1.0), AffName: "(R)"}.X()
+	sptf := TPSS{Shares: DInt(2), TotalAcb: decimal_opt.Null}.X()
+	tx := TTx{Act: ptf.SFLA, Shares: DInt(2), Price: DFlt(1.0), AffName: "(R)"}.X()
 	err := AddTxWithErr(t, tx, sptf)
 	rq.Regexp("Registered affiliates do not have an ACB", err)
 }
 
 func TestRegisteredAffiliateCapitalGain(t *testing.T) {
-	rq := require.New(t)
+	crq := NewCustomRequire(t)
 	// Test there are no capital gains in registered accounts
-	sptf := TPSS{Shares: decimal.NewFromInt(5), TotalAcb: decimal.Null}.X()
-	tx := TTx{Act: ptf.SELL, Shares: decimal.NewFromInt(2), Price: decimal.NewFromFloat(3.0), AffName: "(R)"}.X()
+	sptf := TPSS{Shares: DInt(5), TotalAcb: decimal_opt.Null}.X()
+	tx := TTx{Act: ptf.SELL, Shares: DInt(2), Price: DFlt(3.0), AffName: "(R)"}.X()
 	delta := AddTxNoErr(t, tx, sptf)
-	rq.Equal(t, TPSS{Shares: decimal.NewFromInt(3), AcbPerSh: decimal.Null}.X(), delta.PostStatus)
+	crq.Equal(TPSS{Shares: DInt(3), AcbPerSh: decimal_opt.Null}.X(), delta.PostStatus)
 	//RqNaN(t, delta.CapitalGain) TODO
 
 	// Test that we fail if registered account sees non-nan acb
-	sptf = TPSS{Shares: decimal.NewFromInt(5), TotalAcb: decimal.Zero}.X()
-	tx = TTx{Act: ptf.SELL, Shares: decimal.NewFromInt(2), Price: decimal.NewFromFloat(3.0), AffName: "(R)"}.X()
-	RqPanicsWithRegexp(t, "bad NaN value", func() {
+	sptf = TPSS{Shares: DInt(5), TotalAcb: decimal_opt.Zero}.X()
+	tx = TTx{Act: ptf.SELL, Shares: DInt(2), Price: DFlt(3.0), AffName: "(R)"}.X()
+	RqPanicsWithRegexp(t, "bad null optional value", func() {
 		AddTxWithErr(t, tx, sptf)
 	})
 	// Same, but non-zero acb
-	sptf = TPSS{Shares: decimal.NewFromInt(5), TotalAcb: decimal.NewFromFloat(1.0)}.X()
-	tx = TTx{Act: ptf.SELL, Shares: decimal.NewFromInt(2), Price: decimal.NewFromFloat(3.0), AffName: "(R)"}.X()
-	RqPanicsWithRegexp(t, "bad NaN value", func() {
+	sptf = TPSS{Shares: DInt(5), TotalAcb: DOFlt(1.0)}.X()
+	tx = TTx{Act: ptf.SELL, Shares: DInt(2), Price: DFlt(3.0), AffName: "(R)"}.X()
+	RqPanicsWithRegexp(t, "bad null optional value", func() {
 		AddTxWithErr(t, tx, sptf)
 	})
 	// Test that non-registered with NaN ACB generates an error as well
-	sptf = TPSS{Shares: decimal.NewFromInt(5), TotalAcb: decimal.Null}.X()
-	tx = TTx{Act: ptf.SELL, Shares: decimal.NewFromInt(2), Price: decimal.NewFromFloat(3.0)}.X()
-	RqPanicsWithRegexp(t, "bad NaN value", func() {
+	sptf = TPSS{Shares: DInt(5), TotalAcb: decimal_opt.Null}.X()
+	tx = TTx{Act: ptf.SELL, Shares: DInt(2), Price: DFlt(3.0)}.X()
+	RqPanicsWithRegexp(t, "bad null optional value", func() {
 		AddTxWithErr(t, tx, sptf)
 	})
 }
@@ -455,24 +458,24 @@ func TestAllAffiliateShareBalanceAddTx(t *testing.T) {
 	var delta *ptf.TxDelta
 
 	// Basic buy
-	sptf = TPSS{Shares: decimal.NewFromInt(3), AllShares: decimal.NewFromInt(7), TotalAcb: decimal.NewFromFloat(15.0)}.X()
-	tx = TTx{Act: ptf.BUY, Shares: decimal.NewFromInt(2), Price: decimal.NewFromFloat(5.0)}.X()
+	sptf = TPSS{Shares: DInt(3), AllShares: DInt(7), TotalAcb: DOFlt(15.0)}.X()
+	tx = TTx{Act: ptf.BUY, Shares: DInt(2), Price: DFlt(5.0)}.X()
 	delta = AddTxNoErr(t, tx, sptf)
 	ValidateDelta(t, delta,
-		TDt{PostSt: TPSS{Shares: decimal.NewFromInt(5), AllShares: decimal.NewFromInt(9), TotalAcb: decimal.NewFromFloat(25.0)}})
+		TDt{PostSt: TPSS{Shares: DInt(5), AllShares: DInt(9), TotalAcb: DOFlt(25.0)}})
 
 	// Basic sell
-	sptf = TPSS{Shares: decimal.NewFromInt(5), AllShares: decimal.NewFromInt(8), AcbPerSh: decimal.NewFromFloat(3.0)}.X()
-	tx = TTx{Act: ptf.SELL, Shares: decimal.NewFromInt(2), Price: decimal.NewFromFloat(5.0)}.X()
+	sptf = TPSS{Shares: DInt(5), AllShares: DInt(8), AcbPerSh: DOFlt(3.0)}.X()
+	tx = TTx{Act: ptf.SELL, Shares: DInt(2), Price: DFlt(5.0)}.X()
 	delta = AddTxNoErr(t, tx, sptf)
 	ValidateDelta(t, delta,
-		TDt{PostSt: TPSS{Shares: decimal.NewFromInt(3), AllShares: decimal.NewFromFloat(6.0), AcbPerSh: decimal.NewFromFloat(3.0)}, Gain: decimal.NewFromFloat(4.0)})
+		TDt{PostSt: TPSS{Shares: DInt(3), AllShares: DFlt(6.0), AcbPerSh: DOFlt(3.0)}, Gain: DOFlt(4.0)})
 
 	// AllAffiliatesShareBalance too small (error).
 	// In theory this could maybe panic, since it should not be possible, but
 	// safer and easier to debug if we get a nicer error, which is in the API anyway.
-	sptf = TPSS{Shares: decimal.NewFromInt(5), AllShares: decimal.NewFromInt(2), TotalAcb: decimal.NewFromFloat(15.0)}.X()
-	tx = TTx{Act: ptf.SELL, Shares: decimal.NewFromInt(2), Price: decimal.NewFromFloat(5.0)}.X()
+	sptf = TPSS{Shares: DInt(5), AllShares: DInt(2), TotalAcb: DOFlt(15.0)}.X()
+	tx = TTx{Act: ptf.SELL, Shares: DInt(2), Price: DFlt(5.0)}.X()
 	AddTxWithErr(t, tx, sptf)
 }
 
@@ -491,27 +494,27 @@ func TestMultiAffiliateGains(t *testing.T) {
 	*/
 	txs = []*ptf.Tx{
 		// Buys
-		TTx{Act: ptf.BUY, Shares: decimal.NewFromInt(10), Price: decimal.NewFromFloat(1.0), AffName: ""}.X(),
-		TTx{Act: ptf.BUY, Shares: decimal.NewFromInt(20), Price: decimal.NewFromFloat(1.0), AffName: "(R)"}.X(),
-		TTx{Act: ptf.BUY, Shares: decimal.NewFromInt(30), Price: decimal.NewFromFloat(1.0), AffName: "B"}.X(),
-		TTx{Act: ptf.BUY, Shares: decimal.NewFromInt(40), Price: decimal.NewFromFloat(1.0), AffName: "B (R)"}.X(),
+		TTx{Act: ptf.BUY, Shares: DInt(10), Price: DFlt(1.0), AffName: ""}.X(),
+		TTx{Act: ptf.BUY, Shares: DInt(20), Price: DFlt(1.0), AffName: "(R)"}.X(),
+		TTx{Act: ptf.BUY, Shares: DInt(30), Price: DFlt(1.0), AffName: "B"}.X(),
+		TTx{Act: ptf.BUY, Shares: DInt(40), Price: DFlt(1.0), AffName: "B (R)"}.X(),
 		// Sells
-		TTx{Act: ptf.SELL, Shares: decimal.NewFromInt(1), Price: decimal.NewFromFloat(1.2), AffName: ""}.X(),
-		TTx{Act: ptf.SELL, Shares: decimal.NewFromInt(2), Price: decimal.NewFromFloat(1.3), AffName: "(R)"}.X(),
-		TTx{Act: ptf.SELL, Shares: decimal.NewFromInt(3), Price: decimal.NewFromFloat(1.4), AffName: "B"}.X(), TTx{Act: ptf.SELL, Shares: decimal.NewFromInt(4), Price: decimal.NewFromFloat(1.5), AffName: "B (R)"}.X(),
+		TTx{Act: ptf.SELL, Shares: DInt(1), Price: DFlt(1.2), AffName: ""}.X(),
+		TTx{Act: ptf.SELL, Shares: DInt(2), Price: DFlt(1.3), AffName: "(R)"}.X(),
+		TTx{Act: ptf.SELL, Shares: DInt(3), Price: DFlt(1.4), AffName: "B"}.X(), TTx{Act: ptf.SELL, Shares: DInt(4), Price: DFlt(1.5), AffName: "B (R)"}.X(),
 	}
 	deltas = TxsToDeltaListNoErr(t, txs)
 	ValidateDeltas(t, deltas, []TDt{
 		// Buys
-		TDt{PostSt: TPSS{Shares: decimal.NewFromInt(10), AllShares: decimal.NewFromInt(10), AcbPerSh: decimal.NewFromFloat(1.0)}},
-		TDt{PostSt: TPSS{Shares: decimal.NewFromInt(20), AllShares: decimal.NewFromInt(30), TotalAcb: decimal.Null}, Gain: decimal.Null},
-		TDt{PostSt: TPSS{Shares: decimal.NewFromInt(30), AllShares: decimal.NewFromInt(60), AcbPerSh: decimal.NewFromFloat(1.0)}},
-		TDt{PostSt: TPSS{Shares: decimal.NewFromInt(40), AllShares: decimal.NewFromInt(100), TotalAcb: decimal.Null}, Gain: decimal.Null},
+		TDt{PostSt: TPSS{Shares: DInt(10), AllShares: DInt(10), AcbPerSh: DOFlt(1.0)}},
+		TDt{PostSt: TPSS{Shares: DInt(20), AllShares: DInt(30), TotalAcb: decimal_opt.Null}, Gain: decimal_opt.Null},
+		TDt{PostSt: TPSS{Shares: DInt(30), AllShares: DInt(60), AcbPerSh: DOFlt(1.0)}},
+		TDt{PostSt: TPSS{Shares: DInt(40), AllShares: DInt(100), TotalAcb: decimal_opt.Null}, Gain: decimal_opt.Null},
 		// Sells
-		TDt{PostSt: TPSS{Shares: decimal.NewFromInt(9), AllShares: decimal.NewFromInt(99), AcbPerSh: decimal.NewFromFloat(1.0)}, Gain: decimal.NewFromFloat(1 * 0.2)},
-		TDt{PostSt: TPSS{Shares: decimal.NewFromInt(18), AllShares: decimal.NewFromInt(97), TotalAcb: decimal.Null}, Gain: decimal.Null},
-		TDt{PostSt: TPSS{Shares: decimal.NewFromInt(27), AllShares: decimal.NewFromInt(94), AcbPerSh: decimal.NewFromFloat(1.0)}, Gain: decimal.NewFromFloat(3 * 0.4)},
-		TDt{PostSt: TPSS{Shares: decimal.NewFromInt(36), AllShares: decimal.NewFromInt(90), TotalAcb: decimal.Null}, Gain: decimal.Null},
+		TDt{PostSt: TPSS{Shares: DInt(9), AllShares: DInt(99), AcbPerSh: DOFlt(1.0)}, Gain: DOFlt(1 * 0.2)},
+		TDt{PostSt: TPSS{Shares: DInt(18), AllShares: DInt(97), TotalAcb: decimal_opt.Null}, Gain: decimal_opt.Null},
+		TDt{PostSt: TPSS{Shares: DInt(27), AllShares: DInt(94), AcbPerSh: DOFlt(1.0)}, Gain: DOFlt(3 * 0.4)},
+		TDt{PostSt: TPSS{Shares: DInt(36), AllShares: DInt(90), TotalAcb: decimal_opt.Null}, Gain: decimal_opt.Null},
 	})
 }
 
@@ -525,24 +528,24 @@ func TestMultiAffiliateRoC(t *testing.T) {
 	*/
 	txs := []*ptf.Tx{
 		// Buys
-		TTx{Act: ptf.BUY, Shares: decimal.NewFromInt(10), Price: decimal.NewFromFloat(1.0), AffName: ""}.X(),
-		TTx{Act: ptf.BUY, Shares: decimal.NewFromInt(20), Price: decimal.NewFromFloat(1.0), AffName: "B"}.X(),
+		TTx{Act: ptf.BUY, Shares: DInt(10), Price: DFlt(1.0), AffName: ""}.X(),
+		TTx{Act: ptf.BUY, Shares: DInt(20), Price: DFlt(1.0), AffName: "B"}.X(),
 		// ROC
-		TTx{Act: ptf.ROC, Shares: decimal.Zero, Price: decimal.NewFromFloat(0.2), AffName: "B"}.X(),
+		TTx{Act: ptf.ROC, Shares: decimal.Zero, Price: DFlt(0.2), AffName: "B"}.X(),
 		// Sells
-		TTx{Act: ptf.SELL, Shares: decimal.NewFromInt(10), Price: decimal.NewFromFloat(1.1), AffName: ""}.X(),
-		TTx{Act: ptf.SELL, Shares: decimal.NewFromInt(20), Price: decimal.NewFromFloat(1.1), AffName: "B"}.X(),
+		TTx{Act: ptf.SELL, Shares: DInt(10), Price: DFlt(1.1), AffName: ""}.X(),
+		TTx{Act: ptf.SELL, Shares: DInt(20), Price: DFlt(1.1), AffName: "B"}.X(),
 	}
 	deltas := TxsToDeltaListNoErr(t, txs)
 	ValidateDeltas(t, deltas, []TDt{
 		// Buys
-		TDt{PostSt: TPSS{Shares: decimal.NewFromInt(10), AllShares: decimal.NewFromInt(10), AcbPerSh: decimal.NewFromFloat(1.0)}}, // Default
-		TDt{PostSt: TPSS{Shares: decimal.NewFromInt(20), AllShares: decimal.NewFromInt(30), AcbPerSh: decimal.NewFromFloat(1.0)}}, // B
+		TDt{PostSt: TPSS{Shares: DInt(10), AllShares: DInt(10), AcbPerSh: DOFlt(1.0)}}, // Default
+		TDt{PostSt: TPSS{Shares: DInt(20), AllShares: DInt(30), AcbPerSh: DOFlt(1.0)}}, // B
 		// ROC
-		TDt{PostSt: TPSS{Shares: decimal.NewFromInt(20), AllShares: decimal.NewFromInt(30), AcbPerSh: decimal.NewFromFloat(0.8)}}, // B
+		TDt{PostSt: TPSS{Shares: DInt(20), AllShares: DInt(30), AcbPerSh: DOFlt(0.8)}}, // B
 		// Sells
-		TDt{PostSt: TPSS{Shares: decimal.Zero, AllShares: decimal.NewFromInt(20), AcbPerSh: decimal.Zero}, Gain: decimal.NewFromFloat(10 * 0.1)}, // Default
-		TDt{PostSt: TPSS{Shares: decimal.Zero, AllShares: decimal.Zero, AcbPerSh: decimal.Zero}, Gain: decimal.NewFromFloat(20 * 0.3)},           // B
+		TDt{PostSt: TPSS{Shares: decimal.Zero, AllShares: DInt(20), AcbPerSh: decimal_opt.Zero}, Gain: DOFlt(10 * 0.1)},     // Default
+		TDt{PostSt: TPSS{Shares: decimal.Zero, AllShares: decimal.Zero, AcbPerSh: decimal_opt.Zero}, Gain: DOFlt(20 * 0.3)}, // B
 	})
 }
 
@@ -557,57 +560,57 @@ func TestOtherAffiliateSFL(t *testing.T) {
 							buy 2
 	*/
 	txs := []*ptf.Tx{
-		TTx{TDay: 1, Act: ptf.BUY, Shares: decimal.NewFromInt(10), Price: decimal.NewFromFloat(1.0), AffName: ""}.X(),
-		TTx{TDay: 1, Act: ptf.BUY, Shares: decimal.NewFromInt(5), Price: decimal.NewFromFloat(1.0), AffName: "B"}.X(),
-		TTx{TDay: 40, Act: ptf.SELL, Shares: decimal.NewFromInt(2), Price: decimal.NewFromFloat(0.5), AffName: ""}.X(),
-		TTx{TDay: 41, Act: ptf.BUY, Shares: decimal.NewFromInt(2), Price: decimal.NewFromFloat(1.0), AffName: "B"}.X(),
+		TTx{TDay: 1, Act: ptf.BUY, Shares: DInt(10), Price: DFlt(1.0), AffName: ""}.X(),
+		TTx{TDay: 1, Act: ptf.BUY, Shares: DInt(5), Price: DFlt(1.0), AffName: "B"}.X(),
+		TTx{TDay: 40, Act: ptf.SELL, Shares: DInt(2), Price: DFlt(0.5), AffName: ""}.X(),
+		TTx{TDay: 41, Act: ptf.BUY, Shares: DInt(2), Price: DFlt(1.0), AffName: "B"}.X(),
 	}
 	deltas := TxsToDeltaListNoErr(t, txs)
 	ValidateDeltas(t, deltas, []TDt{
-		TDt{PostSt: TPSS{Shares: decimal.NewFromInt(10), AllShares: decimal.NewFromInt(10), TotalAcb: decimal.NewFromFloat(10.0)}},                                // Buy in Default
-		TDt{PostSt: TPSS{Shares: decimal.NewFromInt(5), AllShares: decimal.NewFromInt(15), TotalAcb: decimal.NewFromFloat(5.0)}},                                  // Buy in B
-		TDt{PostSt: TPSS{Shares: decimal.NewFromInt(8), AllShares: decimal.NewFromInt(13), TotalAcb: decimal.NewFromFloat(8.0)}, SFL: decimal.NewFromFloat(-1.0)}, // SFL of 0.5 * 2 shares
-		TDt{PostSt: TPSS{Shares: decimal.NewFromInt(5), AllShares: decimal.NewFromInt(13), TotalAcb: decimal.NewFromFloat(6.0)}},                                  // Auto-adjust on B
-		TDt{PostSt: TPSS{Shares: decimal.NewFromInt(7), AllShares: decimal.NewFromInt(15), TotalAcb: decimal.NewFromFloat(8.0)}},                                  // B
+		TDt{PostSt: TPSS{Shares: DInt(10), AllShares: DInt(10), TotalAcb: DOFlt(10.0)}},                 // Buy in Default
+		TDt{PostSt: TPSS{Shares: DInt(5), AllShares: DInt(15), TotalAcb: DOFlt(5.0)}},                   // Buy in B
+		TDt{PostSt: TPSS{Shares: DInt(8), AllShares: DInt(13), TotalAcb: DOFlt(8.0)}, SFL: DOFlt(-1.0)}, // SFL of 0.5 * 2 shares
+		TDt{PostSt: TPSS{Shares: DInt(5), AllShares: DInt(13), TotalAcb: DOFlt(6.0)}},                   // Auto-adjust on B
+		TDt{PostSt: TPSS{Shares: DInt(7), AllShares: DInt(15), TotalAcb: DOFlt(8.0)}},                   // B
 	})
 
 	/* SFL with all buys on registered affiliate
 	   (same txs as above)
 	*/
 	txs = []*ptf.Tx{
-		TTx{TDay: 1, Act: ptf.BUY, Shares: decimal.NewFromInt(10), Price: decimal.NewFromFloat(1.0), AffName: ""}.X(),
-		TTx{TDay: 1, Act: ptf.BUY, Shares: decimal.NewFromInt(5), Price: decimal.NewFromFloat(1.0), AffName: "(R)"}.X(),
-		TTx{TDay: 40, Act: ptf.SELL, Shares: decimal.NewFromInt(2), Price: decimal.NewFromFloat(0.5), AffName: ""}.X(),
-		TTx{TDay: 41, Act: ptf.BUY, Shares: decimal.NewFromInt(2), Price: decimal.NewFromFloat(1.0), AffName: "(R)"}.X(),
+		TTx{TDay: 1, Act: ptf.BUY, Shares: DInt(10), Price: DFlt(1.0), AffName: ""}.X(),
+		TTx{TDay: 1, Act: ptf.BUY, Shares: DInt(5), Price: DFlt(1.0), AffName: "(R)"}.X(),
+		TTx{TDay: 40, Act: ptf.SELL, Shares: DInt(2), Price: DFlt(0.5), AffName: ""}.X(),
+		TTx{TDay: 41, Act: ptf.BUY, Shares: DInt(2), Price: DFlt(1.0), AffName: "(R)"}.X(),
 	}
 	deltas = TxsToDeltaListNoErr(t, txs)
 	ValidateDeltas(t, deltas, []TDt{
-		TDt{PostSt: TPSS{Shares: decimal.NewFromInt(10), AllShares: decimal.NewFromInt(10), TotalAcb: decimal.NewFromFloat(10.0)}},                                // Buy in Default
-		TDt{PostSt: TPSS{Shares: decimal.NewFromInt(5), AllShares: decimal.NewFromInt(15), TotalAcb: decimal.Null}, Gain: decimal.Null},                           // Buy in (R)
-		TDt{PostSt: TPSS{Shares: decimal.NewFromInt(8), AllShares: decimal.NewFromInt(13), TotalAcb: decimal.NewFromFloat(8.0)}, SFL: decimal.NewFromFloat(-1.0)}, // SFL of 0.5 * 2 shares
-		TDt{PostSt: TPSS{Shares: decimal.NewFromInt(7), AllShares: decimal.NewFromInt(15), TotalAcb: decimal.Null}, Gain: decimal.Null},                           // Buy in (R)
+		TDt{PostSt: TPSS{Shares: DInt(10), AllShares: DInt(10), TotalAcb: DOFlt(10.0)}},                             // Buy in Default
+		TDt{PostSt: TPSS{Shares: DInt(5), AllShares: DInt(15), TotalAcb: decimal_opt.Null}, Gain: decimal_opt.Null}, // Buy in (R)
+		TDt{PostSt: TPSS{Shares: DInt(8), AllShares: DInt(13), TotalAcb: DOFlt(8.0)}, SFL: DOFlt(-1.0)},             // SFL of 0.5 * 2 shares
+		TDt{PostSt: TPSS{Shares: DInt(7), AllShares: DInt(15), TotalAcb: decimal_opt.Null}, Gain: decimal_opt.Null}, // Buy in (R)
 	})
 
 	/* SFL with all buys on other affiliate B, but sells on a second affiliate (R)
 	Make sure it doesn't interfere or cause errors.
 	*/
 	txs = []*ptf.Tx{
-		TTx{TDay: 1, Act: ptf.BUY, Shares: decimal.NewFromInt(10), Price: decimal.NewFromFloat(1.0), AffName: ""}.X(),
-		TTx{TDay: 1, Act: ptf.BUY, Shares: decimal.NewFromInt(5), Price: decimal.NewFromFloat(1.0), AffName: "B"}.X(),
-		TTx{TDay: 1, Act: ptf.BUY, Shares: decimal.NewFromInt(5), Price: decimal.NewFromFloat(1.0), AffName: "(R)"}.X(),
-		TTx{TDay: 40, Act: ptf.SELL, Shares: decimal.NewFromInt(2), Price: decimal.NewFromFloat(0.5), AffName: ""}.X(),
-		TTx{TDay: 41, Act: ptf.BUY, Shares: decimal.NewFromInt(2), Price: decimal.NewFromFloat(1.0), AffName: "B"}.X(),
-		TTx{TDay: 41, Act: ptf.SELL, Shares: decimal.NewFromInt(2), Price: decimal.NewFromFloat(1.0), AffName: "(R)"}.X(),
+		TTx{TDay: 1, Act: ptf.BUY, Shares: DInt(10), Price: DFlt(1.0), AffName: ""}.X(),
+		TTx{TDay: 1, Act: ptf.BUY, Shares: DInt(5), Price: DFlt(1.0), AffName: "B"}.X(),
+		TTx{TDay: 1, Act: ptf.BUY, Shares: DInt(5), Price: DFlt(1.0), AffName: "(R)"}.X(),
+		TTx{TDay: 40, Act: ptf.SELL, Shares: DInt(2), Price: DFlt(0.5), AffName: ""}.X(),
+		TTx{TDay: 41, Act: ptf.BUY, Shares: DInt(2), Price: DFlt(1.0), AffName: "B"}.X(),
+		TTx{TDay: 41, Act: ptf.SELL, Shares: DInt(2), Price: DFlt(1.0), AffName: "(R)"}.X(),
 	}
 	deltas = TxsToDeltaListNoErr(t, txs)
 	ValidateDeltas(t, deltas, []TDt{
-		TDt{PostSt: TPSS{Shares: decimal.NewFromInt(10), AllShares: decimal.NewFromInt(10), TotalAcb: decimal.NewFromFloat(10.0)}},                                // Buy in Default
-		TDt{PostSt: TPSS{Shares: decimal.NewFromInt(5), AllShares: decimal.NewFromInt(15), TotalAcb: decimal.NewFromFloat(5.0)}},                                  // Buy in B
-		TDt{PostSt: TPSS{Shares: decimal.NewFromInt(5), AllShares: decimal.NewFromInt(20), TotalAcb: decimal.Null}, Gain: decimal.Null},                           // Buy in (R)
-		TDt{PostSt: TPSS{Shares: decimal.NewFromInt(8), AllShares: decimal.NewFromInt(18), TotalAcb: decimal.NewFromFloat(8.0)}, SFL: decimal.NewFromFloat(-1.0)}, // SFL of 0.5 * 2 shares
-		TDt{PostSt: TPSS{Shares: decimal.NewFromInt(5), AllShares: decimal.NewFromInt(18), TotalAcb: decimal.NewFromFloat(6.0)}},                                  // Auto-adjust on B
-		TDt{PostSt: TPSS{Shares: decimal.NewFromInt(7), AllShares: decimal.NewFromInt(20), TotalAcb: decimal.NewFromFloat(8.0)}},                                  // Buy in B
-		TDt{PostSt: TPSS{Shares: decimal.NewFromInt(3), AllShares: decimal.NewFromInt(18), TotalAcb: decimal.Null}, Gain: decimal.Null},                           // Sell in (R)
+		TDt{PostSt: TPSS{Shares: DInt(10), AllShares: DInt(10), TotalAcb: DOFlt(10.0)}},                             // Buy in Default
+		TDt{PostSt: TPSS{Shares: DInt(5), AllShares: DInt(15), TotalAcb: DOFlt(5.0)}},                               // Buy in B
+		TDt{PostSt: TPSS{Shares: DInt(5), AllShares: DInt(20), TotalAcb: decimal_opt.Null}, Gain: decimal_opt.Null}, // Buy in (R)
+		TDt{PostSt: TPSS{Shares: DInt(8), AllShares: DInt(18), TotalAcb: DOFlt(8.0)}, SFL: DOFlt(-1.0)},             // SFL of 0.5 * 2 shares
+		TDt{PostSt: TPSS{Shares: DInt(5), AllShares: DInt(18), TotalAcb: DOFlt(6.0)}},                               // Auto-adjust on B
+		TDt{PostSt: TPSS{Shares: DInt(7), AllShares: DInt(20), TotalAcb: DOFlt(8.0)}},                               // Buy in B
+		TDt{PostSt: TPSS{Shares: DInt(3), AllShares: DInt(18), TotalAcb: decimal_opt.Null}, Gain: decimal_opt.Null}, // Sell in (R)
 	})
 
 	/* SFL with buys on two other affiliates (both non-registered)
@@ -619,23 +622,23 @@ func TestOtherAffiliateSFL(t *testing.T) {
 						buy 2		buy 2
 	*/
 	txs = []*ptf.Tx{
-		TTx{TDay: 1, Act: ptf.BUY, Shares: decimal.NewFromInt(10), Price: decimal.NewFromFloat(1.0), AffName: ""}.X(),
-		TTx{TDay: 1, Act: ptf.BUY, Shares: decimal.NewFromInt(5), Price: decimal.NewFromFloat(1.0), AffName: "B"}.X(),
-		TTx{TDay: 1, Act: ptf.BUY, Shares: decimal.NewFromInt(7), Price: decimal.NewFromFloat(1.0), AffName: "C"}.X(),
-		TTx{TDay: 40, Act: ptf.SELL, Shares: decimal.NewFromInt(2), Price: decimal.NewFromFloat(0.5), AffName: ""}.X(),
-		TTx{TDay: 41, Act: ptf.BUY, Shares: decimal.NewFromInt(2), Price: decimal.NewFromFloat(1.0), AffName: "B"}.X(),
-		TTx{TDay: 41, Act: ptf.BUY, Shares: decimal.NewFromInt(2), Price: decimal.NewFromFloat(1.0), AffName: "C"}.X(),
+		TTx{TDay: 1, Act: ptf.BUY, Shares: DInt(10), Price: DFlt(1.0), AffName: ""}.X(),
+		TTx{TDay: 1, Act: ptf.BUY, Shares: DInt(5), Price: DFlt(1.0), AffName: "B"}.X(),
+		TTx{TDay: 1, Act: ptf.BUY, Shares: DInt(7), Price: DFlt(1.0), AffName: "C"}.X(),
+		TTx{TDay: 40, Act: ptf.SELL, Shares: DInt(2), Price: DFlt(0.5), AffName: ""}.X(),
+		TTx{TDay: 41, Act: ptf.BUY, Shares: DInt(2), Price: DFlt(1.0), AffName: "B"}.X(),
+		TTx{TDay: 41, Act: ptf.BUY, Shares: DInt(2), Price: DFlt(1.0), AffName: "C"}.X(),
 	}
 	deltas = TxsToDeltaListNoErr(t, txs)
 	ValidateDeltas(t, deltas, []TDt{
-		TDt{PostSt: TPSS{Shares: decimal.NewFromInt(10), AllShares: decimal.NewFromInt(10), TotalAcb: decimal.NewFromFloat(10.0)}},                                // Buy in Default
-		TDt{PostSt: TPSS{Shares: decimal.NewFromInt(5), AllShares: decimal.NewFromInt(15), TotalAcb: decimal.NewFromFloat(5.0)}},                                  // Buy in B
-		TDt{PostSt: TPSS{Shares: decimal.NewFromInt(7), AllShares: decimal.NewFromInt(22), TotalAcb: decimal.NewFromFloat(7.0)}},                                  // Buy in C
-		TDt{PostSt: TPSS{Shares: decimal.NewFromInt(8), AllShares: decimal.NewFromInt(20), TotalAcb: decimal.NewFromFloat(8.0)}, SFL: decimal.NewFromFloat(-1.0)}, // SFL of 0.5 * 2 shares
-		TDt{PostSt: TPSS{Shares: decimal.NewFromInt(5), AllShares: decimal.NewFromInt(20), TotalAcb: decimal.NewFromFloat(5.4375)}},                               // Auto-adjust on B. Gets 7/16 (43.75%) of the SFL
-		TDt{PostSt: TPSS{Shares: decimal.NewFromInt(7), AllShares: decimal.NewFromInt(20), TotalAcb: decimal.NewFromFloat(7.5625)}},                               // Auto-adjust on C. Gets 9/16 (56.25%) of the SFL
-		TDt{PostSt: TPSS{Shares: decimal.NewFromInt(7), AllShares: decimal.NewFromInt(22), TotalAcb: decimal.NewFromFloat(7.4375)}},                               // Buy in B
-		TDt{PostSt: TPSS{Shares: decimal.NewFromInt(9), AllShares: decimal.NewFromInt(24), TotalAcb: decimal.NewFromFloat(9.5625)}},                               // Buy in C
+		TDt{PostSt: TPSS{Shares: DInt(10), AllShares: DInt(10), TotalAcb: DOFlt(10.0)}},                 // Buy in Default
+		TDt{PostSt: TPSS{Shares: DInt(5), AllShares: DInt(15), TotalAcb: DOFlt(5.0)}},                   // Buy in B
+		TDt{PostSt: TPSS{Shares: DInt(7), AllShares: DInt(22), TotalAcb: DOFlt(7.0)}},                   // Buy in C
+		TDt{PostSt: TPSS{Shares: DInt(8), AllShares: DInt(20), TotalAcb: DOFlt(8.0)}, SFL: DOFlt(-1.0)}, // SFL of 0.5 * 2 shares
+		TDt{PostSt: TPSS{Shares: DInt(5), AllShares: DInt(20), TotalAcb: DOFlt(5.4375)}},                // Auto-adjust on B. Gets 7/16 (43.75%) of the SFL
+		TDt{PostSt: TPSS{Shares: DInt(7), AllShares: DInt(20), TotalAcb: DOFlt(7.5625)}},                // Auto-adjust on C. Gets 9/16 (56.25%) of the SFL
+		TDt{PostSt: TPSS{Shares: DInt(7), AllShares: DInt(22), TotalAcb: DOFlt(7.4375)}},                // Buy in B
+		TDt{PostSt: TPSS{Shares: DInt(9), AllShares: DInt(24), TotalAcb: DOFlt(9.5625)}},                // Buy in C
 	})
 
 	/* SFL with buys on two other affiliates (registered/non-registered)
@@ -647,22 +650,22 @@ func TestOtherAffiliateSFL(t *testing.T) {
 						buy 2		buy 2
 	*/
 	txs = []*ptf.Tx{
-		TTx{TDay: 1, Act: ptf.BUY, Shares: decimal.NewFromInt(10), Price: decimal.NewFromFloat(1.0), AffName: ""}.X(),
-		TTx{TDay: 1, Act: ptf.BUY, Shares: decimal.NewFromInt(5), Price: decimal.NewFromFloat(1.0), AffName: "(R)"}.X(),
-		TTx{TDay: 1, Act: ptf.BUY, Shares: decimal.NewFromInt(7), Price: decimal.NewFromFloat(1.0), AffName: "B"}.X(),
-		TTx{TDay: 40, Act: ptf.SELL, Shares: decimal.NewFromInt(2), Price: decimal.NewFromFloat(0.5), AffName: ""}.X(),
-		TTx{TDay: 41, Act: ptf.BUY, Shares: decimal.NewFromInt(2), Price: decimal.NewFromFloat(1.0), AffName: "(R)"}.X(),
-		TTx{TDay: 41, Act: ptf.BUY, Shares: decimal.NewFromInt(2), Price: decimal.NewFromFloat(1.0), AffName: "B"}.X(),
+		TTx{TDay: 1, Act: ptf.BUY, Shares: DInt(10), Price: DFlt(1.0), AffName: ""}.X(),
+		TTx{TDay: 1, Act: ptf.BUY, Shares: DInt(5), Price: DFlt(1.0), AffName: "(R)"}.X(),
+		TTx{TDay: 1, Act: ptf.BUY, Shares: DInt(7), Price: DFlt(1.0), AffName: "B"}.X(),
+		TTx{TDay: 40, Act: ptf.SELL, Shares: DInt(2), Price: DFlt(0.5), AffName: ""}.X(),
+		TTx{TDay: 41, Act: ptf.BUY, Shares: DInt(2), Price: DFlt(1.0), AffName: "(R)"}.X(),
+		TTx{TDay: 41, Act: ptf.BUY, Shares: DInt(2), Price: DFlt(1.0), AffName: "B"}.X(),
 	}
 	deltas = TxsToDeltaListNoErr(t, txs)
 	ValidateDeltas(t, deltas, []TDt{
-		TDt{PostSt: TPSS{Shares: decimal.NewFromInt(10), AllShares: decimal.NewFromInt(10), TotalAcb: decimal.NewFromFloat(10.0)}},                                // Buy in Default
-		TDt{PostSt: TPSS{Shares: decimal.NewFromInt(5), AllShares: decimal.NewFromInt(15), AcbPerSh: decimal.Null}, Gain: decimal.Null},                           // Buy in (R)
-		TDt{PostSt: TPSS{Shares: decimal.NewFromInt(7), AllShares: decimal.NewFromInt(22), TotalAcb: decimal.NewFromFloat(7.0)}},                                  // Buy in B
-		TDt{PostSt: TPSS{Shares: decimal.NewFromInt(8), AllShares: decimal.NewFromInt(20), TotalAcb: decimal.NewFromFloat(8.0)}, SFL: decimal.NewFromFloat(-1.0)}, // SFL of 0.5 * 2 shares
-		TDt{PostSt: TPSS{Shares: decimal.NewFromInt(7), AllShares: decimal.NewFromInt(20), TotalAcb: decimal.NewFromFloat(7.5625)}},                               // Auto-adjust on B. Gets 9/16 (56.25%) of the SFL
-		TDt{PostSt: TPSS{Shares: decimal.NewFromInt(7), AllShares: decimal.NewFromInt(22), TotalAcb: decimal.Null}, Gain: decimal.Null},                           // Buy in (R)
-		TDt{PostSt: TPSS{Shares: decimal.NewFromInt(9), AllShares: decimal.NewFromInt(24), TotalAcb: decimal.NewFromFloat(9.5625)}},                               // Buy in B
+		TDt{PostSt: TPSS{Shares: DInt(10), AllShares: DInt(10), TotalAcb: DOFlt(10.0)}},                             // Buy in Default
+		TDt{PostSt: TPSS{Shares: DInt(5), AllShares: DInt(15), AcbPerSh: decimal_opt.Null}, Gain: decimal_opt.Null}, // Buy in (R)
+		TDt{PostSt: TPSS{Shares: DInt(7), AllShares: DInt(22), TotalAcb: DOFlt(7.0)}},                               // Buy in B
+		TDt{PostSt: TPSS{Shares: DInt(8), AllShares: DInt(20), TotalAcb: DOFlt(8.0)}, SFL: DOFlt(-1.0)},             // SFL of 0.5 * 2 shares
+		TDt{PostSt: TPSS{Shares: DInt(7), AllShares: DInt(20), TotalAcb: DOFlt(7.5625)}},                            // Auto-adjust on B. Gets 9/16 (56.25%) of the SFL
+		TDt{PostSt: TPSS{Shares: DInt(7), AllShares: DInt(22), TotalAcb: decimal_opt.Null}, Gain: decimal_opt.Null}, // Buy in (R)
+		TDt{PostSt: TPSS{Shares: DInt(9), AllShares: DInt(24), TotalAcb: DOFlt(9.5625)}},                            // Buy in B
 	})
 
 	/* SFL with buys on one other affiliate, but fewer shares in the only selling
@@ -677,19 +680,19 @@ func TestOtherAffiliateSFL(t *testing.T) {
 						sell 1
 	*/
 	txs = []*ptf.Tx{
-		TTx{TDay: 1, Act: ptf.BUY, Shares: decimal.NewFromInt(5), Price: decimal.NewFromFloat(1.0), AffName: ""}.X(),
-		TTx{TDay: 40, Act: ptf.SELL, Shares: decimal.NewFromInt(4), Price: decimal.NewFromFloat(0.5), AffName: ""}.X(),
-		TTx{TDay: 41, Act: ptf.BUY, Shares: decimal.NewFromInt(2), Price: decimal.NewFromFloat(1.0), AffName: "B"}.X(),
-		TTx{TDay: 42, Act: ptf.SELL, Shares: decimal.NewFromInt(1), Price: decimal.NewFromFloat(2.0), AffName: "B"}.X(),
+		TTx{TDay: 1, Act: ptf.BUY, Shares: DInt(5), Price: DFlt(1.0), AffName: ""}.X(),
+		TTx{TDay: 40, Act: ptf.SELL, Shares: DInt(4), Price: DFlt(0.5), AffName: ""}.X(),
+		TTx{TDay: 41, Act: ptf.BUY, Shares: DInt(2), Price: DFlt(1.0), AffName: "B"}.X(),
+		TTx{TDay: 42, Act: ptf.SELL, Shares: DInt(1), Price: DFlt(2.0), AffName: "B"}.X(),
 	}
 	deltas = TxsToDeltaListNoErr(t, txs)
 	ValidateDeltas(t, deltas, []TDt{
-		TDt{PostSt: TPSS{Shares: decimal.NewFromInt(5), AllShares: decimal.NewFromInt(5), TotalAcb: decimal.NewFromFloat(5.0)}}, // Buy in Default
-		TDt{PostSt: TPSS{Shares: decimal.NewFromInt(1), AllShares: decimal.NewFromInt(1), TotalAcb: decimal.NewFromFloat(1.0)}, Gain: decimal.NewFromFloat(-1.0), SFL: decimal.NewFromFloat(-1.0),
+		TDt{PostSt: TPSS{Shares: DInt(5), AllShares: DInt(5), TotalAcb: DOFlt(5.0)}}, // Buy in Default
+		TDt{PostSt: TPSS{Shares: DInt(1), AllShares: DInt(1), TotalAcb: DOFlt(1.0)}, Gain: DOFlt(-1.0), SFL: DOFlt(-1.0),
 			PotentiallyOverAppliedSfl: true}, // SFL of 0.5 * 2(/4) shares
-		TDt{PostSt: TPSS{Shares: decimal.Zero, AllShares: decimal.NewFromInt(1), TotalAcb: decimal.NewFromFloat(1.0)}},                                            // auto adjust on B (100%)
-		TDt{PostSt: TPSS{Shares: decimal.NewFromInt(2), AllShares: decimal.NewFromInt(3), TotalAcb: decimal.NewFromFloat(3.0)}},                                   // Buy in B
-		TDt{PostSt: TPSS{Shares: decimal.NewFromInt(1), AllShares: decimal.NewFromInt(2), TotalAcb: decimal.NewFromFloat(1.5)}, Gain: decimal.NewFromFloat(0.50)}, // Sell in B
+		TDt{PostSt: TPSS{Shares: decimal.Zero, AllShares: DInt(1), TotalAcb: DOFlt(1.0)}},               // auto adjust on B (100%)
+		TDt{PostSt: TPSS{Shares: DInt(2), AllShares: DInt(3), TotalAcb: DOFlt(3.0)}},                    // Buy in B
+		TDt{PostSt: TPSS{Shares: DInt(1), AllShares: DInt(2), TotalAcb: DOFlt(1.5)}, Gain: DOFlt(0.50)}, // Sell in B
 	})
 
 	/* SFL with buys on both SFL affiliate and one other affiliate.
@@ -703,19 +706,19 @@ func TestOtherAffiliateSFL(t *testing.T) {
 	buy 1
 	*/
 	txs = []*ptf.Tx{
-		TTx{TDay: 1, Act: ptf.BUY, Shares: decimal.NewFromInt(5), Price: decimal.NewFromFloat(1.0), AffName: ""}.X(),
-		TTx{TDay: 40, Act: ptf.SELL, Shares: decimal.NewFromInt(4), Price: decimal.NewFromFloat(0.5), AffName: ""}.X(),
-		TTx{TDay: 41, Act: ptf.BUY, Shares: decimal.NewFromInt(2), Price: decimal.NewFromFloat(1.0), AffName: "B"}.X(),
-		TTx{TDay: 42, Act: ptf.BUY, Shares: decimal.NewFromInt(1), Price: decimal.NewFromFloat(2.0), AffName: ""}.X(),
+		TTx{TDay: 1, Act: ptf.BUY, Shares: DInt(5), Price: DFlt(1.0), AffName: ""}.X(),
+		TTx{TDay: 40, Act: ptf.SELL, Shares: DInt(4), Price: DFlt(0.5), AffName: ""}.X(),
+		TTx{TDay: 41, Act: ptf.BUY, Shares: DInt(2), Price: DFlt(1.0), AffName: "B"}.X(),
+		TTx{TDay: 42, Act: ptf.BUY, Shares: DInt(1), Price: DFlt(2.0), AffName: ""}.X(),
 	}
 	deltas = TxsToDeltaListNoErr(t, txs)
 	ValidateDeltas(t, deltas, []TDt{
-		TDt{PostSt: TPSS{Shares: decimal.NewFromInt(5), AllShares: decimal.NewFromInt(5), TotalAcb: decimal.NewFromFloat(5.0)}},                                                                    // Buy in Default
-		TDt{PostSt: TPSS{Shares: decimal.NewFromInt(1), AllShares: decimal.NewFromInt(1), TotalAcb: decimal.NewFromFloat(1.0)}, Gain: decimal.NewFromFloat(-0.5), SFL: decimal.NewFromFloat(-1.5)}, // SFL of 0.5 * 3(/4) shares
-		TDt{PostSt: TPSS{Shares: decimal.Zero, AllShares: decimal.NewFromInt(1), TotalAcb: decimal.NewFromFloat(0.75)}},                                                                            // auto adjust on B (50%)
-		TDt{PostSt: TPSS{Shares: decimal.NewFromInt(1), AllShares: decimal.NewFromInt(1), TotalAcb: decimal.NewFromFloat(1.75)}},                                                                   // auto adjust on default (50%)
-		TDt{PostSt: TPSS{Shares: decimal.NewFromInt(2), AllShares: decimal.NewFromInt(3), TotalAcb: decimal.NewFromFloat(2.75)}},                                                                   // Buy in B
-		TDt{PostSt: TPSS{Shares: decimal.NewFromInt(2), AllShares: decimal.NewFromInt(4), TotalAcb: decimal.NewFromFloat(3.75)}},                                                                   // Buy in default
+		TDt{PostSt: TPSS{Shares: DInt(5), AllShares: DInt(5), TotalAcb: DOFlt(5.0)}},                                      // Buy in Default
+		TDt{PostSt: TPSS{Shares: DInt(1), AllShares: DInt(1), TotalAcb: DOFlt(1.0)}, Gain: DOFlt(-0.5), SFL: DOFlt(-1.5)}, // SFL of 0.5 * 3(/4) shares
+		TDt{PostSt: TPSS{Shares: decimal.Zero, AllShares: DInt(1), TotalAcb: DOFlt(0.75)}},                                // auto adjust on B (50%)
+		TDt{PostSt: TPSS{Shares: DInt(1), AllShares: DInt(1), TotalAcb: DOFlt(1.75)}},                                     // auto adjust on default (50%)
+		TDt{PostSt: TPSS{Shares: DInt(2), AllShares: DInt(3), TotalAcb: DOFlt(2.75)}},                                     // Buy in B
+		TDt{PostSt: TPSS{Shares: DInt(2), AllShares: DInt(4), TotalAcb: DOFlt(3.75)}},                                     // Buy in default
 	})
 
 	/* SFL with buy on one other registered affiliate.
@@ -728,15 +731,15 @@ func TestOtherAffiliateSFL(t *testing.T) {
 						buy 2
 	*/
 	txs = []*ptf.Tx{
-		TTx{TDay: 1, Act: ptf.BUY, Shares: decimal.NewFromInt(5), Price: decimal.NewFromFloat(1.0), AffName: ""}.X(),
-		TTx{TDay: 40, Act: ptf.SELL, Shares: decimal.NewFromInt(4), Price: decimal.NewFromFloat(0.5), AffName: ""}.X(),
-		TTx{TDay: 41, Act: ptf.BUY, Shares: decimal.NewFromInt(2), Price: decimal.NewFromFloat(1.0), AffName: "(R)"}.X(),
+		TTx{TDay: 1, Act: ptf.BUY, Shares: DInt(5), Price: DFlt(1.0), AffName: ""}.X(),
+		TTx{TDay: 40, Act: ptf.SELL, Shares: DInt(4), Price: DFlt(0.5), AffName: ""}.X(),
+		TTx{TDay: 41, Act: ptf.BUY, Shares: DInt(2), Price: DFlt(1.0), AffName: "(R)"}.X(),
 	}
 	deltas = TxsToDeltaListNoErr(t, txs)
 	ValidateDeltas(t, deltas, []TDt{
-		TDt{PostSt: TPSS{Shares: decimal.NewFromInt(5), AllShares: decimal.NewFromInt(5), TotalAcb: decimal.NewFromFloat(5.0)}},                                                                    // Buy in Default
-		TDt{PostSt: TPSS{Shares: decimal.NewFromInt(1), AllShares: decimal.NewFromInt(1), TotalAcb: decimal.NewFromFloat(1.0)}, Gain: decimal.NewFromFloat(-1.0), SFL: decimal.NewFromFloat(-1.0)}, // SFL of 0.5 * 2(/4) shares
-		TDt{PostSt: TPSS{Shares: decimal.NewFromInt(2), AllShares: decimal.NewFromInt(3), TotalAcb: decimal.Null}, Gain: decimal.Null},                                                             // Buy in B
+		TDt{PostSt: TPSS{Shares: DInt(5), AllShares: DInt(5), TotalAcb: DOFlt(5.0)}},                                      // Buy in Default
+		TDt{PostSt: TPSS{Shares: DInt(1), AllShares: DInt(1), TotalAcb: DOFlt(1.0)}, Gain: DOFlt(-1.0), SFL: DOFlt(-1.0)}, // SFL of 0.5 * 2(/4) shares
+		TDt{PostSt: TPSS{Shares: DInt(2), AllShares: DInt(3), TotalAcb: decimal_opt.Null}, Gain: decimal_opt.Null},        // Buy in B
 	})
 
 	/* SFL with buy on one other registered affiliate, but fewer shares in the only
@@ -751,18 +754,18 @@ func TestOtherAffiliateSFL(t *testing.T) {
 						sell 1
 	*/
 	txs = []*ptf.Tx{
-		TTx{TDay: 1, Act: ptf.BUY, Shares: decimal.NewFromInt(5), Price: decimal.NewFromFloat(1.0), AffName: ""}.X(),
-		TTx{TDay: 40, Act: ptf.SELL, Shares: decimal.NewFromInt(4), Price: decimal.NewFromFloat(0.5), AffName: ""}.X(),
-		TTx{TDay: 41, Act: ptf.BUY, Shares: decimal.NewFromInt(2), Price: decimal.NewFromFloat(1.0), AffName: "(R)"}.X(),
-		TTx{TDay: 42, Act: ptf.SELL, Shares: decimal.NewFromInt(1), Price: decimal.NewFromFloat(2.0), AffName: "(R)"}.X(),
+		TTx{TDay: 1, Act: ptf.BUY, Shares: DInt(5), Price: DFlt(1.0), AffName: ""}.X(),
+		TTx{TDay: 40, Act: ptf.SELL, Shares: DInt(4), Price: DFlt(0.5), AffName: ""}.X(),
+		TTx{TDay: 41, Act: ptf.BUY, Shares: DInt(2), Price: DFlt(1.0), AffName: "(R)"}.X(),
+		TTx{TDay: 42, Act: ptf.SELL, Shares: DInt(1), Price: DFlt(2.0), AffName: "(R)"}.X(),
 	}
 	deltas = TxsToDeltaListNoErr(t, txs)
 	ValidateDeltas(t, deltas, []TDt{
-		TDt{PostSt: TPSS{Shares: decimal.NewFromInt(5), AllShares: decimal.NewFromInt(5), TotalAcb: decimal.NewFromFloat(5.0)}}, // Buy in Default
-		TDt{PostSt: TPSS{Shares: decimal.NewFromInt(1), AllShares: decimal.NewFromInt(1), TotalAcb: decimal.NewFromFloat(1.0)}, Gain: decimal.NewFromFloat(-1.0), SFL: decimal.NewFromFloat(-1.0),
+		TDt{PostSt: TPSS{Shares: DInt(5), AllShares: DInt(5), TotalAcb: DOFlt(5.0)}}, // Buy in Default
+		TDt{PostSt: TPSS{Shares: DInt(1), AllShares: DInt(1), TotalAcb: DOFlt(1.0)}, Gain: DOFlt(-1.0), SFL: DOFlt(-1.0),
 			PotentiallyOverAppliedSfl: true}, // SFL of 0.5 * 2(/4) shares
-		TDt{PostSt: TPSS{Shares: decimal.NewFromInt(2), AllShares: decimal.NewFromInt(3), TotalAcb: decimal.Null}, Gain: decimal.Null}, // Buy in (R)
-		TDt{PostSt: TPSS{Shares: decimal.NewFromInt(1), AllShares: decimal.NewFromInt(2), TotalAcb: decimal.Null}, Gain: decimal.Null}, // Sell in (R)
+		TDt{PostSt: TPSS{Shares: DInt(2), AllShares: DInt(3), TotalAcb: decimal_opt.Null}, Gain: decimal_opt.Null}, // Buy in (R)
+		TDt{PostSt: TPSS{Shares: DInt(1), AllShares: DInt(2), TotalAcb: decimal_opt.Null}, Gain: decimal_opt.Null}, // Sell in (R)
 	})
 }
 
@@ -780,23 +783,23 @@ func TestOtherAffiliateExplicitSFL(t *testing.T) {
 						buy 2		buy 2
 	*/
 	txs := []*ptf.Tx{
-		TTx{TDay: 1, Act: ptf.BUY, Shares: decimal.NewFromInt(10), Price: decimal.NewFromFloat(1.0), AffName: ""}.X(),
-		TTx{TDay: 1, Act: ptf.BUY, Shares: decimal.NewFromInt(5), Price: decimal.NewFromFloat(1.0), AffName: "B"}.X(),
-		TTx{TDay: 1, Act: ptf.BUY, Shares: decimal.NewFromInt(7), Price: decimal.NewFromFloat(1.0), AffName: "C"}.X(),
-		TTx{TDay: 40, Act: ptf.SELL, Shares: decimal.NewFromInt(2), Price: decimal.NewFromFloat(0.5), AffName: "", SFL: CADSFL(decimal.NewFromFloat(-1.0), false)}.X(),
-		TTx{TDay: 40, Act: ptf.SFLA, Shares: decimal.NewFromInt(1), Price: decimal.NewFromFloat(0.5), AffName: "C"}.X(),
-		TTx{TDay: 41, Act: ptf.BUY, Shares: decimal.NewFromInt(2), Price: decimal.NewFromFloat(1.0), AffName: "B"}.X(),
-		TTx{TDay: 41, Act: ptf.BUY, Shares: decimal.NewFromInt(2), Price: decimal.NewFromFloat(1.0), AffName: "C"}.X(),
+		TTx{TDay: 1, Act: ptf.BUY, Shares: DInt(10), Price: DFlt(1.0), AffName: ""}.X(),
+		TTx{TDay: 1, Act: ptf.BUY, Shares: DInt(5), Price: DFlt(1.0), AffName: "B"}.X(),
+		TTx{TDay: 1, Act: ptf.BUY, Shares: DInt(7), Price: DFlt(1.0), AffName: "C"}.X(),
+		TTx{TDay: 40, Act: ptf.SELL, Shares: DInt(2), Price: DFlt(0.5), AffName: "", SFL: CADSFL(DFlt(-1.0), false)}.X(),
+		TTx{TDay: 40, Act: ptf.SFLA, Shares: DInt(1), Price: DFlt(0.5), AffName: "C"}.X(),
+		TTx{TDay: 41, Act: ptf.BUY, Shares: DInt(2), Price: DFlt(1.0), AffName: "B"}.X(),
+		TTx{TDay: 41, Act: ptf.BUY, Shares: DInt(2), Price: DFlt(1.0), AffName: "C"}.X(),
 	}
 	deltas := TxsToDeltaListNoErr(t, txs)
 	ValidateDeltas(t, deltas, []TDt{
-		TDt{PostSt: TPSS{Shares: decimal.NewFromInt(10), AllShares: decimal.NewFromInt(10), TotalAcb: decimal.NewFromFloat(10.0)}},                                // Buy in Default
-		TDt{PostSt: TPSS{Shares: decimal.NewFromInt(5), AllShares: decimal.NewFromInt(15), AcbPerSh: decimal.NewFromFloat(1.0)}},                                  // Buy in B
-		TDt{PostSt: TPSS{Shares: decimal.NewFromInt(7), AllShares: decimal.NewFromInt(22), TotalAcb: decimal.NewFromFloat(7.0)}},                                  // Buy in C
-		TDt{PostSt: TPSS{Shares: decimal.NewFromInt(8), AllShares: decimal.NewFromInt(20), TotalAcb: decimal.NewFromFloat(8.0)}, SFL: decimal.NewFromFloat(-1.0)}, // SFL of 0.5 * 2 shares
-		TDt{PostSt: TPSS{Shares: decimal.NewFromInt(7), AllShares: decimal.NewFromInt(20), TotalAcb: decimal.NewFromFloat(7.5)}},                                  // Explicit adjust on C
-		TDt{PostSt: TPSS{Shares: decimal.NewFromInt(7), AllShares: decimal.NewFromInt(22), AcbPerSh: decimal.NewFromFloat(1.0)}},                                  // Buy in B
-		TDt{PostSt: TPSS{Shares: decimal.NewFromInt(9), AllShares: decimal.NewFromInt(24), TotalAcb: decimal.NewFromFloat(9.5)}},                                  // Buy in C
+		TDt{PostSt: TPSS{Shares: DInt(10), AllShares: DInt(10), TotalAcb: DOFlt(10.0)}},                 // Buy in Default
+		TDt{PostSt: TPSS{Shares: DInt(5), AllShares: DInt(15), AcbPerSh: DOFlt(1.0)}},                   // Buy in B
+		TDt{PostSt: TPSS{Shares: DInt(7), AllShares: DInt(22), TotalAcb: DOFlt(7.0)}},                   // Buy in C
+		TDt{PostSt: TPSS{Shares: DInt(8), AllShares: DInt(20), TotalAcb: DOFlt(8.0)}, SFL: DOFlt(-1.0)}, // SFL of 0.5 * 2 shares
+		TDt{PostSt: TPSS{Shares: DInt(7), AllShares: DInt(20), TotalAcb: DOFlt(7.5)}},                   // Explicit adjust on C
+		TDt{PostSt: TPSS{Shares: DInt(7), AllShares: DInt(22), AcbPerSh: DOFlt(1.0)}},                   // Buy in B
+		TDt{PostSt: TPSS{Shares: DInt(9), AllShares: DInt(24), TotalAcb: DOFlt(9.5)}},                   // Buy in C
 	})
 
 	/* SFL with sells on two other affiliates (registered/non-registered),
@@ -810,24 +813,24 @@ func TestOtherAffiliateExplicitSFL(t *testing.T) {
 						buy 2		buy 2
 	*/
 	txs = []*ptf.Tx{
-		TTx{TDay: 1, Act: ptf.BUY, Shares: decimal.NewFromInt(10), Price: decimal.NewFromFloat(1.0), AffName: ""}.X(),
-		TTx{TDay: 1, Act: ptf.BUY, Shares: decimal.NewFromInt(5), Price: decimal.NewFromFloat(1.0), AffName: "(R)"}.X(),
-		TTx{TDay: 1, Act: ptf.BUY, Shares: decimal.NewFromInt(7), Price: decimal.NewFromFloat(1.0), AffName: "B"}.X(),
-		TTx{TDay: 40, Act: ptf.SELL, Shares: decimal.NewFromInt(2), Price: decimal.NewFromFloat(0.5), AffName: "", SFL: CADSFL(decimal.NewFromFloat(-1.0), false)}.X(),
-		TTx{TDay: 40, Act: ptf.SFLA, Shares: decimal.NewFromInt(1), Price: decimal.NewFromFloat(0.5), AffName: "B"}.X(),
-		TTx{TDay: 41, Act: ptf.BUY, Shares: decimal.NewFromInt(2), Price: decimal.NewFromFloat(1.0), AffName: "(R)"}.X(),
-		TTx{TDay: 41, Act: ptf.BUY, Shares: decimal.NewFromInt(2), Price: decimal.NewFromFloat(1.0), AffName: "B"}.X(),
+		TTx{TDay: 1, Act: ptf.BUY, Shares: DInt(10), Price: DFlt(1.0), AffName: ""}.X(),
+		TTx{TDay: 1, Act: ptf.BUY, Shares: DInt(5), Price: DFlt(1.0), AffName: "(R)"}.X(),
+		TTx{TDay: 1, Act: ptf.BUY, Shares: DInt(7), Price: DFlt(1.0), AffName: "B"}.X(),
+		TTx{TDay: 40, Act: ptf.SELL, Shares: DInt(2), Price: DFlt(0.5), AffName: "", SFL: CADSFL(DFlt(-1.0), false)}.X(),
+		TTx{TDay: 40, Act: ptf.SFLA, Shares: DInt(1), Price: DFlt(0.5), AffName: "B"}.X(),
+		TTx{TDay: 41, Act: ptf.BUY, Shares: DInt(2), Price: DFlt(1.0), AffName: "(R)"}.X(),
+		TTx{TDay: 41, Act: ptf.BUY, Shares: DInt(2), Price: DFlt(1.0), AffName: "B"}.X(),
 	}
 
 	deltas = TxsToDeltaListNoErr(t, txs)
 	ValidateDeltas(t, deltas, []TDt{
-		TDt{PostSt: TPSS{Shares: decimal.NewFromInt(10), AllShares: decimal.NewFromInt(10), TotalAcb: decimal.NewFromFloat(10.0)}},                                // Buy in Default
-		TDt{PostSt: TPSS{Shares: decimal.NewFromInt(5), AllShares: decimal.NewFromInt(15), AcbPerSh: decimal.Null}, Gain: decimal.Null},                           // Buy in (R)
-		TDt{PostSt: TPSS{Shares: decimal.NewFromInt(7), AllShares: decimal.NewFromInt(22), TotalAcb: decimal.NewFromFloat(7.0)}},                                  // Buy in B
-		TDt{PostSt: TPSS{Shares: decimal.NewFromInt(8), AllShares: decimal.NewFromInt(20), TotalAcb: decimal.NewFromFloat(8.0)}, SFL: decimal.NewFromFloat(-1.0)}, // SFL of 0.5 * 2 shares
-		TDt{PostSt: TPSS{Shares: decimal.NewFromInt(7), AllShares: decimal.NewFromInt(20), TotalAcb: decimal.NewFromFloat(7.5)}},                                  // Explicit adjust on B
-		TDt{PostSt: TPSS{Shares: decimal.NewFromInt(7), AllShares: decimal.NewFromInt(22), TotalAcb: decimal.Null}, Gain: decimal.Null},                           // Buy in (R)
-		TDt{PostSt: TPSS{Shares: decimal.NewFromInt(9), AllShares: decimal.NewFromInt(24), TotalAcb: decimal.NewFromFloat(9.5)}},                                  // Buy in B
+		TDt{PostSt: TPSS{Shares: DInt(10), AllShares: DInt(10), TotalAcb: DOFlt(10.0)}},                             // Buy in Default
+		TDt{PostSt: TPSS{Shares: DInt(5), AllShares: DInt(15), AcbPerSh: decimal_opt.Null}, Gain: decimal_opt.Null}, // Buy in (R)
+		TDt{PostSt: TPSS{Shares: DInt(7), AllShares: DInt(22), TotalAcb: DOFlt(7.0)}},                               // Buy in B
+		TDt{PostSt: TPSS{Shares: DInt(8), AllShares: DInt(20), TotalAcb: DOFlt(8.0)}, SFL: DOFlt(-1.0)},             // SFL of 0.5 * 2 shares
+		TDt{PostSt: TPSS{Shares: DInt(7), AllShares: DInt(20), TotalAcb: DOFlt(7.5)}},                               // Explicit adjust on B
+		TDt{PostSt: TPSS{Shares: DInt(7), AllShares: DInt(22), TotalAcb: decimal_opt.Null}, Gain: decimal_opt.Null}, // Buy in (R)
+		TDt{PostSt: TPSS{Shares: DInt(9), AllShares: DInt(24), TotalAcb: DOFlt(9.5)}},                               // Buy in B
 	})
 }
 

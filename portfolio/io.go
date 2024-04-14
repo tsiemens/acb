@@ -8,10 +8,10 @@ import (
 	"strings"
 
 	"github.com/shopspring/decimal"
+
 	"github.com/tsiemens/acb/date"
-	"github.com/tsiemens/acb/decimal_value"
+	decimal_opt "github.com/tsiemens/acb/decimal_value"
 	"github.com/tsiemens/acb/fx"
-	"github.com/tsiemens/acb/util"
 )
 
 const (
@@ -52,9 +52,9 @@ func init() {
 func DefaultTx() *Tx {
 	return &Tx{
 		Security: "", SettlementDate: date.Date{}, Action: NO_ACTION,
-		Shares: decimal_value.Zero, AmountPerShare: decimal_value.Zero, Commission: decimal_value.Zero,
-		TxCurrency: DEFAULT_CURRENCY, TxCurrToLocalExchangeRate: decimal_value.Zero,
-		CommissionCurrency: DEFAULT_CURRENCY, CommissionCurrToLocalExchangeRate: decimal_value.Zero,
+		Shares: decimal.Zero, AmountPerShare: decimal.Zero, Commission: decimal.Zero,
+		TxCurrency: DEFAULT_CURRENCY, TxCurrToLocalExchangeRate: decimal.Zero,
+		CommissionCurrency: DEFAULT_CURRENCY, CommissionCurrToLocalExchangeRate: decimal.Zero,
 		Affiliate: GlobalAffiliateDedupTable.GetDefaultAffiliate(),
 	}
 }
@@ -75,7 +75,7 @@ func CheckTxSanity(tx *Tx) error {
 func fixupTxFx(tx *Tx, rl *fx.RateLoader) error {
 	if tx.TxCurrency == DEFAULT_CURRENCY ||
 		tx.TxCurrency == CAD {
-		tx.TxCurrToLocalExchangeRate = decimal_value.NewFromInt(1)
+		tx.TxCurrToLocalExchangeRate = decimal.NewFromInt(1)
 	}
 	if tx.CommissionCurrency == DEFAULT_CURRENCY {
 		tx.CommissionCurrency = tx.TxCurrency
@@ -215,7 +215,7 @@ func parseShares(data string, tx *Tx) error {
 	if err != nil {
 		return fmt.Errorf("Error parsing # shares: %v", err)
 	}
-	tx.Shares = decimal_value.New(shares)
+	tx.Shares = shares
 	return nil
 }
 
@@ -224,7 +224,7 @@ func parseAmountPerShare(data string, tx *Tx) error {
 	if err != nil {
 		return fmt.Errorf("Error parsing price/share: %v", err)
 	}
-	tx.AmountPerShare = decimal_value.New(aps)
+	tx.AmountPerShare = aps
 	return nil
 }
 
@@ -237,7 +237,7 @@ func parseCommission(data string, tx *Tx) error {
 			return fmt.Errorf("Error parsing commission: %v", err)
 		}
 	}
-	tx.Commission = decimal_value.New(c)
+	tx.Commission = c
 	return nil
 }
 
@@ -255,7 +255,7 @@ func parseTxFx(data string, tx *Tx) error {
 			return fmt.Errorf("Error parsing exchange rate: %v", err)
 		}
 	}
-	tx.TxCurrToLocalExchangeRate = decimal_value.New(fx)
+	tx.TxCurrToLocalExchangeRate = fx
 	return nil
 }
 
@@ -273,7 +273,7 @@ func parseCommissionFx(data string, tx *Tx) error {
 			return fmt.Errorf("Error parsing commission exchange rate: %v", err)
 		}
 	}
-	tx.CommissionCurrToLocalExchangeRate = decimal_value.New(fx)
+	tx.CommissionCurrToLocalExchangeRate = fx
 	return nil
 }
 
@@ -296,7 +296,7 @@ func parseSuperficialLoss(data string, tx *Tx) error {
 			return fmt.Errorf(
 				"Error: superficial loss must be specified as a non-positive value: %f", sfl)
 		}
-		tx.SpecifiedSuperficialLoss = util.NewOptional[SFLInput](SFLInput{decimal_value.New(sfl), forceFlag})
+		tx.SpecifiedSuperficialLoss = NewSFLInputOpt(SFLInput{decimal_opt.New(sfl), forceFlag})
 	}
 	return nil
 }
@@ -339,10 +339,10 @@ func ToCsvString(txs []*Tx) string {
 		}
 		return string(curr)
 	}
-	rateIsExplicit := func(curr Currency, rate decimal_value.Decimal) bool {
+	rateIsExplicit := func(curr Currency, rate decimal.Decimal) bool {
 		if rate.IsZero() {
 			return false
-		} else if (curr == DEFAULT_CURRENCY || curr == CAD) && rate.Equal(decimal_value.NewFromInt(1)) {
+		} else if (curr == DEFAULT_CURRENCY || curr == CAD) && rate.Equal(decimal.NewFromInt(1)) {
 			return false
 		}
 		return true
@@ -352,15 +352,15 @@ func ToCsvString(txs []*Tx) string {
 		txRate := ""
 		commRate := ""
 		if rateIsExplicit(tx.TxCurrency, tx.TxCurrToLocalExchangeRate) {
-			txRate = fmt.Sprintf("%f", tx.TxCurrToLocalExchangeRate)
+			txRate = tx.TxCurrToLocalExchangeRate.String()
 		}
 		if rateIsExplicit(tx.CommissionCurrency, tx.CommissionCurrToLocalExchangeRate) {
-			commRate = fmt.Sprintf("%f", tx.CommissionCurrToLocalExchangeRate)
+			commRate = tx.CommissionCurrToLocalExchangeRate.String()
 		}
 		sfl := ""
 		if tx.SpecifiedSuperficialLoss.Present() {
 			sflVal := tx.SpecifiedSuperficialLoss.MustGet()
-			sfl = fmt.Sprintf("%f", sflVal.SuperficialLoss)
+			sfl = sflVal.SuperficialLoss.String()
 			if sflVal.Force {
 				sfl += "!"
 			}

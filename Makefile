@@ -21,6 +21,7 @@ clean:
 	rm bld/test.test
 
 test:
+	# Provide -run to filter on a test name (regex)
 	# -count=1 is the idiomatic way to disable test caching.
 	go test ./test -v -count=1
 

@@ -3,24 +3,25 @@ package portfolio
 import (
 	"sort"
 
-	decimal "github.com/tsiemens/acb/decimal_value"
+	decimal_opt "github.com/tsiemens/acb/decimal_value"
 	"github.com/tsiemens/acb/util"
 )
 
 type CumulativeCapitalGains struct {
-	CapitalGainsTotal      decimal.Decimal
-	CapitalGainsYearTotals map[int]decimal.Decimal
+	CapitalGainsTotal      decimal_opt.DecimalOpt
+	CapitalGainsYearTotals map[int]decimal_opt.DecimalOpt
 }
 
 func (g *CumulativeCapitalGains) CapitalGainsYearTotalsKeysSorted() []int {
-	years := util.IntDecimalMapKeys(g.CapitalGainsYearTotals)
+	years := util.IntDecimalOptMapKeys(g.CapitalGainsYearTotals)
 	sort.Ints(years)
 	return years
 }
 
 func CalcSecurityCumulativeCapitalGains(deltas []*TxDelta) *CumulativeCapitalGains {
-	var capGainsTotal decimal.Decimal
-	capGainsYearTotals := util.NewDefaultMap[int, decimal.Decimal](func(_ int) decimal.Decimal { return decimal.Zero })
+	var capGainsTotal decimal_opt.DecimalOpt
+	capGainsYearTotals := util.NewDefaultMap[int, decimal_opt.DecimalOpt](
+		func(_ int) decimal_opt.DecimalOpt { return decimal_opt.Zero })
 
 	for _, d := range deltas {
 		if !d.CapitalGain.IsNull {
@@ -34,8 +35,9 @@ func CalcSecurityCumulativeCapitalGains(deltas []*TxDelta) *CumulativeCapitalGai
 }
 
 func CalcCumulativeCapitalGains(secGains map[string]*CumulativeCapitalGains) *CumulativeCapitalGains {
-	var capGainsTotal decimal.Decimal
-	capGainsYearTotals := util.NewDefaultMap[int, decimal.Decimal](func(_ int) decimal.Decimal { return decimal.Zero })
+	var capGainsTotal decimal_opt.DecimalOpt
+	capGainsYearTotals := util.NewDefaultMap[int, decimal_opt.DecimalOpt](
+		func(_ int) decimal_opt.DecimalOpt { return decimal_opt.Zero })
 
 	for _, gains := range secGains {
 		capGainsTotal = capGainsTotal.Add(gains.CapitalGainsTotal)

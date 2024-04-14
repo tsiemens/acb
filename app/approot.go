@@ -8,8 +8,10 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/shopspring/decimal"
+
 	"github.com/tsiemens/acb/date"
-	decimal "github.com/tsiemens/acb/decimal_value"
+	decimal_opt "github.com/tsiemens/acb/decimal_value"
 	"github.com/tsiemens/acb/fx"
 	"github.com/tsiemens/acb/log"
 	ptf "github.com/tsiemens/acb/portfolio"
@@ -47,7 +49,7 @@ func ParseInitialStatus(
 			return nil, fmt.Errorf("Symbol %s specified multiple times", symbol)
 		}
 		stati[symbol] = &ptf.PortfolioSecurityStatus{
-			Security: symbol, ShareBalance: decimal.NewFromFloat(shares), TotalAcb: decimal.NewFromFloat(acb)}
+			Security: symbol, ShareBalance: decimal.NewFromFloat(shares), TotalAcb: decimal_opt.NewFromFloat(acb)}
 	}
 	return stati, nil
 }

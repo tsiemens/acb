@@ -4,97 +4,106 @@ import (
 	"github.com/shopspring/decimal"
 )
 
-var Zero = Decimal{Decimal: decimal.Zero}
-var Null = Decimal{IsNull: true}
+var Zero = DecimalOpt{Decimal: decimal.Zero}
+var Null = DecimalOpt{IsNull: true}
 
-type Decimal struct {
-	decimal.Decimal
-	IsNull bool
+type DecimalOpt struct {
+	Decimal decimal.Decimal
+	IsNull  bool
 }
 
-func New(value decimal.Decimal) Decimal {
-	return Decimal{Decimal: value}
+func New(value decimal.Decimal) DecimalOpt {
+	return DecimalOpt{Decimal: value}
 }
 
-func NewFromInt(value int64) Decimal {
-	return Decimal{Decimal: decimal.NewFromInt(value)}
+func NewFromInt(value int64) DecimalOpt {
+	return DecimalOpt{Decimal: decimal.NewFromInt(value)}
 }
 
-func NewFromFloat(value float64) Decimal {
-	return Decimal{Decimal: decimal.NewFromFloat(value)}
+func NewFromFloat(value float64) DecimalOpt {
+	return DecimalOpt{Decimal: decimal.NewFromFloat(value)}
 }
 
-func NewFromFloatWithExponent(value float64, exponent int32) Decimal {
-	return Decimal{Decimal: decimal.NewFromFloatWithExponent(value, exponent)}
+func NewFromFloatWithExponent(value float64, exponent int32) DecimalOpt {
+	return DecimalOpt{Decimal: decimal.NewFromFloatWithExponent(value, exponent)}
 }
 
-func NewFromString(value string) (Decimal, error) {
+func NewFromString(value string) (DecimalOpt, error) {
 	d, err := decimal.NewFromString(value)
 	if err != nil {
 		return Null, err
 	}
 
-	return Decimal{Decimal: d}, nil
+	return DecimalOpt{Decimal: d}, nil
 }
 
-func RequireFromString(value string) Decimal {
-	return Decimal{Decimal: decimal.RequireFromString(value)}
+func RequireFromString(value string) DecimalOpt {
+	return DecimalOpt{Decimal: decimal.RequireFromString(value)}
 }
 
-func Abs(d Decimal) Decimal {
+func Abs(d DecimalOpt) DecimalOpt {
 	if d.IsNull {
 		return Null
 	}
 
-	return Decimal{Decimal: d.Decimal.Abs()}
+	return DecimalOpt{Decimal: d.Decimal.Abs()}
 }
 
-func Min(first Decimal, rest ...Decimal) Decimal {
-	restValues := make([]decimal.Decimal, len(rest))
-
-	for i, d := range rest {
-		restValues[i] = d.Decimal
-	}
-
-	return Decimal{Decimal: decimal.Min(first.Decimal, restValues...)}
-}
-
-func (d Decimal) Add(d2 Decimal) Decimal {
+func (d DecimalOpt) Add(d2 DecimalOpt) DecimalOpt {
 	if d.IsNull || d2.IsNull {
 		return Null
 	}
-	return Decimal{Decimal: d.Decimal.Add(d2.Decimal)}
+	return DecimalOpt{Decimal: d.Decimal.Add(d2.Decimal)}
 }
 
-func (d Decimal) Neg() Decimal {
+func (d DecimalOpt) AddD(d2 decimal.Decimal) DecimalOpt {
+	return d.Add(New(d2))
+}
+
+func (d DecimalOpt) Neg() DecimalOpt {
 	if d.IsNull {
 		return Null
 	}
-	return Decimal{Decimal: d.Decimal.Neg()}
+	return DecimalOpt{Decimal: d.Decimal.Neg()}
 }
 
-func (d Decimal) Sub(d2 Decimal) Decimal {
+func (d DecimalOpt) Sub(d2 DecimalOpt) DecimalOpt {
 	if d.IsNull || d2.IsNull {
 		return Null
 	}
-	return Decimal{Decimal: d.Decimal.Sub(d2.Decimal)}
+	return DecimalOpt{Decimal: d.Decimal.Sub(d2.Decimal)}
 }
 
-func (d Decimal) Mul(d2 Decimal) Decimal {
+func (d DecimalOpt) SubD(d2 decimal.Decimal) DecimalOpt {
+	return d.Sub(New(d2))
+}
+
+func (d DecimalOpt) Mul(d2 DecimalOpt) DecimalOpt {
 	if d.IsNull || d2.IsNull {
 		return Null
 	}
-	return Decimal{Decimal: d.Decimal.Mul(d2.Decimal)}
+	return DecimalOpt{Decimal: d.Decimal.Mul(d2.Decimal)}
 }
 
-func (d Decimal) Div(d2 Decimal) Decimal {
+func (d DecimalOpt) MulD(d2 decimal.Decimal) DecimalOpt {
+	return d.Mul(New(d2))
+}
+
+func (d DecimalOpt) Div(d2 DecimalOpt) DecimalOpt {
 	if d.IsNull || d2.IsNull {
 		return Null
 	}
-	return Decimal{Decimal: d.Decimal.Div(d2.Decimal)}
+	if d2.IsZero() {
+		return Null
+	}
+	return DecimalOpt{Decimal: d.Decimal.Div(d2.Decimal)}
 }
 
-func (d Decimal) Equal(d2 Decimal) bool {
+func (d DecimalOpt) DivD(d2 decimal.Decimal) DecimalOpt {
+	return d.Div(New(d2))
+}
+
+func (d DecimalOpt) Equal(d2 DecimalOpt) bool {
 	if d.IsNull == d2.IsNull {
 		return true
 	}
@@ -106,7 +115,7 @@ func (d Decimal) Equal(d2 Decimal) bool {
 	return d.Decimal.Equal(d2.Decimal)
 }
 
-func (d Decimal) GreaterThan(d2 Decimal) bool {
+func (d DecimalOpt) GreaterThan(d2 DecimalOpt) bool {
 	if d.IsNull || d2.IsNull {
 		return false
 	}
@@ -114,7 +123,7 @@ func (d Decimal) GreaterThan(d2 Decimal) bool {
 	return d.Decimal.GreaterThan(d2.Decimal)
 }
 
-func (d Decimal) GreaterThanOrEqual(d2 Decimal) bool {
+func (d DecimalOpt) GreaterThanOrEqual(d2 DecimalOpt) bool {
 	if d.IsNull || d2.IsNull {
 		return false
 	}
@@ -122,7 +131,7 @@ func (d Decimal) GreaterThanOrEqual(d2 Decimal) bool {
 	return d.Decimal.GreaterThanOrEqual(d2.Decimal)
 }
 
-func (d Decimal) LessThan(d2 Decimal) bool {
+func (d DecimalOpt) LessThan(d2 DecimalOpt) bool {
 	if d.IsNull || d2.IsNull {
 		return false
 	}
@@ -130,7 +139,7 @@ func (d Decimal) LessThan(d2 Decimal) bool {
 	return d.Decimal.LessThan(d2.Decimal)
 }
 
-func (d Decimal) LessThanOrEqual(d2 Decimal) bool {
+func (d DecimalOpt) LessThanOrEqual(d2 DecimalOpt) bool {
 	if d.IsNull || d2.IsNull {
 		return false
 	}
@@ -138,7 +147,7 @@ func (d Decimal) LessThanOrEqual(d2 Decimal) bool {
 	return d.Decimal.LessThanOrEqual(d2.Decimal)
 }
 
-func (d Decimal) IsZero() bool {
+func (d DecimalOpt) IsZero() bool {
 	if d.IsNull {
 		return false
 	}
@@ -146,7 +155,7 @@ func (d Decimal) IsZero() bool {
 	return d.Decimal.IsZero()
 }
 
-func (d Decimal) IsPositive() bool {
+func (d DecimalOpt) IsPositive() bool {
 	if d.IsNull {
 		return false
 	}
@@ -154,7 +163,7 @@ func (d Decimal) IsPositive() bool {
 	return d.Decimal.IsPositive()
 }
 
-func (d Decimal) IsNegative() bool {
+func (d DecimalOpt) IsNegative() bool {
 	if d.IsNull {
 		return false
 	}
@@ -162,10 +171,18 @@ func (d Decimal) IsNegative() bool {
 	return d.Decimal.IsNegative()
 }
 
-func (d Decimal) String() string {
+func (d DecimalOpt) String() string {
 	if d.IsNull {
 		return "NaN"
 	}
 
 	return d.Decimal.String()
+}
+
+func (d DecimalOpt) StringFixed(places int32) string {
+	if d.IsNull {
+		return "NaN"
+	}
+
+	return d.Decimal.StringFixed(places)
 }

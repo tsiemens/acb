@@ -1,7 +1,7 @@
 package util
 
 import (
-	decimal "github.com/tsiemens/acb/decimal_value"
+	"github.com/shopspring/decimal"
 )
 
 type DecimalRatio struct {
