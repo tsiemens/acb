@@ -223,9 +223,9 @@ func TestSuperficialLosses(t *testing.T) {
 	deltas = TxsToDeltaListNoErr(t, txs)
 	ValidateDeltas(t, deltas, []TDt{
 		TDt{PostSt: TPSS{Shares: DFlt(100), TotalAcb: DOFlt(302.0)}, Gain: decimal_opt.Zero},
-		TDt{PostSt: TPSS{Shares: DInt(1), TotalAcb: DOFlt(3.02)}, Gain: DOFlt(-75.479999952)},     // total loss of 100.98, 25.500000048 is superficial
-		TDt{PostSt: TPSS{Shares: DInt(1), TotalAcb: DOFlt(28.520000048)}, Gain: decimal_opt.Zero}, // acb adjust
-		TDt{PostSt: TPSS{Shares: DFlt(26), TotalAcb: DOFlt(85.520000048)}, Gain: decimal_opt.Zero},
+		TDt{PostSt: TPSS{Shares: DInt(1), TotalAcb: DOFlt(3.02)}, Gain: DOStr("-75.48000000000000255")},     // total loss of 100.98, 25.500000048 is superficial
+		TDt{PostSt: TPSS{Shares: DInt(1), TotalAcb: DOStr("28.51999999999999745")}, Gain: decimal_opt.Zero}, // acb adjust
+		TDt{PostSt: TPSS{Shares: DFlt(26), TotalAcb: DOStr("85.51999999999999745")}, Gain: decimal_opt.Zero},
 	})
 
 	/*
@@ -268,6 +268,27 @@ func TestSuperficialLosses(t *testing.T) {
 	ValidateDeltas(t, deltas, []TDt{
 		TDt{PostSt: TPSS{Shares: DInt(10), TotalAcb: DOFlt(12.0)}, Gain: decimal_opt.Zero},
 		TDt{PostSt: TPSS{Shares: DInt(5), TotalAcb: DOFlt(6.0)}, Gain: DOFlt(4.0)},
+	})
+
+	/* Fractional shares SFL avoidance
+	   With floats, this would be hard, because we wouldn't come exactly back to zero.
+	   We get around this by using Decimal
+
+	   buy 5.0
+	   sell 4.7
+	   sell 0.3 (loss) (not superficial because we sold all shares and should have zero)
+	*/
+	txs = []*ptf.Tx{
+		TTx{TDay: 1, Act: ptf.BUY, Shares: DFlt(5.0), Price: DFlt(1.0), Comm: DFlt(2.0)}.X(),
+		// Sell all in two fractional operations
+		TTx{TDay: 2, Act: ptf.SELL, Shares: DStr("4.7"), Price: DFlt(0.2)}.X(),
+		TTx{TDay: 3, Act: ptf.SELL, Shares: DStr("0.3"), Price: DFlt(0.2)}.X(),
+	}
+	deltas = TxsToDeltaListNoErr(t, txs)
+	ValidateDeltas(t, deltas, []TDt{
+		TDt{PostSt: TPSS{Shares: DInt(5), TotalAcb: DOFlt(7.0)}, Gain: decimal_opt.Zero},
+		TDt{PostSt: TPSS{Shares: DStr("0.3"), TotalAcb: DOFlt(0.42)}, Gain: DOFlt(-5.64)},
+		TDt{PostSt: TPSS{Shares: decimal.Zero, TotalAcb: decimal_opt.Zero}, Gain: DOFlt(-0.36)},
 	})
 
 	// ************** Explicit Superficial Losses ***************************

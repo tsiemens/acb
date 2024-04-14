@@ -287,9 +287,9 @@ func TestSummary(t *testing.T) {
 		TSimpleSumTx{Year: 2022, DoY: -70, Shares: DInt(8), Amount: DFlt(1.45)}.X(),
 		TTx{SYr: 2022, SDoY: -45, Act: ptf.BUY, Shares: DInt(8), Price: DInt(1), Comm: DInt(2)}.X(),                                    // post ACB = 21.6
 		TTx{SYr: 2022, SDoY: -31, Act: ptf.BUY, Shares: DInt(2), Price: DInt(1), Comm: DInt(2)}.X(),                                    // post ACB = 25.6
-		TTx{SYr: 2022, SDoY: -15, Act: ptf.SELL, Shares: DInt(2), Price: DFlt(0.2), SFL: CADSFL(DFlt(-2.4444444444444446), false)}.X(), // ACB = 22.755555556
+		TTx{SYr: 2022, SDoY: -15, Act: ptf.SELL, Shares: DInt(2), Price: DFlt(0.2), SFL: CADSFL(DStr("-2.4444444444444444"), false)}.X(), // ACB = 22.755555556
 		makeSflaTxYD(2022, -15, DStr("2.4444444444444444")),                                                                            // ACB of 25.2
-		TTx{SYr: 2022, SDoY: -1, Act: ptf.SELL, Shares: DInt(2), Price: DFlt(0.2), SFL: CADSFL(DFlt(-2.7500000000000004), false)}.X(),  // ACB = 22.05
+		TTx{SYr: 2022, SDoY: -1, Act: ptf.SELL, Shares: DInt(2), Price: DFlt(0.2), SFL: CADSFL(DStr("-2.75"), false)}.X(),  // ACB = 22.05
 		makeSflaTxYD(2022, -1, DFlt(2.75)),
 	}
 

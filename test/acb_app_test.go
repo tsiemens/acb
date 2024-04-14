@@ -109,7 +109,30 @@ func TestNegativeStocks(t *testing.T) {
 	rq.Equal(0, len(renderTable.Rows))
 	rq.Contains(renderTable.Errors[0].Error(), "is more than the current holdings")
 	rq.Equal("$0.00", getTotalCapGain(renderTable))
+}
 
+func TestFractionalShares(t *testing.T) {
+	rq := require.New(t)
+
+	csvReaders := splitCsvRows([]uint32{3},
+		"FOO,2016-01-03,2016-01-05,Buy,0.1,1.6,CAD,,0,,,",
+		"FOO,2016-03-03,2016-03-05,Sell,0.05,1.7,CAD,,0,,,",
+		"FOO,2016-03-04,2016-03-06,Sell,0.05,1.7,CAD,,0,,,",
+	)
+
+	renderRes, err := app.RunAcbAppToRenderModel(
+		csvReaders, map[string]*ptf.PortfolioSecurityStatus{},
+		false, false,
+		app.LegacyOptions{},
+		fx.NewMemRatesCacheAccessor(),
+		&log.StderrErrorPrinter{},
+	)
+
+	rq.Nil(err)
+	renderTable := getAndCheckFooTable(rq, renderRes.SecurityTables)
+	rq.ElementsMatch([]error{}, renderTable.Errors)
+	rq.Equal(3, len(renderTable.Rows), fmt.Sprintf("%v", renderTable.Rows))
+	rq.Equal("$0.01", getTotalCapGain(renderTable))
 }
 
 func TestSanitizedSecurityNames(t *testing.T) {

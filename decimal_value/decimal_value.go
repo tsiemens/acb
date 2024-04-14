@@ -104,10 +104,9 @@ func (d DecimalOpt) DivD(d2 decimal.Decimal) DecimalOpt {
 }
 
 func (d DecimalOpt) Equal(d2 DecimalOpt) bool {
-	if d.IsNull == d2.IsNull {
+	if d.IsNull && d2.IsNull {
 		return true
 	}
-
 	if d.IsNull != d2.IsNull {
 		return false
 	}

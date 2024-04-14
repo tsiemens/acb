@@ -110,7 +110,7 @@ func RenderTxTableModel(
 			}
 
 			superficialLossAsterix = fmt.Sprintf(
-				" *\n(SfL %s%s; %d/%d%s)",
+				" *\n(SfL %s%s; %s/%s%s)",
 				ph.PlusMinusDollar(d.SuperficialLoss, false),
 				util.Tern[string](specifiedSflIsForced, "!", ""),
 				d.SuperficialLossRatio.Numerator,

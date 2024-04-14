@@ -21,7 +21,9 @@ import (
 var DFlt = decimal.NewFromFloat
 var DOFlt = decimal_opt.NewFromFloat
 var DInt = decimal.NewFromInt
+var DOInt = decimal_opt.NewFromInt
 var DStr = decimal.RequireFromString
+var DOStr = decimal_opt.RequireFromString
 
 const DefaultTestSecurity string = "FOO"
 
@@ -264,7 +266,7 @@ func ValidateDelta(t *testing.T, delta *ptf.TxDelta, expDelta TDt) {
 func ValidateDeltas(t *testing.T, deltas []*ptf.TxDelta, expDeltas []TDt) {
 	if len(expDeltas) != len(deltas) {
 		for j, _ := range deltas {
-			fmt.Println(j, "Tx:", deltas[j].Tx, "PostStatus:", deltas[j].PostStatus)
+			fmt.Println(j, "Tx:", deltas[j].Tx, "\n   PostStatus:", deltas[j].PostStatus)
 		}
 		require.Equal(t, len(expDeltas), len(deltas), "Num deltas did not match")
 	}
@@ -276,9 +278,9 @@ func ValidateDeltas(t *testing.T, deltas []*ptf.TxDelta, expDeltas []TDt) {
 		fail = (expDeltas[i].PotentiallyOverAppliedSfl != delta.PotentiallyOverAppliedSfl) || fail
 		if fail {
 			for j, _ := range deltas {
-				fmt.Println(j, "Tx:", deltas[j].Tx, "PostStatus:", deltas[j].PostStatus,
-					"Gain:", deltas[j].CapitalGain, "SFL:", deltas[j].SuperficialLoss,
-					"PotentiallyOverAppliedSfl:", deltas[j].PotentiallyOverAppliedSfl)
+				fmt.Println(j, "Tx:", deltas[j].Tx, "\n   PostStatus:", deltas[j].PostStatus,
+					"\n   Gain:", deltas[j].CapitalGain, "\n   SFL:", deltas[j].SuperficialLoss,
+					"\n   PotentiallyOverAppliedSfl:", deltas[j].PotentiallyOverAppliedSfl)
 			}
 			require.FailNowf(t, "ValidateDeltas failed", "Delta %d. PostStatus diff: %s", i, statusDiff)
 		}
