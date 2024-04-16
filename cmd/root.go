@@ -52,9 +52,11 @@ func runRootCmd(cmd *cobra.Command, args []string) {
 		}
 	}
 
+	cachePath, _ := fx.HomeDirPath()
+
 	ok := app.RunAcbAppToConsole(
 		csvReaders, allInitStatus, options, legacyOptions,
-		&fx.CsvRatesCache{ErrPrinter: errPrinter}, errPrinter)
+		&fx.CsvRatesCache{ErrPrinter: errPrinter, Path: cachePath}, errPrinter)
 	if !ok {
 		os.Exit(1)
 	}
