@@ -259,7 +259,7 @@ func WriteRatesToCsv(year uint32, rates []DailyRate) (err error) {
 
 	csvW := csv.NewWriter(file)
 	for _, rate := range rates {
-		row := []string{rateDateCsvStr(rate), fmt.Sprintf("%f", rate.ForeignToLocalRate)}
+		row := []string{rateDateCsvStr(rate), rate.ForeignToLocalRate.String()}
 		err = csvW.Write(row)
 		if err != nil {
 			return
