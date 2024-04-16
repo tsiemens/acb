@@ -19,8 +19,14 @@ acb
 # Python environment
 .venv/
 venv/
-
+ .vscode/settings.json
 # Temp files
 .~*
 ~*
 *.backup
+
+# Cargo/Rust
+/target
+
+# VSCode
+.vscode/
