@@ -89,6 +89,22 @@ Aggregate Gains
 ------------------+----------------
 ```
 
+## Rust Installation and Building (TODO remove go instructions)
+https://doc.rust-lang.org/cargo/getting-started/installation.html
+
+### Building
+For convenience, `make` aliases have been added to wrap the common `cargo` commands (See `Makefile`).
+```
+make
+# or
+make release
+```
+
+### Testing
+```
+make test-rs
+```
+
 ## Installation
 Currently, acb must be installed via the golang toolchain.
 

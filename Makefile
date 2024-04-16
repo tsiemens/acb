@@ -1,6 +1,14 @@
 export GOPATH=$(shell buildutil/find-gopath)
 
-build:
+build: rust
+
+rust:
+	cargo build
+
+release:
+	cargo build --release
+
+go:
 	mkdir -p bld
 	go build -o bld/acb main.go
 
@@ -19,6 +27,9 @@ wasm:
 clean:
 	rm bld/acb
 	rm bld/test.test
+
+test-rs:
+	cargo test
 
 test:
 	# Provide -run to filter on a test name (regex)
