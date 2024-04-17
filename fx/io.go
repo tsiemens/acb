@@ -148,14 +148,15 @@ func (c *MemRatesCacheAccessor) GetUsdCadRates(year uint32) ([]DailyRate, error)
 
 type CsvRatesCache struct {
 	ErrPrinter log.ErrorPrinter
+	Path       string
 }
 
 func (c *CsvRatesCache) WriteRates(year uint32, rates []DailyRate) error {
-	return WriteRatesToCsv(year, rates)
+	return WriteRatesToCsv(c.Path, year, rates)
 }
 
 func (c *CsvRatesCache) GetUsdCadRates(year uint32) ([]DailyRate, error) {
-	file, err := ratesCsvFile(year, false)
+	file, err := ratesCsvFile(c.Path, year, false)
 	if err != nil {
 		return nil, err
 	}
@@ -216,7 +217,7 @@ func (c *CsvRatesCache) getRatesFromCsv(r io.Reader) ([]DailyRate, error) {
 	return rates, nil
 }
 
-func HomeDirFile(fname string) (string, error) {
+func HomeDirPath() (string, error) {
 	const dir = ".acb"
 	usr, err := user.Current()
 	if err != nil {
@@ -224,15 +225,17 @@ func HomeDirFile(fname string) (string, error) {
 	}
 	dirPath := filepath.Join(usr.HomeDir, dir)
 	os.MkdirAll(dirPath, 0700)
-	return filepath.Join(dirPath, url.QueryEscape(fname)), err
+	return dirPath, err
 }
 
-func ratesCsvFile(year uint32, write bool) (*os.File, error) {
-	preFname := fmt.Sprintf("rates-%d.csv", year)
-	fname, err := HomeDirFile(preFname)
-	if err != nil {
-		return nil, err
+func ratesCsvFile(path string, year uint32, write bool) (*os.File, error) {
+	if path == "" {
+		return nil, fmt.Errorf("cache path is empty")
 	}
+
+	fname := fmt.Sprintf("rates-%d.csv", year)
+	fname = filepath.Join(path, url.QueryEscape(fname))
+
 	if write {
 		return os.OpenFile(fname, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, os.ModePerm)
 	}
@@ -244,9 +247,9 @@ func rateDateCsvStr(r DailyRate) string {
 	return fmt.Sprintf(csvPrintTimeFmt, year, month, day)
 }
 
-func WriteRatesToCsv(year uint32, rates []DailyRate) (err error) {
+func WriteRatesToCsv(path string, year uint32, rates []DailyRate) (err error) {
 	err = nil
-	file, err := ratesCsvFile(year, true)
+	file, err := ratesCsvFile(path, year, true)
 	if err != nil {
 		return
 	}

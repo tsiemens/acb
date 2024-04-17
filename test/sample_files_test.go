@@ -13,7 +13,7 @@ import (
 	ptf "github.com/tsiemens/acb/portfolio"
 )
 
-func validateSampleCsvFile(rq *require.Assertions, csvPath string) {
+func validateSampleCsvFile(rq *require.Assertions, csvPath string, cachePath string) {
 	fp, err := os.Open(csvPath)
 	rq.Nil(err)
 	defer fp.Close()
@@ -22,10 +22,11 @@ func validateSampleCsvFile(rq *require.Assertions, csvPath string) {
 	errPrinter := &log.StderrErrorPrinter{}
 	_, err = app.RunAcbAppToRenderModel(
 		csvReaders, map[string]*ptf.PortfolioSecurityStatus{},
-		false, false,
+		false,
+		false,
 		app.LegacyOptions{},
 		// fx.NewMemRatesCacheAccessor(),
-		&fx.CsvRatesCache{ErrPrinter: errPrinter},
+		&fx.CsvRatesCache{ErrPrinter: errPrinter, Path: cachePath},
 		errPrinter,
 	)
 	rq.Nil(err)
@@ -41,6 +42,8 @@ func TestSampleCsvFileValidity(t *testing.T) {
 	// directory. This is what happens when running 'go test ./test'
 	rq.Regexp("test/?$", wd)
 
-	validateSampleCsvFile(rq, "./test_combined.csv")
-	validateSampleCsvFile(rq, "../www/html/sample_txs.csv")
+	tmpDir := t.TempDir()
+
+	validateSampleCsvFile(rq, "./test_combined.csv", tmpDir)
+	validateSampleCsvFile(rq, "../www/html/sample_txs.csv", tmpDir)
 }

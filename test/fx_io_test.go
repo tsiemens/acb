@@ -342,3 +342,51 @@ func TestGetEffectiveUsdCadRateCacheInvalidation(t *testing.T) {
 	crq.Equal(ratesCache.RatesByYear[2022], remote.RemoteYearRates[2022])
 	crq.Equal(rate, fx.DailyRate{mkDateYD(2022, 0), decimal.NewFromFloat(99.0)})
 }
+
+func TestGetEffectiveUsdCadRateWithCsvCache(t *testing.T) {
+	rq := require.New(t)
+	crq := NewCustomRequire(t)
+
+	errPrinter := &log.StderrErrorPrinter{}
+	tmpDir := t.TempDir()
+	cache := fx.CsvRatesCache{ErrPrinter: errPrinter, Path: tmpDir}
+	remoteLoader := &MockRemoteRateLoader{
+		RemoteYearRates: make(map[uint32][]fx.DailyRate),
+	}
+
+	rateLoader := &fx.RateLoader{
+		YearRates:        make(map[uint32]map[date.Date]fx.DailyRate),
+		ForceDownload:    true,
+		Cache:            &cache,
+		RemoteLoader:     remoteLoader,
+		FreshLoadedYears: make(map[uint32]bool),
+		ErrPrinter:       errPrinter,
+	}
+
+	remoteLoader.RemoteYearRates[2022] = []fx.DailyRate{
+		fx.DailyRate{mkDateYD(2022, 1), decimal.NewFromFloat(1.2)},
+	}
+
+	// fetch mocked remote values and write to cache
+	rate, err := rateLoader.GetEffectiveUsdCadRate(mkDateYD(2022, 1))
+
+	rq.Nil(err)
+	crq.Equal(rate, fx.DailyRate{mkDateYD(2022, 1), decimal.NewFromFloat(1.2)})
+
+	// remove remote values to ensure cache is used
+	remoteLoader.RemoteYearRates[2022] = []fx.DailyRate{}
+
+	cachedRateLoader := &fx.RateLoader{
+		YearRates:        make(map[uint32]map[date.Date]fx.DailyRate),
+		ForceDownload:    false,
+		Cache:            &cache,
+		RemoteLoader:     remoteLoader,
+		FreshLoadedYears: make(map[uint32]bool),
+		ErrPrinter:       errPrinter,
+	}
+
+	cachedRate, err := cachedRateLoader.GetEffectiveUsdCadRate(mkDateYD(2022, 1))
+
+	rq.Nil(err)
+	crq.Equal(cachedRate, fx.DailyRate{mkDateYD(2022, 1), decimal.NewFromFloat(1.2)})
+}
