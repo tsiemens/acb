@@ -108,8 +108,6 @@ impl Ord for Tx {
     }
 }
 
-// TODO TxDelta (put in txdelta.rs)
-
 #[cfg(test)]
 mod tests {
     use std::{fmt::Debug, iter::zip};
