@@ -49,6 +49,14 @@ impl Affiliate {
         Affiliate::new(AffiliateData::from_strep(s))
     }
 
+    pub fn default() -> Affiliate {
+        Affiliate::from_strep("")
+    }
+
+    pub fn default_registered() -> Affiliate {
+        Affiliate::from_strep("(R)")
+    }
+
     pub fn id(&self) -> &str {
         self.0.id.as_str()
     }
