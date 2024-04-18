@@ -71,7 +71,6 @@ impl Affiliate {
     }
 }
 
-// #[derive(DerefMut)]
 pub struct AffiliateDedupTable {
     id_to_af: HashMap<String, Affiliate>
 }
