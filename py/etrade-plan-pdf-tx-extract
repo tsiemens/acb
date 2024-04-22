@@ -3,6 +3,8 @@
 """
 A convenience script to extract transactions from PDFs downloaded from us.etrade.com
 """
+import ensure_in_venv
+
 import argparse
 import csv
 from dataclasses import dataclass
