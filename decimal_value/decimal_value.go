@@ -49,6 +49,17 @@ func Abs(d DecimalOpt) DecimalOpt {
 	return DecimalOpt{Decimal: d.Decimal.Abs()}
 }
 
+func Max(d1, d2 DecimalOpt) DecimalOpt {
+	if d1.IsNull || d2.IsNull {
+		return Null
+	}
+
+	if d1.GreaterThan(d2) {
+		return d1
+	}
+	return d2
+}
+
 func (d DecimalOpt) Add(d2 DecimalOpt) DecimalOpt {
 	if d.IsNull || d2.IsNull {
 		return Null

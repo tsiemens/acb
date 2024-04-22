@@ -78,7 +78,7 @@ func TestSameDayBuySells(t *testing.T) {
 
 		renderRes, err := app.RunAcbAppToRenderModel(
 			csvReaders, map[string]*ptf.PortfolioSecurityStatus{},
-			false, false,
+			false, false, false,
 			app.LegacyOptions{},
 			fx.NewMemRatesCacheAccessor(),
 			&log.StderrErrorPrinter{},
@@ -101,7 +101,7 @@ func TestNegativeStocks(t *testing.T) {
 
 	renderRes, err := app.RunAcbAppToRenderModel(
 		csvReaders, map[string]*ptf.PortfolioSecurityStatus{},
-		false, false,
+		false, false, false,
 		app.LegacyOptions{},
 		fx.NewMemRatesCacheAccessor(),
 		&log.StderrErrorPrinter{},
@@ -125,7 +125,7 @@ func TestFractionalShares(t *testing.T) {
 
 	renderRes, err := app.RunAcbAppToRenderModel(
 		csvReaders, map[string]*ptf.PortfolioSecurityStatus{},
-		false, false,
+		false, false, false,
 		app.LegacyOptions{},
 		fx.NewMemRatesCacheAccessor(),
 		&log.StderrErrorPrinter{},
@@ -148,7 +148,7 @@ func TestSanitizedSecurityNames(t *testing.T) {
 
 	renderRes, err := app.RunAcbAppToRenderModel(
 		csvReaders, map[string]*ptf.PortfolioSecurityStatus{},
-		false, false,
+		false, false, false,
 		app.LegacyOptions{},
 		fx.NewMemRatesCacheAccessor(),
 		&log.StderrErrorPrinter{},

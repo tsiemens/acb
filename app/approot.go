@@ -73,6 +73,7 @@ type Options struct {
 	RenderFullDollarValues  bool
 	SummaryModeLatestDate   date.Date
 	SplitAnnualSummaryGains bool
+	RenderTotalCosts        bool
 	CSVOutputDir            string
 }
 
@@ -86,6 +87,7 @@ func NewOptions() Options {
 		RenderFullDollarValues:  false,
 		SummaryModeLatestDate:   date.Date{},
 		SplitAnnualSummaryGains: false,
+		RenderTotalCosts:        false,
 		CSVOutputDir:            "",
 	}
 }
@@ -157,6 +159,7 @@ func getCumulativeCapitalGains(deltasBySec map[string]*SecurityDeltas) *AllCumul
 type AppRenderResult struct {
 	SecurityTables      map[string]*ptf.RenderTable
 	AggregateGainsTable *ptf.RenderTable
+	CostsTables         *ptf.CostsTables
 }
 
 func RunAcbAppToRenderModel(
@@ -164,6 +167,7 @@ func RunAcbAppToRenderModel(
 	allInitStatus map[string]*ptf.PortfolioSecurityStatus,
 	forceDownload bool,
 	renderFullDollarValues bool,
+	renderTotalCosts bool,
 	legacyOptions LegacyOptions,
 	ratesCache fx.RatesCache,
 	errPrinter log.ErrorPrinter) (*AppRenderResult, error) {
@@ -177,8 +181,10 @@ func RunAcbAppToRenderModel(
 
 	gains := getCumulativeCapitalGains(deltasBySec)
 
+	var allDeltas []*ptf.TxDelta
 	secModels := make(map[string]*ptf.RenderTable)
 	for sec, deltas := range deltasBySec {
+		allDeltas = append(allDeltas, deltas.Deltas...)
 		tableModel := ptf.RenderTxTableModel(
 			deltas.Deltas, gains.SecurityGains[sec], renderFullDollarValues)
 		tableModel.Errors = deltas.Errors
@@ -188,7 +194,13 @@ func RunAcbAppToRenderModel(
 	cumulativeGainsTable := ptf.RenderAggregateCapitalGains(
 		gains.AggregateGains, renderFullDollarValues)
 
-	return &AppRenderResult{secModels, cumulativeGainsTable}, nil
+	result := &AppRenderResult{SecurityTables: secModels, AggregateGainsTable: cumulativeGainsTable}
+
+	if renderTotalCosts {
+		result.CostsTables = ptf.RenderTotalCosts(allDeltas, renderFullDollarValues)
+	}
+
+	return result, nil
 }
 
 func RunAcbAppSummaryToModel(
@@ -251,6 +263,16 @@ func WriteRenderResult(renderRes *AppRenderResult, writer outfmt.ACBWriter) erro
 		return fmt.Errorf("Rendering aggregate gains: %w", err)
 	}
 
+	if renderRes.CostsTables != nil {
+		if err := writer.PrintRenderTable(outfmt.Costs, "Total", renderRes.CostsTables.Total); err != nil {
+			return fmt.Errorf("Rendering total costs: %w", err)
+		}
+
+		if err := writer.PrintRenderTable(outfmt.Costs, "Yearly Max", renderRes.CostsTables.Yearly); err != nil {
+			return fmt.Errorf("Rendering yearly costs: %w", err)
+		}
+	}
+
 	if len(secsWithErrors) > 0 {
 		fmt.Println("\n[!] There are errors for the following securities:", strings.Join(secsWithErrors, ", "))
 	}
@@ -265,13 +287,14 @@ func RunAcbAppToWriter(
 	allInitStatus map[string]*ptf.PortfolioSecurityStatus,
 	forceDownload bool,
 	renderFullDollarValues bool,
+	renderTotalCosts bool,
 	legacyOptions LegacyOptions,
 	ratesCache fx.RatesCache,
 	errPrinter log.ErrorPrinter) (bool, *AppRenderResult) {
 
 	renderRes, err := RunAcbAppToRenderModel(
 		csvFileReaders, allInitStatus, forceDownload, renderFullDollarValues,
-		legacyOptions, ratesCache, errPrinter,
+		renderTotalCosts, legacyOptions, ratesCache, errPrinter,
 	)
 
 	if err != nil {
@@ -352,19 +375,21 @@ func RunAcbAppToConsole(
 		)
 	} else {
 		var writer outfmt.ACBWriter
+		renderCosts := options.RenderTotalCosts
 		if options.CSVOutputDir != "" {
 			var err error
 			if writer, err = outfmt.NewCSVWriter(options.CSVOutputDir); err != nil {
 				errPrinter.Ln(err)
 				return false
 			}
+			renderCosts = true
 		} else {
 			writer = outfmt.NewSTDWriter(os.Stdout)
 		}
 		ok, _ = RunAcbAppToWriter(
 			writer,
 			csvFileReaders, allInitStatus, options.ForceDownload, options.RenderFullDollarValues,
-			legacyOptions, ratesCache, errPrinter,
+			renderCosts, legacyOptions, ratesCache, errPrinter,
 		)
 	}
 	return ok

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path"
+	"strings"
 
 	"github.com/tsiemens/acb/portfolio"
 )
@@ -21,6 +22,8 @@ func (w *CSVWriter) PrintRenderTable(outType OutputType, name string, tableModel
 		fn = fmt.Sprintf("%s.csv", name)
 	case AggregateGains:
 		fn = "aggregate-gains.csv"
+	case Costs:
+		fn = fmt.Sprintf("%s-costs.csv", strings.ReplaceAll(strings.ToLower(name), " ", "-"))
 	default:
 		return fmt.Errorf("OutputType %v not implemented", outType)
 	}

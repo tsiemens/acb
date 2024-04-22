@@ -24,6 +24,7 @@ func validateSampleCsvFile(rq *require.Assertions, csvPath string, cachePath str
 		csvReaders, map[string]*ptf.PortfolioSecurityStatus{},
 		false,
 		false,
+		false,
 		app.LegacyOptions{},
 		// fx.NewMemRatesCacheAccessor(),
 		&fx.CsvRatesCache{ErrPrinter: errPrinter, Path: cachePath},

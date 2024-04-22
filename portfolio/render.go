@@ -3,10 +3,12 @@ package portfolio
 import (
 	"fmt"
 	"os"
+	"sort"
 	"strings"
 
 	"github.com/shopspring/decimal"
 
+	"github.com/tsiemens/acb/date"
 	decimal_opt "github.com/tsiemens/acb/decimal_value"
 	"github.com/tsiemens/acb/util"
 )
@@ -82,6 +84,11 @@ type RenderTable struct {
 	Footer []string
 	Notes  []string
 	Errors []error
+}
+
+type CostsTables struct {
+	Total  *RenderTable
+	Yearly *RenderTable
 }
 
 func RenderTxTableModel(
@@ -217,4 +224,157 @@ func RenderAggregateCapitalGains(
 		[]string{"Since inception", ph.PlusMinusDollar(gains.CapitalGainsTotal, false)})
 
 	return table
+}
+
+// yearInfo tracks the metadata associated with a yearly maximum "total costs" value.
+type yearInfo struct {
+	day    date.Date              // the date at which the yearly max value was seen
+	total  decimal_opt.DecimalOpt // the total ACB of all securities on that date
+	values []string               // the securities values for the related row from "total costs"
+}
+
+// RenderTotalCosts generates two RenderTable instances in a CostsTable to determine the maximum
+// total cost of all included securities at any point during the year, and then to find the maximum
+// value of each year.
+//
+// We do this by looking at any date with one or more TxDelta settlements. We take the maximum for the
+// day (in the case of multiple settlements on a given day for the same security), and then add that to
+// the current ACB for all the other tracked securities on that day. If there isn't a TxDelta settlement
+// for any of the securities on a given day, we use the last value seen. For this reason we must process
+// all the TxDeltas in date order.
+//
+// Examples:
+//
+//	Total:
+//
+//		     DATE    |  TOTAL  |  SECA   |  XXXX
+//		-------------+---------+---------+---------
+//		  2001-01-13 | $100.00 | $100.00 | $0.00
+//		-------------+---------+---------+---------
+//		  2001-02-14 | $190.00 | $100.00 | $90.00
+//		-------------+---------+---------+---------
+//		  2001-03-15 | $90.00  | $0.00   | $90.00
+//		-------------+---------+---------+---------
+//		  2001-04-16 | $80.00  | $0.00   | $80.00
+//		-------------+---------+---------+---------
+//		  2001-05-17 | $270.00 | $200.00 | $70.00
+//		-------------+---------+---------+---------
+//		  2003-01-01 | $70.00  | $0.00   | $70.00
+//		-------------+---------+---------+---------
+//
+//
+//	Yearly:
+//
+//		  YEAR |    DATE    |  TOTAL  |  SECA   |  XXXX
+//		-------+------------+---------+---------+---------
+//		  2001 | 2001-05-17 | $270.00 | $200.00 | $70.00
+//		-------+------------+---------+---------+---------
+//		  2003 | 2003-01-01 | $70.00  | $0.00   | $70.00
+//		-------+------------+---------+---------+---------
+func RenderTotalCosts(allDeltas []*TxDelta, renderFullDollarValues bool) *CostsTables {
+	dateCosts := map[date.Date]*util.DefaultMap[string, decimal_opt.DecimalOpt]{}
+
+	// For the rendered tables, we need all of the security tickers / names.
+	securitySet := map[string]struct{}{}
+
+	// Keep track of the maximum cost for each security on any date where there's a TxDelta.
+	// For example, SECA on 2000-01-01 has ACB 12, ACB 150, and ACB 0, so after the loop below,
+	// we'll have a dateCosts[2001-01-01][SECA] = 150
+	for _, d := range allDeltas {
+		dateFromDelta := d.Tx.SettlementDate
+		if _, ok := dateCosts[dateFromDelta]; !ok {
+			dateCosts[dateFromDelta] = util.NewDefaultMap(func(string) decimal_opt.DecimalOpt {
+				return decimal_opt.Null
+			})
+		}
+		sec := d.PostStatus.Security
+		securitySet[sec] = struct{}{}
+
+		val := dateCosts[dateFromDelta].Get(sec)
+		if val.IsNull {
+			val = decimal_opt.Zero
+		}
+		curMax := decimal_opt.Max(val, d.PostStatus.TotalAcb)
+		dateCosts[dateFromDelta].Set(sec, curMax)
+	}
+
+	// The sorted set of security names from securitySet
+	securities := make([]string, 0, len(securitySet))
+	for k := range securitySet {
+		securities = append(securities, k)
+	}
+	sort.Strings(securities)
+
+	// Create the "Total Costs" table (one entry per TxDelta settlement date).
+	tcHdr := []string{"Date", "Total"}
+	tcHdr = append(tcHdr, securities...)
+	totalCost := &RenderTable{Header: tcHdr}
+
+	ph := _PrintHelper{PrintAllDecimals: renderFullDollarValues}
+
+	// The most recently seen ACB for each security. We assume zero as the starting point.
+	lastACB := map[string]decimal.Decimal{}
+
+	// The maximum value in a calendar year
+	yearMax := map[int]*yearInfo{}
+
+	// We need to process all of the costs in date order so that our lastACB value is sensible.
+	sortedDays := make([]date.Date, 0, len(dateCosts))
+	for d := range dateCosts {
+		sortedDays = append(sortedDays, d)
+	}
+	sort.Slice(sortedDays, func(i, j int) bool { return sortedDays[i].Before(sortedDays[j]) })
+
+	for _, day := range sortedDays {
+		dayTotal := decimal_opt.Zero
+		secvals := make([]string, 0, len(securities))
+		for _, sec := range securities {
+			cur := dateCosts[day].Get(sec)
+			var secVal decimal_opt.DecimalOpt
+			if cur.IsNull {
+				// If we don't have a value for the security on "day", use the most recent one, instead.
+				secVal = decimal_opt.New(lastACB[sec])
+			} else {
+				lastACB[sec] = cur.Decimal
+				secVal = cur
+			}
+			dayTotal = dayTotal.Add(secVal)
+			secvals = append(secvals, ph.DollarStr(secVal))
+		}
+		row := []string{day.String(), ph.DollarStr(dayTotal)}
+		row = append(row, secvals...)
+		totalCost.Rows = append(totalCost.Rows, row)
+
+		// Check if today's value is the max for the year. If we don't have an entry yet for the year, then
+		// start a new one.
+		year := day.Year()
+		if ym, ok := yearMax[year]; !ok || dayTotal.GreaterThan(ym.total) {
+			info := &yearInfo{
+				day:    day,
+				total:  dayTotal,
+				values: secvals,
+			}
+			yearMax[year] = info
+		}
+	}
+
+	// Create the "Yearly Max Total Costs" table, one entry per year.
+	years := make([]int, 0, len(yearMax))
+	for k := range yearMax {
+		years = append(years, k)
+	}
+	sort.Ints(years)
+
+	yrHdr := []string{"Year", "Date", "Total"}
+	yrHdr = append(yrHdr, securities...)
+	yearCost := &RenderTable{Header: yrHdr}
+	for _, year := range years {
+		info := yearMax[year]
+		row := []string{fmt.Sprint(year), info.day.String()}
+		row = append(row, ph.DollarStr(info.total))
+		row = append(row, info.values...)
+		yearCost.Rows = append(yearCost.Rows, row)
+	}
+
+	return &CostsTables{Total: totalCost, Yearly: yearCost}
 }
