@@ -7,6 +7,7 @@ import argparse
 from dataclasses import dataclass
 import datetime
 from decimal import Decimal
+from functools import partial
 import inspect
 import io
 import itertools
@@ -14,7 +15,7 @@ from os.path import basename
 from pprint import pprint
 import re
 import sys
-from typing import Optional, Union
+from typing import Any, Optional, Union
 from txlib import AcbCsvRenderer, Action, Tx
 
 import PyPDF2
@@ -206,6 +207,16 @@ def search_for_decimal(pattern, text, flags=0, group=1, optional=False):
       return Decimal(val_str.replace(',', ''))
    return None
 
+def search_for_row(key: str, val_pat: str, text: str) -> list[Any]:
+   mainPattern = key + rf"(?:\s+(?P<rowvalue>{val_pat}(?:\s+{val_pat})?))"
+
+   ret = []
+   for m in re.finditer(mainPattern, text):
+      val = m.group("rowvalue")
+      ret += list(re.findall(val_pat, val))
+   if not ret:
+      raise ReSearchError(f"Could not find {repr(mainPattern)}")
+   return ret
 
 def text_to_common_data(text: str) -> dict:
    return {
@@ -257,6 +268,89 @@ def text_to_rsu_entry(text: str, filename: str) -> BenefitEntry:
          plan_note="RSU " + data['award number'],
          filename=filename,
       )
+
+def mustMatchAndReplace(d: Optional[str], old: str, new: str)->str:
+   assert d is not None
+   return d.replace(old, new)
+
+def text_to_eso_entries(text: str, filename: str) -> list[BenefitEntry]:
+   exc_type = search_for_group(r"Exercise Type:\s+(.*)\s+Registration", text)
+   ppdebug(text)
+   debug("Exercise Type:", exc_type)
+   if exc_type != "Same-Day Sale":
+      raise ParseError(f"Unknown exercise type {exc_type!r}")
+
+   entries : list[BenefitEntry] = []
+   common = text_to_common_data(text)
+   debug("common:")
+   ppdebug(common)
+   txdate = mustStrptime(
+      search_for_group(r"Exercise Date:\s+(\d+/\d+/\d+)", text),
+      '%m/%d/%Y',
+   ).date()
+
+   mbody = re.search("Exercise Details.*Exercise Date", text,re.S)
+   assert mbody
+
+   head = text[:mbody.start()]
+   text = text[mbody.start():]
+
+   grants = re.findall(r"Grant (\d+)", text)
+   debug("Grants:", grants)
+
+   grant_nums = search_for_row("Grant Number", r"(\d+)", text)
+   match = partial(search_for_row, text=text)
+   fmvs = match("Exercise Market Value", r"\$(\d+\.\d+)")
+   exc_count = match("Shares Exercised", r"\d+")
+   sell_count = int(mustMatchAndReplace(search_for_group(r"Shares Sold\s+([\d,]+)", head), ",", ""))
+   sell_prices = match("Sale Price", r"\$(\d+\.\d+)")
+   fees = match("Comission/Fee", r"\$(\d+\.\d+)")
+
+   debug("sell_count:", sell_count)
+   def makeDecimal(v: str) -> Decimal:
+      return Decimal(v.replace(",", ""))
+
+   def _equal(v:  list[str]) -> str:
+      assert len(set(v)) == 1, f"mismatched values in {v!r}"
+      assert len(v) == len(grants), f"v: {v}, grants: {grants}"
+      return v[0]
+
+   def _sum(v: list[str]) -> Decimal:
+      assert len(v) == len(grants), f"v: {v}, grants: {grants}"
+      result = sum(map(makeDecimal, v))
+      if result == 0:
+         return Decimal(0)
+      return result
+
+   ppdebug(grant_nums)
+   ppdebug(fmvs)
+   for idx, _ in enumerate(grants):
+      ent = BenefitEntry(
+         security=common['symbol'],
+         acquire_tx_date=txdate,
+         acquire_settle_date=txdate,
+         acquire_share_price=makeDecimal(fmvs[idx]),
+         acquire_shares=int(exc_count[idx]),
+
+         sell_to_cover_tx_date=None,
+         sell_to_cover_settle_date=None,
+         sell_to_cover_price=None,
+         sell_to_cover_shares=None,
+         sell_to_cover_fee=None,
+
+         plan_note=f"Option Grant {grant_nums[idx]}",
+         sell_note=exc_type,
+         filename=filename,
+      )
+      if idx == len(grant_nums) - 1:
+         ent.sell_to_cover_tx_date = txdate
+         ent.sell_to_cover_settle_date = txdate
+         ent.sell_to_cover_price = makeDecimal(_equal(sell_prices))
+         ent.sell_to_cover_shares = sell_count
+         ent.sell_to_cover_fee = _sum(fees)
+      entries.append(ent)
+
+   return entries
 
 def text_to_espp_data(text) -> dict:
    return text_to_common_data(text) | {
@@ -394,6 +488,8 @@ def parse_pdf(f: io.BufferedReader, fname: str) -> Union[list[BenefitEntry], lis
    try:
       if re.search(r'STOCK\s+PLAN\s+RELEASE\s+CONFIRMATION', text):
          obj = [text_to_rsu_entry(text, f.name)]
+      elif re.search(r'STOCK\s+PLAN\s+EXERCISE\s+CONFIRMATION', text):
+         obj = text_to_eso_entries(text, f.name)
       elif re.search(r'Plan\s*(2014|ESP2)', text):
          obj = [text_to_espp_entry(text, f.name)]
       elif re.search(r'TRADE\s*CONFIRMATION', text):
