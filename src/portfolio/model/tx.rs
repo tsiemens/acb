@@ -114,18 +114,14 @@ mod tests {
     use std::str::FromStr;
     use rust_decimal::Decimal;
     use rust_decimal_macros::dec;
-    use time::{Date, Duration, Month};
+    use time::Date;
 
     use crate::portfolio::{Affiliate, CurrencyAndExchangeRate};
+    use crate::util::date;
 
     use super::{Tx, TxAction};
 
     pub const DEFAULT_SECURITY: &str = "FOO";
-
-    pub fn doy_date(days: i64) -> Date {
-        Date::from_calendar_date(2024, Month::January, 1).unwrap()
-            .saturating_add(Duration::days(days))
-    }
 
     pub fn tx_default() -> Tx {
         Tx { security: DEFAULT_SECURITY.to_string(),
@@ -207,6 +203,8 @@ mod tests {
 
     #[test]
     fn test_tx_order() {
+        let doy_date = |day| { date::testlib::doy_date(2024, day) };
+
         let mut txs = vec![
             Tx{settlement_date: doy_date(4), read_index: 2, ..tx_default()},
             Tx{settlement_date: doy_date(5), read_index: 1, ..tx_default()},

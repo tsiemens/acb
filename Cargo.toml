@@ -7,8 +7,10 @@ rust-version = "1.77"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+json = "0.12.4"
 lazy_static = "1.4.0"
 regex = "1.10.4"
+reqwest = { version = "0.12.4", features = [ "rustls-tls", "blocking" ], default-features = false }
 rust_decimal = "1.35.0"
 rust_decimal_macros = "1.34.2"
-time = "0.3.36"
+time = { version = "0.3.36", features = [ "formatting", "parsing", "macros" ] }
