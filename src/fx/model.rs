@@ -3,7 +3,7 @@ use std::fmt::Display;
 use rust_decimal::Decimal;
 use time::Date;
 
-#[derive(PartialEq, Eq, Debug)]
+#[derive(PartialEq, Eq, Clone, Debug)]
 pub struct DailyRate {
     pub date: Date,
     pub foreign_to_local_rate: Decimal,
