@@ -262,7 +262,7 @@ def text_to_rsu_entry(text: str, filename: str) -> BenefitEntry:
          # The sell-to-cover date is almost always a day or two after the release
          # date. This needs to be looked up separately if we want an accurate
          # USD/CAD exchange rate.
-         sell_to_cover_tx_date=data['release date'],
+         sell_to_cover_tx_date=None,
          sell_to_cover_settle_date=None,
          sell_to_cover_price=data['sale price'],
          sell_to_cover_shares=int(data['share sold']),
@@ -522,7 +522,6 @@ def parse_pdf(f: io.BufferedReader, fname: str) -> Union[list[BenefitEntry], lis
 
 def find_and_apply_sell_to_cover_trade_set(benefit: BenefitEntry, trade_confs: list[TradeConfirmation]):
    matching_trades = None
-   errors = []
    for n in range(len(trade_confs), 0, -1):
       for trades in itertools.combinations(trade_confs, n):
          if not all(t.security == benefit.security for t in trades):
@@ -531,19 +530,13 @@ def find_and_apply_sell_to_cover_trade_set(benefit: BenefitEntry, trade_confs: l
          if n_shares == benefit.sell_to_cover_shares:
             if matching_trades is not None:
                if set(matching_trades) != set(trades):
-                  errors.append(f"Error: Multiple trade combinations near {benefit.acquire_tx_date} "
-                                f"could potentially constitute the sale {benefit.filename}")
-                  matching_trades = None
-                  break
+                  print(f"Error: Multiple trade combinations near {benefit.acquire_tx_date} "
+                         "could potentially constitute the sale", file=sys.stderr)
+                  return []
                # If these are basically equivalent sets of trades, just skip.
                # This is most likely to happen when multiple sells get split into X and 1.
             else:
                matching_trades = trades
-
-   if not matching_trades and errors:
-      for e in errors:
-         print(e, file=sys.stderr)
-      return []
 
    if matching_trades:
       matching_trades = sorted(matching_trades, key=lambda t: t.tx_date)
