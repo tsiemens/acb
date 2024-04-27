@@ -79,7 +79,9 @@ def test_dir_presence():
 
 def run(options: list[str]) -> subprocess.CompletedProcess:
    cmd = [script_path] + options
-   return subprocess.run(cmd, capture_output=True)
+   env = dict(os.environ)
+   env["PYTHONWARNINGS"] = "ignore:::PyPDF2._cmap"
+   return subprocess.run(cmd, capture_output=True, env=env)
 
 def unify_newlines(text):
    return text.replace('\r', '')
