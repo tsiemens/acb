@@ -137,7 +137,7 @@ fn parse_rates_json(json_str: &str) -> Result<RateParseResult, Error> {
         let date = match Date::parse(date_str, JSON_DATE_FORMAT) {
             Ok(date) => date,
             Err(e) => {
-                non_fatal_dyn.push(format!("Failed to parse date: {}", e));
+                non_fatal_dyn.push(format!("Failed to parse date {:?}: {}", date_str, e));
                 continue;
             },
         };
@@ -158,14 +158,14 @@ fn parse_rates_json(json_str: &str) -> Result<RateParseResult, Error> {
                     Ok(d) => Ok(Some(d)),
                     Err(e) => Err(e),
                 },
-                None => Ok(None),
+                None => Err(format!("No value (\"v\") found")),
             }
         };
 
         let noon_rate = match parse_rate_value(CAD_USD_NOON_OBSERVATION) {
             Ok(noon_rate_opt) => noon_rate_opt,
             Err(e) => {
-                non_fatal_dyn.push(format!("Failed to parse noon rate: {}", e));
+                non_fatal_dyn.push(format!("Failed to parse noon rate for {}: {}", date_str, e));
                 continue;
             },
         };
@@ -185,7 +185,7 @@ fn parse_rates_json(json_str: &str) -> Result<RateParseResult, Error> {
                         None => (), // No rate found for date.
                     },
                     Err(e) => {
-                        non_fatal_dyn.push(format!("Failed to parse daily rate: {}", e));
+                        non_fatal_dyn.push(format!("Failed to parse daily rate for {}: {}", date_str, e));
                         continue;
                     }
                 }
@@ -238,21 +238,16 @@ impl RemoteRateLoader for JsonRemoteRateLoader {
 
 #[cfg(test)]
 mod tests {
-    use std::str::FromStr;
-
     use rust_decimal::Decimal;
     use rust_decimal_macros::dec;
 
     use crate::fx::DailyRate;
+    use crate::testlib::assert_re;
     use crate::util::date;
 
     use super::parse_rates_json;
 
-    fn dr(date_str: &str, val_str: &str) -> DailyRate {
-        DailyRate{date: date::parse_standard_date(date_str).unwrap(),
-                  foreign_to_local_rate: Decimal::from_str(val_str).unwrap()}
-    }
-    fn drd(date_str: &str, val: Decimal) -> DailyRate {
+    fn dr(date_str: &str, val: Decimal) -> DailyRate {
         DailyRate{date: date::parse_standard_date(date_str).unwrap(),
                   foreign_to_local_rate: val}
     }
@@ -261,7 +256,8 @@ mod tests {
     }
 
     #[test]
-    fn test_parse() {
+    fn test_parse_ok() {
+        // Basic empty case
         let result = parse_rates_json("
         {
             \"observations\": [
@@ -272,6 +268,7 @@ mod tests {
         assert_eq!(r.rates, vec![]);
         assert_eq!(r.non_fatal_errors, Vec::new() as Vec<String>);
 
+        // Basic non-empty case (and checking collision precedence)
         let result = parse_rates_json("
         {
            \"observations\": [
@@ -294,9 +291,277 @@ mod tests {
         let r = result.unwrap();
         assert_eq!(r.non_fatal_errors, Vec::new() as Vec<String>);
         assert_eq!(r.rates, vec![
-            drd("2023-01-24", dec!(1.3456)),
-            drd("2023-01-25", invert(dec!(0.7655))),
-            drd("2023-01-26", dec!(1.3457)),
+            dr("2023-01-24", dec!(1.3456)),
+            dr("2023-01-25", invert(dec!(0.7655))),
+            dr("2023-01-26", dec!(1.3457)),
         ]);
+
+        // Longgest precision
+        let result = parse_rates_json("
+        {
+           \"observations\": [
+             {
+                \"d\": \"2023-01-25\",
+                \"FXCADUSD\": { \"v\": \"0.7655555555555555555555555555\" }
+             }
+           ]
+        }
+        ");
+        let r = result.unwrap();
+        assert_eq!(r.non_fatal_errors, Vec::new() as Vec<String>);
+        assert_eq!(r.rates, vec![
+            dr("2023-01-25", invert(dec!(0.7655555555555555555555555555))),
+        ]);
+
+        // Integer value
+        let result = parse_rates_json("
+        {
+           \"observations\": [
+             {
+                \"d\": \"2023-01-25\",
+                \"FXCADUSD\": { \"v\": 1 }
+             }
+           ]
+        }
+        ");
+        let r = result.unwrap();
+        assert_eq!(r.non_fatal_errors, Vec::new() as Vec<String>);
+        assert_eq!(r.rates, vec![
+            dr("2023-01-25", invert(dec!(1))),
+        ]);
+
+        // Float value
+        let result = parse_rates_json("
+        {
+           \"observations\": [
+             {
+                \"d\": \"2023-01-25\",
+                \"FXCADUSD\": { \"v\": 0.7 }
+             }
+           ]
+        }
+        ");
+        let r = result.unwrap();
+        assert_eq!(r.non_fatal_errors, Vec::new() as Vec<String>);
+        assert_eq!(r.rates, vec![
+            dr("2023-01-25", invert(dec!(0.7))),
+        ]);
+    }
+
+    #[test]
+    fn test_parse_err() {
+        let general_err_pattern = "^Error parsing CAD USD rates:";
+        let cat = |left: &str, right: &str| -> String {
+            left.to_string() + right
+        };
+        let cat3 = |left: &str, middle: &str, right: &str| -> String {
+            left.to_string() + middle + right
+        };
+
+        // Case: Invalid json
+        let result = parse_rates_json("
+        {
+        ");
+        let e = result.err().unwrap();
+        assert_re(general_err_pattern, e.as_str());
+
+        let result = parse_rates_json("
+        { \"x\": 123mvl }
+        ");
+        let e = result.err().unwrap();
+        assert_re(general_err_pattern, e.as_str());
+
+        // Case: Invalid root type (non-object)
+        let result = parse_rates_json("
+        [ { \"observations\": [] } ]
+        ");
+        let e = result.err().unwrap();
+        assert_re(&cat(general_err_pattern, " Root was not of type object"),
+                  e.as_str());
+
+        // Case: No observations entry
+        let result = parse_rates_json("
+        { \"XXXX_observations\": [] }
+        ");
+        let e = result.err().unwrap();
+        assert_re(&cat(general_err_pattern, " Did not find 'observations'"),
+                  e.as_str());
+
+        // Case: Invalid observations type (non-array)
+        let result = parse_rates_json("
+        { \"observations\": { \"foo\": \"bar\" } }
+        ");
+        // We just iterate members here, which isn't Array specific (for some reason)
+        let r = result.unwrap();
+        assert_eq!(r.non_fatal_errors, Vec::new() as Vec<String>);
+        assert_eq!(r.rates, vec![]);
+
+        let ok_obs_json = "{
+            \"d\": \"2023-01-26\",
+            \"IEXE0101\": { \"v\": \"1.3457\" }
+         }";
+         let ok_rate = dr("2023-01-26", dec!(1.3457));
+
+        // Case: Invalid observation entry type (non-object)
+        let result = parse_rates_json(&cat3(
+            "{ \"observations\": [ 1234, ",
+            ok_obs_json,
+            " ] }"
+        ));
+        let r = result.unwrap();
+        assert_eq!(r.non_fatal_errors, vec!["Non-object found in observations: 1234"]);
+        assert_eq!(r.rates, vec![ok_rate.clone()]);
+
+        // Case: No date
+        let result = parse_rates_json(&cat3(
+            "{ \"observations\": [ {
+                \"IEXE0101\": { \"v\": \"1.333\" }
+            },",
+            ok_obs_json,
+            " ] }"
+            ));
+        let r = result.unwrap();
+        assert_eq!(r.non_fatal_errors, vec!["Rate observation missing date"]);
+        assert_eq!(r.rates, vec![ok_rate.clone()]);
+
+        // Case: Invalid date type (non-string)
+        let result = parse_rates_json(&cat3(
+            "{ \"observations\": [ {
+                \"d\": {},
+                \"IEXE0101\": { \"v\": \"1.333\" }
+            },",
+            ok_obs_json,
+            " ] }"
+            ));
+        let r = result.unwrap();
+        assert_eq!(r.non_fatal_errors, vec![
+            "Date in rate observation of wrong type: Object(Object { store: [] })"]);
+        assert_eq!(r.rates, vec![ok_rate.clone()]);
+
+        // Case: Invalid date string
+        let result = parse_rates_json(&cat3(
+            "{ \"observations\": [ {
+                \"d\": \"01-02-2024\",
+                \"IEXE0101\": { \"v\": \"1.333\" }
+            },",
+            ok_obs_json,
+            " ] }"
+            ));
+        let r = result.unwrap();
+        assert_eq!(r.non_fatal_errors, vec![
+            "Failed to parse date \"01-02-2024\": the 'year' component could not be parsed"]);
+        assert_eq!(r.rates, vec![ok_rate.clone()]);
+
+        // Case: No fx object
+        let result = parse_rates_json(&cat3(
+            "{ \"observations\": [ {
+                \"d\": \"2024-02-16\"
+            },",
+            ok_obs_json,
+            " ] }"
+            ));
+        let r = result.unwrap();
+        // No error issued here. Assumes there just wasn't a rate on this day.
+        assert_eq!(r.non_fatal_errors, Vec::new() as Vec<String>);
+        assert_eq!(r.rates, vec![ok_rate.clone()]);
+
+        // Case: Invalid fx object (non-object)
+        let result = parse_rates_json(&cat3(
+            "{ \"observations\": [ {
+                \"d\": \"2024-02-16\",
+                \"IEXE0101\": \"1.333\"
+            },",
+            ok_obs_json,
+            " ] }"
+            ));
+        let r = result.unwrap();
+        assert_eq!(r.non_fatal_errors, vec![
+            "Failed to parse noon rate for 2024-02-16: value container was not an object: 1.333"]);
+        assert_eq!(r.rates, vec![ok_rate.clone()]);
+
+        // Case: No value entry
+        let result = parse_rates_json(&cat3(
+            "{ \"observations\": [ {
+                \"d\": \"2024-02-16\",
+                \"IEXE0101\": {}
+            },",
+            ok_obs_json,
+            " ] }"
+            ));
+        let r = result.unwrap();
+        assert_eq!(r.non_fatal_errors, vec![
+            "Failed to parse noon rate for 2024-02-16: No value (\"v\") found"]);
+        assert_eq!(r.rates, vec![ok_rate.clone()]);
+
+        // Case: Invalid value type
+        let result = parse_rates_json(&cat3(
+            "{ \"observations\": [ {
+                \"d\": \"2024-02-16\",
+                \"IEXE0101\": { \"v\": {} }
+            },",
+            ok_obs_json,
+            " ] }"
+            ));
+        let r = result.unwrap();
+        assert_eq!(r.non_fatal_errors, vec![
+            "Failed to parse noon rate for 2024-02-16: Value (not a number): {}"]);
+        assert_eq!(r.rates, vec![ok_rate.clone()]);
+
+        // Case: Value precision too high (Decimal::from_str just truncates)
+        let result = parse_rates_json(&cat3(
+            "{ \"observations\": [ {
+                \"d\": \"2024-02-16\",
+                \"IEXE0101\": { \"v\": \"1.11111111111111111111111111111111111111111111111111111111111111111111111111111\" }
+            },",
+            ok_obs_json,
+            " ] }"
+            ));
+        let r = result.unwrap();
+        assert_eq!(r.non_fatal_errors, Vec::new() as Vec<String>);
+        assert_eq!(r.rates, vec![
+            dr("2024-02-16", dec!(1.1111111111111111111111111111)),
+            ok_rate.clone()
+            ]);
+
+        // Case: Value unparseable
+        let result = parse_rates_json(&cat3(
+            "{ \"observations\": [ {
+                \"d\": \"2024-02-16\",
+                \"IEXE0101\": { \"v\": \"kljsdlfkj\" }
+            },",
+            ok_obs_json,
+            " ] }"
+            ));
+        let r = result.unwrap();
+        assert_eq!(r.non_fatal_errors, vec![
+            "Failed to parse noon rate for 2024-02-16: Invalid decimal: unknown character"]);
+        assert_eq!(r.rates, vec![ok_rate.clone()]);
+
+        // Case: Multiple errors
+        let result = parse_rates_json(&cat3(
+            "{ \"observations\": [
+            {
+                \"d\": \"2024-02-16\",
+                \"IEXE0101\": { \"v\": \"kljsdlfkj\" }
+            },
+            {
+                \"d\": \"2024-02-17\",
+                \"IEXE0101\": { \"v\": \"kljsdlfkj\" }
+            },
+            {
+                \"d\": \"2024-02-18\",
+                \"IEXE0101\": { \"v\": {} }
+            },"
+            ,
+            ok_obs_json,
+            " ] }"
+            ));
+        let r = result.unwrap();
+        assert_eq!(r.non_fatal_errors, vec![
+            "Failed to parse noon rate for 2024-02-16: Invalid decimal: unknown character",
+            "Failed to parse noon rate for 2024-02-17: Invalid decimal: unknown character",
+            "Failed to parse noon rate for 2024-02-18: Value (not a number): {}",
+            ]);
+        assert_eq!(r.rates, vec![ok_rate.clone()]);
     }
 }

@@ -6,3 +6,6 @@ pub mod portfolio;
 pub mod util;
 
 extern crate lazy_static;
+
+#[cfg(test)]
+mod testlib;
