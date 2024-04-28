@@ -19,6 +19,7 @@ func TestDate(t *testing.T) {
 	rq.Equal("2022-01-02", d1.String())
 
 	d2, err = date.Parse(date.DefaultFormat, "2022-01-02 xxxx")
+	rq.Zero(d2)
 	rq.NotNil(err)
 
 	d3 := d1.AddDays(2)

@@ -51,7 +51,7 @@ func MakeSummaryTxs(latestDate date.Date, deltas []*TxDelta, splitAnnualGains bo
 	}
 	sort.Strings(affilIds)
 
-	var summaryPeriodTxs []*Tx = make([]*Tx, 0, 0)
+	summaryPeriodTxs := []*Tx{}
 	warnings := util.NewSet[string]()
 	for _, afId := range affilIds {
 		af := GlobalAffiliateDedupTable.MustGet(afId)
@@ -93,7 +93,8 @@ func MakeSummaryTxs(latestDate date.Date, deltas []*TxDelta, splitAnnualGains bo
 			// if we emit these as a csv, we MUST convert all SFL sales to have
 			// explicit superficial losses.
 			// Copy, and add add SFL
-			unsumTx = &*delta.Tx
+			copyTx := *delta.Tx
+			unsumTx = &copyTx
 			unsumTx.SpecifiedSuperficialLoss = NewSFLInputOpt(
 				SFLInput{delta.SuperficialLoss, false /* force */})
 		}
@@ -150,7 +151,7 @@ func getSummaryRangeDeltaIndicies(latestDate date.Date, deltas []*TxDelta) (int,
 			if txInSummaryOverlapsSuperficialLoss {
 				log.Fverbosef(os.Stderr,
 					"getSummaryRangeDeltaIndicies: %s tx in %s settled on %s is in SFL period "+
-						"(starting %s) of tx settled on %s (SFL of %f)\n",
+						"(starting %s) of tx settled on %s (SFL of %v)\n",
 					latestInSummaryTx.Security, latestInSummaryTx.Affiliate.Name(),
 					latestInSummaryTx.SettlementDate, firstSuperficialLossPeriodDay.String(),
 					delta.Tx.SettlementDate, delta.SuperficialLoss,
@@ -368,18 +369,16 @@ func MakeAggregateSummaryTxs(
 	for _, sec := range secs {
 		deltas := deltasBySec[sec]
 		summaryTxs, warnings := MakeSummaryTxs(latestDate, deltas, splitAnnualGains)
-		if warnings != nil {
-			// Add warnings to allWarnings
-			for _, warning := range warnings {
-				var secsWithWarning []string
-				var ok bool
-				if secsWithWarning, ok = allWarnings[warning]; ok {
-					secsWithWarning = append(secsWithWarning, sec)
-				} else {
-					secsWithWarning = []string{sec}
-				}
-				allWarnings[warning] = secsWithWarning
+		// Add warnings to allWarnings
+		for _, warning := range warnings {
+			var secsWithWarning []string
+			var ok bool
+			if secsWithWarning, ok = allWarnings[warning]; ok {
+				secsWithWarning = append(secsWithWarning, sec)
+			} else {
+				secsWithWarning = []string{sec}
 			}
+			allWarnings[warning] = secsWithWarning
 		}
 
 		allSummaryTxs = append(allSummaryTxs, summaryTxs...)

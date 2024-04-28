@@ -224,7 +224,9 @@ func HomeDirPath() (string, error) {
 		return "", err
 	}
 	dirPath := filepath.Join(usr.HomeDir, dir)
-	os.MkdirAll(dirPath, 0700)
+	if err := os.MkdirAll(dirPath, 0700); err != nil {
+		return "", fmt.Errorf("mkdir %v: %w", dirPath, err)
+	}
 	return dirPath, err
 }
 
@@ -248,7 +250,6 @@ func rateDateCsvStr(r DailyRate) string {
 }
 
 func WriteRatesToCsv(path string, year uint32, rates []DailyRate) (err error) {
-	err = nil
 	file, err := ratesCsvFile(path, year, true)
 	if err != nil {
 		return
