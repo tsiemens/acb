@@ -60,6 +60,7 @@ func TestToCsvString(t *testing.T) {
 		"BAR,2016-01-06,Buy,7,1.7,USD,1.11,1.0,a memo 2,",
 	)[0]
 	txs, err = ptf.ParseTxCsv(csvReader.Reader, 0, "", rateLoader)
+	rq.Empty(txs)
 	rq.NotNil(err)
 	rq.Contains(err.Error(), "Transaction has no trade date")
 

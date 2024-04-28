@@ -172,8 +172,10 @@ func TestAffiliatePortfolioSecurityStatusesFullUseCase(t *testing.T) {
 	latestPost := statuses.GetLatestPostStatus()
 	crq.Equal(TPSS{Shares: decimal.Zero, AllShares: decimal.Zero, TotalAcb: decimal_opt.Zero}.X(), latestPost)
 	latestDef, ok := statuses.GetLatestPostStatusForAffiliate(defaultAfId)
+	rq.Nil(latestDef)
 	rq.False(ok)
 	latestB, ok := statuses.GetLatestPostStatusForAffiliate(afIdB)
+	rq.Nil(latestB)
 	rq.False(ok)
 	statuses.SetLatestPostStatus(defaultAfId, TPSS{Shares: decimal.NewFromInt(2), TotalAcb: decimal_opt.NewFromInt(4)}.X())
 
@@ -186,6 +188,7 @@ func TestAffiliatePortfolioSecurityStatusesFullUseCase(t *testing.T) {
 	rq.True(ok)
 	crq.Equal(TPSS{Shares: decimal.NewFromInt(2), AllShares: decimal.NewFromInt(2), TotalAcb: decimal_opt.NewFromInt(4)}.X(), latestDef)
 	latestB, ok = statuses.GetLatestPostStatusForAffiliate(afIdB)
+	rq.Nil(latestB)
 	rq.False(ok)
 	statuses.SetLatestPostStatus(defaultAfId, TPSS{Shares: decimal.NewFromInt(3), TotalAcb: decimal_opt.NewFromInt(6)}.X())
 
@@ -198,6 +201,7 @@ func TestAffiliatePortfolioSecurityStatusesFullUseCase(t *testing.T) {
 	rq.True(ok)
 	crq.Equal(TPSS{Shares: decimal.NewFromInt(3), AllShares: decimal.NewFromInt(3), TotalAcb: decimal_opt.NewFromInt(6)}.X(), latestDef)
 	latestB, ok = statuses.GetLatestPostStatusForAffiliate(afIdB)
+	rq.Nil(latestB)
 	rq.False(ok)
 	RqPanicsWithRegexp(t, "AllAffiliatesShareBalance", func() {
 		statuses.SetLatestPostStatus(afIdB, TPSS{Shares: decimal.NewFromInt(12), AllShares: decimal.NewFromInt(12), TotalAcb: decimal_opt.NewFromInt(24)}.X())

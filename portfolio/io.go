@@ -193,7 +193,7 @@ func parseSettlementDate(data string, tx *Tx) error {
 }
 
 func parseAction(data string, tx *Tx) error {
-	var action TxAction = NO_ACTION
+	var action TxAction
 	switch strings.TrimSpace(strings.ToLower(data)) {
 	case "buy":
 		action = BUY
@@ -294,7 +294,7 @@ func parseSuperficialLoss(data string, tx *Tx) error {
 		}
 		if sfl.IsPositive() {
 			return fmt.Errorf(
-				"Error: superficial loss must be specified as a non-positive value: %f", sfl)
+				"Error: superficial loss must be specified as a non-positive value: %v", sfl)
 		}
 		tx.SpecifiedSuperficialLoss = NewSFLInputOpt(SFLInput{decimal_opt.New(sfl), forceFlag})
 	}
@@ -331,7 +331,9 @@ func ToCsvString(txs []*Tx) string {
 		"affiliate",
 		"memo",
 	}
-	writer.Write(header)
+	if err := writer.Write(header); err != nil {
+		panic(err)
+	}
 
 	currString := func(curr Currency) string {
 		if curr == DEFAULT_CURRENCY {
@@ -382,7 +384,9 @@ func ToCsvString(txs []*Tx) string {
 			tx.Affiliate.Name(),
 			tx.Memo,
 		}
-		writer.Write(record)
+		if err := writer.Write(record); err != nil {
+			panic(err)
+		}
 	}
 	writer.Flush()
 

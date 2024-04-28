@@ -36,7 +36,7 @@ func ParseInitialStatus(
 			return nil, fmt.Errorf("Invalid ACB format '%s'", opt)
 		}
 		symbol := parts[0]
-		shares, err := strconv.ParseFloat(parts[1], 10)
+		shares, err := strconv.ParseFloat(parts[1], 64)
 		if err != nil {
 			return nil, fmt.Errorf("Invalid shares format '%s'. %v", opt, err)
 		}
@@ -110,9 +110,7 @@ func RunAcbAppToDeltaModels(
 			return nil, err
 		}
 		globalReadIndex += uint32(len(txs))
-		for _, tx := range txs {
-			allTxs = append(allTxs, tx)
-		}
+		allTxs = append(allTxs, txs...)
 	}
 
 	allTxs = ptf.SortTxs(allTxs)
@@ -336,7 +334,7 @@ func RunAcbAppToConsole(
 	ratesCache fx.RatesCache,
 	errPrinter log.ErrorPrinter) bool {
 
-	ok := true
+	var ok bool
 	if options.SummaryMode() {
 		ok = RunAcbAppSummaryToConsole(
 			options.SummaryModeLatestDate, csvFileReaders, allInitStatus,

@@ -170,12 +170,12 @@ func getSuperficialLossInfo(
 	latestPostStatus := ptfStatuses.GetLatestPostStatus()
 	// The enclosing AddTx logic should have already caught this.
 	util.Assertf(latestPostStatus.AllAffiliatesShareBalance.GreaterThanOrEqual(tx.Shares),
-		"getSuperficialLossInfo: latest AllAffiliatesShareBalance (%d) is less than sold shares (%d)",
+		"getSuperficialLossInfo: latest AllAffiliatesShareBalance (%v) is less than sold shares (%v)",
 		latestPostStatus.AllAffiliatesShareBalance.String(), tx.Shares.String())
 	allAffiliatesShareBalanceAfterSell :=
 		ptfStatuses.GetLatestPostStatus().AllAffiliatesShareBalance.Sub(tx.Shares)
 
-	activeAffiliateSharesAtEOP := util.NewDefaultMap[string, decimal.Decimal](
+	activeAffiliateSharesAtEOP := util.NewDefaultMap(
 		// Default to post-sale share balance for the affiliate.
 		func(afId string) decimal.Decimal {
 			sellTxAffil := NonNilTxAffiliate(tx)
@@ -185,8 +185,8 @@ func getSuperficialLossInfo(
 					// saved, so recompute the post-sale share balance.
 					// AddTx would have encountered an oversell if this was to assert.
 					util.Assertf(st.ShareBalance.GreaterThanOrEqual(tx.Shares),
-						"getSuperficialLossInfo: latest ShareBalance (%d) for affiliate (%s) "+
-							"is less than sold shares (%d)",
+						"getSuperficialLossInfo: latest ShareBalance (%v) for affiliate (%s) "+
+							"is less than sold shares (%v)",
 						st.ShareBalance, sellTxAffil.Name(), tx.Shares.String())
 					return st.ShareBalance.Sub(tx.Shares)
 				}
@@ -194,7 +194,7 @@ func getSuperficialLossInfo(
 			}
 			// No TXs for this affiliate before or at the current sell.
 			// AddTx would have encountered an oversell if this was to assert.
-			util.Assert(afId != sellTxAffil.Id(),
+			util.Assertf(afId != sellTxAffil.Id(),
 				"getSuperficialLossInfo: no existing portfolio status for affiliate %s",
 				sellTxAffil.Name())
 			return decimal.Zero
@@ -317,8 +317,8 @@ func getSuperficialLossRatio(
 		tx := txs[idx]
 
 		ratio := util.DecimalRatio{
-			decimal.Min(tx.Shares, sli.TotalAquiredInPeriod, sli.AllAffSharesAtEndOfPeriod),
-			tx.Shares,
+			Numerator:   decimal.Min(tx.Shares, sli.TotalAquiredInPeriod, sli.AllAffSharesAtEndOfPeriod),
+			Denominator: tx.Shares,
 		}
 
 		util.Assertf(sli.BuyingAffiliates.Len() != 0,
@@ -331,7 +331,7 @@ func getSuperficialLossRatio(
 		sli.BuyingAffiliates.ForEach(func(afId string) bool {
 			afShareBalanceAtEOP := sli.ActiveAffiliateSharesAtEOP.Get(afId)
 			affiliateAdjustmentPortions[afId] = util.DecimalRatio{
-				afShareBalanceAtEOP, buyingAffilsShareEOPTotal}
+				Numerator: afShareBalanceAtEOP, Denominator: buyingAffilsShareEOPTotal}
 			return true
 		})
 
@@ -354,10 +354,6 @@ const (
 	SFLA_ALGO_REJECT_IF_ANY_REGISTERED
 	SFLA_ALGO_DISTRIB_BUY_RATIOS
 )
-
-type AddTxOptions struct {
-	autoSflaAlgo AutoSflaAlgo
-}
 
 // Returns a TxDelta for the Tx at txs[idx].
 // Optionally, returns a new Tx if a SFLA Tx was generated to accompany
@@ -412,7 +408,7 @@ func AddTx(
 	case SELL:
 		if tx.Shares.GreaterThan(preTxStatus.ShareBalance) {
 			return nil, nil, fmt.Errorf(
-				"Sell order on %v of %d shares of %s is more than the current holdings (%d)",
+				"Sell order on %v of %v shares of %s is more than the current holdings (%v)",
 				tx.TradeDate, tx.Shares.String(), tx.Security, preTxStatus.ShareBalance.String())
 		}
 		newShareBalance = preTxStatus.ShareBalance.Sub(tx.Shares)
@@ -442,9 +438,9 @@ func AddTx(
 					if sflDiff.GreaterThan(maxDiff) {
 						return nil, nil, fmt.Errorf(
 							"Sell order on %v of %s: superficial loss was specified, but "+
-								"the difference between the specified value (%f) and the "+
-								"computed value (%f) is greater than the max allowed "+
-								"discrepancy (%f).\nTo force this SFL value, append an '!' "+
+								"the difference between the specified value (%v) and the "+
+								"computed value (%v) is greater than the max allowed "+
+								"discrepancy (%v).\nTo force this SFL value, append an '!' "+
 								"to the value",
 							tx.TradeDate, tx.Security, superficialLoss.String(),
 							calculatedSuperficialLoss.String(), maxDiff.String())
@@ -501,13 +497,13 @@ func AddTx(
 				tx.TradeDate)
 		}
 		if !tx.Shares.IsZero() {
-			return nil, nil, fmt.Errorf("Invalid RoC tx on %v: # of shares is non-zero (%d)",
+			return nil, nil, fmt.Errorf("Invalid RoC tx on %v: # of shares is non-zero (%v)",
 				tx.TradeDate, tx.Shares.String())
 		}
 		acbReduction := tx.AmountPerShare.Mul(preTxStatus.ShareBalance).Mul(tx.TxCurrToLocalExchangeRate)
 		newAcbTotal = preTxStatus.TotalAcb.SubD(acbReduction)
 		if newAcbTotal.IsNegative() {
-			return nil, nil, fmt.Errorf("Invalid RoC tx on %v: RoC (%f) exceeds the current ACB (%f)",
+			return nil, nil, fmt.Errorf("Invalid RoC tx on %v: RoC (%v) exceeds the current ACB (%v)",
 				tx.TradeDate, acbReduction.String(), preTxStatus.TotalAcb.String())
 		}
 	case SFLA:
@@ -588,7 +584,6 @@ func TxsToDeltaList(
 				// Copy Txs, as we now need to modify
 				modifiedTxs = make([]*Tx, 0, len(txs))
 				modifiedTxs = append(modifiedTxs, txs...)
-				activeTxs = modifiedTxs
 			}
 			// Insert into modifiedTxs after the current Tx
 			for newTxI, newTx := range newTxs {

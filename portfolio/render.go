@@ -192,14 +192,13 @@ func RenderTxTableModel(
 	return table
 }
 
-/*
-Generates a RenderTable that will render out to this:
-| Year             | Capital Gains |
-+------------------+---------------+
-| 2000             | xxxx.xx       |
-| 2001             | xxxx.xx       |
-| Since inception  | xxxx.xx       |
-*/
+// RenderAggregateCapitalGains generates a RenderTable that will render out to this:
+//
+//	| Year             | Capital Gains |
+//	+------------------+---------------+
+//	| 2000             | xxxx.xx       |
+//	| 2001             | xxxx.xx       |
+//	| Since inception  | xxxx.xx       |
 func RenderAggregateCapitalGains(
 	gains *CumulativeCapitalGains, renderFullDollarValues bool) *RenderTable {
 
