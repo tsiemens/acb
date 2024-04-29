@@ -14,6 +14,10 @@ impl StringBuffer {
     pub fn as_str(&self) -> &str {
         self.s.as_str()
     }
+
+    pub fn clear(&mut self) {
+        self.s = String::new();
+    }
 }
 
 // String only implements fmt::Write
