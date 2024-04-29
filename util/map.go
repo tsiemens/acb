@@ -13,11 +13,11 @@ func MapKeys[K comparable, V any](m map[K]V) []K {
 }
 
 func IntDecimalOptMapKeys(m map[int]decimal_opt.DecimalOpt) []int {
-	return MapKeys[int, decimal_opt.DecimalOpt](m)
+	return MapKeys(m)
 }
 
 func IntFloat64MapKeys(m map[int]float64) []int {
-	return MapKeys[int, float64](m)
+	return MapKeys(m)
 }
 
 type DefaultMap[K comparable, V any] struct {

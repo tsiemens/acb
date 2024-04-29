@@ -38,7 +38,7 @@ func mkDate(day int) date.Date {
 
 func CADSFL(lossVal decimal.Decimal, force bool) ptf.SFLInputOpt {
 	util.Assert(lossVal.LessThanOrEqual(decimal.Zero))
-	return ptf.NewSFLInputOpt(ptf.SFLInput{decimal_opt.New(lossVal), force})
+	return ptf.NewSFLInputOpt(ptf.SFLInput{SuperficialLoss: decimal_opt.New(lossVal), Force: force})
 }
 
 func addTx(tx *ptf.Tx, preTxStatus *ptf.PortfolioSecurityStatus) (*ptf.TxDelta, []*ptf.Tx, error) {

@@ -214,7 +214,7 @@ func RunAcbAppSummaryToModel(
 		deltasBySec[sec] = deltas.Deltas
 	}
 	if len(errors) > 0 {
-		return &ptf.CollectedSummaryData{nil, nil, errors}, nil
+		return &ptf.CollectedSummaryData{Txs: nil, Warnings: nil, Errors: errors}, nil
 	}
 
 	return ptf.MakeAggregateSummaryTxs(latestDate, deltasBySec, options.SplitAnnualSummaryGains), nil

@@ -20,7 +20,7 @@ func (g *CumulativeCapitalGains) CapitalGainsYearTotalsKeysSorted() []int {
 
 func CalcSecurityCumulativeCapitalGains(deltas []*TxDelta) *CumulativeCapitalGains {
 	var capGainsTotal decimal_opt.DecimalOpt
-	capGainsYearTotals := util.NewDefaultMap[int, decimal_opt.DecimalOpt](
+	capGainsYearTotals := util.NewDefaultMap(
 		func(_ int) decimal_opt.DecimalOpt { return decimal_opt.Zero })
 
 	for _, d := range deltas {
@@ -36,7 +36,7 @@ func CalcSecurityCumulativeCapitalGains(deltas []*TxDelta) *CumulativeCapitalGai
 
 func CalcCumulativeCapitalGains(secGains map[string]*CumulativeCapitalGains) *CumulativeCapitalGains {
 	var capGainsTotal decimal_opt.DecimalOpt
-	capGainsYearTotals := util.NewDefaultMap[int, decimal_opt.DecimalOpt](
+	capGainsYearTotals := util.NewDefaultMap(
 		func(_ int) decimal_opt.DecimalOpt { return decimal_opt.Zero })
 
 	for _, gains := range secGains {

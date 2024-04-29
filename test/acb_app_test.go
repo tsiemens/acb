@@ -28,7 +28,7 @@ func makeCsvReader(desc string, lines ...string) app.DescribedReader {
 	} else {
 		headerToUse = header
 	}
-	return app.DescribedReader{desc, strings.NewReader(headerToUse + contents)}
+	return app.DescribedReader{Desc: desc, Reader: strings.NewReader(headerToUse + contents)}
 }
 
 func render(tableModel *ptf.RenderTable) {
