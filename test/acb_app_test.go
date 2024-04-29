@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/tsiemens/acb/app"
+	"github.com/tsiemens/acb/app/outfmt"
 	"github.com/tsiemens/acb/fx"
 	"github.com/tsiemens/acb/log"
 	ptf "github.com/tsiemens/acb/portfolio"
@@ -31,10 +32,12 @@ func makeCsvReader(desc string, lines ...string) app.DescribedReader {
 	return app.DescribedReader{Desc: desc, Reader: strings.NewReader(headerToUse + contents)}
 }
 
-func render(tableModel *ptf.RenderTable) {
+func render(tableModel *ptf.RenderTable) error {
 	if os.Getenv("VERBOSE") != "" {
-		ptf.PrintRenderTable("Dummy title", tableModel, os.Stdout)
+		w := outfmt.NewSTDWriter(os.Stdout)
+		return w.PrintRenderTable(outfmt.Transactions, "Dummy title", tableModel)
 	}
+	return nil
 }
 
 func splitCsvRows(fileLens []uint32, rows ...string) []app.DescribedReader {
@@ -59,7 +62,7 @@ func getAndCheckFooTable(rq *require.Assertions, rts map[string]*ptf.RenderTable
 	rq.Equal(1, len(rts))
 	renderTable := rts["FOO"]
 	rq.NotNil(renderTable)
-	render(renderTable)
+	rq.NoError(render(renderTable))
 	return renderTable
 }
 

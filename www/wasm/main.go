@@ -10,6 +10,7 @@ import (
 	"syscall/js"
 
 	"github.com/tsiemens/acb/app"
+	"github.com/tsiemens/acb/app/outfmt"
 	"github.com/tsiemens/acb/fx"
 	ptf "github.com/tsiemens/acb/portfolio"
 )
@@ -145,18 +146,18 @@ func runAcb(
 
 	errPrinter := &BufErrorPrinter{}
 
-	var output strings.Builder
-
+	builder := &strings.Builder{}
+	writer := outfmt.NewSTDWriter(builder)
 	legacyOptions := app.NewLegacyOptions()
 
 	ok, renderRes := app.RunAcbAppToWriter(
-		&output,
+		writer,
 		csvReaders, allInitStatus, forceDownload, renderFullValues,
 		legacyOptions, &fx.MemRatesCacheAccessor{RatesByYear: globalRatesCache},
 		errPrinter,
 	)
 
-	outString := output.String()
+	outString := builder.String()
 
 	var secTables js.Value
 	var aggTable js.Value

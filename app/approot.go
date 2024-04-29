@@ -10,6 +10,7 @@ import (
 
 	"github.com/shopspring/decimal"
 
+	"github.com/tsiemens/acb/app/outfmt"
 	"github.com/tsiemens/acb/date"
 	decimal_opt "github.com/tsiemens/acb/decimal_value"
 	"github.com/tsiemens/acb/fx"
@@ -145,7 +146,10 @@ func getCumulativeCapitalGains(deltasBySec map[string]*SecurityDeltas) *AllCumul
 		securityGains[sec] = ptf.CalcSecurityCumulativeCapitalGains(deltas.Deltas)
 	}
 	aggregateGains := ptf.CalcCumulativeCapitalGains(securityGains)
-	return &AllCumulativeCapitalGains{securityGains, aggregateGains}
+	return &AllCumulativeCapitalGains{
+		SecurityGains:  securityGains,
+		AggregateGains: aggregateGains,
+	}
 }
 
 type AppRenderResult struct {
@@ -218,9 +222,8 @@ func RunAcbAppSummaryToModel(
 	return ptf.MakeAggregateSummaryTxs(latestDate, deltasBySec, options.SplitAnnualSummaryGains), nil
 }
 
-func WriteRenderResult(renderRes *AppRenderResult, writer io.Writer) {
+func WriteRenderResult(renderRes *AppRenderResult, writer outfmt.ACBWriter) error {
 	secRenderTables := renderRes.SecurityTables
-	nSecs := len(secRenderTables)
 
 	secs := make([]string, 0, len(secRenderTables))
 	for k := range secRenderTables {
@@ -233,9 +236,8 @@ func WriteRenderResult(renderRes *AppRenderResult, writer io.Writer) {
 	i := 0
 	for _, sec := range secs {
 		renderTable := secRenderTables[sec]
-		ptf.PrintRenderTable(fmt.Sprintf("Transactions for %s", sec), renderTable, writer)
-		if i < (nSecs - 1) {
-			fmt.Fprintln(writer, "")
+		if err := writer.PrintRenderTable(outfmt.Transactions, sec, renderTable); err != nil {
+			return fmt.Errorf("Rendering transactions for %s: %w", sec, err)
 		}
 		if len(renderTable.Errors) > 0 {
 			secsWithErrors = append(secsWithErrors, sec)
@@ -243,18 +245,20 @@ func WriteRenderResult(renderRes *AppRenderResult, writer io.Writer) {
 		i++
 	}
 
-	fmt.Fprintln(writer, "")
-	ptf.PrintRenderTable("Aggregate Gains", renderRes.AggregateGainsTable, writer)
+	if err := writer.PrintRenderTable(outfmt.AggregateGains, "", renderRes.AggregateGainsTable); err != nil {
+		return fmt.Errorf("Rendering aggregate gains: %w", err)
+	}
 
 	if len(secsWithErrors) > 0 {
 		fmt.Println("\n[!] There are errors for the following securities:", strings.Join(secsWithErrors, ", "))
 	}
+	return nil
 }
 
 // Returns an OK flag. Used to signal what exit code to use.
 // All errors get printed to the errPrinter or to the writer (as appropriate).
 func RunAcbAppToWriter(
-	writer io.Writer,
+	writer outfmt.ACBWriter,
 	csvFileReaders []DescribedReader,
 	allInitStatus map[string]*ptf.PortfolioSecurityStatus,
 	forceDownload bool,
@@ -273,7 +277,10 @@ func RunAcbAppToWriter(
 		return false, nil
 	}
 
-	WriteRenderResult(renderRes, writer)
+	if err := WriteRenderResult(renderRes, writer); err != nil {
+		errPrinter.Ln("Error:", err)
+		return false, nil
+	}
 	return true, renderRes
 }
 
@@ -343,7 +350,7 @@ func RunAcbAppToConsole(
 		)
 	} else {
 		ok, _ = RunAcbAppToWriter(
-			os.Stdout,
+			outfmt.NewSTDWriter(os.Stdout),
 			csvFileReaders, allInitStatus, options.ForceDownload, options.RenderFullDollarValues,
 			legacyOptions, ratesCache, errPrinter,
 		)
