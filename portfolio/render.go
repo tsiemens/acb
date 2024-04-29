@@ -2,11 +2,9 @@ package portfolio
 
 import (
 	"fmt"
-	"io"
 	"os"
 	"strings"
 
-	tw "github.com/olekukonko/tablewriter"
 	"github.com/shopspring/decimal"
 
 	decimal_opt "github.com/tsiemens/acb/decimal_value"
@@ -219,28 +217,4 @@ func RenderAggregateCapitalGains(
 		[]string{"Since inception", ph.PlusMinusDollar(gains.CapitalGainsTotal, false)})
 
 	return table
-}
-
-func PrintRenderTable(title string, tableModel *RenderTable, writer io.Writer) {
-	for _, err := range tableModel.Errors {
-		fmt.Fprintf(writer, "[!] %v. Printing parsed information state:\n", err)
-	}
-	fmt.Fprintf(writer, "%s\n", title)
-
-	table := tw.NewWriter(writer)
-	table.SetHeader(tableModel.Header)
-	table.SetBorder(false)
-	table.SetRowLine(true)
-
-	for _, row := range tableModel.Rows {
-		table.Append(row)
-	}
-
-	table.SetFooter(tableModel.Footer)
-
-	table.Render()
-
-	for _, note := range tableModel.Notes {
-		fmt.Fprintln(writer, note)
-	}
 }
