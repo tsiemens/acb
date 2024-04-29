@@ -17,12 +17,17 @@ func AddTxNoErr(t *testing.T, tx *ptf.Tx, preTxStatus *ptf.PortfolioSecurityStat
 	return delta
 }
 
-func AddTxWithErr(t *testing.T, tx *ptf.Tx, preTxStatus *ptf.PortfolioSecurityStatus) error {
+func AddTxWithErrGetErr(t *testing.T, tx *ptf.Tx, preTxStatus *ptf.PortfolioSecurityStatus) error {
 	delta, newTxs, err := addTx(tx, preTxStatus)
-	require.NotNil(t, err)
+	require.Error(t, err)
 	require.Nil(t, delta)
 	require.Nil(t, newTxs)
 	return err
+}
+
+func AddTxWithErr(t *testing.T, tx *ptf.Tx, preTxStatus *ptf.PortfolioSecurityStatus) {
+	t.Helper()
+	_ = AddTxWithErrGetErr(t, tx, preTxStatus)
 }
 
 func TestBasicBuyAcb(t *testing.T) {
@@ -59,7 +64,7 @@ func TestBasicSellAcbErrors(t *testing.T) {
 	// Sell more shares than available
 	sptf := TPSS{Shares: DInt(2), TotalAcb: DOFlt(20.0)}.X()
 	tx := TTx{Act: ptf.SELL, Shares: DInt(3), Price: DFlt(10.0)}.X()
-	AddTxWithErr(t, tx, sptf)
+	AddTxWithErr(t, tx, sptf) //nolint:errcheck
 }
 
 func TestBasicSellAcb(t *testing.T) {
@@ -97,10 +102,10 @@ func TxsToDeltaListNoErr(t *testing.T, txs []*ptf.Tx) []*ptf.TxDelta {
 	return deltas
 }
 
-func TxsToDeltaListWithErr(t *testing.T, txs []*ptf.Tx) error {
+func TxsToDeltaListWithErr(t *testing.T, txs []*ptf.Tx) {
+	t.Helper()
 	_, err := ptf.TxsToDeltaList(txs, nil, ptf.LegacyOptions{})
-	require.NotNil(t, err)
-	return err
+	require.Error(t, err)
 }
 
 func TestSuperficialLosses(t *testing.T) {
@@ -440,7 +445,7 @@ func TestBasicSflaErrors(t *testing.T) {
 	// Test than an SfLA on a registered affiliate is invalid
 	sptf := TPSS{Shares: DInt(2), TotalAcb: decimal_opt.Null}.X()
 	tx := TTx{Act: ptf.SFLA, Shares: DInt(2), Price: DFlt(1.0), AffName: "(R)"}.X()
-	err := AddTxWithErr(t, tx, sptf)
+	err := AddTxWithErrGetErr(t, tx, sptf)
 	rq.Regexp("Registered affiliates do not have an ACB", err)
 }
 
