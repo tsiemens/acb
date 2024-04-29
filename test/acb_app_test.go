@@ -66,7 +66,7 @@ func getAndCheckFooTable(rq *require.Assertions, rts map[string]*ptf.RenderTable
 func TestSameDayBuySells(t *testing.T) {
 	rq := require.New(t)
 
-	for _, splits := range [][]uint32{[]uint32{3}, []uint32{1, 2}} {
+	for _, splits := range [][]uint32{{3}, {1, 2}} {
 		csvReaders := splitCsvRows(splits,
 			"FOO,2016-01-03,2016-01-05,Buy,20,1.5,CAD,,0,,,",
 			"FOO,2016-01-03,2016-01-05,Sell,5,1.6,CAD,,0,,,",

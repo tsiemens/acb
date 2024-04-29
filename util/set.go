@@ -28,7 +28,7 @@ func (m *Set[T]) Len() int {
 }
 
 func (m *Set[T]) ForEach(fn func(T) bool) {
-	for k, _ := range m.set {
+	for k := range m.set {
 		if !fn(k) {
 			break
 		}
@@ -37,7 +37,7 @@ func (m *Set[T]) ForEach(fn func(T) bool) {
 
 func (m *Set[T]) ToSlice() []T {
 	slice := make([]T, 0, len(m.set))
-	for k, _ := range m.set {
+	for k := range m.set {
 		slice = append(slice, k)
 	}
 	return slice

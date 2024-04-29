@@ -265,7 +265,7 @@ func makeAnnualGainsSummaryTxs(
 	}
 
 	yearsWithGains := make([]int, 0, len(yearlyCapGains))
-	for year, _ := range yearlyCapGains {
+	for year := range yearlyCapGains {
 		yearsWithGains = append(yearsWithGains, year)
 	}
 	sort.Ints(yearsWithGains)
