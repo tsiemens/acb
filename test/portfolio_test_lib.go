@@ -38,7 +38,7 @@ func mkDate(day int) date.Date {
 
 func CADSFL(lossVal decimal.Decimal, force bool) ptf.SFLInputOpt {
 	util.Assert(lossVal.LessThanOrEqual(decimal.Zero))
-	return ptf.NewSFLInputOpt(ptf.SFLInput{decimal_opt.New(lossVal), force})
+	return ptf.NewSFLInputOpt(ptf.SFLInput{SuperficialLoss: decimal_opt.New(lossVal), Force: force})
 }
 
 func addTx(tx *ptf.Tx, preTxStatus *ptf.PortfolioSecurityStatus) (*ptf.TxDelta, []*ptf.Tx, error) {
@@ -233,7 +233,7 @@ func TxTestEqual(exp, actual *ptf.Tx) bool {
 
 func ValidateTxs(t *testing.T, expTxs []*ptf.Tx, actualTxs []*ptf.Tx) {
 	if !assert.Equal(t, len(expTxs), len(actualTxs)) {
-		for j, _ := range actualTxs {
+		for j := range actualTxs {
 			fmt.Println(j, "Tx:", actualTxs[j], "Af:", actualTxs[j].Affiliate.Id())
 		}
 		require.FailNow(t, "ValidateTxs failed")
@@ -243,7 +243,7 @@ func ValidateTxs(t *testing.T, expTxs []*ptf.Tx, actualTxs []*ptf.Tx) {
 		diff := TxDiff(expTxs[i], tx)
 		fail = diff != ""
 		if fail {
-			for j, _ := range actualTxs {
+			for j := range actualTxs {
 				fmt.Println(j, "Tx:", actualTxs[j], "Af:", actualTxs[j].Affiliate.Id())
 			}
 			require.FailNowf(t, "ValidateTxs failed", "Tx %d, diff: %s", i, diff)
@@ -265,7 +265,7 @@ func ValidateDelta(t *testing.T, delta *ptf.TxDelta, expDelta TDt) {
 
 func ValidateDeltas(t *testing.T, deltas []*ptf.TxDelta, expDeltas []TDt) {
 	if len(expDeltas) != len(deltas) {
-		for j, _ := range deltas {
+		for j := range deltas {
 			fmt.Println(j, "Tx:", deltas[j].Tx, "\n   PostStatus:", deltas[j].PostStatus)
 		}
 		require.Equal(t, len(expDeltas), len(deltas), "Num deltas did not match")
@@ -277,7 +277,7 @@ func ValidateDeltas(t *testing.T, deltas []*ptf.TxDelta, expDeltas []TDt) {
 		fail = !expDeltas[i].Gain.Equal(delta.CapitalGain) || fail
 		fail = (expDeltas[i].PotentiallyOverAppliedSfl != delta.PotentiallyOverAppliedSfl) || fail
 		if fail {
-			for j, _ := range deltas {
+			for j := range deltas {
 				fmt.Println(j, "Tx:", deltas[j].Tx, "\n   PostStatus:", deltas[j].PostStatus,
 					"\n   Gain:", deltas[j].CapitalGain, "\n   SFL:", deltas[j].SuperficialLoss,
 					"\n   PotentiallyOverAppliedSfl:", deltas[j].PotentiallyOverAppliedSfl)

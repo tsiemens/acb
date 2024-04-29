@@ -215,7 +215,7 @@ func makeSimpleSummaryTxs(
 				SettlementDate: tx.SettlementDate,
 				Action:         BUY,
 				Shares:         sumPostStatus.ShareBalance,
-				AmountPerShare: util.Tern[decimal.Decimal](
+				AmountPerShare: util.Tern(
 					sumPostStatus.TotalAcb.IsNull, decimal.Zero, sumPostStatus.TotalAcb.DivD(sumPostStatus.ShareBalance).Decimal),
 				Commission: decimal.Zero,
 				TxCurrency: DEFAULT_CURRENCY, TxCurrToLocalExchangeRate: decimal.Zero,
@@ -265,7 +265,7 @@ func makeAnnualGainsSummaryTxs(
 	}
 
 	yearsWithGains := make([]int, 0, len(yearlyCapGains))
-	for year, _ := range yearlyCapGains {
+	for year := range yearlyCapGains {
 		yearsWithGains = append(yearsWithGains, year)
 	}
 	sort.Ints(yearsWithGains)
@@ -295,7 +295,7 @@ func makeAnnualGainsSummaryTxs(
 			SettlementDate: dt,
 			Action:         BUY,
 			Shares:         nBaseShares,
-			AmountPerShare: util.Tern[decimal.Decimal](baseAcbPerShare.IsNull, decimal.Zero, baseAcbPerShare.Decimal),
+			AmountPerShare: util.Tern(baseAcbPerShare.IsNull, decimal.Zero, baseAcbPerShare.Decimal),
 			Commission:     decimal.Zero,
 			TxCurrency:     DEFAULT_CURRENCY, TxCurrToLocalExchangeRate: decimal.Zero,
 			CommissionCurrency: DEFAULT_CURRENCY, CommissionCurrToLocalExchangeRate: decimal.Zero,

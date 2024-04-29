@@ -17,7 +17,7 @@ func validateSampleCsvFile(rq *require.Assertions, csvPath string, cachePath str
 	fp, err := os.Open(csvPath)
 	rq.Nil(err)
 	defer fp.Close()
-	csvReaders := []app.DescribedReader{app.DescribedReader{csvPath, fp}}
+	csvReaders := []app.DescribedReader{{Desc: csvPath, Reader: fp}}
 
 	errPrinter := &log.StderrErrorPrinter{}
 	_, err = app.RunAcbAppToRenderModel(

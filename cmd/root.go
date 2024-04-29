@@ -39,7 +39,7 @@ func runRootCmd(cmd *cobra.Command, args []string) {
 			os.Exit(1)
 		}
 		defer fp.Close()
-		csvReaders = append(csvReaders, app.DescribedReader{csvName, fp})
+		csvReaders = append(csvReaders, app.DescribedReader{Desc: csvName, Reader: fp})
 	}
 
 	if summarizeBeforeStr != "" {

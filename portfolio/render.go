@@ -112,7 +112,7 @@ func RenderTxTableModel(
 			superficialLossAsterix = fmt.Sprintf(
 				" *\n(SfL %s%s; %s/%s%s)",
 				ph.PlusMinusDollar(d.SuperficialLoss, false),
-				util.Tern[string](specifiedSflIsForced, "!", ""),
+				util.Tern(specifiedSflIsForced, "!", ""),
 				d.SuperficialLossRatio.Numerator,
 				d.SuperficialLossRatio.Denominator,
 				extraSflNoteStr,
@@ -193,12 +193,12 @@ func RenderTxTableModel(
 }
 
 /*
-  Generates a RenderTable that will render out to this:
-  | Year             | Capital Gains |
-  +------------------+---------------+
-  | 2000             | xxxx.xx       |
-  | 2001             | xxxx.xx       |
-  | Since inception  | xxxx.xx       |
+Generates a RenderTable that will render out to this:
+| Year             | Capital Gains |
++------------------+---------------+
+| 2000             | xxxx.xx       |
+| 2001             | xxxx.xx       |
+| Since inception  | xxxx.xx       |
 */
 func RenderAggregateCapitalGains(
 	gains *CumulativeCapitalGains, renderFullDollarValues bool) *RenderTable {

@@ -265,7 +265,7 @@ func makeRunAcbWrapper() js.Func {
 			return makeErrorPromise(err)
 		}
 		// We need a desc for each csv. Default them to empty string.
-		for i, _ := range contents {
+		for i := range contents {
 			var desc string = ""
 			if i < len(descs) {
 				desc = descs[i]
