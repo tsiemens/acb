@@ -6,17 +6,19 @@ A convenience script to extract transactions from PDFs downloaded from us.etrade
 import ensure_in_venv
 
 import argparse
+import csv
 from dataclasses import dataclass
 import datetime
 from decimal import Decimal
+from functools import partial
 import inspect
 import io
 import itertools
+from os.path import basename
 from pprint import pprint
 import re
 import sys
-from typing import Optional, Union
-
+from typing import Any, Optional, Union
 from txlib import AcbCsvRenderer, Action, Tx
 
 import PyPDF2
@@ -43,7 +45,8 @@ def frame_name(n: int = 0) -> str:
 
 def debug(*args):
    if _debug:
-      print(*args)
+      print(*args, file=sys.stderr)
+      sys.stderr.flush()
 
 def fdebug(*args):
    if _debug:
@@ -51,7 +54,8 @@ def fdebug(*args):
 
 def ppdebug(obj):
    if _debug:
-      pprint(obj)
+      pprint(obj, stream=sys.stderr)
+      sys.stderr.flush()
 
 @dataclass
 class BenefitEntry:
@@ -69,6 +73,8 @@ class BenefitEntry:
    sell_to_cover_fee: Optional[Decimal]
 
    plan_note: str
+   sell_note: Optional[str] = None
+   filename: Optional[str] = None
 
 @dataclass
 class TradeConfirmation:
@@ -80,12 +86,25 @@ class TradeConfirmation:
    amount_per_share: float
    commission: float
    fee: float
+   filename: str
 
    def total_commission(self) -> float:
       return self.commission + self.fee
 
    def __hash__(self):
       return hash(repr(self))
+
+def mustStrptime(d: Optional[str], fmt: str) -> datetime.datetime:
+   assert d
+   return datetime.datetime.strptime(d, fmt)
+
+def mustFloat(d: Optional[Decimal]) -> float:
+   assert d is not None
+   return float(d)
+
+def mustInt(d: Optional[int]) -> int:
+   assert d is not None
+   return d
 
 def make_tx_renderer(benefits: list[BenefitEntry], remaining_trades:list[TradeConfirmation]):
    renderer = AcbCsvRenderer()
@@ -127,6 +146,7 @@ def make_tx_renderer(benefits: list[BenefitEntry], remaining_trades:list[TradeCo
                   file=sys.stderr)
             exit(1)
 
+         sell_note = b.sell_note or "sell-to-cover"
          sell_tx = Tx(
                security=b.security,
                trade_date=Tx.date_to_str(b.sell_to_cover_tx_date),
@@ -134,13 +154,13 @@ def make_tx_renderer(benefits: list[BenefitEntry], remaining_trades:list[TradeCo
                trade_date_and_time=Tx.date_to_str(b.sell_to_cover_tx_date),
                settlement_date_and_time=Tx.date_to_str(b.sell_to_cover_settle_date),
                action=Action.SELL,
-               amount_per_share=float(b.sell_to_cover_price),
-               num_shares=b.sell_to_cover_shares,
-               commission=float(b.sell_to_cover_fee),
+               amount_per_share=mustFloat(b.sell_to_cover_price),
+               num_shares=mustInt(b.sell_to_cover_shares),
+               commission=mustFloat(b.sell_to_cover_fee),
                currency='USD',
                affiliate='',
                row_num=row+1,
-               memo=f"{b.plan_note} sell-to-cover",
+               memo=f"{b.plan_note} {sell_note}",
                exchange_rate=None,
             )
 
@@ -190,17 +210,27 @@ def search_for_decimal(pattern, text, flags=0, group=1, optional=False):
       return Decimal(val_str.replace(',', ''))
    return None
 
+def search_for_row(key: str, val_pat: str, text: str) -> list[Any]:
+   mainPattern = key + rf"(?:\s+(?P<rowvalue>{val_pat}(?:\s+{val_pat})?))"
+
+   ret = []
+   for m in re.finditer(mainPattern, text):
+      val = m.group("rowvalue")
+      ret += list(re.findall(val_pat, val))
+   if not ret:
+      raise ReSearchError(f"Could not find {repr(mainPattern)}")
+   return ret
 
 def text_to_common_data(text: str) -> dict:
    return {
       "employee id": search_for_group(r"Employee ID:\s*(\d+)", text),
-      "account number": search_for_group(r"Account Number\s*(\d+)", text),
+      "account number": search_for_group(r"Account (?:Number|Stock Plan \(\S+\) -)\s*(\d+)", text),
       "symbol": search_for_group(r"Company Name\s*\(Symbol\)*.*\(([A-Za-z\.]+)\)", text, re.S),
    }
 
 def text_to_rsu_data(text: str) -> dict:
    return text_to_common_data(text) | {
-      "release date": datetime.datetime.strptime(
+      "release date": mustStrptime(
          search_for_group(r"Release Date\s*(\d+-\d+-\d+)", text), "%m-%d-%Y"
       ).date(),
       "award number": search_for_group(r"Award Number\s*(R\d+)", text),
@@ -216,7 +246,7 @@ def text_to_rsu_data(text: str) -> dict:
       "cash leftover": search_for_decimal(r"Total Due Participant\s*\$([\d,]+\.\d+)", text),
    }
 
-def text_to_rsu_entry(text: str) -> BenefitEntry:
+def text_to_rsu_entry(text: str, filename: str) -> BenefitEntry:
    data = text_to_rsu_data(text)
    return BenefitEntry(
          security=data['symbol'],
@@ -239,11 +269,95 @@ def text_to_rsu_entry(text: str) -> BenefitEntry:
          sell_to_cover_fee=data['fee'],
 
          plan_note="RSU " + data['award number'],
+         filename=filename,
       )
+
+def mustMatchAndReplace(d: Optional[str], old: str, new: str)->str:
+   assert d is not None
+   return d.replace(old, new)
+
+def text_to_eso_entries(text: str, filename: str) -> list[BenefitEntry]:
+   exc_type = search_for_group(r"Exercise Type:\s+(.*)\s+Registration", text)
+   ppdebug(text)
+   debug("Exercise Type:", exc_type)
+   if exc_type != "Same-Day Sale":
+      raise ParseError(f"Unknown exercise type {exc_type!r}")
+
+   entries : list[BenefitEntry] = []
+   common = text_to_common_data(text)
+   debug("common:")
+   ppdebug(common)
+   txdate = mustStrptime(
+      search_for_group(r"Exercise Date:\s+(\d+/\d+/\d+)", text),
+      '%m/%d/%Y',
+   ).date()
+
+   mbody = re.search("Exercise Details.*Exercise Date", text,re.S)
+   assert mbody
+
+   head = text[:mbody.start()]
+   text = text[mbody.start():]
+
+   grants = re.findall(r"Grant (\d+)", text)
+   debug("Grants:", grants)
+
+   grant_nums = search_for_row("Grant Number", r"(\d+)", text)
+   match = partial(search_for_row, text=text)
+   fmvs = match("Exercise Market Value", r"\$(\d+\.\d+)")
+   exc_count = match("Shares Exercised", r"\d+")
+   sell_count = int(mustMatchAndReplace(search_for_group(r"Shares Sold\s+([\d,]+)", head), ",", ""))
+   sell_prices = match("Sale Price", r"\$(\d+\.\d+)")
+   fees = match("Comission/Fee", r"\$(\d+\.\d+)")
+
+   debug("sell_count:", sell_count)
+   def makeDecimal(v: str) -> Decimal:
+      return Decimal(v.replace(",", ""))
+
+   def _equal(v:  list[str]) -> str:
+      assert len(set(v)) == 1, f"mismatched values in {v!r}"
+      assert len(v) == len(grants), f"v: {v}, grants: {grants}"
+      return v[0]
+
+   def _sum(v: list[str]) -> Decimal:
+      assert len(v) == len(grants), f"v: {v}, grants: {grants}"
+      result = sum(map(makeDecimal, v))
+      if result == 0:
+         return Decimal(0)
+      return result
+
+   ppdebug(grant_nums)
+   ppdebug(fmvs)
+   for idx, _ in enumerate(grants):
+      ent = BenefitEntry(
+         security=common['symbol'],
+         acquire_tx_date=txdate,
+         acquire_settle_date=txdate,
+         acquire_share_price=makeDecimal(fmvs[idx]),
+         acquire_shares=int(exc_count[idx]),
+
+         sell_to_cover_tx_date=None,
+         sell_to_cover_settle_date=None,
+         sell_to_cover_price=None,
+         sell_to_cover_shares=None,
+         sell_to_cover_fee=None,
+
+         plan_note=f"Option Grant {grant_nums[idx]}",
+         sell_note=exc_type,
+         filename=filename,
+      )
+      if idx == len(grant_nums) - 1:
+         ent.sell_to_cover_tx_date = txdate
+         ent.sell_to_cover_settle_date = txdate
+         ent.sell_to_cover_price = makeDecimal(_equal(sell_prices))
+         ent.sell_to_cover_shares = sell_count
+         ent.sell_to_cover_fee = _sum(fees)
+      entries.append(ent)
+
+   return entries
 
 def text_to_espp_data(text) -> dict:
    return text_to_common_data(text) | {
-      "purchase date": datetime.datetime.strptime(
+      "purchase date": mustStrptime(
          search_for_group(r"Purchase Date\s*(\d+-\d+-\d+)", text), "%m-%d-%Y"
       ).date(),
       "share purchased": search_for_decimal(r"Shares Purchased\s*(\d+\.\d+)", text),
@@ -274,7 +388,7 @@ def text_to_espp_data(text) -> dict:
          optional=True),
    }
 
-def text_to_espp_entry(text: str) -> BenefitEntry:
+def text_to_espp_entry(text: str, filename: str) -> BenefitEntry:
    data = text_to_espp_data(text)
    return BenefitEntry(
          security=data['symbol'],
@@ -296,6 +410,7 @@ def text_to_espp_entry(text: str) -> BenefitEntry:
          sell_to_cover_fee=data['fee'],
 
          plan_note="ESPP",
+         filename=filename,
       )
 
 def re_group_or(match, group_name:str, default):
@@ -303,7 +418,7 @@ def re_group_or(match, group_name:str, default):
       return default
    return match.group(group_name)
 
-def old_etrade_text_to_trade_confirmation_objs(text: str):
+def old_etrade_text_to_trade_confirmation_objs(text: str, filename: str) -> list[TradeConfirmation]:
    """
    Trade confirmation form before Morgan Stanley aquired ETRADE
    (mid 2023 and before)
@@ -326,10 +441,11 @@ def old_etrade_text_to_trade_confirmation_objs(text: str):
             amount_per_share=float(m.group('price')),
             commission=float(re_group_or(m, 'commission', '0')),
             fee=float(re_group_or(m, 'fee', '0')),
+            filename=filename,
          ))
    return objs
 
-def ms_etrade_text_to_trade_confirmation_objs(text: str):
+def ms_etrade_text_to_trade_confirmation_objs(text: str, filename: str) -> list[TradeConfirmation]:
    """Trade confirmation form after Morgan Stanley aquired ETRADE (2023)"""
    m = re.search(r'Trade\s+Date\s+Settlement\s+Date\s+Quantity\s+Price\s+Settlement\s+Amount\s+'
                  r'(?P<txdate>\d+/\d+/\d+)\s+(?P<sdate>\d+/\d+/\d+)\s+(?P<nshares>\d+)\s+'
@@ -358,37 +474,43 @@ def ms_etrade_text_to_trade_confirmation_objs(text: str):
             amount_per_share=float(m.group('price')),
             commission=float(re_group_or(m, 'commission', '0')),
             fee=float(re_group_or(m, 'fee', '0')),
+            filename=filename,
          )]
    return []
 
-def parse_pdf(f: io.BufferedReader, fname: str) -> Union[BenefitEntry, list[TradeConfirmation]]:
+class ParseError( Exception ):
+   pass
+
+def parse_pdf(f: io.BufferedReader, fname: str) -> Union[list[BenefitEntry], list[TradeConfirmation]]:
    reader = PyPDF2.PdfReader(f)
    text = reader.pages[0].extract_text()
 
    fdebug("Extracted PDF text:")
    ppdebug(text)
 
-   error = None
+   try:
+      if re.search(r'STOCK\s+PLAN\s+RELEASE\s+CONFIRMATION', text):
+         obj = [text_to_rsu_entry(text, f.name)]
+      elif re.search(r'STOCK\s+PLAN\s+EXERCISE\s+CONFIRMATION', text):
+         obj = text_to_eso_entries(text, f.name)
+      elif re.search(r'Plan\s*(2014|ESP2)', text):
+         obj = [text_to_espp_entry(text, f.name)]
+      elif re.search(r'TRADE\s*CONFIRMATION', text):
+         # Original independent ETRADE trade confirmation.
+         debug("trade confirmation")
+         obj = old_etrade_text_to_trade_confirmation_objs(text, f.name)
+         if not obj:
+            raise ParseError(f"could not find any trade confirmations in old ETRADE PDF {fname}")
+      elif re.search(r'This\s+transaction\s+is\s+confirmed', text):
+         # Updated Morgan Stanley trade confirmation document
+         obj = ms_etrade_text_to_trade_confirmation_objs(text, f.name)
+         if not obj:
+            raise ParseError( f"could not find any trade confirmations in MS/ETRADE PDF {fname}" )
+      else:
+         raise ParseError( f"cannot categorize layout of PDF {fname}" )
 
-   if re.search(r'Plan\s*ESP2', text):
-      obj = text_to_espp_entry(text)
-   elif re.search(r'STOCK\s+PLAN\s+RELEASE\s+CONFIRMATION', text):
-      obj = text_to_rsu_entry(text)
-   elif re.search(r'TRADE\s*CONFIRMATION', text):
-      # Original independent ETRADE trade confirmation.
-      obj = old_etrade_text_to_trade_confirmation_objs(text)
-      if not obj:
-         error = f"could not find any trade confirmations in old ETRADE PDF {fname}"
-   elif re.search(r'This\s+transaction\s+is\s+confirmed', text):
-      # Updated Morgan Stanley trade confirmation document
-      obj = ms_etrade_text_to_trade_confirmation_objs(text)
-      if not obj:
-         error = f"could not find any trade confirmations in MS/ETRADE PDF {fname}"
-   else:
-      error = f"cannot categorize layout of PDF {fname}"
-
-   if error:
-      print(f"Error: etrade-plan-pfd-tx-extract {error}.\n"
+   except (ReSearchError, ParseError) as error:
+      print(f"Error: etrade-plan-pfd-tx-extract {fname!r}: {error}.\n"
             "       Script may require updating. Run with --debug to show extracted text.",
             file=sys.stderr)
       exit(1)
@@ -398,7 +520,7 @@ def parse_pdf(f: io.BufferedReader, fname: str) -> Union[BenefitEntry, list[Trad
 
    return obj
 
-def find_and_apply_sell_to_cover_trade_set(benefit, trade_confs):
+def find_and_apply_sell_to_cover_trade_set(benefit: BenefitEntry, trade_confs: list[TradeConfirmation]):
    matching_trades = None
    for n in range(len(trade_confs), 0, -1):
       for trades in itertools.combinations(trade_confs, n):
@@ -433,14 +555,15 @@ def find_and_apply_sell_to_cover_trade_set(benefit, trade_confs):
          ppdebug(t)
       return matching_trades
    else:
-      print(f"Error: Found no trades matching the sell-to-cover for {benefit.plan_note} "
-            f"{benefit.acquire_tx_date}", file=sys.stderr)
+      fn = f"{basename(benefit.filename)}: " if benefit.filename else ""
+      print("Error: Found no trades matching the sell-to-cover for "
+            f"{fn}{benefit.plan_note} {benefit.acquire_tx_date}", file=sys.stderr)
       fdebug("Candidates:")
       for t in trade_confs:
          ppdebug(t)
       return []
 
-def amend_benefit_sales(benefits, trade_confs):
+def amend_benefit_sales(benefits: list[BenefitEntry], trade_confs: list[TradeConfirmation]):
    trade_confs = list(trade_confs) # Make a a copy
    for benefit in benefits:
       # Find the sale(s) which could constitute this sell-to-cover
@@ -476,15 +599,16 @@ Run this script, giving the name of all PDFs as arguments.""",
    ap.add_argument('files', metavar='FILES', nargs='+')
    ap.add_argument('--pretty', action='store_true')
    ap.add_argument('--debug', action='store_true')
+   ap.add_argument('--extract-only', action='store_true')
    args = ap.parse_args()
 
    global _debug
    _debug = args.debug
 
-   benefits = []
-   trade_confs = []
+   benefits: list[BenefitEntry] = []
+   trade_confs: list[TradeConfirmation] = []
    first = True
-   for fname in args.files:
+   for fname in sorted(args.files):
       if not first:
          debug()
       first = False
@@ -492,15 +616,37 @@ Run this script, giving the name of all PDFs as arguments.""",
       with open(fname, 'rb') as f:
          try:
             obj = parse_pdf(f, fname)
-            if isinstance(obj, BenefitEntry):
-               benefits.append(obj)
-            elif isinstance(obj, list) and obj and isinstance(obj[0], TradeConfirmation):
-               trade_confs.extend(obj)
-            else:
-               assert False, f"parse_pdf produced a result of type {type(obj)}, which is not recognized"
-         except ReSearchError as e:
+            for o in obj:
+               if isinstance(o, BenefitEntry):
+                  benefits.append(o)
+               elif isinstance(o, TradeConfirmation):
+                  trade_confs.append(o)
+               else:
+                  raise ParseError(f"parse_pdf produced a result of type {type(o)}, which is not recognized")
+         except (ReSearchError, ParseError) as e:
             print(f"Error parsing {fname}: {e}", file=sys.stderr)
             return 1
+
+   if args.extract_only:
+      for desc, collection in (
+            ("trades", trade_confs),
+            ("benefits", benefits),
+      ):
+         header: Optional[list[str]] = None
+         rows: list[list[str]] = []
+         for entry in collection:
+            if header is None:
+               header = list(entry.__match_args__)
+            rows.append([getattr(entry, k) for k in header])
+         if header is None:
+            print("WARN: No", desc, "entries", file=sys.stderr)
+            continue
+         sys.stdout.flush()
+         writer = csv.writer(sys.stdout, delimiter=',', quoting=csv.QUOTE_MINIMAL)
+         writer.writerow(header)
+         for row in rows:
+            writer.writerow(row)
+      return
 
    remaining_trades = amend_benefit_sales(benefits, trade_confs)
    debug("\nAmmended benefit entries:")

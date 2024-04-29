@@ -4,6 +4,7 @@ from dataclasses import dataclass
 import datetime
 from enum import Enum
 import sys
+from typing import Optional
 
 # Output format:
 # Security,Date,Action,Amount/Share,Shares,Commission,Currency,Memo,Exchange Rate
@@ -26,27 +27,29 @@ class Tx:
    commission: float
    currency: str
    memo: str
-   exchange_rate: float
+   exchange_rate: Optional[float]
    affiliate: str
 
    row_num: int
    # optional metadata
-   account: str = None
+   account: Optional[str] = None
    # optional
    sort_tiebreak: int = 0
 
    @staticmethod
-   def date_to_str(d: datetime.date) -> str:
+   def date_to_str(d: Optional[datetime.date]) -> str:
       """Returns a yyyy-mm-dd formatted date string"""
+      assert d
       return f"{d.year}-{d.month:02}-{d.day:02}"
 
 class AcbCsvRenderer:
    def __init__(self):
-      self.txs = []
+      self.txs: list[Tx] = []
       self.errors = []
 
    def sort_txs(self):
       self.txs = sorted(self.txs, key=lambda t: (t.settlement_date_and_time,
+                                                 t.trade_date_and_time,
                                                  t.sort_tiebreak,
                                                  t.row_num))
 
@@ -69,7 +72,7 @@ class AcbCsvRenderer:
          writer.writerow(row)
 
    def render_table(self):
-      all_rows = [self.header_row()] + [r for r in self.rows()]
+      all_rows = [self.header_row()] + [list(r) for r in self.rows()]
       col_widths = [1] * len(all_rows[0])
       # Determine the max col widths
       for row in all_rows:
