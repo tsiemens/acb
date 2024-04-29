@@ -7,9 +7,11 @@ use time::Date;
 
 use crate::{
     fx::DailyRate,
-    // log::WriteHandle,
-    util::date, verboseln
+    util::date,
+    verboseln
 };
+
+use super::Error;
 
 // const LINE_BUF_SIZE: u32 = 100;
 // const CSV_TIME_FORMAT: &str = "2006-01-02";
@@ -28,9 +30,6 @@ fn get_fx_json_url(year: u32) -> String {
         observation, year, year
     )
 }
-
-
-pub type Error = String;
 
 pub struct RateParseResult {
     pub rates: Vec<DailyRate>,

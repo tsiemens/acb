@@ -110,13 +110,13 @@ impl Ord for Tx {
 
 #[cfg(test)]
 mod tests {
-    use std::{fmt::Debug, iter::zip};
     use std::str::FromStr;
     use rust_decimal::Decimal;
     use rust_decimal_macros::dec;
     use time::Date;
 
     use crate::portfolio::{Affiliate, CurrencyAndExchangeRate};
+    use crate::testlib::assert_vec_eq;
     use crate::util::date;
 
     use super::{Tx, TxAction};
@@ -139,56 +139,6 @@ mod tests {
              read_index: 0,
             }
     }
-
-    pub fn eprint_vecs_1<T: PartialEq + Debug>(left: Vec<T>, right: Vec<T>) {
-        let mut err_str = "left != right. left: [\n".to_string();
-        for o in &left {
-            err_str += &format!("{:?},\n", o).to_string();
-        }
-        err_str += "] != right: [\n";
-        for o in &right {
-            err_str += &format!("{:?},\n", o).to_string();
-        }
-        eprint!("{}", err_str);
-    }
-
-    #[allow(unused)]
-    pub fn assert_vec_eq_1<T: PartialEq + Debug>(left: Vec<T>, right: Vec<T>) {
-        if left != right {
-            eprint_vecs_1(left, right);
-            panic!();
-        }
-    }
-
-    #[allow(unused)]
-    pub fn assert_vec_eq_2<T: PartialEq + Debug>(left: Vec<T>, right: Vec<T>) {
-        if left != right {
-            eprint!("left != right. left: {:#?} !=\n {:#?}", left, right);
-            panic!();
-        }
-    }
-
-    pub fn assert_vec_eq_3<T: PartialEq + Debug>(left: Vec<T>, right: Vec<T>) {
-        if left == right {
-            return
-        }
-        if left.len() != right.len() {
-            eprint!("size of left ({}) != size of right ({})", left.len(), right.len());
-            panic!();
-        }
-        let mut i = 0;
-        for (l, r) in zip(&left, &right) {
-            if l != r {
-                eprint!("Mismatch at index {}:\n", i);
-                eprint!("left: {:#?} != right: {:#?}\n", l, r);
-            }
-
-            i += 1;
-        }
-        panic!();
-    }
-
-    use assert_vec_eq_3 as assert_vec_eq;
 
     #[test]
     #[should_panic]
@@ -222,6 +172,5 @@ mod tests {
         ];
         txs.sort();
         assert_vec_eq(txs, exp);
-        // assert_eq!(txs, exp);
     }
 }
