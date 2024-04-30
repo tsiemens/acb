@@ -11,9 +11,8 @@ fn mk_writable_dir(dirpath: &Path) -> io::Result<()> {
     fs::set_permissions(dirpath, perms)
 }
 
-// With a file name (eg. foo.txt), returns a path like $HOME/.acb/foo.txt,
-// and ensures that ~/.acb/ exists and is writable.
-pub fn home_dir_file_path(fname: &Path) -> Result<PathBuf, Error> {
+// Returns a path like $HOME/.acb/, and ensures that ~/.acb/ exists and is writable.
+pub fn home_dir_path() -> Result<PathBuf, Error> {
     let home_dir_opt = dirs::home_dir();
     let home_dir = match home_dir_opt {
         Some(d) => d,
@@ -24,6 +23,12 @@ pub fn home_dir_file_path(fname: &Path) -> Result<PathBuf, Error> {
     let acb_dir_path = home_dir.join(".acb");
     mk_writable_dir(&acb_dir_path).map_err(
         |e| Error::from(e.to_string()))?;
+    Ok(acb_dir_path)
+}
 
+// With a file name (eg. foo.txt), returns a path like $HOME/.acb/foo.txt,
+// and ensures that ~/.acb/ exists and is writable.
+pub fn home_dir_file_path(fname: &Path) -> Result<PathBuf, Error> {
+    let acb_dir_path = home_dir_path()?;
     Ok(acb_dir_path.join(fname))
 }
