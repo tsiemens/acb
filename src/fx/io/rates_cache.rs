@@ -5,7 +5,7 @@ use rust_decimal::Decimal;
 use crate::{
     fx::DailyRate,
     log::WriteHandle,
-    util::{date, sys::home_dir_file_path}
+    util::date,
 };
 
 use super::Error;
@@ -37,12 +37,15 @@ impl RatesCache for InMemoryRatesCache {
 }
 
 pub struct CsvRatesCache {
+    // Typically, this will be wherever get_home_dir() provides,
+    // but can be specified for integration testing.
+    dir_path: std::path::PathBuf,
     err_writer: WriteHandle,
 }
 
 impl CsvRatesCache {
-    pub fn new(err_writer: WriteHandle) -> CsvRatesCache {
-        CsvRatesCache{err_writer: err_writer}
+    pub fn new(dir_path: std::path::PathBuf, err_writer: WriteHandle) -> CsvRatesCache {
+        CsvRatesCache{dir_path: dir_path, err_writer: err_writer}
     }
 
     fn get_rates_from_csv(&mut self, r: &mut dyn Read) -> Result<Vec<DailyRate>, Error> {
@@ -101,21 +104,30 @@ impl CsvRatesCache {
     }
 }
 
-fn open_rates_csv_file(year: u32, write_mode: bool) -> Result<File, Error> {
+fn rates_csv_file_path(dir_path: &std::path::Path, year: u32) -> PathBuf {
     let fname_only = format!("rates-{}.csv", year);
-    let fname_only_path = PathBuf::from(fname_only);
-    let file_path = home_dir_file_path(&fname_only_path)?;
+    dir_path.join(fname_only)
+}
 
-    (if write_mode {
-        File::create(file_path)
-    } else {
-        File::open(file_path)
-    }).map_err(|e| e.to_string())
+fn open_rates_csv_file_write(dir_path: &std::path::Path, year: u32) -> Result<File, Error> {
+    let file_path = rates_csv_file_path(dir_path, year);
+    File::create(file_path).map_err(|e| e.to_string())
+}
+
+fn open_rates_csv_file_read(dir_path: &std::path::Path, year: u32) -> Result<Option<File>, Error> {
+    let file_path = rates_csv_file_path(dir_path, year);
+    match File::open(file_path) {
+        Ok(f) => Ok(Some(f)),
+        Err(e) => match e.kind() {
+            std::io::ErrorKind::NotFound => Ok(None),
+            _ => Err(e.to_string()),
+        },
+    }
 }
 
 impl RatesCache for CsvRatesCache {
     fn write_rates(&mut self, year: u32, rates: &Vec<DailyRate>) -> Result<(), Error> {
-        let file = open_rates_csv_file(year, true)?;
+        let file = open_rates_csv_file_write(&self.dir_path, year)?;
 
         // CSV file of date,exchange_rate
 
@@ -129,14 +141,19 @@ impl RatesCache for CsvRatesCache {
     }
 
     fn get_usd_cad_rates(&mut self, year: u32) -> Result<Option<Vec<DailyRate>>, Error> {
-        let mut file = open_rates_csv_file(year, false)?;
-        // TODO what if the file doesn't exist yet?
-        self.get_rates_from_csv(&mut file).map(|v| Some(v))
+        let mut file_opt = open_rates_csv_file_read(&self.dir_path, year)?;
+        match &mut file_opt {
+            Some(file) =>
+                self.get_rates_from_csv(file).map(|v| Some(v)),
+            None => Ok(None),
+        }
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use std::path::PathBuf;
+
     use rust_decimal_macros::dec;
 
     use crate::{
@@ -155,7 +172,8 @@ mod tests {
 
         let (write_handle, err_buff) = WriteHandle::string_buff_write_handle();
 
-        let mut loader = CsvRatesCache::new(write_handle);
+        let loader_path = PathBuf::from("/tmp/acb-non-existant");
+        let mut loader = CsvRatesCache::new(loader_path.clone(), write_handle);
 
         let b = String::from("2022-01-01,1.12
 2022-01-02,1.13
@@ -252,5 +270,9 @@ mod tests {
             ]
         );
         err_buff.borrow_mut().clear();
+
+        // Cleanup. Make sure that this unit test didn't create the loader directory,
+        // since it is not doing writes or reads.
+        assert!(!loader_path.exists());
     }
 }
