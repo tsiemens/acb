@@ -73,6 +73,7 @@ type Options struct {
 	RenderFullDollarValues  bool
 	SummaryModeLatestDate   date.Date
 	SplitAnnualSummaryGains bool
+	CSVOutputDir            string
 }
 
 func (o *Options) SummaryMode() bool {
@@ -85,6 +86,7 @@ func NewOptions() Options {
 		RenderFullDollarValues:  false,
 		SummaryModeLatestDate:   date.Date{},
 		SplitAnnualSummaryGains: false,
+		CSVOutputDir:            "",
 	}
 }
 
@@ -349,8 +351,18 @@ func RunAcbAppToConsole(
 			options, legacyOptions, ratesCache, errPrinter,
 		)
 	} else {
+		var writer outfmt.ACBWriter
+		if options.CSVOutputDir != "" {
+			var err error
+			if writer, err = outfmt.NewCSVWriter(options.CSVOutputDir); err != nil {
+				errPrinter.Ln(err)
+				return false
+			}
+		} else {
+			writer = outfmt.NewSTDWriter(os.Stdout)
+		}
 		ok, _ = RunAcbAppToWriter(
-			outfmt.NewSTDWriter(os.Stdout),
+			writer,
 			csvFileReaders, allInitStatus, options.ForceDownload, options.RenderFullDollarValues,
 			legacyOptions, ratesCache, errPrinter,
 		)
