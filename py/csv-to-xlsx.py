@@ -1,14 +1,16 @@
 #!/usr/bin/env python3
 
-from posixpath import splitext
-from typing import Any, List, Callable, Tuple, Union
-import openpyxl
-from datetime import datetime
-from openpyxl.worksheet.worksheet import Worksheet
-from openpyxl.cell import Cell
+import argparse
 import sys
-from os.path import basename
 from csv import reader
+from datetime import datetime
+from os.path import basename
+from posixpath import splitext
+from typing import Any, Callable, List, Tuple, Union
+
+import openpyxl
+from openpyxl.cell import Cell
+from openpyxl.worksheet.worksheet import Worksheet
 
 DATE_FMT = "%Y-%m-%d"
 
@@ -69,14 +71,18 @@ def handle_file(wb: openpyxl.Workbook, name: str, sheet_num: int):
 
 
 def main():
-    files = sys.argv[1:]
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--output-filename", default="out.xlsx")
+    ap.add_argument("files", metavar="CSV-FILE", nargs="+")
+    args = ap.parse_args()
+    files = sorted(args.files)
     if not files:
         return
 
     wb = openpyxl.Workbook(write_only=True)
-    for idx, fn in enumerate(sys.argv[1:]):
+    for idx, fn in enumerate(files):
         handle_file(wb, fn, idx + 1)
-    wb.save("out.xlsx")
+    wb.save(args.output_filename)
 
 
 if __name__ == "__main__":
