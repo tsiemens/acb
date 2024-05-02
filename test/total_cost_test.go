@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/shopspring/decimal"
 	"github.com/stretchr/testify/require"
 	"github.com/tsiemens/acb/app/outfmt"
 	"github.com/tsiemens/acb/date"
@@ -25,9 +26,13 @@ func getDelta(td *td) (*ptf.TxDelta, error) {
 		return nil, fmt.Errorf("date %v: %w", td.Settle, err)
 	}
 
-	acb, err := decimal_value.NewFromString(td.TotalAcb)
-	if err != nil {
-		return nil, fmt.Errorf("TotalAcb %v: %w", td.TotalAcb, err)
+	acb := decimal_value.Null
+	if td.TotalAcb != "" {
+		var err error
+		acb, err = decimal_value.NewFromString(td.TotalAcb)
+		if err != nil {
+			return nil, fmt.Errorf("TotalAcb %v: %w", td.TotalAcb, err)
+		}
 	}
 
 	return &ptf.TxDelta{
@@ -97,8 +102,14 @@ func TestRenderTotalCosts(t *testing.T) {
 			name: "by-acb-sec",
 			reorg: func(data []*td) {
 				sort.SliceStable(data, func(i, j int) bool {
-					ii := decimal_value.RequireFromString(data[i].TotalAcb)
-					jj := decimal_value.RequireFromString(data[j].TotalAcb)
+					_get := func(v string) decimal.Decimal {
+						if v == "" {
+							return decimal.NewFromFloat(-1)
+						}
+						return decimal.RequireFromString(v)
+					}
+					ii := _get(data[i].TotalAcb)
+					jj := _get(data[j].TotalAcb)
 					if !ii.Equal(jj) {
 						return ii.LessThan(jj)
 					}
@@ -118,6 +129,7 @@ func TestRenderTotalCosts(t *testing.T) {
 				{Sec: "SECA", Settle: "2003-01-01", TotalAcb: "0"},
 				{Sec: "SECA", Settle: "2003-01-02", TotalAcb: "150"},
 				{Sec: "XXXX", Settle: "2003-01-02", TotalAcb: "35"},
+				{Sec: "TFSA", Settle: "2003-01-02", TotalAcb: ""},
 				{Sec: "SECA", Settle: "2003-01-03", TotalAcb: "0"},
 			}
 			tc.reorg(data)
@@ -131,6 +143,8 @@ func TestRenderTotalCosts(t *testing.T) {
 			rq.NoError(err)
 			costs := ptf.RenderTotalCosts(allDeltas, false)
 
+			notes := []string{"2003-01-02 (TFSA) ignored transaction from registered affiliate"}
+
 			exp := &ptf.RenderTable{
 				Header: []string{"Date", "Total", "SECA", "XXXX"},
 				Rows: [][]string{
@@ -143,11 +157,12 @@ func TestRenderTotalCosts(t *testing.T) {
 					{"2003-01-02", "185", "150", "35"},
 					{"2003-01-03", " 35", "  0", "35"},
 				},
+				Notes: notes,
 			}
 			fixupRows(1, exp.Rows)
 
 			actual := renderTable(rq, costs.Total)
-			t.Log("\n" + actual)
+			t.Log("Actual:\n" + actual)
 			rq.Equal(renderTable(rq, exp), actual)
 
 			expYear := &ptf.RenderTable{
@@ -156,6 +171,7 @@ func TestRenderTotalCosts(t *testing.T) {
 					{"2001", "2001-05-17", "270", "200", "70"},
 					{"2003", "2003-01-02", "185", "150", "35"},
 				},
+				Notes: notes,
 			}
 			fixupRows(2, expYear.Rows)
 			yearActual := renderTable(rq, costs.Yearly)

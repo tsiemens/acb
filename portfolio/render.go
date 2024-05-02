@@ -261,7 +261,7 @@ type yearInfo struct {
 //		-------------+---------+---------+---------
 //		  2003-01-01 | $70.00  | $0.00   | $70.00
 //		-------------+---------+---------+---------
-//
+//		2003-01-02 (TFSA) ignored transaction from registered affiliate
 //
 //	Yearly:
 //
@@ -271,29 +271,40 @@ type yearInfo struct {
 //		-------+------------+---------+---------+---------
 //		  2003 | 2003-01-01 | $70.00  | $0.00   | $70.00
 //		-------+------------+---------+---------+---------
+//		2003-01-02 (TFSA) ignored transaction from registered affiliate
 func RenderTotalCosts(allDeltas []*TxDelta, renderFullDollarValues bool) *CostsTables {
 	dateCosts := map[date.Date]*util.DefaultMap[string, decimal_opt.DecimalOpt]{}
 
 	// For the rendered tables, we need all of the security tickers / names.
 	securitySet := map[string]struct{}{}
 
+	var notes []string
+
 	// Keep track of the maximum cost for each security on any date where there's a TxDelta.
 	// For example, SECA on 2000-01-01 has ACB 12, ACB 150, and ACB 0, so after the loop below,
 	// we'll have a dateCosts[2001-01-01][SECA] = 150
 	for _, d := range allDeltas {
 		dateFromDelta := d.Tx.SettlementDate
+		sec := d.PostStatus.Security
+
+		if d.PostStatus.TotalAcb.IsNull {
+			notes = append(notes, fmt.Sprintf("%v (%v) ignored transaction from registered affiliate",
+				dateFromDelta.String(), sec))
+			continue
+		}
+
 		if _, ok := dateCosts[dateFromDelta]; !ok {
 			dateCosts[dateFromDelta] = util.NewDefaultMap(func(string) decimal_opt.DecimalOpt {
 				return decimal_opt.Null
 			})
 		}
-		sec := d.PostStatus.Security
 		securitySet[sec] = struct{}{}
 
 		val := dateCosts[dateFromDelta].Get(sec)
 		if val.IsNull {
 			val = decimal_opt.Zero
 		}
+
 		curMax := decimal_opt.Max(val, d.PostStatus.TotalAcb)
 		dateCosts[dateFromDelta].Set(sec, curMax)
 	}
@@ -308,7 +319,7 @@ func RenderTotalCosts(allDeltas []*TxDelta, renderFullDollarValues bool) *CostsT
 	// Create the "Total Costs" table (one entry per TxDelta settlement date).
 	tcHdr := []string{"Date", "Total"}
 	tcHdr = append(tcHdr, securities...)
-	totalCost := &RenderTable{Header: tcHdr}
+	totalCost := &RenderTable{Header: tcHdr, Notes: notes}
 
 	ph := _PrintHelper{PrintAllDecimals: renderFullDollarValues}
 
@@ -367,7 +378,7 @@ func RenderTotalCosts(allDeltas []*TxDelta, renderFullDollarValues bool) *CostsT
 
 	yrHdr := []string{"Year", "Date", "Total"}
 	yrHdr = append(yrHdr, securities...)
-	yearCost := &RenderTable{Header: yrHdr}
+	yearCost := &RenderTable{Header: yrHdr, Notes: notes}
 	for _, year := range years {
 		info := yearMax[year]
 		row := []string{fmt.Sprint(year), info.day.String()}

@@ -129,7 +129,7 @@ func init() {
 		"Summary will include transactions which represent annual capital gains/losses."+helpNl+
 			"Only valid with --summarize-before.")
 	RootCmd.PersistentFlags().BoolVar(&options.RenderTotalCosts, "total-costs", false,
-		"Print total costs across all securities")
+		"Print total costs across all securities (default, non-registered affiliate only)")
 	RootCmd.PersistentFlags().StringVarP(&options.CSVOutputDir, "csv-output-dir", "d", "",
 		"Write output as CSV to the specified directory.")
 
