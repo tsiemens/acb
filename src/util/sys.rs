@@ -2,7 +2,7 @@ use std::{fs, io, os::unix::fs::PermissionsExt, path::{Path, PathBuf}};
 
 pub type Error = String;
 
-fn mk_writable_dir(dirpath: &Path) -> io::Result<()> {
+pub fn mk_writable_dir(dirpath: &Path) -> io::Result<()> {
     fs::create_dir_all(dirpath)?;
 
     let mut perms = fs::metadata(dirpath)?.permissions();
@@ -31,4 +31,11 @@ pub fn home_dir_path() -> Result<PathBuf, Error> {
 pub fn home_dir_file_path(fname: &Path) -> Result<PathBuf, Error> {
     let acb_dir_path = home_dir_path()?;
     Ok(acb_dir_path.join(fname))
+}
+
+pub fn env_var_non_empty(name: &str) -> bool {
+    match std::env::var(name) {
+        Ok(v) => !v.is_empty(),
+        Err(_) => false,
+    }
 }

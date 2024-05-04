@@ -4,6 +4,7 @@ use std::io::Write;
 use rust_decimal::{prelude::Zero, Decimal};
 use time::{Date, Duration, Month};
 
+use crate::{acb_debug, write_errln};
 use crate::log::WriteHandle;
 use crate::{fx::DailyRate, util::date::today_local};
 
@@ -13,18 +14,28 @@ use super::{Error, RatesCache};
 
 // Overall utility for loading rates (both remotely and from cache).
 pub struct RateLoader {
-    pub year_rates: HashMap<u32, HashMap<Date, DailyRate>>,
     pub force_download: bool,
     pub cache: Box<dyn RatesCache>,
-    fresh_loaded_years: HashSet<u32>,
-    err_stream: WriteHandle,
     pub remote_loader: Box<dyn RemoteRateLoader>,
+    err_stream: WriteHandle,
+
+    year_rates: HashMap<u32, HashMap<Date, DailyRate>>,
+    fresh_loaded_years: HashSet<u32>,
 }
 
 impl RateLoader {
-    pub fn new() -> RateLoader {
-        todo!();
-        // RateLoader{}
+    pub fn new(force_download: bool,
+               cache: Box<dyn RatesCache>,
+               remote_loader: Box<dyn RemoteRateLoader>,
+               err_stream: WriteHandle) -> RateLoader {
+        RateLoader{
+            force_download,
+            cache,
+            remote_loader,
+            year_rates: HashMap::new(),
+            fresh_loaded_years: HashSet::new(),
+            err_stream: err_stream,
+        }
     }
 }
 
@@ -89,6 +100,7 @@ impl RateLoader {
         let year = trade_date.year() as u32;
 
         if !self.year_rates.contains_key(&year) {
+            acb_debug!("RateLoader::get_exact_usd_cad_rate {} not yet loaded", year);
             let rates = self.fetch_usd_cad_rates_for_date_year(&trade_date)?;
             self.year_rates.insert(year, rates);
         }
@@ -138,10 +150,11 @@ impl RateLoader {
                     return Err(e);
                 }
                 // This is non-fatal, as we can just do a server lookup.
-                let _ = writeln!(self.err_stream, "Could not load cached exchange rates: {}", e);
+                write_errln!(self.err_stream, "Could not load cached exchange rates: {}", e);
             } else {
                 match cache_res.unwrap() {
                     Some(rates) => {
+                        acb_debug!("RateLoader::fetch rates found in cache");
                         let rates_map = make_date_to_rate_map(&rates);
                         if rates_are_fresh {
                             return Ok(rates_map);
@@ -153,6 +166,7 @@ impl RateLoader {
                         }
                     },
                     None => {
+                        acb_debug!("RateLoader::fetch NO rates found in cache");
                         if rates_are_fresh {
                             return Err(format!("Did not find rates for {} in cache after they were downloaded", year));
                         }
@@ -166,16 +180,19 @@ impl RateLoader {
     }
 
     fn get_remote_usd_cad_rates(&mut self, year: u32) -> Result<Vec<DailyRate>, Error> {
+        acb_debug!("RateLoader::get_remote_usd_cad_rates {}", year);
         let res = self.remote_loader.get_remote_usd_cad_rates(year)?;
         for nfe in res.non_fatal_errors {
-            let _ = writeln!(self.err_stream, "{}", nfe);
+            write_errln!(self.err_stream, "{}", nfe);
         }
         let rates = fill_in_unknown_day_rates(&res.rates, year);
 
         self.fresh_loaded_years.insert(year);
         if let Err(e) =  self.cache.write_rates(year, &rates) {
-            let _ = writeln!(self.err_stream,
+            acb_debug!("RateLoader::get_remote_usd_cad_rates cache write failed: {}", e);
+            write_errln!(self.err_stream,
                 "Failed to update exchange rate cache: {}", e);
+            let _ = self.err_stream.flush();
         }
 
         Ok(rates)
@@ -207,7 +224,7 @@ impl RateLoader {
 	    // (unless the markets close for more than a week due to an apocalypse)
         for _ in 0..7 {
             preceding_date = preceding_date.saturating_sub(Duration::days(1));
-            let rate_opt = match self.get_exact_usd_cad_rate(trade_date) {
+            let rate_opt = match self.get_exact_usd_cad_rate(preceding_date) {
                 Ok(r) => r,
                 Err(e) => {
                     return Err(format!(
@@ -228,21 +245,32 @@ impl RateLoader {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashMap;
+
     use rust_decimal::{prelude::Zero, Decimal};
     use rust_decimal_macros::dec;
+    use time::Date;
 
+    use crate::fx::io::pub_testlib::MockRemoteRateLoader;
+    use crate::fx::io::InMemoryRatesCache;
     use crate::fx::DailyRate;
+    use crate::log::WriteHandle;
+    use crate::util::rc::{RcRefCell, RcRefCellT};
 
-    use super::fill_in_unknown_day_rates;
-    use crate::testlib::assert_vec_eq;
-    use crate::util::date::testlib::doy_date;
+    use super::{fill_in_unknown_day_rates, RateLoader};
+    use crate::testlib::{assert_vec_eq, assert_vecr_eq};
+    use crate::util::date::pub_testlib::doy_date;
 
+    fn date_yd(year: u32, doy: i64) -> Date {
+        doy_date(year, doy)
+    }
+
+    fn dr(date: Date, rate: Decimal) -> DailyRate {
+        DailyRate{date: date, foreign_to_local_rate: rate}
+    }
 
     #[test]
     fn test_fill_in_unknown_day_rates() {
-        let date_yd = |year, doy| { doy_date(year, doy) };
-        let dr = |date, rate| { DailyRate{date: date, foreign_to_local_rate: rate} };
-
         let rates = vec![
             dr(date_yd(2022, 0), dec!(1.0)),
             dr(date_yd(2022, 1), dec!(1.1)),
@@ -317,12 +345,226 @@ mod tests {
         );
     }
 
-    // TODO TestGetEffectiveUsdCadRateFreshCache
+    fn new_test_rate_loader_with_remote(
+        force_download: bool,remote_year_rates: &RcRefCell<HashMap<u32, Vec<DailyRate>>>) ->
+        (RateLoader, RcRefCell<HashMap<u32, Vec<DailyRate>>>) {
 
-    // TODO TestGetEffectiveUsdCadRateWithCache
+        let cache_year_rates = RcRefCellT::new(HashMap::new());
+        let rate_loader = RateLoader::new(
+            force_download,
+            Box::new(InMemoryRatesCache{ rates_by_year: cache_year_rates.clone() }),
+            Box::new(MockRemoteRateLoader{ remote_year_rates: remote_year_rates.clone() }),
+            WriteHandle::empty_write_handle());
 
-    // TODO TestGetEffectiveUsdCadRateCacheInvalidation
+        (rate_loader, cache_year_rates)
+    }
 
-    // TODO TestGetEffectiveUsdCadRateWithCsvCache
-    //      (integration test. not here. create tests/fx_rateloader_test.rs)
+    fn new_test_rate_loader(force_download: bool) ->
+        (RateLoader, RcRefCell<HashMap<u32, Vec<DailyRate>>>, RcRefCell<HashMap<u32, Vec<DailyRate>>>) {
+        let cache_year_rates = RcRefCellT::new(HashMap::new());
+        let remote_year_rates =  RcRefCellT::new(HashMap::new());
+        let rate_loader = RateLoader::new(
+            force_download,
+            Box::new(InMemoryRatesCache{ rates_by_year: cache_year_rates.clone() }),
+            Box::new(MockRemoteRateLoader{ remote_year_rates: remote_year_rates.clone() }),
+            WriteHandle::empty_write_handle());
+
+        (rate_loader, cache_year_rates, remote_year_rates)
+    }
+
+    #[test]
+    fn test_get_effective_usd_cad_rate_fresh_cache() {
+        crate::util::date::set_todays_date_for_test(date_yd(2022, 12));
+
+        let (mut rate_loader, cached_rates, remote_rates) =
+            new_test_rate_loader(false);
+        cached_rates.borrow_mut().insert(2022, vec![]);
+        remote_rates.borrow_mut().insert(2022, vec![
+            dr(date_yd(2022, 0), dec!(1.0)),
+            // dr(date_yd(2022, 1), 1.1), // Expect fill here
+            dr(date_yd(2022, 2), dec!(1.2)),
+            // Expect 9 days fill here (unrealistic)
+            dr(date_yd(2022, 12), dec!(2.2)),
+        ]);
+
+        // Test failure to get from remote.
+        let _ = rate_loader.get_effective_usd_cad_rate(date_yd(1970, 1)).unwrap_err();
+
+        // Test find exact rate
+        let (mut rate_loader, _) = new_test_rate_loader_with_remote(false, &remote_rates);
+        let geucr_rate = rate_loader.get_effective_usd_cad_rate(date_yd(2022, 0)).unwrap();
+        assert_eq!(geucr_rate, dr(date_yd(2022, 0), dec!(1.0)));
+        // Test fall back to previous day rate
+        let (mut rate_loader, _) = new_test_rate_loader_with_remote(false, &remote_rates);
+        let geucr_rate = rate_loader.get_effective_usd_cad_rate(date_yd(2022, 1)).unwrap();
+        assert_eq!(geucr_rate, dr(date_yd(2022, 0), dec!(1.0)));
+        // Test exact match after a fill day
+        let (mut rate_loader, _) = new_test_rate_loader_with_remote(false, &remote_rates);
+        let geucr_rate = rate_loader.get_effective_usd_cad_rate(date_yd(2022, 2)).unwrap();
+        assert_eq!(geucr_rate, dr(date_yd(2022, 2), dec!(1.2)));
+        // Test fall back with the day ahead also not being present
+        let (mut rate_loader, _) = new_test_rate_loader_with_remote(false, &remote_rates);
+        let geucr_rate = rate_loader.get_effective_usd_cad_rate(date_yd(2022, 7)).unwrap();
+        assert_eq!(geucr_rate, dr(date_yd(2022, 2), dec!(1.2)));
+        // Test fall back 7 days (the max allowed)
+        let (mut rate_loader, _) = new_test_rate_loader_with_remote(false, &remote_rates);
+        let geucr_rate = rate_loader.get_effective_usd_cad_rate(date_yd(2022, 9)).unwrap();
+        assert_eq!(geucr_rate, dr(date_yd(2022, 2), dec!(1.2)));
+        // Test fall back 8 days (more than allowed)
+        let (mut rate_loader, _) = new_test_rate_loader_with_remote(false, &remote_rates);
+        let _ = rate_loader.get_effective_usd_cad_rate(date_yd(2022, 10)).unwrap_err();
+
+        // Test lookup for today's determined (markets opened) rate
+        let (mut rate_loader, _) = new_test_rate_loader_with_remote(false, &remote_rates);
+        let geucr_rate = rate_loader.get_effective_usd_cad_rate(date_yd(2022, 12)).unwrap();
+        assert_eq!(geucr_rate, dr(date_yd(2022, 12), dec!(2.2)));
+
+        // Test lookup for today's (undetermined) rate
+        crate::util::date::set_todays_date_for_test(date_yd(2022, 13));
+
+        let (mut rate_loader, _) = new_test_rate_loader_with_remote(false, &remote_rates);
+        let _ = rate_loader.get_effective_usd_cad_rate(date_yd(2022, 13)).unwrap_err();
+
+        // Test lookup for yesterday's determined (markets closed) rate
+        crate::util::date::set_todays_date_for_test(date_yd(2022, 14));
+
+        let (mut rate_loader, _) = new_test_rate_loader_with_remote(false, &remote_rates);
+        let geucr_rate = rate_loader.get_effective_usd_cad_rate(date_yd(2022, 13)).unwrap();
+        assert_eq!(geucr_rate, dr(date_yd(2022, 12), dec!(2.2)));
+    }
+
+    #[test]
+    fn test_get_effective_usd_cad_rate_with_cache() {
+        // Sanity check
+        assert_eq!(dr(date_yd(2022, 1), dec!(0.0)), dr(date_yd(2022, 1), Decimal::zero()));
+
+        let (mut rate_loader, cached_rates, _) =
+            new_test_rate_loader(false);
+        cached_rates.borrow_mut().insert(2022, vec![
+            dr(date_yd(2022, 1), dec!(1.1)),
+            dr(date_yd(2022, 2), dec!(0.0)), // Filled (markets closed)
+            dr(date_yd(2022, 3), dec!(0.0)), // Filled (markets closed)
+        ]);
+
+        // Test lookup of well-known cached value for tomorrow, today, yesterday
+        for i in 0..=2 {
+            crate::util::date::set_todays_date_for_test(date_yd(2022, i));
+            let geucr_rate = rate_loader.get_effective_usd_cad_rate(date_yd(2022, 1)).unwrap();
+            assert_eq!(geucr_rate, dr(date_yd(2022, 1), dec!(1.1)));
+        }
+        // Test lookup of defined markets closed cached value for tomorrow, today, yesterday,
+        // where later values are present.
+        for i in 1..=3 {
+            crate::util::date::set_todays_date_for_test(date_yd(2022, i));
+            let geucr_rate = rate_loader.get_effective_usd_cad_rate(date_yd(2022, 2)).unwrap();
+            assert_eq!(geucr_rate, dr(date_yd(2022, 1), dec!(1.1)));
+        }
+        // Test lookup of defined markets closed cached value for tomorrow, today, yesterday,
+        // where this is the last cached value.
+        for i in 2..=4 {
+            crate::util::date::set_todays_date_for_test(date_yd(2022, i));
+            let geucr_rate = rate_loader.get_effective_usd_cad_rate(date_yd(2022, 3)).unwrap();
+            assert_eq!(geucr_rate, dr(date_yd(2022, 1), dec!(1.1)));
+        }
+    }
+
+    #[test]
+    fn test_get_effective_usd_cad_rate_cache_invalidation() {
+        // Test cache invalidates when querying today with no cached value, and there is
+        // no remote value
+        let (mut rate_loader, cached_rates, remote_rates) =
+            new_test_rate_loader(false);
+        // rateLoader, ratesCache, remote := NewTestRateLoader(false)
+        cached_rates.borrow_mut().insert(2022, vec![
+            dr(date_yd(2022, 1), dec!(1.1)),
+        ]);
+        remote_rates.borrow_mut().insert(2022, vec![
+            dr(date_yd(2022, 1), dec!(1.4)), // Value change.
+        ]);
+        crate::util::date::set_todays_date_for_test(date_yd(2022, 2));
+        // Can't use today unless it's been published or specified.
+        let _ = rate_loader.get_effective_usd_cad_rate(date_yd(2022, 2)).unwrap_err();
+        assert_vecr_eq(
+            cached_rates.borrow().get(&2022).unwrap(),
+            &vec![
+                dr(date_yd(2022, 0), dec!(0.0)), // fill
+                dr(date_yd(2022, 1), dec!(1.4)),
+            ]);
+
+        // Test cache invalidates when querying today with no cached value, and there is
+        // a remote value
+        let (mut rate_loader, cached_rates, remote_rates) =
+            new_test_rate_loader(false);
+        // rateLoader, ratesCache, remote = NewTestRateLoader(false)
+        cached_rates.borrow_mut().insert(2022, vec![
+            dr(date_yd(2022, 0), dec!(1.0)),
+        ]);
+        remote_rates.borrow_mut().insert(2022, vec![
+            dr(date_yd(2022, 0), dec!(1.0)),
+            dr(date_yd(2022, 1), dec!(1.1)),
+        ]);
+        crate::util::date::set_todays_date_for_test(date_yd(2022, 1));
+        let geucr_rate = rate_loader.get_effective_usd_cad_rate(date_yd(2022, 1)).unwrap();
+        assert_vecr_eq(cached_rates.borrow().get(&2022).unwrap(),
+                       remote_rates.borrow().get(&2022).unwrap());
+        assert_eq!(geucr_rate, dr(date_yd(2022, 1), dec!(1.1)));
+
+        // Test cache invalidates when querying a previous day with no cached value.
+        let (mut rate_loader, cached_rates, remote_rates) =
+            new_test_rate_loader(false);
+        // rateLoader, ratesCache, remote = NewTestRateLoader(false)
+        cached_rates.borrow_mut().insert(2022, vec![
+            dr(date_yd(2022, 0), dec!(1.0)),
+        ]);
+        remote_rates.borrow_mut().insert(2022, vec![
+            dr(date_yd(2022, 0), dec!(1.0)),
+            dr(date_yd(2022, 1), dec!(1.1)),
+        ]);
+        crate::util::date::set_todays_date_for_test(date_yd(2022, 4));
+        let geucr_rate = rate_loader.get_effective_usd_cad_rate(date_yd(2022, 1)).unwrap();
+        assert_vecr_eq(
+            cached_rates.borrow().get(&2022).unwrap(),
+            &vec![
+                dr(date_yd(2022, 0), dec!(1.0)),
+                dr(date_yd(2022, 1), dec!(1.1)),
+                dr(date_yd(2022, 2), dec!(0.0)), // fill to yesterday
+                dr(date_yd(2022, 3), dec!(0.0)), // fill to yesterday
+            ]);
+        assert_eq!(geucr_rate, dr(date_yd(2022, 1), dec!(1.1)));
+
+        // Test cache does not invalidate when querying today with no cached value,
+        // after we already invalidated and refreshed the cache with this Loader instance.
+        remote_rates.borrow_mut().insert(2022, vec![
+            dr(date_yd(2022, 0), dec!(99.0)),
+            dr(date_yd(2022, 1), dec!(99.1)),
+        ]);
+        // Can't use today unless it's been published or specified.
+        let _ = rate_loader.get_effective_usd_cad_rate(date_yd(2022, 4)).unwrap_err();
+        // Cache should be unchanged
+        assert_vecr_eq(
+            cached_rates.borrow().get(&2022).unwrap(),
+            &vec![
+                dr(date_yd(2022, 0), dec!(1.0)),
+                dr(date_yd(2022, 1), dec!(1.1)),
+                dr(date_yd(2022, 2), dec!(0.0)),
+                dr(date_yd(2022, 3), dec!(0.0)),
+            ]);
+
+        // Test force download
+        let (mut rate_loader, cached_rates, remote_rates) =
+            new_test_rate_loader(true);
+        // rateLoader, ratesCache, remote = NewTestRateLoader(false)
+        // rateLoader.ForceDownload = true
+        cached_rates.borrow_mut().insert(2022, vec![
+            dr(date_yd(2022, 0), dec!(1.0)),
+        ]);
+        remote_rates.borrow_mut().insert(2022, vec![
+            dr(date_yd(2022, 0), dec!(99.0)),
+        ]);
+        crate::util::date::set_todays_date_for_test(date_yd(2022, 1));
+        let geucr_rate = rate_loader.get_effective_usd_cad_rate(date_yd(2022, 0)).unwrap();
+        assert_vecr_eq(cached_rates.borrow().get(&2022).unwrap(),
+                       remote_rates.borrow().get(&2022).unwrap());
+        assert_eq!(geucr_rate, dr(date_yd(2022, 0), dec!(99.0)));
+    }
 }

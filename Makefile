@@ -28,6 +28,10 @@ clean:
 	rm bld/acb
 	rm bld/test.test
 
+test-rs-unit:
+	# Excludes integration tests in tests/
+	cargo test --lib --bins
+
 test-rs:
 	cargo test
 

@@ -3,9 +3,7 @@ use std::{collections::HashMap, fs::File, io::{Read, Write}, path::PathBuf, str:
 use rust_decimal::Decimal;
 
 use crate::{
-    fx::DailyRate,
-    log::WriteHandle,
-    util::date,
+    acb_debug, fx::DailyRate, log::WriteHandle, util::{date, rc::{RcRefCell, RcRefCellT}}, write_errln
 };
 
 use super::Error;
@@ -16,23 +14,23 @@ pub trait RatesCache {
 }
 
 pub struct InMemoryRatesCache {
-    pub rates_by_year: HashMap<u32, Vec<DailyRate>>,
+    pub rates_by_year: RcRefCell<HashMap<u32, Vec<DailyRate>>>,
 }
 
 impl InMemoryRatesCache {
     pub fn new() -> InMemoryRatesCache {
-        InMemoryRatesCache{rates_by_year: HashMap::new()}
+        InMemoryRatesCache{rates_by_year: RcRefCellT::new(HashMap::new())}
     }
 }
 
 impl RatesCache for InMemoryRatesCache {
     fn write_rates(&mut self, year: u32, rates: &Vec<DailyRate>) -> Result<(), Error> {
-        self.rates_by_year.insert(year, rates.clone());
+        (*self.rates_by_year.borrow_mut()).insert(year, rates.clone());
         Ok(())
     }
 
     fn get_usd_cad_rates(&mut self, year: u32) -> Result<Option<Vec<DailyRate>>, Error> {
-        Ok(self.rates_by_year.get(&year).map(|f| f.clone()))
+        Ok(self.rates_by_year.borrow().get(&year).map(|f| f.clone()))
     }
 }
 
@@ -59,7 +57,7 @@ impl CsvRatesCache {
             let record = match record_res {
                 Ok(r) => r,
                 Err(e) => {
-                    let _ = writeln!(self.err_writer, "Error reading rates csv record: {}", e);
+                    write_errln!(self.err_writer, "Error reading rates csv record: {}", e);
                     continue;
                 },
             };
@@ -68,13 +66,13 @@ impl CsvRatesCache {
                     match date::parse_standard_date(ds) {
                         Ok(d) => d,
                         Err(e) => {
-                            let _ = writeln!(self.err_writer, "Error parsing rates csv date: {}", e);
+                            write_errln!(self.err_writer, "Error parsing rates csv date: {}", e);
                             continue;
                         },
                     }
                 },
                 None => {
-                    let _ = writeln!(self.err_writer, "Error reading rates from csv: Row has no fields");
+                    write_errln!(self.err_writer, "Error reading rates from csv: Row has no fields");
                     continue;
                 },
             };
@@ -84,14 +82,14 @@ impl CsvRatesCache {
                     match Decimal::from_str(ds) {
                         Ok(d) => d,
                         Err(e) => {
-                            let _ = writeln!(self.err_writer,
+                            write_errln!(self.err_writer,
                                 "Error parsing rates csv rate for {}: {}", date_val, e);
                             continue;
                         },
                     }
                 },
                 None => {
-                    let _ = writeln!(self.err_writer,
+                    write_errln!(self.err_writer,
                         "Error reading rates from csv: {} has no rate", date_val);
                     continue;
                 },
@@ -111,6 +109,7 @@ fn rates_csv_file_path(dir_path: &std::path::Path, year: u32) -> PathBuf {
 
 fn open_rates_csv_file_write(dir_path: &std::path::Path, year: u32) -> Result<File, Error> {
     let file_path = rates_csv_file_path(dir_path, year);
+    crate::util::sys::mk_writable_dir(dir_path).map_err(|e| e.to_string())?;
     File::create(file_path).map_err(|e| e.to_string())
 }
 
@@ -127,6 +126,8 @@ fn open_rates_csv_file_read(dir_path: &std::path::Path, year: u32) -> Result<Opt
 
 impl RatesCache for CsvRatesCache {
     fn write_rates(&mut self, year: u32, rates: &Vec<DailyRate>) -> Result<(), Error> {
+        acb_debug!("CsvRatesCache::write_rates {} into {}", year,
+                   if let Some(p) = self.dir_path.to_str() { p } else { "<no path ???>" } );
         let file = open_rates_csv_file_write(&self.dir_path, year)?;
 
         // CSV file of date,exchange_rate
@@ -136,11 +137,19 @@ impl RatesCache for CsvRatesCache {
             csv_w.write_record(vec![rate.date.to_string(), rate.foreign_to_local_rate.to_string()])
                 .map_err(|e|e.to_string())?;
         }
-        csv_w.flush()
-            .map_err(|e|e.to_string())
+        let r = csv_w.flush()
+            .map_err(|e|e.to_string());
+        if r.is_ok() {
+            acb_debug!("CsvRatesCache::write_rates flushed ok");
+        } else {
+            acb_debug!("CsvRatesCache::write_rates failed flushed: {}",
+                       r.as_ref().err().unwrap());
+        }
+        r
     }
 
     fn get_usd_cad_rates(&mut self, year: u32) -> Result<Option<Vec<DailyRate>>, Error> {
+        acb_debug!("CsvRatesCache::get_usd_cad_rates {}", year);
         let mut file_opt = open_rates_csv_file_read(&self.dir_path, year)?;
         match &mut file_opt {
             Some(file) =>
@@ -160,7 +169,7 @@ mod tests {
         fx::DailyRate,
         log::WriteHandle,
         testlib::{assert_re, assert_vec_eq},
-        util::date::testlib::doy_date
+        util::date::pub_testlib::doy_date
     };
 
     use super::CsvRatesCache;

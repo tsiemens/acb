@@ -153,7 +153,7 @@ mod tests {
 
     #[test]
     fn test_tx_order() {
-        let doy_date = |day| { date::testlib::doy_date(2024, day) };
+        let doy_date = |day| { date::pub_testlib::doy_date(2024, day) };
 
         let mut txs = vec![
             Tx{settlement_date: doy_date(4), read_index: 2, ..tx_default()},
