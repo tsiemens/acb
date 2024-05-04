@@ -1,4 +1,4 @@
-use std::sync::Mutex;
+use std::{cell::RefCell, sync::Mutex};
 
 use chrono::Datelike;
 use time::{macros::format_description, Month};
@@ -26,22 +26,25 @@ lazy_static! {
     static ref TODAYS_DATE_FOR_TEST: Mutex<Date> = Mutex::new(Date::MIN);
 }
 
+thread_local! {
+    static TODAYS_DATE_FOR_TEST_TL: RefCell<Date> = RefCell::new(Date::MIN);
+}
+
 pub fn set_todays_date_for_test(d: Date) {
-    let mut test_date = TODAYS_DATE_FOR_TEST.lock().unwrap();
-    *test_date = d;
+    TODAYS_DATE_FOR_TEST_TL.with_borrow_mut(|d_| *d_ = d);
 }
 
 pub fn today_local() -> Date {
-    let test_date = TODAYS_DATE_FOR_TEST.lock().unwrap().clone();
+    let test_date: Date = TODAYS_DATE_FOR_TEST_TL.with_borrow(|d| d.clone());
     if test_date != Date::MIN {
-        return test_date;
+        return test_date.clone();
     }
     let now = chrono::offset::Local::now();
     date_naive_to_date(&now.date_naive())
 }
 
-#[cfg(test)]
-pub mod testlib {
+// Used by both unit and integration tests
+pub mod pub_testlib {
     use time::{Date, Duration, Month};
 
     pub fn doy_date(year: u32, day: i64) -> Date {

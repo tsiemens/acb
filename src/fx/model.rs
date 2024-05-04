@@ -9,6 +9,12 @@ pub struct DailyRate {
     pub foreign_to_local_rate: Decimal,
 }
 
+impl DailyRate {
+    pub fn new(date: Date, foreign_to_local_rate: Decimal) -> DailyRate {
+        DailyRate{ date: date, foreign_to_local_rate: foreign_to_local_rate }
+    }
+}
+
 // Auto-implements to_string()
 impl Display for DailyRate {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

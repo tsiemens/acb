@@ -1,6 +1,51 @@
-use std::{cell::RefCell, fmt::Write, io, rc::Rc, sync::Mutex};
+use std::{fmt::Write, io, sync::Mutex};
 
 use lazy_static::lazy_static;
+
+use crate::util::rc::{RcRefCell, RcRefCellT};
+
+
+lazy_static! {
+    static ref DEBUG_TRACING_ENABLED: Mutex<Option<bool>> = Mutex::new(None);
+}
+
+fn set_debug_tracing_enabled(enabled: bool) {
+    let mut setting = DEBUG_TRACING_ENABLED.lock().unwrap();
+    *setting = Some(enabled);
+}
+
+pub fn get_debug_tracing_enabled() -> bool {
+    match *DEBUG_TRACING_ENABLED.lock().unwrap() {
+        Some(enabled) => enabled,
+        None => false,
+    }
+}
+
+fn load_trace_setting() {
+    set_debug_tracing_enabled(
+        crate::util::sys::env_var_non_empty("TRACE"));
+}
+
+fn maybe_load_trace_setting() {
+    if DEBUG_TRACING_ENABLED.lock().unwrap().is_none() {
+        load_trace_setting()
+    }
+}
+
+pub fn setup_tracing() {
+    maybe_load_trace_setting();
+}
+
+// TODO replace this with the more sophisticated tracing crate
+#[macro_export]
+macro_rules! acb_debug {
+    ($($arg:tt)*) => {{
+        if crate::log::get_debug_tracing_enabled() {
+            eprint!("DEBUG: ");
+            eprintln!($($arg)*);
+        }
+    }};
+}
 
 pub struct StringBuffer {
     s: String,
@@ -45,34 +90,53 @@ impl io::Write for StringBuffer {
 // be presented either to the stderr, or buffer them to later
 // show in the web UI.
 pub struct WriteHandle {
-    w: Rc<RefCell<dyn io::Write>>,
+    w: RcRefCell<dyn io::Write>,
 }
 
 impl WriteHandle {
     pub fn stderr_write_handle() -> WriteHandle {
         WriteHandle{
-            w: Rc::new(RefCell::new(io::stderr()))
+            w: RcRefCellT::new(io::stderr())
         }
     }
 
-    pub fn string_buff_write_handle() -> (WriteHandle, Rc<RefCell<StringBuffer>>) {
+    pub fn string_buff_write_handle() -> (WriteHandle, RcRefCell<StringBuffer>) {
         let buffer =
-            Rc::new(RefCell::new(StringBuffer::new()));
+            RcRefCellT::new(StringBuffer::new());
         let h = WriteHandle{
             w: buffer.clone()
         };
         (h, buffer)
     }
+
+    pub fn empty_write_handle() -> WriteHandle {
+        WriteHandle{
+            w: RcRefCellT::new(io::empty())
+        }
+    }
 }
 
 impl io::Write for WriteHandle {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        // Trace here, since tests should generally disable the error writer
+        // or use a string buffer.
+        // The test framework cannot capture direct writes to stdout or stderr,
+        // only writes through print/println/eprintln.
+        acb_debug!("WriteHandle::write {}", { let mut b = StringBuffer::new(); let _ = b.write(buf); b }.as_str() );
         self.w.borrow_mut().write(buf)
     }
 
     fn flush(&mut self) -> io::Result<()> {
         self.w.borrow_mut().flush()
     }
+}
+
+#[macro_export]
+macro_rules! write_errln {
+    ($w:expr, $($arg:tt)*) => {{
+        let _ = writeln!(($w), $($arg)*);
+        let _ = ($w).flush();
+    }};
 }
 
 lazy_static! {
@@ -132,6 +196,7 @@ mod tests {
             = WriteHandle::string_buff_write_handle();
         let _ = write!(handle, "Some {}", "text");
         let _ = writeln!(handle, " 1");
-        assert_eq!(buff.borrow().as_str(), "Some text 1\n");
+        write_errln!(handle, "Another {}", "error");
+        assert_eq!(buff.borrow().as_str(), "Some text 1\nAnother error\n");
     }
 }

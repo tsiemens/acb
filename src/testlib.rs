@@ -20,6 +20,10 @@ fn eprint_vecs<T: PartialEq + Debug>(left: &Vec<T>, right: &Vec<T>) {
 }
 
 pub fn assert_vec_eq<T: PartialEq + Debug>(left: Vec<T>, right: Vec<T>) {
+    assert_vecr_eq(&left, &right);
+}
+
+pub fn assert_vecr_eq<T: PartialEq + Debug>(left: &Vec<T>, right: &Vec<T>) {
     if left == right {
         return
     }
@@ -30,7 +34,7 @@ pub fn assert_vec_eq<T: PartialEq + Debug>(left: Vec<T>, right: Vec<T>) {
         panic!();
     }
     let mut i = 0;
-    for (l, r) in zip(&left, &right) {
+    for (l, r) in zip(left, right) {
         if l != r {
             eprintln!("Mismatch at index {}:", i);
             eprintln!("left: {:#?} != right: {:#?}", l, r);

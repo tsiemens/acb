@@ -39,7 +39,7 @@ pub struct RateParseResult {
 pub type RateLoadResult = RateParseResult;
 
 pub trait RemoteRateLoader {
-    fn get_remote_usd_cad_rates(&mut self, year: u32) -> Result<RateLoadResult, String>;
+    fn get_remote_usd_cad_rates(&mut self, year: u32) -> Result<RateLoadResult, Error>;
 }
 
 const JSON_DATE_FORMAT: date::StaticDateFormat = date::STANDARD_DATE_FORMAT;
@@ -234,6 +234,34 @@ impl RemoteRateLoader for JsonRemoteRateLoader {
         parse_rates_json(&text)
     }
 }
+
+// Ideally this would be marked as cfg(test), but I want integration
+// tests to also have access, so it cannot be marked test-only for it
+// to be accessible there.
+pub mod pub_testlib {
+    use std::collections::HashMap;
+
+    use crate::{acb_debug, fx::DailyRate, util::rc::RcRefCell};
+
+    use super::{RateLoadResult, RemoteRateLoader, Error};
+
+    pub struct MockRemoteRateLoader {
+        pub remote_year_rates: RcRefCell<HashMap<u32, Vec<DailyRate>>>
+    }
+
+    impl RemoteRateLoader for MockRemoteRateLoader {
+        fn get_remote_usd_cad_rates(&mut self, year: u32) -> Result<RateLoadResult, Error> {
+            acb_debug!("MockRemoteRateLoader::get_remote_usd_cad_rates {}", year);
+            match self.remote_year_rates.borrow().get(&year) {
+                Some(rates) =>
+                    Ok(RateLoadResult{rates: rates.clone(),
+                                      non_fatal_errors: vec![]}),
+                None => Err(format!("No rates set for {}", year)),
+            }
+        }
+    }
+}
+
 
 #[cfg(test)]
 mod tests {
