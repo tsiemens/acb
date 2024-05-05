@@ -67,51 +67,58 @@ func getAndCheckFooTable(rq *require.Assertions, rts map[string]*ptf.RenderTable
 }
 
 func TestSameDayBuySells(t *testing.T) {
-	rq := require.New(t)
+	for _, renderCosts := range []bool{false, true} {
+		t.Run(fmt.Sprint("renderCosts=", renderCosts), func(t *testing.T) {
+			rq := require.New(t)
+			for _, splits := range [][]uint32{{3}, {1, 2}} {
+				csvReaders := splitCsvRows(splits,
+					"FOO,2016-01-03,2016-01-05,Buy,20,1.5,CAD,,0,,,",
+					"FOO,2016-01-03,2016-01-05,Sell,5,1.6,CAD,,0,,,",
+					"FOO,2016-01-03,2016-01-05,Buy,5,1.7,CAD,,0,,,",
+				)
 
-	for _, splits := range [][]uint32{{3}, {1, 2}} {
-		csvReaders := splitCsvRows(splits,
-			"FOO,2016-01-03,2016-01-05,Buy,20,1.5,CAD,,0,,,",
-			"FOO,2016-01-03,2016-01-05,Sell,5,1.6,CAD,,0,,,",
-			"FOO,2016-01-03,2016-01-05,Buy,5,1.7,CAD,,0,,,",
-		)
+				renderRes, err := app.RunAcbAppToRenderModel(
+					csvReaders, map[string]*ptf.PortfolioSecurityStatus{},
+					false, false, renderCosts,
+					app.LegacyOptions{},
+					fx.NewMemRatesCacheAccessor(),
+					&log.StderrErrorPrinter{},
+				)
 
-		renderRes, err := app.RunAcbAppToRenderModel(
-			csvReaders, map[string]*ptf.PortfolioSecurityStatus{},
-			false, false, false,
-			app.LegacyOptions{},
-			fx.NewMemRatesCacheAccessor(),
-			&log.StderrErrorPrinter{},
-		)
-
-		rq.Nil(err)
-		renderTable := getAndCheckFooTable(rq, renderRes.SecurityTables)
-		rq.Equal(3, len(renderTable.Rows))
-		rq.ElementsMatch([]error{}, renderTable.Errors)
-		rq.Equal("$0.50", getTotalCapGain(renderTable))
+				rq.Nil(err)
+				renderTable := getAndCheckFooTable(rq, renderRes.SecurityTables)
+				rq.Equal(3, len(renderTable.Rows))
+				rq.ElementsMatch([]error{}, renderTable.Errors)
+				rq.Equal("$0.50", getTotalCapGain(renderTable))
+			}
+		})
 	}
 }
 
 func TestNegativeStocks(t *testing.T) {
-	rq := require.New(t)
+	for _, renderCosts := range []bool{false, true} {
+		t.Run(fmt.Sprint("renderCosts=", renderCosts), func(t *testing.T) {
+			rq := require.New(t)
 
-	csvReaders := splitCsvRows([]uint32{1},
-		"FOO,2016-01-03,2016-01-05,Sell,5,1.6,CAD,,0,,,",
-	)
+			csvReaders := splitCsvRows([]uint32{1},
+				"FOO,2016-01-03,2016-01-05,Sell,5,1.6,CAD,,0,,,",
+			)
 
-	renderRes, err := app.RunAcbAppToRenderModel(
-		csvReaders, map[string]*ptf.PortfolioSecurityStatus{},
-		false, false, false,
-		app.LegacyOptions{},
-		fx.NewMemRatesCacheAccessor(),
-		&log.StderrErrorPrinter{},
-	)
+			renderRes, err := app.RunAcbAppToRenderModel(
+				csvReaders, map[string]*ptf.PortfolioSecurityStatus{},
+				false, false, renderCosts,
+				app.LegacyOptions{},
+				fx.NewMemRatesCacheAccessor(),
+				&log.StderrErrorPrinter{},
+			)
 
-	rq.Nil(err)
-	renderTable := getAndCheckFooTable(rq, renderRes.SecurityTables)
-	rq.Equal(0, len(renderTable.Rows))
-	rq.Contains(renderTable.Errors[0].Error(), "is more than the current holdings")
-	rq.Equal("$0.00", getTotalCapGain(renderTable))
+			rq.Nil(err)
+			renderTable := getAndCheckFooTable(rq, renderRes.SecurityTables)
+			rq.Equal(0, len(renderTable.Rows))
+			rq.Contains(renderTable.Errors[0].Error(), "is more than the current holdings")
+			rq.Equal("$0.00", getTotalCapGain(renderTable))
+		})
+	}
 }
 
 func TestFractionalShares(t *testing.T) {
@@ -139,25 +146,29 @@ func TestFractionalShares(t *testing.T) {
 }
 
 func TestSanitizedSecurityNames(t *testing.T) {
-	rq := require.New(t)
+	for _, renderCosts := range []bool{false, true} {
+		t.Run(fmt.Sprint("renderCosts=", renderCosts), func(t *testing.T) {
+			rq := require.New(t)
 
-	csvReaders := splitCsvRows([]uint32{2},
-		"    FOO    ,2016-01-03,2016-01-05,Buy,5,1.6,CAD,,0,,,",
-		"FOO,2016-01-04,2016-01-06,Sell,4,1.6,CAD,,0,,,",
-	)
+			csvReaders := splitCsvRows([]uint32{2},
+				"    FOO    ,2016-01-03,2016-01-05,Buy,5,1.6,CAD,,0,,,",
+				"FOO,2016-01-04,2016-01-06,Sell,4,1.6,CAD,,0,,,",
+			)
 
-	renderRes, err := app.RunAcbAppToRenderModel(
-		csvReaders, map[string]*ptf.PortfolioSecurityStatus{},
-		false, false, false,
-		app.LegacyOptions{},
-		fx.NewMemRatesCacheAccessor(),
-		&log.StderrErrorPrinter{},
-	)
+			renderRes, err := app.RunAcbAppToRenderModel(
+				csvReaders, map[string]*ptf.PortfolioSecurityStatus{},
+				false, false, renderCosts,
+				app.LegacyOptions{},
+				fx.NewMemRatesCacheAccessor(),
+				&log.StderrErrorPrinter{},
+			)
 
-	rq.Nil(err)
-	renderTable := getAndCheckFooTable(rq, renderRes.SecurityTables)
-	rq.Equal(2, len(renderTable.Rows))
-	rq.Equal(len(renderTable.Errors), 0)
-	rq.Equal("$0.00", getTotalCapGain(renderTable))
+			rq.Nil(err)
+			renderTable := getAndCheckFooTable(rq, renderRes.SecurityTables)
+			rq.Equal(2, len(renderTable.Rows))
+			rq.Equal(len(renderTable.Errors), 0)
+			rq.Equal("$0.00", getTotalCapGain(renderTable))
 
+		})
+	}
 }

@@ -15,9 +15,10 @@ import (
 )
 
 type td struct {
-	Sec      string
-	Settle   string
-	TotalAcb string
+	Sec       string
+	Settle    string
+	TotalAcb  string
+	Affiliate string
 }
 
 func getDelta(td *td) (*ptf.TxDelta, error) {
@@ -35,7 +36,7 @@ func getDelta(td *td) (*ptf.TxDelta, error) {
 		}
 	}
 
-	return &ptf.TxDelta{
+	d := &ptf.TxDelta{
 		Tx: &ptf.Tx{
 			Security:       td.Sec,
 			SettlementDate: settle,
@@ -44,7 +45,11 @@ func getDelta(td *td) (*ptf.TxDelta, error) {
 			Security: td.Sec,
 			TotalAcb: acb,
 		},
-	}, nil
+	}
+	if td.Affiliate != "" {
+		d.Tx.Affiliate = ptf.GlobalAffiliateDedupTable.DedupedAffiliate(td.Affiliate)
+	}
+	return d, nil
 }
 
 func getDeltas(v []*td) (ret []*ptf.TxDelta, _ error) {
@@ -73,6 +78,19 @@ func fixupRows(startidx int, v [][]string) {
 		}
 	}
 }
+
+func requireTablesEqual(t *testing.T, fixRowOffset int, expected, actual *ptf.RenderTable) {
+	t.Helper()
+	fixupRows(fixRowOffset, expected.Rows)
+	sort.Strings(expected.Notes)
+	sort.Strings(actual.Notes)
+	rq := require.New(t)
+	expStr := renderTable(rq, expected)
+	actStr := renderTable(rq, actual)
+	t.Log("Actual:\n" + actStr)
+	rq.Equal(expStr, actStr)
+}
+
 func TestRenderTotalCosts(t *testing.T) {
 	for _, tc := range []struct {
 		name  string
@@ -130,6 +148,7 @@ func TestRenderTotalCosts(t *testing.T) {
 				{Sec: "SECA", Settle: "2003-01-02", TotalAcb: "150"},
 				{Sec: "XXXX", Settle: "2003-01-02", TotalAcb: "35"},
 				{Sec: "TFSA", Settle: "2003-01-02", TotalAcb: ""},
+				{Sec: "SPSE", Settle: "2003-01-02", TotalAcb: "100", Affiliate: "Spouse"},
 				{Sec: "SECA", Settle: "2003-01-03", TotalAcb: "0"},
 			}
 			tc.reorg(data)
@@ -143,7 +162,10 @@ func TestRenderTotalCosts(t *testing.T) {
 			rq.NoError(err)
 			costs := ptf.RenderTotalCosts(allDeltas, false)
 
-			notes := []string{"2003-01-02 (TFSA) ignored transaction from registered affiliate"}
+			notes := []string{
+				"2003-01-02 (TFSA) ignored transaction from registered affiliate",
+				"2003-01-02 (SPSE) ignored transaction from non-default affiliate Spouse",
+			}
 
 			exp := &ptf.RenderTable{
 				Header: []string{"Date", "Total", "SECA", "XXXX"},
@@ -159,11 +181,7 @@ func TestRenderTotalCosts(t *testing.T) {
 				},
 				Notes: notes,
 			}
-			fixupRows(1, exp.Rows)
-
-			actual := renderTable(rq, costs.Total)
-			t.Log("Actual:\n" + actual)
-			rq.Equal(renderTable(rq, exp), actual)
+			requireTablesEqual(t, 1, exp, costs.Total)
 
 			expYear := &ptf.RenderTable{
 				Header: []string{"Year", "Date", "Total", "SECA", "XXXX"},
@@ -173,10 +191,7 @@ func TestRenderTotalCosts(t *testing.T) {
 				},
 				Notes: notes,
 			}
-			fixupRows(2, expYear.Rows)
-			yearActual := renderTable(rq, costs.Yearly)
-			t.Log("\n" + yearActual)
-			rq.Equal(renderTable(rq, expYear), yearActual)
+			requireTablesEqual(t, 2, expYear, costs.Yearly)
 		})
 	}
 }

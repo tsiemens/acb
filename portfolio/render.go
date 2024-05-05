@@ -291,6 +291,10 @@ func RenderTotalCosts(allDeltas []*TxDelta, renderFullDollarValues bool) *CostsT
 			notes = append(notes, fmt.Sprintf("%v (%v) ignored transaction from registered affiliate",
 				dateFromDelta.String(), sec))
 			continue
+		} else if d.Tx.Affiliate != nil && !d.Tx.Affiliate.Default() {
+			notes = append(notes, fmt.Sprintf("%v (%v) ignored transaction from non-default affiliate %v",
+				dateFromDelta.String(), sec, d.Tx.Affiliate.Name()))
+			continue
 		}
 
 		if _, ok := dateCosts[dateFromDelta]; !ok {
