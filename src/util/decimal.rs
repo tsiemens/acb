@@ -102,11 +102,27 @@ impl <CONSTRAINT: DecConstraint> PartialEq for ConstrainedDecimal<CONSTRAINT> {
 impl <CONSTRAINT: DecConstraint> Eq for ConstrainedDecimal<CONSTRAINT> {
 }
 
+impl <CONSTRAINT: DecConstraint> Clone for ConstrainedDecimal<CONSTRAINT> {
+    fn clone(&self) -> Self {
+        Self(self.0.clone(), self.1.clone())
+    }
+}
+
+impl <CONSTRAINT: DecConstraint> Copy for ConstrainedDecimal<CONSTRAINT> {
+}
+
 // Convenience aliases
 pub type NegDecimal = ConstrainedDecimal<constraint::Neg>;
 pub type LessEqualZeroDecimal = ConstrainedDecimal<constraint::LessEqualZero>;
 pub type GreaterEqualZeroDecimal = ConstrainedDecimal<constraint::GreaterEqualZero>;
 pub type PosDecimal = ConstrainedDecimal<constraint::Pos>;
+
+#[macro_export]
+macro_rules! pdec {
+    ($arg:literal) => {{
+        crate::util::decimal::PosDecimal::try_from(dec!($arg)).unwrap()
+    }};
+}
 
 #[cfg(test)]
 mod tests {
