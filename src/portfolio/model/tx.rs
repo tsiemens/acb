@@ -3,7 +3,7 @@ use std::fmt::Display;
 use rust_decimal::Decimal;
 use time::Date;
 
-use crate::portfolio::Affiliate;
+use crate::{portfolio::Affiliate, util::decimal::LessEqualZeroDecimal};
 
 use super::currency::{Currency, CurrencyAndExchangeRate};
 
@@ -34,7 +34,7 @@ impl Display for TxAction {
 
 #[derive(PartialEq, Eq, Debug)]
 pub struct SFLInput {
-	pub superficial_loss: Decimal, // TODO assert this is always negative or zero
+	pub superficial_loss: LessEqualZeroDecimal,
 	pub force: bool
 }
 
@@ -110,8 +110,6 @@ impl Ord for Tx {
 
 #[cfg(test)]
 mod tests {
-    use std::str::FromStr;
-    use rust_decimal::Decimal;
     use rust_decimal_macros::dec;
     use time::Date;
 
@@ -138,17 +136,6 @@ mod tests {
              specified_superficial_loss: None,
              read_index: 0,
             }
-    }
-
-    #[test]
-    #[should_panic]
-    #[allow(unused)]
-    fn test_decimal_sanity() {
-        // Test that Decimal does not allow NaN, and will panic if we
-        // try to do create a decimal with NaN.
-        let one = Decimal::from_str("1").unwrap();
-        let zero = Decimal::from_str("0").unwrap();
-        one / zero;
     }
 
     #[test]
