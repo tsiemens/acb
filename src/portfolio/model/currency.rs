@@ -1,7 +1,8 @@
 use std::fmt::Display;
 
-use rust_decimal::Decimal;
 use rust_decimal_macros::dec;
+
+use crate::{pdec, util::decimal::PosDecimal};
 
 #[derive(Clone, Debug)]
 enum CurrImpl {
@@ -60,23 +61,20 @@ impl Display for Currency {
 #[derive(PartialEq, Eq, Debug)]
 pub struct CurrencyAndExchangeRate {
     pub currency: Currency,
-    pub exchange_rate: Decimal,
+    pub exchange_rate: PosDecimal,
 }
 
 impl CurrencyAndExchangeRate {
-    pub fn new(c: Currency, r: Decimal) -> Self {
-        if c == Currency::default() && r != dec!(1.0) {
+    pub fn new(c: Currency, r: PosDecimal) -> Self {
+        if c == Currency::default() && *r != dec!(1.0) {
             panic!("Default currency (CAD) exchange rate was not 1 (was {})",
                     r);
-        }
-        if r <= dec!(0) {
-            panic!("Exchange rate was not positive (was {})", r);
         }
         Self{currency: c, exchange_rate: r}
     }
 
     pub fn cad() -> Self {
-        Self::new(Currency::cad(), dec!(1))
+        Self::new(Currency::cad(), pdec!(1))
     }
 
     pub fn default() -> Self {
@@ -88,7 +86,7 @@ impl CurrencyAndExchangeRate {
 mod tests {
     use rust_decimal_macros::dec;
 
-    use crate::portfolio::{Currency, CurrencyAndExchangeRate};
+    use crate::{pdec, portfolio::{Currency, CurrencyAndExchangeRate}};
 
     #[test]
     fn test_currency() {
@@ -104,30 +102,34 @@ mod tests {
 
     #[test]
     fn test_good_currency_rates() {
-        let cr = CurrencyAndExchangeRate::new(Currency::usd(), dec!(1.3));
+        let cr = CurrencyAndExchangeRate::new(Currency::usd(), pdec!(1.3));
         assert_eq!(cr.currency, Currency::usd());
-        assert_eq!(cr.exchange_rate, dec!(1.3));
+        assert_eq!(cr.exchange_rate, pdec!(1.3));
 
         assert_eq!(CurrencyAndExchangeRate::default(), CurrencyAndExchangeRate::cad());
-        assert_eq!(CurrencyAndExchangeRate::cad(), CurrencyAndExchangeRate::new(Currency::cad(), dec!(1.0)));
+        assert_eq!(CurrencyAndExchangeRate::cad(), CurrencyAndExchangeRate::new(Currency::cad(), pdec!(1.0)));
     }
 
     #[test]
     #[should_panic]
     fn test_bad_cad_rate() {
         // Must be 1.0
-        CurrencyAndExchangeRate::new(Currency::cad(), dec!(1.3));
+        CurrencyAndExchangeRate::new(Currency::cad(), pdec!(1.3));
     }
 
     #[test]
     #[should_panic]
     fn test_zero_rate() {
-        CurrencyAndExchangeRate::new(Currency::usd(), dec!(0));
+        // This is actually going to panic because pdec (PosDecimal) itself
+        // will fail to unwrap.
+        CurrencyAndExchangeRate::new(Currency::usd(), pdec!(0));
     }
 
     #[test]
     #[should_panic]
     fn test_negative_rate() {
-        CurrencyAndExchangeRate::new(Currency::usd(), dec!(-1.0));
+        // This is actually going to panic because pdec (PosDecimal) itself
+        // will fail to unwrap.
+        CurrencyAndExchangeRate::new(Currency::usd(), pdec!(-1.0));
     }
 }

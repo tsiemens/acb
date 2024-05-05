@@ -3,7 +3,7 @@ use std::fmt::Display;
 use rust_decimal::Decimal;
 use time::Date;
 
-use crate::{portfolio::Affiliate, util::decimal::LessEqualZeroDecimal};
+use crate::{portfolio::Affiliate, util::decimal::{LessEqualZeroDecimal, PosDecimal}};
 
 use super::currency::{Currency, CurrencyAndExchangeRate};
 
@@ -73,7 +73,7 @@ impl Tx {
     pub fn tx_currency(&self) -> &Currency {
         &self.tx_currency_and_rate.currency
     }
-    pub fn tx_curr_to_local_exchange_rate(&self) -> &Decimal {
+    pub fn tx_curr_to_local_exchange_rate(&self) -> &PosDecimal {
         &self.tx_currency_and_rate.exchange_rate
     }
 
@@ -84,7 +84,7 @@ impl Tx {
         }
     }
 
-    pub fn commission_curr_to_local_exchange_rate(&self) -> Decimal {
+    pub fn commission_curr_to_local_exchange_rate(&self) -> PosDecimal {
         match &self.separate_commission_currency {
             Some(v) => v.exchange_rate,
             None => self.tx_curr_to_local_exchange_rate().clone(),
