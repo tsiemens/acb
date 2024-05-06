@@ -58,7 +58,7 @@ impl Display for Currency {
     }
 }
 
-#[derive(PartialEq, Eq, Debug)]
+#[derive(Clone, PartialEq, Eq, Debug)]
 pub struct CurrencyAndExchangeRate {
     pub currency: Currency,
     pub exchange_rate: PosDecimal,

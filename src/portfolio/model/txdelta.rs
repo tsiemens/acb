@@ -1,6 +1,8 @@
 use rust_decimal::{prelude::Zero, Decimal};
 
-use crate::{portfolio::Tx, util::math::DecimalRatio};
+use crate::util::math::DecimalRatio;
+
+use super::tx::Tx;
 
 #[derive(PartialEq, Eq, Debug)]
 pub struct PortfolioSecurityStatus {
@@ -29,7 +31,7 @@ pub struct DeltaSflInfo {
     // In CAD
     pub superficial_loss: Decimal,
     // A ratio, representing <N reacquired shares which suffered SFL> / <N sold shares>
-    pub ratio: DecimalRatio,
+    pub ratio: DecimalRatio, // TODO should this be PosDecimalRatio?
     pub potentially_over_applied: bool,
 }
 
