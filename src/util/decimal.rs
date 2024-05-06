@@ -22,6 +22,7 @@ pub mod constraint {
 
     use super::{is_negative, is_positive, DecConstraint};
 
+    #[derive(PartialEq, Eq, Debug)]
     pub struct Neg(());
     impl DecConstraint for Neg {
         fn is_ok(d: &Decimal) -> bool {
@@ -29,6 +30,7 @@ pub mod constraint {
         }
     }
 
+    #[derive(PartialEq, Eq, Debug)]
     pub struct LessEqualZero(());
     impl DecConstraint for LessEqualZero {
         fn is_ok(d: &Decimal) -> bool {
@@ -36,6 +38,7 @@ pub mod constraint {
         }
     }
 
+    #[derive(PartialEq, Eq, Debug)]
     pub struct GreaterEqualZero(());
     impl DecConstraint for GreaterEqualZero {
         fn is_ok(d: &Decimal) -> bool {
@@ -43,6 +46,7 @@ pub mod constraint {
         }
     }
 
+    #[derive(PartialEq, Eq, Debug)]
     pub struct Pos(());
     impl DecConstraint for Pos {
         fn is_ok(d: &Decimal) -> bool {

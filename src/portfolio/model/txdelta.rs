@@ -1,6 +1,6 @@
 use rust_decimal::{prelude::Zero, Decimal};
 
-use crate::util::math::DecimalRatio;
+use crate::util::math::PosDecimalRatio;
 
 use super::tx::Tx;
 
@@ -31,7 +31,7 @@ pub struct DeltaSflInfo {
     // In CAD
     pub superficial_loss: Decimal,
     // A ratio, representing <N reacquired shares which suffered SFL> / <N sold shares>
-    pub ratio: DecimalRatio, // TODO should this be PosDecimalRatio?
+    pub ratio: PosDecimalRatio,
     pub potentially_over_applied: bool,
 }
 
