@@ -1,6 +1,7 @@
 package test
 
 import (
+	"fmt"
 	"os"
 	"testing"
 
@@ -13,7 +14,7 @@ import (
 	ptf "github.com/tsiemens/acb/portfolio"
 )
 
-func validateSampleCsvFile(rq *require.Assertions, csvPath string, cachePath string) {
+func validateSampleCsvFile(rq *require.Assertions, csvPath string, cachePath string, renderCosts bool) {
 	fp, err := os.Open(csvPath)
 	rq.Nil(err)
 	defer fp.Close()
@@ -24,6 +25,7 @@ func validateSampleCsvFile(rq *require.Assertions, csvPath string, cachePath str
 		csvReaders, map[string]*ptf.PortfolioSecurityStatus{},
 		false,
 		false,
+		renderCosts,
 		app.LegacyOptions{},
 		// fx.NewMemRatesCacheAccessor(),
 		&fx.CsvRatesCache{ErrPrinter: errPrinter, Path: cachePath},
@@ -33,17 +35,22 @@ func validateSampleCsvFile(rq *require.Assertions, csvPath string, cachePath str
 }
 
 func TestSampleCsvFileValidity(t *testing.T) {
-	rq := require.New(t)
+	for _, renderCosts := range []bool{false, true} {
+		t.Run(fmt.Sprint("renderCosts=", renderCosts), func(t *testing.T) {
 
-	date.TodaysDateForTest = mkDateYD(2022, 1)
-	wd, err := os.Getwd()
-	rq.Nil(err)
-	// If running the compiled test binary manually, it must be run from the test
-	// directory. This is what happens when running 'go test ./test'
-	rq.Regexp("test/?$", wd)
+			rq := require.New(t)
 
-	tmpDir := t.TempDir()
+			date.TodaysDateForTest = mkDateYD(2022, 1)
+			wd, err := os.Getwd()
+			rq.Nil(err)
+			// If running the compiled test binary manually, it must be run from the test
+			// directory. This is what happens when running 'go test ./test'
+			rq.Regexp("test/?$", wd)
 
-	validateSampleCsvFile(rq, "./test_combined.csv", tmpDir)
-	validateSampleCsvFile(rq, "../www/html/sample_txs.csv", tmpDir)
+			tmpDir := t.TempDir()
+
+			validateSampleCsvFile(rq, "./test_combined.csv", tmpDir, renderCosts)
+			validateSampleCsvFile(rq, "../www/html/sample_txs.csv", tmpDir, renderCosts)
+		})
+	}
 }

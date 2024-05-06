@@ -9,6 +9,7 @@ type OutputType int
 const (
 	Transactions OutputType = iota
 	AggregateGains
+	Costs
 )
 
 type ACBWriter interface {

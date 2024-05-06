@@ -38,6 +38,8 @@ func (w *STDWriter) PrintRenderTable(outType OutputType, name string, tableModel
 		title = fmt.Sprintf("Transactions for %s", name)
 	case AggregateGains:
 		title = "Aggregate Gains"
+	case Costs:
+		title = fmt.Sprintf("%s Costs", name)
 	default:
 		panic(fmt.Sprint("OutputType ", outType, " is not implemented"))
 	}

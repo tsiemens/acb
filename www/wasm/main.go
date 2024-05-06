@@ -127,6 +127,7 @@ func runAcb(
 	csvDescs []string, csvContents []string,
 	initialSymbolStates []string,
 	renderFullValues bool,
+	renderCosts bool,
 	// Legacy options (none currently)
 ) (js.Value, error) {
 
@@ -152,7 +153,7 @@ func runAcb(
 
 	ok, renderRes := app.RunAcbAppToWriter(
 		writer,
-		csvReaders, allInitStatus, forceDownload, renderFullValues,
+		csvReaders, allInitStatus, forceDownload, renderFullValues, renderCosts,
 		legacyOptions, &fx.MemRatesCacheAccessor{RatesByYear: globalRatesCache},
 		errPrinter,
 	)
@@ -284,12 +285,13 @@ func makeRunAcbWrapper() js.Func {
 		}
 
 		renderFullValues := popArg().Bool()
+		renderCosts := false
 
 		promise := makeJsPromise(
 			func(resolveFunc js.Value, rejectFunc js.Value) {
 				go func() {
 					out, err := runAcb(
-						descs, contents, initialSymbolStates, renderFullValues)
+						descs, contents, initialSymbolStates, renderFullValues, renderCosts)
 					resolveFunc.Invoke(makeRetVal(out, err))
 					// rejectFunc.Invoke("something error")
 				}()
