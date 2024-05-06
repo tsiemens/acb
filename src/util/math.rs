@@ -2,26 +2,32 @@ use std::fmt::Display;
 
 use rust_decimal::Decimal;
 
+use super::decimal::{constraint, ConstrainedDecimal, DecConstraint, PosDecimal};
+
 #[derive(PartialEq, Eq, Debug)]
-pub struct DecimalRatio {
-    pub numerator: Decimal,
-    pub denominator: Decimal,
+pub struct ConstrainedDecimalRatio<CONSTRAINT: DecConstraint> {
+    pub numerator: ConstrainedDecimal<CONSTRAINT>,
+    pub denominator: PosDecimal,
 
 }
 
-impl DecimalRatio {
-    pub fn is_valid(&self) -> bool {
-        !self.denominator.is_zero()
-    }
-
+impl <CONSTRAINT: DecConstraint> ConstrainedDecimalRatio<CONSTRAINT> {
     pub fn to_decimal(&self) -> Decimal {
-        self.numerator / self.denominator
+        *self.numerator / *self.denominator
+    }
+}
+
+impl ConstrainedDecimalRatio<constraint::Pos> {
+    pub fn to_posdecimal(&self) -> PosDecimal {
+        PosDecimal::try_from(*self.numerator / *self.denominator).unwrap()
     }
 }
 
 // Auto-implements to_string()
-impl Display for DecimalRatio {
+impl <CONSTRAINT: DecConstraint>  Display for ConstrainedDecimalRatio<CONSTRAINT> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{{{}/{}}}", self.numerator, self.denominator)
     }
 }
+
+pub type PosDecimalRatio = ConstrainedDecimalRatio<constraint::Pos>;
