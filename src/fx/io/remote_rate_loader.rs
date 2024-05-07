@@ -241,7 +241,9 @@ impl RemoteRateLoader for JsonRemoteRateLoader {
 pub mod pub_testlib {
     use std::collections::HashMap;
 
-    use crate::{acb_debug, fx::DailyRate, util::rc::RcRefCell};
+    use tracing::{trace};
+
+    use crate::{fx::DailyRate, util::rc::RcRefCell};
 
     use super::{RateLoadResult, RemoteRateLoader, Error};
 
@@ -251,7 +253,7 @@ pub mod pub_testlib {
 
     impl RemoteRateLoader for MockRemoteRateLoader {
         fn get_remote_usd_cad_rates(&mut self, year: u32) -> Result<RateLoadResult, Error> {
-            acb_debug!("MockRemoteRateLoader::get_remote_usd_cad_rates {}", year);
+            trace!(year = year, "MockRemoteRateLoader::get_remote_usd_cad_rates");
             match self.remote_year_rates.borrow().get(&year) {
                 Some(rates) =>
                     Ok(RateLoadResult{rates: rates.clone(),

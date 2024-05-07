@@ -1,9 +1,10 @@
 use std::{collections::HashMap, fs::File, io::{Read, Write}, path::PathBuf, str::FromStr};
 
 use rust_decimal::Decimal;
+use tracing::{error, info, trace};
 
 use crate::{
-    acb_debug, fx::DailyRate, log::WriteHandle, util::{date, rc::{RcRefCell, RcRefCellT}}, write_errln
+    fx::DailyRate, log::WriteHandle, util::{date, rc::{RcRefCell, RcRefCellT}}, write_errln
 };
 
 use super::Error;
@@ -126,7 +127,7 @@ fn open_rates_csv_file_read(dir_path: &std::path::Path, year: u32) -> Result<Opt
 
 impl RatesCache for CsvRatesCache {
     fn write_rates(&mut self, year: u32, rates: &Vec<DailyRate>) -> Result<(), Error> {
-        acb_debug!("CsvRatesCache::write_rates {} into {}", year,
+        info!("CsvRatesCache::write_rates {} into {}", year,
                    if let Some(p) = self.dir_path.to_str() { p } else { "<no path ???>" } );
         let file = open_rates_csv_file_write(&self.dir_path, year)?;
 
@@ -140,16 +141,16 @@ impl RatesCache for CsvRatesCache {
         let r = csv_w.flush()
             .map_err(|e|e.to_string());
         if r.is_ok() {
-            acb_debug!("CsvRatesCache::write_rates flushed ok");
+            trace!("CsvRatesCache::write_rates flushed ok");
         } else {
-            acb_debug!("CsvRatesCache::write_rates failed flushed: {}",
+            error!("CsvRatesCache::write_rates failed flushed: {}",
                        r.as_ref().err().unwrap());
         }
         r
     }
 
     fn get_usd_cad_rates(&mut self, year: u32) -> Result<Option<Vec<DailyRate>>, Error> {
-        acb_debug!("CsvRatesCache::get_usd_cad_rates {}", year);
+        trace!(year = year, "CsvRatesCache::get_usd_cad_rates");
         let mut file_opt = open_rates_csv_file_read(&self.dir_path, year)?;
         match &mut file_opt {
             Some(file) =>

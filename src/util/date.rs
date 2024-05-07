@@ -1,7 +1,7 @@
 use std::{cell::RefCell, sync::Mutex};
 
 use chrono::Datelike;
-use time::{macros::format_description, Month};
+use time::{macros::format_description, Month, UtcOffset};
 pub use time::Date;
 
 use lazy_static::lazy_static;
@@ -41,6 +41,18 @@ pub fn today_local() -> Date {
     }
     let now = chrono::offset::Local::now();
     date_naive_to_date(&now.date_naive())
+}
+
+// This is a (possibly unsafe, but no worse than today_local) way
+// to get the current system UtcOffset of local timezone.
+// Using UtcOffset::current_local_offset is apparently unsafe on Linux,
+// and will return an error if used without enabling some "unsafe" feature.
+// I read that Local::now may be similarly unsafe, but apparently isn't
+// blocking itself explicitly, so I guess I'll use it for now. ¯\_(ツ)_/¯
+pub fn local_utc_offset() -> Result<UtcOffset, time::error::ComponentRange> {
+    let now = chrono::offset::Local::now();
+    let offset = now.offset();
+    UtcOffset::from_whole_seconds(-1 * offset.utc_minus_local())
 }
 
 // Used by both unit and integration tests

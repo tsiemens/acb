@@ -4,7 +4,10 @@ use acb::{
     fx::{io::{
         pub_testlib::MockRemoteRateLoader,
         CsvRatesCache, RateLoader,
-    }, DailyRate}, log::{setup_tracing, WriteHandle}, util::{date::pub_testlib::doy_date, rc::RcRefCellT}
+    }, DailyRate},
+    log::WriteHandle,
+    tracing,
+    util::{date::pub_testlib::doy_date, rc::RcRefCellT}
 };
 use rust_decimal_macros::dec;
 
@@ -61,7 +64,7 @@ impl Drop for NonAutoCreatingTestDir {
 
 #[test]
 fn test_get_effective_usd_cad_rate_with_csv_cache() {
-    setup_tracing();
+    tracing::setup_tracing();
 
     let dir = NonAutoCreatingTestDir::new();
 

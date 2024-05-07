@@ -1,51 +1,9 @@
 use std::{fmt::Write, io, sync::Mutex};
 
 use lazy_static::lazy_static;
+use tracing::info;
 
 use crate::util::rc::{RcRefCell, RcRefCellT};
-
-
-lazy_static! {
-    static ref DEBUG_TRACING_ENABLED: Mutex<Option<bool>> = Mutex::new(None);
-}
-
-fn set_debug_tracing_enabled(enabled: bool) {
-    let mut setting = DEBUG_TRACING_ENABLED.lock().unwrap();
-    *setting = Some(enabled);
-}
-
-pub fn get_debug_tracing_enabled() -> bool {
-    match *DEBUG_TRACING_ENABLED.lock().unwrap() {
-        Some(enabled) => enabled,
-        None => false,
-    }
-}
-
-fn load_trace_setting() {
-    set_debug_tracing_enabled(
-        crate::util::sys::env_var_non_empty("TRACE"));
-}
-
-fn maybe_load_trace_setting() {
-    if DEBUG_TRACING_ENABLED.lock().unwrap().is_none() {
-        load_trace_setting()
-    }
-}
-
-pub fn setup_tracing() {
-    maybe_load_trace_setting();
-}
-
-// TODO replace this with the more sophisticated tracing crate
-#[macro_export]
-macro_rules! acb_debug {
-    ($($arg:tt)*) => {{
-        if crate::log::get_debug_tracing_enabled() {
-            eprint!("DEBUG: ");
-            eprintln!($($arg)*);
-        }
-    }};
-}
 
 pub struct StringBuffer {
     s: String,
@@ -122,7 +80,7 @@ impl io::Write for WriteHandle {
         // or use a string buffer.
         // The test framework cannot capture direct writes to stdout or stderr,
         // only writes through print/println/eprintln.
-        acb_debug!("WriteHandle::write {}", { let mut b = StringBuffer::new(); let _ = b.write(buf); b }.as_str() );
+        info!("WriteHandle::write {}", { let mut b = StringBuffer::new(); let _ = b.write(buf); b }.as_str() );
         self.w.borrow_mut().write(buf)
     }
 

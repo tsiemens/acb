@@ -3,8 +3,9 @@ use std::io::Write;
 
 use rust_decimal::{prelude::Zero, Decimal};
 use time::{Date, Duration, Month};
+use tracing::{debug, error, info, trace};
 
-use crate::{acb_debug, write_errln};
+use crate::write_errln;
 use crate::log::WriteHandle;
 use crate::{fx::DailyRate, util::date::today_local};
 
@@ -100,7 +101,7 @@ impl RateLoader {
         let year = trade_date.year() as u32;
 
         if !self.year_rates.contains_key(&year) {
-            acb_debug!("RateLoader::get_exact_usd_cad_rate {} not yet loaded", year);
+            debug!("RateLoader::get_exact_usd_cad_rate {} not yet loaded", year);
             let rates = self.fetch_usd_cad_rates_for_date_year(&trade_date)?;
             self.year_rates.insert(year, rates);
         }
@@ -154,7 +155,7 @@ impl RateLoader {
             } else {
                 match cache_res.unwrap() {
                     Some(rates) => {
-                        acb_debug!("RateLoader::fetch rates found in cache");
+                        info!("RateLoader::fetch rates found in cache");
                         let rates_map = make_date_to_rate_map(&rates);
                         if rates_are_fresh {
                             return Ok(rates_map);
@@ -166,7 +167,7 @@ impl RateLoader {
                         }
                     },
                     None => {
-                        acb_debug!("RateLoader::fetch NO rates found in cache");
+                        info!("RateLoader::fetch NO rates found in cache");
                         if rates_are_fresh {
                             return Err(format!("Did not find rates for {} in cache after they were downloaded", year));
                         }
@@ -180,7 +181,7 @@ impl RateLoader {
     }
 
     fn get_remote_usd_cad_rates(&mut self, year: u32) -> Result<Vec<DailyRate>, Error> {
-        acb_debug!("RateLoader::get_remote_usd_cad_rates {}", year);
+        trace!(year = year, "RateLoader::get_remote_usd_cad_rates");
         let res = self.remote_loader.get_remote_usd_cad_rates(year)?;
         for nfe in res.non_fatal_errors {
             write_errln!(self.err_stream, "{}", nfe);
@@ -189,7 +190,7 @@ impl RateLoader {
 
         self.fresh_loaded_years.insert(year);
         if let Err(e) =  self.cache.write_rates(year, &rates) {
-            acb_debug!("RateLoader::get_remote_usd_cad_rates cache write failed: {}", e);
+            error!("RateLoader::get_remote_usd_cad_rates cache write failed: {}", e);
             write_errln!(self.err_stream,
                 "Failed to update exchange rate cache: {}", e);
             let _ = self.err_stream.flush();
