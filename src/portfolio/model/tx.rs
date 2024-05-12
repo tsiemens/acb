@@ -185,6 +185,15 @@ pub struct Tx {
     pub read_index: u32,
 }
 
+impl Tx {
+    pub fn buy_specifics(&self) -> Result<&BuyTxSpecifics, ()>{
+        match &self.action_specifics {
+            TxActionSpecifics::Buy(specs) => Ok(specs),
+            _ => Err(()),
+        }
+    }
+}
+
 fn get_valid_exchange_rate(curr_col_name: &str, found_curr: &Option<Currency>,
                            fx_col_name: &str, found_fx: &Option<Decimal>,
     ) -> Result<Option<CurrencyAndExchangeRate>, String> {
@@ -193,10 +202,15 @@ fn get_valid_exchange_rate(curr_col_name: &str, found_curr: &Option<Currency>,
     } else {
         let curr = found_curr.clone().ok_or(
             format!("\"{fx_col_name}\" specified but \"{curr_col_name}\" not found"))?;
+        if curr == Currency::default() && found_fx.is_none() {
+            // The rate here is implicitly 1, so the rate isn't required.
+            // If rate is provided, we continue below to check its validity.
+            return Ok(Some(CurrencyAndExchangeRate::default()));
+        }
         let rate = found_fx.ok_or(
             format!("\"{curr_col_name}\" specified but \"{fx_col_name}\" not found"))?;
-        Ok(Some(CurrencyAndExchangeRate::new(curr, PosDecimal::try_from(rate).map_err(
-            |_| format!("\"{fx_col_name}\" must be a positive value"))?)))
+        Ok(Some(CurrencyAndExchangeRate::try_new(curr, PosDecimal::try_from(rate).map_err(
+            |_| format!("\"{fx_col_name}\" must be a positive value"))?)?))
     }
 }
 
@@ -332,6 +346,7 @@ mod tests {
     use rust_decimal_macros::dec;
     use time::Date;
 
+    use crate::pdec;
     use crate::portfolio::{Affiliate, Currency, CurrencyAndExchangeRate, SellTxSpecifics, SflaTxSpecifics};
     use crate::testlib::assert_big_struct_eq;
     use crate::util::decimal::{GreaterEqualZeroDecimal, PosDecimal};
@@ -444,10 +459,10 @@ mod tests {
                 shares: pos(buy_csvtx.shares.unwrap()),
                 amount_per_share: gez(buy_csvtx.amount_per_share.unwrap()),
                 commission: gez(buy_csvtx.commission.unwrap()),
-                tx_currency_and_rate: CurrencyAndExchangeRate::new(
+                tx_currency_and_rate: CurrencyAndExchangeRate::rq_new(
                     buy_csvtx.tx_currency.clone().unwrap(),
                     pos(buy_csvtx.tx_curr_to_local_exchange_rate.unwrap())),
-                separate_commission_currency: Some(CurrencyAndExchangeRate::new(
+                separate_commission_currency: Some(CurrencyAndExchangeRate::rq_new(
                     buy_csvtx.commission_currency.clone().unwrap(),
                     pos(buy_csvtx.commission_curr_to_local_exchange_rate.unwrap()))),
             }),
@@ -464,10 +479,10 @@ mod tests {
             shares: pos(sell_csvtx.shares.unwrap()),
             amount_per_share: gez(sell_csvtx.amount_per_share.unwrap()),
             commission: gez(sell_csvtx.commission.unwrap()),
-            tx_currency_and_rate: CurrencyAndExchangeRate::new(
+            tx_currency_and_rate: CurrencyAndExchangeRate::rq_new(
                 sell_csvtx.tx_currency.clone().unwrap(),
                 pos(sell_csvtx.tx_curr_to_local_exchange_rate.unwrap())),
-            separate_commission_currency: Some(CurrencyAndExchangeRate::new(
+            separate_commission_currency: Some(CurrencyAndExchangeRate::rq_new(
                 sell_csvtx.commission_currency.clone().unwrap(),
                 pos(sell_csvtx.commission_curr_to_local_exchange_rate.unwrap()))),
             specified_superficial_loss: sell_csvtx.specified_superficial_loss.clone(),
@@ -487,7 +502,7 @@ mod tests {
         let mut exp_roc_tx = exp_buy_tx.clone();
         exp_roc_tx.action_specifics = super::TxActionSpecifics::Roc(RocTxSpecifics{
             amount_per_held_share: gez(roc_csvtx.amount_per_share.unwrap()),
-            tx_currency_and_rate: CurrencyAndExchangeRate::new(
+            tx_currency_and_rate: CurrencyAndExchangeRate::rq_new(
                 roc_csvtx.tx_currency.clone().unwrap(),
                 pos(roc_csvtx.tx_curr_to_local_exchange_rate.unwrap())),
         });
@@ -547,6 +562,61 @@ mod tests {
         // This could be one of any of the errors.
         let _ = Tx::try_from(CsvTx::default()).unwrap_err();
 
-        // TODO
+        // Most errors are going to be pretty straightforward, because
+        // of hard type constraints (like PosDecimal, etc) and
+        // non-optional types in Tx. There are a lot of such cases,
+        // so we'll skip most of those.
+
+        // Check one of the missing optional cases (security)
+        let mut buy_csvtx = barebones_valid_sample_csvtx(TxAction::Buy);
+        buy_csvtx.security = None;
+
+        let err = Tx::try_from(buy_csvtx).unwrap_err();
+        assert_eq!(err, "\"security\" not found");
+
+        // Interesting Cases:
+        // - no action (because it is the only attr we call unwrap() on.
+        let mut buy_csvtx = barebones_valid_sample_csvtx(TxAction::Buy);
+        buy_csvtx.action = None;
+
+        let err = Tx::try_from(buy_csvtx).unwrap_err();
+        assert_eq!(err, "\"action\" not specified");
+
+        // - currency but no exchange rate (and inverse)
+        let mut buy_csvtx = barebones_valid_sample_csvtx(TxAction::Buy);
+        buy_csvtx.tx_currency = Some(Currency::usd());
+
+        let err = Tx::try_from(buy_csvtx).unwrap_err();
+        assert_eq!(err, "\"currency\" specified but \"exchange rate\" not found");
+
+        let mut buy_csvtx = barebones_valid_sample_csvtx(TxAction::Buy);
+        buy_csvtx.tx_curr_to_local_exchange_rate = Some(dec!(1.2));
+
+        let err = Tx::try_from(buy_csvtx).unwrap_err();
+        assert_eq!(err, "\"exchange rate\" specified but \"currency\" not found");
+
+        // (double check that CAD doesn't need a rate, and if it does, it must be 1)
+        let mut buy_csvtx = barebones_valid_sample_csvtx(TxAction::Buy);
+        buy_csvtx.tx_currency = Some(Currency::cad());
+
+        let tx = Tx::try_from(buy_csvtx).unwrap();
+        assert_eq!(tx.buy_specifics().unwrap().tx_currency_and_rate.currency, Currency::cad());
+        assert_eq!(tx.buy_specifics().unwrap().tx_currency_and_rate.exchange_rate, pdec!(1));
+
+        // Invalid default rate
+        let mut buy_csvtx = barebones_valid_sample_csvtx(TxAction::Buy);
+        buy_csvtx.tx_currency = Some(Currency::cad());
+        buy_csvtx.tx_curr_to_local_exchange_rate = Some(dec!(1.2));
+
+        let err = Tx::try_from(buy_csvtx).unwrap_err();
+        assert_eq!(err, "Default currency (CAD) exchange rate was not 1 (was 1.2)");
+
+        // - comm currency but no rate (and inverse). Just sanity check we're using
+        // the same function.
+        let mut buy_csvtx = barebones_valid_sample_csvtx(TxAction::Buy);
+        buy_csvtx.commission_currency = Some(Currency::usd());
+
+        let err = Tx::try_from(buy_csvtx).unwrap_err();
+        assert_eq!(err, "\"commission currency\" specified but \"commission exchange rate\" not found");
     }
 }
