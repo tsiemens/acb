@@ -536,6 +536,22 @@ mod tests {
 
     #[test]
     fn test_to_tx_csv_string() {
+        let mut d_reader =
+        CsvFileBuilder::with_custom_header_line(
+            "security,trade date,settlement date,action,shares,amount/share,commission,currency,\
+			exchange rate,commission currency,commission exchange rate,superficial loss,affiliate,memo\n"
+        )
+            .single_csv_reader_raw(&vec![
+                "FOO,2016-01-03,2016-01-05,Sell,5,1.6,0,CAD,,CAD,,,Default,a memo",
+			    "BAR,2016-01-03,2016-01-06,Buy,7,1.7,1,USD,1.11,USD,1.11,,Default,a memo 2",
+			    "AA,2016-01-04,2016-01-07,Sell,1,1.7,1,USD,1.11,USD,1.11,-1.2,Default,M3",
+			    "BB,2016-01-05,2016-01-08,Sell,2,1.7,1,USD,1.11,USD,1.11,-1.3!,Default (R),M4",
+			    "CC,2016-01-08,2016-01-10,SfLA,2,1.3,0,CAD,,CAD,,,B,M5",
+            ]);
+        let _ = parse_tx_csv(
+            &mut d_reader, 0,
+            &mut WriteHandle::empty_write_handle()).unwrap();
+
         // TODO
     }
 }
