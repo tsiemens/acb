@@ -35,6 +35,10 @@ impl Currency {
         Currency::cad()
     }
 
+    pub fn is_default(&self) -> bool {
+        *self == Currency::default()
+    }
+
     pub fn as_str(&self) -> &str {
         match &self.0 {
             CurrImpl::Static(s) => s,
@@ -84,6 +88,10 @@ impl CurrencyAndExchangeRate {
     // Just aliases to CAD
     pub fn default() -> Self {
         Self::cad()
+    }
+
+    pub fn is_default(&self) -> bool {
+        self.currency.is_default()
     }
 }
 
