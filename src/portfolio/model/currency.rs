@@ -77,6 +77,7 @@ impl CurrencyAndExchangeRate {
         Self::new(Currency::cad(), pdec!(1))
     }
 
+    // Just aliases to CAD
     pub fn default() -> Self {
         Self::cad()
     }
