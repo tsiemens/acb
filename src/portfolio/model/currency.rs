@@ -65,16 +65,20 @@ pub struct CurrencyAndExchangeRate {
 }
 
 impl CurrencyAndExchangeRate {
-    pub fn new(c: Currency, r: PosDecimal) -> Self {
+    pub fn try_new(c: Currency, r: PosDecimal) -> Result<Self, String> {
         if c == Currency::default() && *r != dec!(1.0) {
-            panic!("Default currency (CAD) exchange rate was not 1 (was {})",
-                    r);
+            return Err(format!("Default currency (CAD) exchange rate was not 1 (was {})",
+                               r));
         }
-        Self{currency: c, exchange_rate: r}
+        Ok(Self{currency: c, exchange_rate: r})
+    }
+
+    pub fn rq_new(c: Currency, r: PosDecimal) -> Self {
+        CurrencyAndExchangeRate::try_new(c, r).unwrap()
     }
 
     pub fn cad() -> Self {
-        Self::new(Currency::cad(), pdec!(1))
+        Self::rq_new(Currency::cad(), pdec!(1))
     }
 
     // Just aliases to CAD
@@ -103,19 +107,19 @@ mod tests {
 
     #[test]
     fn test_good_currency_rates() {
-        let cr = CurrencyAndExchangeRate::new(Currency::usd(), pdec!(1.3));
+        let cr = CurrencyAndExchangeRate::rq_new(Currency::usd(), pdec!(1.3));
         assert_eq!(cr.currency, Currency::usd());
         assert_eq!(cr.exchange_rate, pdec!(1.3));
 
         assert_eq!(CurrencyAndExchangeRate::default(), CurrencyAndExchangeRate::cad());
-        assert_eq!(CurrencyAndExchangeRate::cad(), CurrencyAndExchangeRate::new(Currency::cad(), pdec!(1.0)));
+        assert_eq!(CurrencyAndExchangeRate::cad(), CurrencyAndExchangeRate::rq_new(Currency::cad(), pdec!(1.0)));
     }
 
     #[test]
     #[should_panic]
     fn test_bad_cad_rate() {
         // Must be 1.0
-        CurrencyAndExchangeRate::new(Currency::cad(), pdec!(1.3));
+        CurrencyAndExchangeRate::rq_new(Currency::cad(), pdec!(1.3));
     }
 
     #[test]
@@ -123,7 +127,7 @@ mod tests {
     fn test_zero_rate() {
         // This is actually going to panic because pdec (PosDecimal) itself
         // will fail to unwrap.
-        CurrencyAndExchangeRate::new(Currency::usd(), pdec!(0));
+        CurrencyAndExchangeRate::rq_new(Currency::usd(), pdec!(0));
     }
 
     #[test]
@@ -131,6 +135,6 @@ mod tests {
     fn test_negative_rate() {
         // This is actually going to panic because pdec (PosDecimal) itself
         // will fail to unwrap.
-        CurrencyAndExchangeRate::new(Currency::usd(), pdec!(-1.0));
+        CurrencyAndExchangeRate::rq_new(Currency::usd(), pdec!(-1.0));
     }
 }
