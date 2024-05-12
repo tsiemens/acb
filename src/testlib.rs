@@ -19,6 +19,10 @@ fn eprint_vecs<T: PartialEq + Debug>(left: &Vec<T>, right: &Vec<T>) {
     eprintln!("{}", err_str);
 }
 
+pub fn assert_big_struct_eq<T: PartialEq + Debug>(left: T, right: T) {
+    assert_eq!(left, right, "{:#?} != {:#?}", left, right);
+}
+
 pub fn assert_vec_eq<T: PartialEq + Debug>(left: Vec<T>, right: Vec<T>) {
     assert_vecr_eq(&left, &right);
 }

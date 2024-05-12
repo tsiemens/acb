@@ -44,8 +44,7 @@ impl Affiliate {
         Affiliate(Arc::new(d))
     }
 
-    #[allow(dead_code)]
-    fn from_strep(s: &str) -> Affiliate {
+    pub fn from_strep(s: &str) -> Affiliate {
         Affiliate::new(AffiliateData::from_strep(s))
     }
 

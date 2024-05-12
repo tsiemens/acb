@@ -1,46 +1,9 @@
-use std::{fmt::Write, io, sync::Mutex};
+use std::{io, sync::Mutex};
 
 use lazy_static::lazy_static;
 use tracing::info;
 
-use crate::util::rc::{RcRefCell, RcRefCellT};
-
-pub struct StringBuffer {
-    s: String,
-}
-
-impl StringBuffer {
-    pub fn new() -> StringBuffer {
-        StringBuffer{s: String::new()}
-    }
-
-    pub fn as_str(&self) -> &str {
-        self.s.as_str()
-    }
-
-    pub fn clear(&mut self) {
-        self.s = String::new();
-    }
-}
-
-// String only implements fmt::Write
-impl io::Write for StringBuffer {
-    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        let str_rep = std::str::from_utf8(buf)
-            .map_err(|e| {
-                io::Error::new(io::ErrorKind::InvalidData, e)
-            })?;
-        let res = self.s.write_str(str_rep);
-        match res {
-            Ok(_) => Ok(buf.len()),
-            Err(e) => Err(io::Error::new(io::ErrorKind::Other, e)),
-        }
-    }
-
-    fn flush(&mut self) -> io::Result<()> {
-        Ok(())
-    }
-}
+use crate::util::{rc::{RcRefCell, RcRefCellT}, rw::StringBuffer};
 
 // For convenience, so we can pass around a shared stream writer.
 //
