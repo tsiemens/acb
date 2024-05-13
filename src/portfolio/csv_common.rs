@@ -37,4 +37,37 @@ impl CsvCol {
             CsvCol::MEMO,
         ]);
     }
+
+    pub fn export_order_non_deprecated_cols() -> [&'static str; 14] {
+        [
+            CsvCol::SECURITY,
+            CsvCol::TRADE_DATE,
+            CsvCol::SETTLEMENT_DATE,
+            CsvCol::ACTION,
+            CsvCol::SHARES,
+            CsvCol::AMOUNT_PER_SHARE,
+            CsvCol::COMMISSION,
+            CsvCol::TX_CURR,
+            CsvCol::TX_FX,
+            CsvCol::COMMISSION_CURR,
+            CsvCol::COMMISSION_FX,
+            CsvCol::SUPERFICIAL_LOSS,
+            CsvCol::AFFILIATE,
+            CsvCol::MEMO,
+        ]
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::portfolio::csv_common::CsvCol;
+
+    #[test]
+    fn test_export_order_non_deprecated_cols() {
+        let cols_to_write =
+            std::collections::HashSet::from(CsvCol::export_order_non_deprecated_cols());
+        let mut all_cols_minus_deprecated = CsvCol::get_csv_cols();
+        all_cols_minus_deprecated.remove(CsvCol::LEGACY_SETTLEMENT_DATE);
+        assert_eq!(cols_to_write, all_cols_minus_deprecated)
+    }
 }

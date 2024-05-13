@@ -206,31 +206,12 @@ pub fn parse_tx_csv(
 
 }
 
-fn csv_cols_to_write() -> [&'static str; 14] {
-    [
-        CsvCol::SECURITY,
-        CsvCol::TRADE_DATE,
-        CsvCol::SETTLEMENT_DATE,
-        CsvCol::ACTION,
-        CsvCol::SHARES,
-        CsvCol::AMOUNT_PER_SHARE,
-        CsvCol::COMMISSION,
-        CsvCol::TX_CURR,
-        CsvCol::TX_FX,
-        CsvCol::COMMISSION_CURR,
-        CsvCol::COMMISSION_FX,
-        CsvCol::SUPERFICIAL_LOSS,
-        CsvCol::AFFILIATE,
-        CsvCol::MEMO,
-    ]
-}
-
 pub fn write_txs_to_csv(txs: &Vec<CsvTx>, writer: &mut dyn std::io::Write) -> Result<(), csv::Error> {
     let mut csv_w = csv::WriterBuilder::new()
         .has_headers(true)
         .from_writer(writer);
 
-    let headers = csv_cols_to_write();
+    let headers = CsvCol::export_order_non_deprecated_cols();
 
     csv_w.write_record(&headers)?;
 
@@ -440,7 +421,7 @@ mod tests {
 
     use crate::{
         log::WriteHandle,
-        portfolio::{csv_common::CsvCol, io::tx_csv::testlib::TestTxCsvRow, Affiliate, CsvTx, Currency, SFLInput},
+        portfolio::{io::tx_csv::testlib::TestTxCsvRow, Affiliate, CsvTx, Currency, SFLInput},
         testlib::{assert_vec_eq, assert_vecr_eq},
         util::{date::parse_standard_date, decimal::LessEqualZeroDecimal, rw::StringBuffer}
     };
@@ -596,14 +577,6 @@ mod tests {
         // Invalid SFL
         let err = parse_fatal_row(Row{sfl:"1", ..Default::default()});
         assert_eq!(err, "Error on row 2 of foo0.csv: Invalid superficial loss 1: Was positive value");
-    }
-
-    #[test]
-    fn test_csv_cols_to_write() {
-        let cols_to_write = std::collections::HashSet::from(super::csv_cols_to_write());
-        let mut all_cols_minus_deprecated = CsvCol::get_csv_cols();
-        all_cols_minus_deprecated.remove(CsvCol::LEGACY_SETTLEMENT_DATE);
-        assert_eq!(cols_to_write, all_cols_minus_deprecated)
     }
 
     #[test]
