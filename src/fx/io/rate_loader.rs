@@ -187,6 +187,8 @@ impl RateLoader {
             write_errln!(self.err_stream, "{}", nfe);
         }
         let rates = fill_in_unknown_day_rates(&res.rates, year);
+        debug!("RateLoader::get_remote_usd_cad_rates, num loaded rates: {}, rates post-fill: {}. Latest rate: {:#?}",
+               res.rates.len(), rates.len(), rates.get(rates.len() - 1));
 
         self.fresh_loaded_years.insert(year);
         if let Err(e) =  self.cache.write_rates(year, &rates) {
@@ -244,21 +246,52 @@ impl RateLoader {
     }
 }
 
+pub mod testlib {
+    use std::collections::HashMap;
+
+    use crate::{fx::{io::{pub_testlib::MockRemoteRateLoader, InMemoryRatesCache}, DailyRate}, log::WriteHandle, util::rc::{RcRefCell, RcRefCellT}};
+
+    use super::RateLoader;
+
+    pub fn new_test_rate_loader(force_download: bool) ->
+        (RateLoader, RcRefCell<HashMap<u32, Vec<DailyRate>>>, RcRefCell<HashMap<u32, Vec<DailyRate>>>) {
+        let cache_year_rates = RcRefCellT::new(HashMap::new());
+        let remote_year_rates =  RcRefCellT::new(HashMap::new());
+        let rate_loader = RateLoader::new(
+            force_download,
+            Box::new(InMemoryRatesCache{ rates_by_year: cache_year_rates.clone() }),
+            Box::new(MockRemoteRateLoader{ remote_year_rates: remote_year_rates.clone() }),
+            WriteHandle::empty_write_handle());
+
+        (rate_loader, cache_year_rates, remote_year_rates)
+    }
+
+    pub fn new_test_rate_loader_with_remote(
+        force_download: bool,remote_year_rates: &RcRefCell<HashMap<u32, Vec<DailyRate>>>) ->
+        (RateLoader, RcRefCell<HashMap<u32, Vec<DailyRate>>>) {
+
+        let cache_year_rates = RcRefCellT::new(HashMap::new());
+        let rate_loader = RateLoader::new(
+            force_download,
+            Box::new(InMemoryRatesCache{ rates_by_year: cache_year_rates.clone() }),
+            Box::new(MockRemoteRateLoader{ remote_year_rates: remote_year_rates.clone() }),
+            WriteHandle::empty_write_handle());
+
+        (rate_loader, cache_year_rates)
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use std::collections::HashMap;
 
     use rust_decimal::{prelude::Zero, Decimal};
     use rust_decimal_macros::dec;
     use time::Date;
 
-    use crate::fx::io::pub_testlib::MockRemoteRateLoader;
-    use crate::fx::io::InMemoryRatesCache;
+    use crate::fx::io::testlib::{new_test_rate_loader, new_test_rate_loader_with_remote};
     use crate::fx::DailyRate;
-    use crate::log::WriteHandle;
-    use crate::util::rc::{RcRefCell, RcRefCellT};
 
-    use super::{fill_in_unknown_day_rates, RateLoader};
+    use super::fill_in_unknown_day_rates;
     use crate::testlib::{assert_vec_eq, assert_vecr_eq};
     use crate::util::date::pub_testlib::doy_date;
 
@@ -344,33 +377,6 @@ mod tests {
                 dr(date_yd(2022, 7), dec!(1.7)),
             ]
         );
-    }
-
-    fn new_test_rate_loader_with_remote(
-        force_download: bool,remote_year_rates: &RcRefCell<HashMap<u32, Vec<DailyRate>>>) ->
-        (RateLoader, RcRefCell<HashMap<u32, Vec<DailyRate>>>) {
-
-        let cache_year_rates = RcRefCellT::new(HashMap::new());
-        let rate_loader = RateLoader::new(
-            force_download,
-            Box::new(InMemoryRatesCache{ rates_by_year: cache_year_rates.clone() }),
-            Box::new(MockRemoteRateLoader{ remote_year_rates: remote_year_rates.clone() }),
-            WriteHandle::empty_write_handle());
-
-        (rate_loader, cache_year_rates)
-    }
-
-    fn new_test_rate_loader(force_download: bool) ->
-        (RateLoader, RcRefCell<HashMap<u32, Vec<DailyRate>>>, RcRefCell<HashMap<u32, Vec<DailyRate>>>) {
-        let cache_year_rates = RcRefCellT::new(HashMap::new());
-        let remote_year_rates =  RcRefCellT::new(HashMap::new());
-        let rate_loader = RateLoader::new(
-            force_download,
-            Box::new(InMemoryRatesCache{ rates_by_year: cache_year_rates.clone() }),
-            Box::new(MockRemoteRateLoader{ remote_year_rates: remote_year_rates.clone() }),
-            WriteHandle::empty_write_handle());
-
-        (rate_loader, cache_year_rates, remote_year_rates)
     }
 
     #[test]
