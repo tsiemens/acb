@@ -206,6 +206,70 @@ pub fn parse_tx_csv(
 
 }
 
+fn csv_cols_to_write() -> [&'static str; 14] {
+    [
+        CsvCol::SECURITY,
+        CsvCol::TRADE_DATE,
+        CsvCol::SETTLEMENT_DATE,
+        CsvCol::ACTION,
+        CsvCol::SHARES,
+        CsvCol::AMOUNT_PER_SHARE,
+        CsvCol::COMMISSION,
+        CsvCol::TX_CURR,
+        CsvCol::TX_FX,
+        CsvCol::COMMISSION_CURR,
+        CsvCol::COMMISSION_FX,
+        CsvCol::SUPERFICIAL_LOSS,
+        CsvCol::AFFILIATE,
+        CsvCol::MEMO,
+    ]
+}
+
+pub fn write_txs_to_csv(txs: &Vec<CsvTx>, writer: &mut dyn std::io::Write) -> Result<(), csv::Error> {
+    let mut csv_w = csv::WriterBuilder::new()
+        .has_headers(true)
+        .from_writer(writer);
+
+    let headers = csv_cols_to_write();
+
+    csv_w.write_record(&headers)?;
+
+    let empty = || String::new();
+
+    for tx in txs {
+        let mut record = Vec::with_capacity(headers.len());
+        for col in headers {
+            let val: String = match col {
+                CsvCol::SECURITY => tx.security.clone().unwrap_or_else(empty),
+                CsvCol::TRADE_DATE => tx.trade_date.map(|v| v.to_string()).unwrap_or_else(empty),
+                CsvCol::SETTLEMENT_DATE => tx.settlement_date.map(|v| v.to_string()).unwrap_or_else(empty),
+                CsvCol::ACTION => tx.action.map(|v| v.to_string()).unwrap_or_else(empty),
+                CsvCol::SHARES => tx.shares.map(|v| v.to_string()).unwrap_or_else(empty),
+                CsvCol::AMOUNT_PER_SHARE => tx.amount_per_share.map(|v| v.to_string()).unwrap_or_else(empty),
+                CsvCol::COMMISSION => tx.commission.map(|v| v.to_string()).unwrap_or_else(empty),
+                CsvCol::TX_CURR => tx.tx_currency.clone().map(|v| v.to_string()).unwrap_or_else(empty),
+                CsvCol::TX_FX => tx.tx_curr_to_local_exchange_rate.map(|v| v.to_string()).unwrap_or_else(empty),
+                CsvCol::COMMISSION_CURR => tx.commission_currency.clone().map(|v| v.to_string()).unwrap_or_else(empty),
+                CsvCol::COMMISSION_FX => tx.commission_curr_to_local_exchange_rate.map(|v| v.to_string()).unwrap_or_else(empty),
+                CsvCol::SUPERFICIAL_LOSS => {
+                    tx.specified_superficial_loss.as_ref().map(
+                        |v| format!("{}{}", v.superficial_loss, if v.force { "!" } else { "" }) )
+                        .unwrap_or_else(empty)
+                },
+                CsvCol::AFFILIATE => tx.affiliate.as_ref().map(|v| v.name().to_string()).unwrap_or_else(empty),
+                CsvCol::MEMO => tx.memo.clone().unwrap_or_else(empty),
+                _ => panic!("Invalid col {}", col),
+            };
+            record.push(val);
+        }
+
+        csv_w.write_record(record)?;
+    }
+
+    csv_w.flush()?;
+    Ok(())
+}
+
 #[cfg(test)]
 pub mod testlib {
     use crate::{portfolio::csv_common::CsvCol, util::rw::DescribedReader};
@@ -376,9 +440,9 @@ mod tests {
 
     use crate::{
         log::WriteHandle,
-        portfolio::{io::tx_csv::testlib::TestTxCsvRow, Affiliate, CsvTx, Currency, SFLInput},
-        testlib::assert_vecr_eq,
-        util::{date::parse_standard_date, decimal::LessEqualZeroDecimal}
+        portfolio::{csv_common::CsvCol, io::tx_csv::testlib::TestTxCsvRow, Affiliate, CsvTx, Currency, SFLInput},
+        testlib::{assert_vec_eq, assert_vecr_eq},
+        util::{date::parse_standard_date, decimal::LessEqualZeroDecimal, rw::StringBuffer}
     };
 
     use super::{parse_csv_superficial_loss, parse_tx_csv, testlib::CsvFileBuilder, Error};
@@ -535,6 +599,14 @@ mod tests {
     }
 
     #[test]
+    fn test_csv_cols_to_write() {
+        let cols_to_write = std::collections::HashSet::from(super::csv_cols_to_write());
+        let mut all_cols_minus_deprecated = CsvCol::get_csv_cols();
+        all_cols_minus_deprecated.remove(CsvCol::LEGACY_SETTLEMENT_DATE);
+        assert_eq!(cols_to_write, all_cols_minus_deprecated)
+    }
+
+    #[test]
     fn test_to_tx_csv_string() {
         let mut d_reader =
         CsvFileBuilder::with_custom_header_line(
@@ -548,10 +620,23 @@ mod tests {
 			    "BB,2016-01-05,2016-01-08,Sell,2,1.7,1,USD,1.11,USD,1.11,-1.3!,Default (R),M4",
 			    "CC,2016-01-08,2016-01-10,SfLA,2,1.3,0,CAD,,CAD,,,B,M5",
             ]);
-        let _ = parse_tx_csv(
+        let parsed_txs = parse_tx_csv(
             &mut d_reader, 0,
             &mut WriteHandle::empty_write_handle()).unwrap();
 
-        // TODO
+        let mut str_writer = StringBuffer::new();
+        super::write_txs_to_csv(&parsed_txs, &mut str_writer).unwrap();
+
+        assert_vec_eq(
+            str_writer.as_str().split("\n").map(|s| s.to_string()).collect::<Vec<String>>(),
+            "security,trade date,settlement date,action,shares,amount/share,commission,\
+                currency,exchange rate,commission currency,commission exchange rate,\
+                superficial loss,affiliate,memo\n\
+            FOO,2016-01-03,2016-01-05,Sell,5,1.6,0,CAD,,CAD,,,Default,a memo\n\
+            BAR,2016-01-03,2016-01-06,Buy,7,1.7,1,USD,1.11,USD,1.11,,Default,a memo 2\n\
+            AA,2016-01-04,2016-01-07,Sell,1,1.7,1,USD,1.11,USD,1.11,-1.2,Default,M3\n\
+            BB,2016-01-05,2016-01-08,Sell,2,1.7,1,USD,1.11,USD,1.11,-1.3!,Default (R),M4\n\
+            CC,2016-01-08,2016-01-10,SfLA,2,1.3,0,CAD,,CAD,,,B,M5\n"
+                .split("\n").map(|s| s.to_string()).collect::<Vec<String>>());
     }
 }
