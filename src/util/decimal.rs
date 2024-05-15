@@ -2,6 +2,8 @@ use std::{fmt::Display, marker::PhantomData, ops::Deref};
 
 use rust_decimal::Decimal;
 
+use self::constraint::{GreaterEqualZero, LessEqualZero};
+
 // These were deprecated as methods on Decimal, so re-implement them.
 // Those implementations don't actually do zero checks, and can result
 // in weird behaviour.
@@ -115,6 +117,18 @@ impl <CONSTRAINT: DecConstraint> Clone for ConstrainedDecimal<CONSTRAINT> {
 impl <CONSTRAINT: DecConstraint> Copy for ConstrainedDecimal<CONSTRAINT> {
 }
 
+impl ConstrainedDecimal<GreaterEqualZero> {
+    pub fn zero() -> Self {
+        Self(Decimal::ZERO, PhantomData)
+    }
+}
+
+impl ConstrainedDecimal<LessEqualZero> {
+    pub fn zero() -> Self {
+        Self(Decimal::ZERO, PhantomData)
+    }
+}
+
 // Convenience aliases
 pub type NegDecimal = ConstrainedDecimal<constraint::Neg>;
 pub type LessEqualZeroDecimal = ConstrainedDecimal<constraint::LessEqualZero>;
@@ -124,7 +138,16 @@ pub type PosDecimal = ConstrainedDecimal<constraint::Pos>;
 #[macro_export]
 macro_rules! pdec {
     ($arg:literal) => {{
+        use rust_decimal_macros::dec;
         crate::util::decimal::PosDecimal::try_from(dec!($arg)).unwrap()
+    }};
+}
+
+#[macro_export]
+macro_rules! gezdec {
+    ($arg:literal) => {{
+        use rust_decimal_macros::dec;
+        crate::util::decimal::GreaterEqualZeroDecimal::try_from(dec!($arg)).unwrap()
     }};
 }
 

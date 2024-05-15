@@ -45,7 +45,7 @@ impl Affiliate {
     }
 
     pub fn from_strep(s: &str) -> Affiliate {
-        Affiliate::new(AffiliateData::from_strep(s))
+        AffiliateDedupTable::global_table().deduped_affiliate(s)
     }
 
     pub fn default() -> Affiliate {
@@ -67,6 +67,12 @@ impl Affiliate {
     }
     pub fn is_default(&self) -> bool {
         self.id().starts_with("default")
+    }
+}
+
+impl std::hash::Hash for Affiliate {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.0.id.hash(state);
     }
 }
 
