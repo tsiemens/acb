@@ -1,15 +1,15 @@
 use rust_decimal::{prelude::Zero, Decimal};
 
-use crate::util::math::PosDecimalRatio;
+use crate::util::{decimal::GreaterEqualZeroDecimal, math::PosDecimalRatio};
 
 use super::tx::Tx;
 
-#[derive(PartialEq, Eq, Debug)]
+#[derive(PartialEq, Eq, Clone, Debug)]
 pub struct PortfolioSecurityStatus {
-    security: String,
-    share_balance: Decimal,
-    all_affiliate_share_balance: Decimal,
-    total_acb: Option<Decimal>, // None for registered affiliates
+    pub security: String,
+    pub share_balance: GreaterEqualZeroDecimal,
+    pub all_affiliate_share_balance: GreaterEqualZeroDecimal,
+    pub total_acb: Option<GreaterEqualZeroDecimal>, // None for registered affiliates
 }
 
 impl PortfolioSecurityStatus {
@@ -21,7 +21,7 @@ impl PortfolioSecurityStatus {
             if self.share_balance.is_zero() {
                 Decimal::zero()
             } else {
-                self.total_acb.unwrap() / self.share_balance
+                *self.total_acb.unwrap() / *self.share_balance
             })
     }
 }
@@ -50,7 +50,7 @@ impl TxDelta {
         if self.pre_status.total_acb.is_none() || self.post_status.total_acb.is_none() {
             return None
         }
-        Some(self.post_status.total_acb.unwrap() - self.pre_status.total_acb.unwrap())
+        Some(*self.post_status.total_acb.unwrap() - *self.pre_status.total_acb.unwrap())
     }
 
     pub fn is_superficial_loss(&self) -> bool {

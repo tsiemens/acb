@@ -1,3 +1,4 @@
+pub mod bookkeeping;
 pub mod io;
 pub mod model;
 pub mod csv_common;
