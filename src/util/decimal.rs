@@ -117,6 +117,26 @@ impl <CONSTRAINT: DecConstraint> Clone for ConstrainedDecimal<CONSTRAINT> {
 impl <CONSTRAINT: DecConstraint> Copy for ConstrainedDecimal<CONSTRAINT> {
 }
 
+impl std::ops::Add for ConstrainedDecimal<GreaterEqualZero> {
+    type Output = Self;
+    fn add(self, rhs: Self) -> Self::Output {
+        // GEZ + GEZ will never violate its own constraint
+        GreaterEqualZeroDecimal::try_from(*self + *rhs).unwrap()
+    }
+}
+
+impl std::ops::AddAssign for ConstrainedDecimal<GreaterEqualZero> {
+    fn add_assign(&mut self, rhs: Self) {
+        *self = self.clone() + rhs;
+    }
+}
+
+impl From<ConstrainedDecimal<constraint::Pos>> for ConstrainedDecimal<GreaterEqualZero> {
+    fn from(value: ConstrainedDecimal<constraint::Pos>) -> Self {
+        GreaterEqualZeroDecimal::try_from(*value).unwrap()
+    }
+}
+
 impl ConstrainedDecimal<GreaterEqualZero> {
     pub fn zero() -> Self {
         Self(Decimal::ZERO, PhantomData)

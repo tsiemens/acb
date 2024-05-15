@@ -231,10 +231,20 @@ pub struct Tx {
 }
 
 impl Tx {
-    // Mostly for test convenience
+    pub fn action(&self) -> TxAction {
+        self.action_specifics.action()
+    }
+
     pub fn buy_specifics(&self) -> Result<&BuyTxSpecifics, ()>{
         match &self.action_specifics {
             TxActionSpecifics::Buy(specs) => Ok(specs),
+            _ => Err(()),
+        }
+    }
+
+    pub fn sell_specifics(&self) -> Result<&SellTxSpecifics, ()>{
+        match &self.action_specifics {
+            TxActionSpecifics::Sell(specs) => Ok(specs),
             _ => Err(()),
         }
     }
