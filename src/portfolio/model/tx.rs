@@ -449,6 +449,173 @@ impl Ord for Tx {
 }
 
 #[cfg(test)]
+pub mod testlib {
+    use lazy_static::lazy_static;
+    use time::{Date, Duration};
+
+    use crate::{
+        gezdec,
+        portfolio::{Affiliate, Currency},
+        util::{
+            date::{parse_standard_date, pub_testlib::doy_date},
+            decimal::GreaterEqualZeroDecimal
+        }
+    };
+
+    use super::{CsvTx, SFLInput, Tx, TxAction};
+
+    // This isn't terribly rust-esque, but it makes tests a bit more brief
+    // than using Option everywhere within the tests.
+    pub const MAGIC_DEFAULT_I32: i32 = -1234;
+    pub const MAGIC_DEFAULT_U32: u32 = 91284091;
+    pub const MAGIC_DEFAULT_AF_NAME: &str = "unset AF";
+
+    lazy_static! {
+        pub static ref MAGIC_DEFAULT_GEZ: GreaterEqualZeroDecimal = gezdec!(123456789.987654321);
+        pub static ref MAGIC_DEFAULT_DATE: Date = parse_standard_date("1970-01-01").unwrap();
+        pub static ref MAGIC_DEFAULT_CURRENCY: Currency = Currency::new("magic_default");
+    }
+
+    pub fn default_sec() -> String {
+        "FOO".to_string()
+    }
+
+    pub fn mk_date(i: i32) -> Date {
+        doy_date(2017, i as i64)
+    }
+
+    // Test Tx
+    pub struct TTx {
+        pub sec: String,
+
+        pub t_day: i32, // An arbitrary offset day. Convenience for tdate
+        pub t_date: Date, // Defaults to 2 days before sdate
+        pub s_yr: u32, // Year. Convenience for s_date. Must be combined with s_doy
+        pub s_doy: i32, // Day of Year. convenience for s_date. Must be combined with s_yr
+        pub s_date: Date, // Defaults to 2 days after t_date/t_day
+
+        pub act: TxAction, // Required
+
+        pub shares: GreaterEqualZeroDecimal,
+        pub price: GreaterEqualZeroDecimal,
+        pub comm: GreaterEqualZeroDecimal,
+        pub curr: Currency,
+        pub fx_rate: GreaterEqualZeroDecimal,
+        pub comm_curr: Currency,
+        pub comm_fx_rate: GreaterEqualZeroDecimal,
+        pub memo: String,
+        pub af: Affiliate,
+        pub af_name: &'static str,
+        pub sfl: Option<SFLInput>,
+
+        pub read_index: u32,
+    }
+
+    impl TTx {
+        pub fn x(&self) -> Tx {
+            let get_fx_rate = |rate_arg: GreaterEqualZeroDecimal,
+                                  default_rate: GreaterEqualZeroDecimal|
+                                  -> GreaterEqualZeroDecimal {
+                if rate_arg == *MAGIC_DEFAULT_GEZ {
+                    default_rate
+                } else {
+                    rate_arg
+                }
+            };
+            let fx_rate = get_fx_rate(self.fx_rate, gezdec!(1));
+            let affiliate = if self.af_name == MAGIC_DEFAULT_AF_NAME {
+                self.af.clone()
+            } else {
+                Affiliate::from_strep(self.af_name)
+            };
+
+            // Dates
+            let mut trade_date = if self.t_day != MAGIC_DEFAULT_I32 {
+                assert_eq!(self.t_date, *MAGIC_DEFAULT_DATE);
+                mk_date(self.t_day)
+            } else {
+                self.t_date
+            };
+
+            let mut settlement_date = if self.s_yr != MAGIC_DEFAULT_U32 {
+                assert_eq!(self.s_date, *MAGIC_DEFAULT_DATE);
+                doy_date(self.s_yr, self.s_doy.into())
+            } else {
+                assert_eq!(self.s_doy, MAGIC_DEFAULT_I32);
+                self.t_date
+            };
+
+            if settlement_date == *MAGIC_DEFAULT_DATE && trade_date != *MAGIC_DEFAULT_DATE {
+                settlement_date = trade_date.saturating_add(Duration::days(2))
+            } else if trade_date == *MAGIC_DEFAULT_DATE && settlement_date != *MAGIC_DEFAULT_DATE {
+                trade_date = settlement_date.saturating_sub(Duration::days(2))
+            }
+
+            let get_curr = |specified_curr: &Currency, default_: Currency| -> Currency {
+                if *specified_curr == *MAGIC_DEFAULT_CURRENCY {
+                    default_
+                } else {
+                    specified_curr.clone()
+                }
+            };
+
+            let curr = get_curr(&self.curr, Currency::cad());
+            let comm_curr = get_curr(&self.comm_curr, curr.clone());
+
+            let csv_tx = CsvTx {
+                security: Some(if self.sec.is_empty() { default_sec() } else { self.sec.clone() }),
+                trade_date: Some(trade_date),
+                settlement_date: Some(settlement_date),
+                action: Some(self.act),
+                shares: if self.shares != *MAGIC_DEFAULT_GEZ { Some(*self.shares) } else { None },
+                amount_per_share: if self.price != *MAGIC_DEFAULT_GEZ { Some(*self.price) } else { None },
+                commission: if self.comm != *MAGIC_DEFAULT_GEZ { Some(*self.comm) } else { None },
+                tx_currency: Some(curr),
+                tx_curr_to_local_exchange_rate: Some(*fx_rate),
+                commission_currency: Some(comm_curr),
+                commission_curr_to_local_exchange_rate: Some(*get_fx_rate(self.comm_fx_rate, fx_rate)),
+                memo: if self.memo.is_empty() { None } else { Some(self.memo.clone()) },
+                affiliate: Some(affiliate),
+                specified_superficial_loss: self.sfl.clone(),
+                read_index: self.read_index,
+            };
+            Tx::try_from(csv_tx).unwrap()
+        }
+
+        pub fn default() -> Self {
+            TTx {
+                sec: String::new(),
+
+                t_day: MAGIC_DEFAULT_I32,
+                t_date: *MAGIC_DEFAULT_DATE,
+                s_yr: MAGIC_DEFAULT_U32, // Year. Convenience for s_date. Must be combined with s_doy
+                s_doy: MAGIC_DEFAULT_I32, // Day of Year. convenience for s_date. Must be combined with s_yr
+                s_date: *MAGIC_DEFAULT_DATE, // Defaults to 2 days after t_date/t_day
+
+                act: TxAction::Roc, // Required. We have to pick one though
+
+                shares: *MAGIC_DEFAULT_GEZ,
+                price: *MAGIC_DEFAULT_GEZ,
+                comm: *MAGIC_DEFAULT_GEZ,
+                curr: MAGIC_DEFAULT_CURRENCY.clone(),
+                fx_rate: *MAGIC_DEFAULT_GEZ,
+                comm_curr: MAGIC_DEFAULT_CURRENCY.clone(),
+                comm_fx_rate: *MAGIC_DEFAULT_GEZ,
+                memo: String::new(),
+                af: Affiliate::default(),
+                af_name: MAGIC_DEFAULT_AF_NAME,
+                sfl: None,
+
+                read_index: 0,
+            }
+        }
+
+        pub fn d() -> Self { Self::default() }
+    }
+}
+
+// MARK: Tests
+#[cfg(test)]
 mod tests {
     use rust_decimal::Decimal;
     use rust_decimal_macros::dec;
