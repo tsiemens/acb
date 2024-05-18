@@ -31,3 +31,4 @@ impl <CONSTRAINT: DecConstraint>  Display for ConstrainedDecimalRatio<CONSTRAINT
 }
 
 pub type PosDecimalRatio = ConstrainedDecimalRatio<constraint::Pos>;
+pub type GezDecimalRatio = ConstrainedDecimalRatio<constraint::GreaterEqualZero>;

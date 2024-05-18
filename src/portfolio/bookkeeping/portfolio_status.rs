@@ -108,50 +108,63 @@ impl AffiliatePortfolioSecurityStatuses {
 }
 
 #[cfg(test)]
-mod tests {
+pub mod testlib {
     use std::rc::Rc;
 
-    use crate::{gezdec, portfolio::{Affiliate, PortfolioSecurityStatus}, util::decimal::GreaterEqualZeroDecimal};
+    use crate::portfolio::testlib::{default_sec, MAGIC_DEFAULT_GEZ};
+    use crate::{portfolio::PortfolioSecurityStatus, util::decimal::GreaterEqualZeroDecimal};
 
-    use super::AffiliatePortfolioSecurityStatuses;
 
-    fn default_sec() -> String {
-        "FOO".to_string()
-    }
-
-    fn gez_zero() -> GreaterEqualZeroDecimal {
-        GreaterEqualZeroDecimal::zero()
-    }
-
-    struct TPSS {
+    pub struct TPSS {
+        pub sec: String,
         pub shares: GreaterEqualZeroDecimal,
         pub all_shares: GreaterEqualZeroDecimal,
         pub total_acb: Option<GreaterEqualZeroDecimal>,
+        pub acb_per_sh: Option<GreaterEqualZeroDecimal>,
     }
 
     impl TPSS {
         pub fn x(&self) -> Rc<PortfolioSecurityStatus> {
-            let all_shares = if self.all_shares.is_zero() {
-                self.shares
-            } else {
-                self.all_shares
-            };
-
             Rc::new(PortfolioSecurityStatus{
-                security: default_sec(),
+                security: self.sec.clone(),
                 share_balance: self.shares,
-                all_affiliate_share_balance: all_shares,
-                total_acb: self.total_acb,
+                all_affiliate_share_balance: if self.all_shares != *MAGIC_DEFAULT_GEZ {
+                    self.all_shares } else { self.shares },
+                total_acb: if let Some(aps) = self.acb_per_sh {
+                    Some(GreaterEqualZeroDecimal::try_from(*aps * *self.shares).unwrap())
+                } else {
+                    self.total_acb
+                },
             })
         }
 
-        pub fn default() -> TPSS {
-            TPSS{
-                shares: gez_zero(),
-                all_shares: gez_zero(),
+        pub fn default() -> Self {
+            Self{
+                sec: default_sec(),
+                shares: GreaterEqualZeroDecimal::zero(),
+                all_shares: *MAGIC_DEFAULT_GEZ,
                 total_acb: None,
+                acb_per_sh: None,
             }
         }
+
+        pub fn d() -> Self {
+            Self::default()
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::rc::Rc;
+
+    use crate::{portfolio::{bookkeeping::testlib::TPSS, testlib::default_sec, Affiliate, PortfolioSecurityStatus}, util::decimal::GreaterEqualZeroDecimal};
+    use crate::gezdec as gez;
+
+    use super::AffiliatePortfolioSecurityStatuses;
+
+    fn gez_zero() -> GreaterEqualZeroDecimal {
+        GreaterEqualZeroDecimal::zero()
     }
 
     #[test]
@@ -173,9 +186,9 @@ mod tests {
         // get_latest_post_status_for_affiliate("default");
         // get_latest_post_status_for_affiliate("B");
         let non_zero_init_status = Rc::new(PortfolioSecurityStatus{
-            security: default_sec(), share_balance: gezdec!(12),
-            all_affiliate_share_balance: gezdec!(12),
-            total_acb: Some(gezdec!(24)),
+            security: default_sec(), share_balance: gez!(12),
+            all_affiliate_share_balance: gez!(12),
+            total_acb: Some(gez!(24)),
         });
         let statuses = AffiliatePortfolioSecurityStatuses::new(
             default_sec(), Some(non_zero_init_status.clone()));
@@ -201,22 +214,22 @@ mod tests {
         // (init with default)
         // get_latest_post_status()
         let non_zero_init_status = Rc::new(PortfolioSecurityStatus{
-            security: default_sec(), share_balance: gezdec!(12),
-            all_affiliate_share_balance: gezdec!(12),
-            total_acb: Some(gezdec!(24)),
+            security: default_sec(), share_balance: gez!(12),
+            all_affiliate_share_balance: gez!(12),
+            total_acb: Some(gez!(24)),
         });
         let statuses = AffiliatePortfolioSecurityStatuses::new(
             default_sec(), Some(non_zero_init_status.clone()));
         let latest = statuses.get_latest_post_status();
-        assert_eq!(TPSS{shares: gezdec!(12), total_acb: Some(gezdec!(24)), ..TPSS::default()}.x(), latest);
+        assert_eq!(TPSS{shares: gez!(12), total_acb: Some(gez!(24)), ..TPSS::default()}.x(), latest);
 
         // Case:
         // set_latest_post_status("B")
         // get_latest_post_status()
         let mut statuses = AffiliatePortfolioSecurityStatuses::new(default_sec(), None);
-        statuses.set_latest_post_status(&af_b, TPSS{shares: gezdec!(2), total_acb: Some(gezdec!(4)), ..TPSS::default()}.x());
+        statuses.set_latest_post_status(&af_b, TPSS{shares: gez!(2), total_acb: Some(gez!(4)), ..TPSS::default()}.x());
         let latest = statuses.get_latest_post_status();
-        assert_eq!(TPSS{shares: gezdec!(2), total_acb: Some(gezdec!(4)), ..TPSS::default()}.x(), latest);
+        assert_eq!(TPSS{shares: gez!(2), total_acb: Some(gez!(4)), ..TPSS::default()}.x(), latest);
 
         // Case:
         // (init with default)
@@ -224,9 +237,9 @@ mod tests {
         // get_latest_post_status()
         let mut statuses = AffiliatePortfolioSecurityStatuses::new(
             default_sec(), Some(non_zero_init_status.clone()));
-        statuses.set_latest_post_status(&af_b, TPSS{shares: gezdec!(2), all_shares: gezdec!(14), total_acb: Some(gezdec!(4)), ..TPSS::default()}.x());
+        statuses.set_latest_post_status(&af_b, TPSS{shares: gez!(2), all_shares: gez!(14), total_acb: Some(gez!(4)), ..TPSS::default()}.x());
         let latest = statuses.get_latest_post_status();
-        assert_eq!(TPSS{shares: gezdec!(2), all_shares: gezdec!(14), total_acb: Some(gezdec!(4)), ..TPSS::default()}.x(), latest);
+        assert_eq!(TPSS{shares: gez!(2), all_shares: gez!(14), total_acb: Some(gez!(4)), ..TPSS::default()}.x(), latest);
     }
 
     #[test]
@@ -234,9 +247,9 @@ mod tests {
     fn test_panic_on_invalid_all_shares() {
         let af_b = Affiliate::from_strep("B");
         let non_zero_init_status = Rc::new(PortfolioSecurityStatus{
-            security: default_sec(), share_balance: gezdec!(12),
-            all_affiliate_share_balance: gezdec!(12),
-            total_acb: Some(gezdec!(24)),
+            security: default_sec(), share_balance: gez!(12),
+            all_affiliate_share_balance: gez!(12),
+            total_acb: Some(gez!(24)),
         });
 
         // Case:
@@ -246,7 +259,7 @@ mod tests {
         //      the old all_shares_balance
         let mut statuses = AffiliatePortfolioSecurityStatuses::new(
             default_sec(), Some(non_zero_init_status.clone()));
-        statuses.set_latest_post_status(&af_b, TPSS{shares: gezdec!(2), all_shares: gezdec!(2), total_acb: Some(gezdec!(4))}.x());
+        statuses.set_latest_post_status(&af_b, TPSS{shares: gez!(2), all_shares: gez!(2), total_acb: Some(gez!(4)), ..TPSS::d()}.x());
     }
 
     #[test]
@@ -259,11 +272,11 @@ mod tests {
         // get_next_pre_status("Default")
         // get_latest_post_status()
         let mut statuses = AffiliatePortfolioSecurityStatuses::new(default_sec(), None);
-        statuses.set_latest_post_status(&af_b, TPSS{shares: gezdec!(2), all_shares: gezdec!(2), total_acb: Some(gezdec!(4)), ..TPSS::default()}.x());
+        statuses.set_latest_post_status(&af_b, TPSS{shares: gez!(2), all_shares: gez!(2), total_acb: Some(gez!(4)), ..TPSS::default()}.x());
         let default_status = statuses.get_next_pre_status(&default_af);
-        assert_eq!(TPSS{shares: gez_zero(), all_shares: gezdec!(2), total_acb: Some(gez_zero()), ..TPSS::default()}.x(), default_status);
+        assert_eq!(TPSS{shares: gez_zero(), all_shares: gez!(2), total_acb: Some(gez_zero()), ..TPSS::default()}.x(), default_status);
         let latest = statuses.get_latest_post_status();
-        assert_eq!(TPSS{shares: gezdec!(2), all_shares: gezdec!(2), total_acb: Some(gezdec!(4)), ..TPSS::default()}.x(), latest);
+        assert_eq!(TPSS{shares: gez!(2), all_shares: gez!(2), total_acb: Some(gez!(4)), ..TPSS::default()}.x(), latest);
 
         // Case:
         // (init with default)
@@ -271,17 +284,17 @@ mod tests {
         // get_next_pre_status("Default")
         // get_latest_post_status()
         let non_zero_init_status = Rc::new(PortfolioSecurityStatus{
-            security: default_sec(), share_balance: gezdec!(12),
-            all_affiliate_share_balance: gezdec!(12),
-            total_acb: Some(gezdec!(24)),
+            security: default_sec(), share_balance: gez!(12),
+            all_affiliate_share_balance: gez!(12),
+            total_acb: Some(gez!(24)),
         });
         let mut statuses = AffiliatePortfolioSecurityStatuses::new(
             default_sec(), Some(non_zero_init_status.clone()));
-        statuses.set_latest_post_status(&af_b, TPSS{shares: gezdec!(2), all_shares: gezdec!(14), total_acb: Some(gezdec!(4)), ..TPSS::default()}.x());
+        statuses.set_latest_post_status(&af_b, TPSS{shares: gez!(2), all_shares: gez!(14), total_acb: Some(gez!(4)), ..TPSS::default()}.x());
         let default_status = statuses.get_next_pre_status(&default_af);
-        assert_eq!(TPSS{shares: gezdec!(12), all_shares: gezdec!(14), total_acb: Some(gezdec!(24)), ..TPSS::default()}.x(), default_status);
+        assert_eq!(TPSS{shares: gez!(12), all_shares: gez!(14), total_acb: Some(gez!(24)), ..TPSS::default()}.x(), default_status);
         let latest = statuses.get_latest_post_status();
-        assert_eq!(TPSS{shares: gezdec!(2), all_shares: gezdec!(14), total_acb: Some(gezdec!(4)), ..TPSS::default()}.x(), latest);
+        assert_eq!(TPSS{shares: gez!(2), all_shares: gez!(14), total_acb: Some(gez!(4)), ..TPSS::default()}.x(), latest);
 
     }
 
@@ -319,49 +332,49 @@ mod tests {
         assert_eq!(TPSS{shares: gez_zero(), all_shares: gez_zero(), total_acb: Some(gez_zero()), ..TPSS::default()}.x(), latest_post);
         assert_eq!(statuses.get_latest_post_status_for_affiliate(&default_af), None);
         assert_eq!(statuses.get_latest_post_status_for_affiliate(&af_b), None);
-        statuses.set_latest_post_status(&default_af, TPSS{shares: gezdec!(2), total_acb: Some(gezdec!(4)), ..TPSS::default()}.x());
+        statuses.set_latest_post_status(&default_af, TPSS{shares: gez!(2), total_acb: Some(gez!(4)), ..TPSS::default()}.x());
 
         // Buy 1 default
         let next_pre = statuses.get_next_pre_status(&default_af);
-        assert_eq!(TPSS{shares: gezdec!(2), total_acb: Some(gezdec!(4)), ..TPSS::default()}.x(), next_pre);
+        assert_eq!(TPSS{shares: gez!(2), total_acb: Some(gez!(4)), ..TPSS::default()}.x(), next_pre);
         let latest_post = statuses.get_latest_post_status();
-        assert_eq!(TPSS{shares: gezdec!(2), all_shares: gezdec!(2), total_acb: Some(gezdec!(4)), ..TPSS::default()}.x(), latest_post);
+        assert_eq!(TPSS{shares: gez!(2), all_shares: gez!(2), total_acb: Some(gez!(4)), ..TPSS::default()}.x(), latest_post);
         let latest_def = statuses.get_latest_post_status_for_affiliate(&default_af).unwrap();
-        assert_eq!(TPSS{shares: gezdec!(2), all_shares: gezdec!(2), total_acb: Some(gezdec!(4)), ..TPSS::default()}.x(), latest_def.clone());
+        assert_eq!(TPSS{shares: gez!(2), all_shares: gez!(2), total_acb: Some(gez!(4)), ..TPSS::default()}.x(), latest_def.clone());
         assert_eq!(statuses.get_latest_post_status_for_affiliate(&af_b), None);
-        statuses.set_latest_post_status(&default_af, TPSS{shares: gezdec!(3), total_acb: Some(gezdec!(6)), ..TPSS::default()}.x());
+        statuses.set_latest_post_status(&default_af, TPSS{shares: gez!(3), total_acb: Some(gez!(6)), ..TPSS::default()}.x());
 
         // Buy 12 B
         let next_pre = statuses.get_next_pre_status(&af_b);
-        assert_eq!(TPSS{shares: gez_zero(), all_shares: gezdec!(3), total_acb: Some(gez_zero()), ..TPSS::default()}.x(), next_pre);
+        assert_eq!(TPSS{shares: gez_zero(), all_shares: gez!(3), total_acb: Some(gez_zero()), ..TPSS::default()}.x(), next_pre);
         let latest_post = statuses.get_latest_post_status();
-        assert_eq!(TPSS{shares: gezdec!(3), all_shares: gezdec!(3), total_acb: Some(gezdec!(6)), ..TPSS::default()}.x(), latest_post);
+        assert_eq!(TPSS{shares: gez!(3), all_shares: gez!(3), total_acb: Some(gez!(6)), ..TPSS::default()}.x(), latest_post);
         let latest_def = statuses.get_latest_post_status_for_affiliate(&default_af).unwrap();
-        assert_eq!(TPSS{shares: gezdec!(3), all_shares: gezdec!(3), total_acb: Some(gezdec!(6)), ..TPSS::default()}.x(), latest_def.clone());
+        assert_eq!(TPSS{shares: gez!(3), all_shares: gez!(3), total_acb: Some(gez!(6)), ..TPSS::default()}.x(), latest_def.clone());
         assert_eq!(statuses.get_latest_post_status_for_affiliate(&af_b), None);
-        statuses.set_latest_post_status(&af_b, TPSS{shares: gezdec!(12), all_shares: gezdec!(15), total_acb: Some(gezdec!(24)), ..TPSS::default()}.x());
+        statuses.set_latest_post_status(&af_b, TPSS{shares: gez!(12), all_shares: gez!(15), total_acb: Some(gez!(24)), ..TPSS::default()}.x());
 
         // Sell 6 B
         let next_pre = statuses.get_next_pre_status(&af_b);
-        assert_eq!(TPSS{shares: gezdec!(12), all_shares: gezdec!(15), total_acb: Some(gezdec!(24)), ..TPSS::default()}.x(), next_pre);
+        assert_eq!(TPSS{shares: gez!(12), all_shares: gez!(15), total_acb: Some(gez!(24)), ..TPSS::default()}.x(), next_pre);
         let latest_post = statuses.get_latest_post_status();
-        assert_eq!(TPSS{shares: gezdec!(12), all_shares: gezdec!(15), total_acb: Some(gezdec!(24)), ..TPSS::default()}.x(), latest_post);
+        assert_eq!(TPSS{shares: gez!(12), all_shares: gez!(15), total_acb: Some(gez!(24)), ..TPSS::default()}.x(), latest_post);
         let latest_def = statuses.get_latest_post_status_for_affiliate(&default_af).unwrap();
-        assert_eq!(TPSS{shares: gezdec!(3), all_shares: gezdec!(3), total_acb: Some(gezdec!(6)), ..TPSS::default()}.x(), latest_def.clone());
+        assert_eq!(TPSS{shares: gez!(3), all_shares: gez!(3), total_acb: Some(gez!(6)), ..TPSS::default()}.x(), latest_def.clone());
         let latest_b = statuses.get_latest_post_status_for_affiliate(&af_b).unwrap();
-        assert_eq!(TPSS{shares: gezdec!(12), all_shares: gezdec!(15), total_acb: Some(gezdec!(24)), ..TPSS::default()}.x(), latest_b.clone());
-        statuses.set_latest_post_status(&af_b, TPSS{shares: gezdec!(6), all_shares: gezdec!(9), total_acb: Some(gezdec!(12)), ..TPSS::default()}.x());
+        assert_eq!(TPSS{shares: gez!(12), all_shares: gez!(15), total_acb: Some(gez!(24)), ..TPSS::default()}.x(), latest_b.clone());
+        statuses.set_latest_post_status(&af_b, TPSS{shares: gez!(6), all_shares: gez!(9), total_acb: Some(gez!(12)), ..TPSS::default()}.x());
 
         // Buy 1 default
         let next_pre = statuses.get_next_pre_status(&default_af);
-        assert_eq!(TPSS{shares: gezdec!(3), all_shares: gezdec!(9), total_acb: Some(gezdec!(6)), ..TPSS::default()}.x(), next_pre);
+        assert_eq!(TPSS{shares: gez!(3), all_shares: gez!(9), total_acb: Some(gez!(6)), ..TPSS::default()}.x(), next_pre);
         let latest_post = statuses.get_latest_post_status();
-        assert_eq!(TPSS{shares: gezdec!(6), all_shares: gezdec!(9), total_acb: Some(gezdec!(12)), ..TPSS::default()}.x(), latest_post);
+        assert_eq!(TPSS{shares: gez!(6), all_shares: gez!(9), total_acb: Some(gez!(12)), ..TPSS::default()}.x(), latest_post);
         let latest_def = statuses.get_latest_post_status_for_affiliate(&default_af).unwrap();
-        assert_eq!(TPSS{shares: gezdec!(3), all_shares: gezdec!(3), total_acb: Some(gezdec!(6)), ..TPSS::default()}.x(), latest_def.clone());
+        assert_eq!(TPSS{shares: gez!(3), all_shares: gez!(3), total_acb: Some(gez!(6)), ..TPSS::default()}.x(), latest_def.clone());
         let latest_b = statuses.get_latest_post_status_for_affiliate(&af_b).unwrap();
-        assert_eq!(TPSS{shares: gezdec!(6), all_shares: gezdec!(9), total_acb: Some(gezdec!(12)), ..TPSS::default()}.x(), latest_b.clone());
-        statuses.set_latest_post_status(&default_af, TPSS{shares: gezdec!(4), all_shares: gezdec!(10), total_acb: Some(gezdec!(6)), ..TPSS::default()}.x());
+        assert_eq!(TPSS{shares: gez!(6), all_shares: gez!(9), total_acb: Some(gez!(12)), ..TPSS::default()}.x(), latest_b.clone());
+        statuses.set_latest_post_status(&default_af, TPSS{shares: gez!(4), all_shares: gez!(10), total_acb: Some(gez!(6)), ..TPSS::default()}.x());
 
     }
 
@@ -378,9 +391,9 @@ mod tests {
 
         // Case:
         // set_latest_post_status("(R)")
-        statuses.set_latest_post_status(&default_r_af, TPSS{shares: gezdec!(1), all_shares: gezdec!(1), total_acb: None, ..TPSS::default()}.x());
+        statuses.set_latest_post_status(&default_r_af, TPSS{shares: gez!(1), all_shares: gez!(1), total_acb: None, ..TPSS::default()}.x());
         let latest_post = statuses.get_latest_post_status();
-        assert_eq!(TPSS{shares: gezdec!(1), all_shares: gezdec!(1), total_acb: None, ..TPSS::default()}.x(), latest_post);
+        assert_eq!(TPSS{shares: gez!(1), all_shares: gez!(1), total_acb: None, ..TPSS::default()}.x(), latest_post);
     }
 
     #[test]
@@ -389,7 +402,7 @@ mod tests {
         let default_r_af = Affiliate::default_registered();
 
         let mut statuses = AffiliatePortfolioSecurityStatuses::new(default_sec(), None);
-        statuses.set_latest_post_status(&default_r_af, TPSS{shares: gez_zero(), all_shares: gez_zero(), total_acb: Some(gez_zero())}.x());
+        statuses.set_latest_post_status(&default_r_af, TPSS{shares: gez_zero(), all_shares: gez_zero(), total_acb: Some(gez_zero()), ..TPSS::d()}.x());
     }
 
     #[test]
@@ -398,6 +411,6 @@ mod tests {
         let default_af = Affiliate::default();
 
         let mut statuses = AffiliatePortfolioSecurityStatuses::new(default_sec(), None);
-        statuses.set_latest_post_status(&default_af, TPSS{shares: gez_zero(), all_shares: gez_zero(), total_acb: None}.x());
+        statuses.set_latest_post_status(&default_af, TPSS{shares: gez_zero(), all_shares: gez_zero(), total_acb: None, ..TPSS::d()}.x());
     }
 }

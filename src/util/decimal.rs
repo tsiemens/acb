@@ -2,6 +2,16 @@ use std::{fmt::Display, marker::PhantomData, ops::Deref};
 
 use rust_decimal::Decimal;
 
+pub fn min(ds: &[Decimal]) -> Decimal {
+    let mut m = ds[0];
+    for d in &ds[1 ..] {
+        if *d < m {
+            m = *d;
+        }
+    }
+    m
+}
+
 use self::constraint::{GreaterEqualZero, LessEqualZero};
 
 // These were deprecated as methods on Decimal, so re-implement them.
@@ -147,6 +157,17 @@ impl ConstrainedDecimal<LessEqualZero> {
     pub fn zero() -> Self {
         Self(Decimal::ZERO, PhantomData)
     }
+}
+
+pub fn constrained_min<CONSTRAINT: DecConstraint>(ds: &[ConstrainedDecimal<CONSTRAINT>])
+    -> ConstrainedDecimal<CONSTRAINT> {
+    let mut m = ds[0];
+    for d in &ds[1 ..] {
+        if **d < *m {
+            m = *d;
+        }
+    }
+    m
 }
 
 // Convenience aliases
