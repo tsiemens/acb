@@ -11,7 +11,7 @@ use super::AffiliatePortfolioSecurityStatuses;
 
 type Error = String;
 
-#[derive(PartialEq, Debug)]
+#[derive(PartialEq, Clone, Debug)]
 struct SuperficialLossInfo {
     pub _first_date_in_period: Date,
     pub _last_date_in_period: Date,
@@ -253,6 +253,7 @@ fn get_superficial_loss_info(
     Ok(x)
 }
 
+#[derive(PartialEq, Debug)]
 pub(super) struct SflRatioResultResult {
     pub sfl_ratio: PosDecimalRatio,
     pub acb_adjust_affiliate_ratios: HashMap<Affiliate, GezDecimalRatio>,
@@ -264,31 +265,29 @@ pub(super) struct SflRatioResultResult {
     pub fewer_remaining_shares_than_sfl_shares: bool
 }
 
-// Calculation of partial superficial losses where
-// Superficial loss = (min(#sold, totalAquired, endBalance) / #sold) x (Total Loss)
-// This function returns the left hand side of this formula, on the condition that
-// the loss is actually superficial.
-//
-// Returns:
-// - the superficial loss ratio (if calculable)
-// - the affiliate to apply an automatic adjustment to (if possible)
-// - an soft error (warning), which only applies when auto-generating the SfLA
-//
-// Uses interpretation I.1 from the link below for splitting loss adjustments.
-//
-// More detailed discussions about adjustment allocation can be found at
-// https://github.com/tsiemens/acb/wiki/Superficial-Losses
-//
-// Reference: https://www.adjustedcostbase.ca/blog/applying-the-superficial-loss-rule-for-a-partial-disposition-of-shares/
-pub(super) fn get_superficial_loss_ratio(
-    idx: usize, txs: &Vec<Tx>, ptf_statuses: &AffiliatePortfolioSecurityStatuses)
-    -> Result<Option<SflRatioResultResult>, Error> {
-
-    let msli = get_superficial_loss_info(idx, txs, ptf_statuses)?;
+/// Calculation of partial superficial losses where
+/// Superficial loss = (min(#sold, totalAquired, endBalance) / #sold) x (Total Loss)
+/// This function returns the left hand side of this formula, on the condition that
+/// the loss is actually superficial.
+///
+/// Returns:
+/// - the superficial loss ratio (if calculable)
+/// - the affiliate to apply an automatic adjustment to (if possible)
+/// - an soft error (warning), which only applies when auto-generating the SfLA
+///
+/// Uses interpretation I.1 from the link below for splitting loss adjustments.
+///
+/// More detailed discussions about adjustment allocation can be found at
+/// https://github.com/tsiemens/acb/wiki/Superficial-Losses
+///
+/// Reference: https://www.adjustedcostbase.ca/blog/applying-the-superficial-loss-rule-for-a-partial-disposition-of-shares/
+fn calc_superficial_loss_ratio(
+    sell_tx: &Tx,
+    msli: MaybeSuperficialLossInfo
+) -> Result<Option<SflRatioResultResult>, Error> {
     match msli {
         MaybeSuperficialLossInfo::Superficial(sli) => {
-            let tx = txs.get(idx).unwrap();
-            let sell_shares = tx.sell_specifics().unwrap().shares;
+            let sell_shares = sell_tx.sell_specifics().unwrap().shares;
 
             let numerator = crate::util::decimal::constrained_min(&[
                 sell_shares,
@@ -335,6 +334,15 @@ pub(super) fn get_superficial_loss_ratio(
     }
 }
 
+/// See doc for `calc_superficial_loss_ratio`
+pub(super) fn get_superficial_loss_ratio(
+    idx: usize, txs: &Vec<Tx>, ptf_statuses: &AffiliatePortfolioSecurityStatuses)
+    -> Result<Option<SflRatioResultResult>, Error> {
+
+    let msli = get_superficial_loss_info(idx, txs, ptf_statuses)?;
+    calc_superficial_loss_ratio(txs.get(idx).unwrap(), msli)
+}
+
 // MARK: Tests
 #[cfg(test)]
 mod tests {
@@ -349,10 +357,11 @@ mod tests {
     use crate::portfolio::{bookkeeping::AffiliatePortfolioSecurityStatuses, Affiliate};
     use crate::portfolio::{SFLInput, TxAction as A};
     use crate::testlib::assert_big_struct_eq;
-    use crate::util::decimal::{GreaterEqualZeroDecimal, LessEqualZeroDecimal};
+    use crate::util::decimal::{GreaterEqualZeroDecimal, LessEqualZeroDecimal, PosDecimal};
+    use crate::util::math::{GezDecimalRatio, PosDecimalRatio};
     use crate::{gezdec as gez, pdec};
 
-    use super::get_superficial_loss_info;
+    use super::{calc_superficial_loss_ratio, get_superficial_loss_info, MaybeSuperficialLossInfo, SflRatioResultResult};
 
     fn create_test_status(af_shares: &[(Affiliate, GreaterEqualZeroDecimal)]) -> AffiliatePortfolioSecurityStatuses {
         let mut statuses = AffiliatePortfolioSecurityStatuses::new(default_sec(), None);
@@ -366,6 +375,8 @@ mod tests {
         }
         statuses
     }
+
+    // MARK: get_superficial_loss_info tests
 
     // Non-superficial:
     //  - zero shares at end of period
@@ -695,12 +706,257 @@ mod tests {
         assert_eq!("Total share count went below zero in 30-day period after sale (on 2017-01-14)", &e);
     }
 
-    /// Test the case where we are calculating the fraction of the SFL
-    /// for each affiliate, but the end-if-period amount for buying
-    /// affiliates (but not in total) is zero, causing the ratio
-    /// denominator to also be zero (in theory).
+    // MARK: get_superficial_loss_ratio / calc_superficial_loss_ratio tests
+
     #[test]
-    fn test_legal_zero_denominator() {
-        // todo!()
+    fn test_calc_superficial_loss_ratio_not_superficial() {
+        let sell_tx = TTx{t_day: 10, act: A::Sell, shares: gez!(5), price: gez!(1),
+                          af: Affiliate::default(), ..TTx::d()}.x();
+        let msli = MaybeSuperficialLossInfo::NotSuperficial();
+        let res = calc_superficial_loss_ratio(&sell_tx, msli).unwrap();
+        assert!(res.is_none());
+    }
+
+    fn pratio(n: PosDecimal, d: PosDecimal) -> PosDecimalRatio {
+        PosDecimalRatio{ numerator: n, denominator: d }
+    }
+
+    fn zratio(n: GreaterEqualZeroDecimal, d: PosDecimal) -> GezDecimalRatio {
+        GezDecimalRatio{ numerator: n, denominator: d }
+    }
+
+    #[test]
+    fn test_calc_superficial_loss_ratio_basic_ratio() {
+        let default_af = || Affiliate::default();
+
+        // Ratio takes the min of each - sell shares, total_aquired, all_shares_eop
+        //                               3            , 7            , 5
+
+        let sell_tx = TTx{t_day: 10, act: A::Sell, shares: gez!(3), price: gez!(1),
+            af: default_af(), ..TTx::d()}.x();
+
+        let sli = SuperficialLossInfo {
+            _first_date_in_period: mk_date(0),
+            _last_date_in_period: mk_date(0),
+            all_aff_shares_at_end_of_period: pdec!(5),
+            total_aquired_in_period: pdec!(7),
+            buying_affiliates: HashSet::from([default_af()]),
+            active_affiliate_shares_at_eop: HashMap::from([
+                (default_af(), gez!(6)),
+            ]),
+        };
+
+        // af shares at eop / buying_affiliate_shares_at_eop_total
+
+        let res = calc_superficial_loss_ratio(
+            &sell_tx, MaybeSuperficialLossInfo::Superficial(sli.clone())).unwrap();
+        assert_big_struct_eq(
+            res.unwrap(),
+            SflRatioResultResult {
+                // min(sell_shares, total_aquired, all_shares_eop) / sell_shares
+                sfl_ratio: pratio(pdec!(3), pdec!(3)),
+                acb_adjust_affiliate_ratios: HashMap::from([
+                    // af shares at eop / buying_affiliate_shares_at_eop_total
+                    (default_af(), zratio(gez!(6), pdec!(6))),
+                ]),
+                fewer_remaining_shares_than_sfl_shares: false,
+            }
+        );
+
+        // Ratio takes the min of each - sell shares, total_aquired, all_shares_eop
+        //                               6            , 7            , 5
+
+        let sell_tx = TTx{t_day: 10, act: A::Sell, shares: gez!(6), price: gez!(1),
+            af: default_af(), ..TTx::d()}.x();
+
+        let res = calc_superficial_loss_ratio(
+            &sell_tx, MaybeSuperficialLossInfo::Superficial(sli.clone())).unwrap();
+        assert_big_struct_eq(
+            res.unwrap(),
+            SflRatioResultResult {
+                // min(sell_shares, total_aquired, all_shares_eop) / sell_shares
+                sfl_ratio: pratio(pdec!(5), pdec!(6)),
+                acb_adjust_affiliate_ratios: HashMap::from([
+                    // af shares at eop / buying_affiliate_shares_at_eop_total
+                    (default_af(), zratio(gez!(6), pdec!(6))),
+                ]),
+                fewer_remaining_shares_than_sfl_shares: false,
+            }
+        );
+
+        // Ratio takes the min of each - sell shares, total_aquired, all_shares_eop
+        //                               5            , 4            , 3
+
+        let sell_tx = TTx{t_day: 10, act: A::Sell, shares: gez!(5), price: gez!(1),
+            af: default_af(), ..TTx::d()}.x();
+
+        let mut sli = sli;
+        sli.all_aff_shares_at_end_of_period = pdec!(3);
+        sli.total_aquired_in_period = pdec!(4);
+
+        let res = calc_superficial_loss_ratio(
+            &sell_tx, MaybeSuperficialLossInfo::Superficial(sli.clone())).unwrap();
+        assert_big_struct_eq(
+            res.unwrap(),
+            SflRatioResultResult {
+                // min(sell_shares, total_aquired, all_shares_eop) / sell_shares
+                sfl_ratio: pratio(pdec!(3), pdec!(5)),
+                acb_adjust_affiliate_ratios: HashMap::from([
+                    // af shares at eop / buying_affiliate_shares_at_eop_total
+                    (default_af(), zratio(gez!(6), pdec!(6))),
+                ]),
+                fewer_remaining_shares_than_sfl_shares: false,
+            }
+        );
+    }
+
+    // calc_superficial_loss_ratio cases:
+    //
+    // Takes the min of each - shares, total_aquired, all_shares_eop
+    // assert? no buying affiliates?
+    //
+    // affiliate ratios:
+    // af shares at eop / BuyingAffiliateSharesAtEOPTotal
+    //  - test for zero af shares
+    //  - test for zero buying_affiliate_shares_at_eop_total shares
+    //      (this would mean 0/0)
+    //
+    // FewerRemainingSharesThanSflShares : fewer_remaining_shares_than_sfl_shares
+    //
+    // Errors?
+    // buyingAffilsShareEOPTotal is zero
+
+    #[test]
+    fn test_calc_superficial_loss_ratio_affiliate_ratios() {
+        let default_af = || Affiliate::default();
+        let af_b = ||Affiliate::from_strep("B");
+        let af_c = ||Affiliate::from_strep("C");
+
+        // Active affiliate with no buys
+
+        let sell_tx = TTx{t_day: 10, act: A::Sell, shares: gez!(3), price: gez!(1),
+            af: default_af(), ..TTx::d()}.x();
+
+        let mut sli = SuperficialLossInfo {
+            _first_date_in_period: mk_date(0),
+            _last_date_in_period: mk_date(0),
+            all_aff_shares_at_end_of_period: pdec!(5),
+            total_aquired_in_period: pdec!(7),
+            buying_affiliates: HashSet::from([default_af()]),
+            active_affiliate_shares_at_eop: HashMap::from([
+                (default_af(), gez!(6)),
+                (af_b(), gez!(10)),
+            ]),
+        };
+
+        // af shares at eop / buying_affiliate_shares_at_eop_total
+
+        let res = calc_superficial_loss_ratio(
+            &sell_tx, MaybeSuperficialLossInfo::Superficial(sli.clone())).unwrap();
+        assert_big_struct_eq(
+            res.unwrap(),
+            SflRatioResultResult {
+                // min(sell_shares, total_aquired, all_shares_eop) / sell_shares
+                sfl_ratio: pratio(pdec!(3), pdec!(3)),
+                acb_adjust_affiliate_ratios: HashMap::from([
+                    // af shares at eop / buying_affiliate_shares_at_eop_total
+                    (default_af(), zratio(gez!(6), pdec!(6))),
+                ]),
+                fewer_remaining_shares_than_sfl_shares: false,
+            }
+        );
+
+        // Distributed ratios, including zero
+
+        sli.buying_affiliates = HashSet::from([default_af(), af_b(), af_c()]);
+        sli.active_affiliate_shares_at_eop = HashMap::from([
+            (default_af(), gez!(6)),
+            (af_b(), gez!(10)),
+            (af_c(), gez!(0)),
+        ]);
+
+        let res = calc_superficial_loss_ratio(
+            &sell_tx, MaybeSuperficialLossInfo::Superficial(sli.clone())).unwrap();
+        assert_big_struct_eq(
+            res.unwrap(),
+            SflRatioResultResult {
+                // min(sell_shares, total_aquired, all_shares_eop) / sell_shares
+                sfl_ratio: pratio(pdec!(3), pdec!(3)),
+                acb_adjust_affiliate_ratios: HashMap::from([
+                    // af shares at eop / buying_affiliate_shares_at_eop_total
+                    (default_af(), zratio(gez!(6), pdec!(16))),
+                    (af_b(), zratio(gez!(10), pdec!(16))),
+                    (af_c(), zratio(gez!(0), pdec!(16))),
+                ]),
+                fewer_remaining_shares_than_sfl_shares: false,
+            }
+        );
+
+        // Low buyer shares
+
+        // Lower than sold shares, which is 3
+        sli.buying_affiliates = HashSet::from([default_af()]);
+        sli.active_affiliate_shares_at_eop = HashMap::from([
+            (default_af(), gez!(2)),
+        ]);
+
+        let res = calc_superficial_loss_ratio(
+            &sell_tx, MaybeSuperficialLossInfo::Superficial(sli.clone())).unwrap();
+        assert_big_struct_eq(
+            res.unwrap(),
+            SflRatioResultResult {
+                // min(sell_shares, total_aquired, all_shares_eop) / sell_shares
+                sfl_ratio: pratio(pdec!(3), pdec!(3)),
+                acb_adjust_affiliate_ratios: HashMap::from([
+                    // af shares at eop / buying_affiliate_shares_at_eop_total
+                    (default_af(), zratio(gez!(2), pdec!(2))),
+                ]),
+                // Take note: This is true now
+                fewer_remaining_shares_than_sfl_shares: true,
+            }
+        );
+
+        // Zero denominator (all remaining shares are in non-active or sell-only AF)
+
+        sli.buying_affiliates = HashSet::from([default_af()]);
+        sli.active_affiliate_shares_at_eop = HashMap::from([
+            (default_af(), gez!(0)),
+        ]);
+
+        let res = calc_superficial_loss_ratio(
+            &sell_tx, MaybeSuperficialLossInfo::Superficial(sli.clone())).unwrap();
+        assert_big_struct_eq(
+            res.unwrap(),
+            SflRatioResultResult {
+                // min(sell_shares, total_aquired, all_shares_eop) / sell_shares
+                sfl_ratio: pratio(pdec!(3), pdec!(3)),
+                acb_adjust_affiliate_ratios: HashMap::from([
+                ]),
+                fewer_remaining_shares_than_sfl_shares: true,
+            }
+        );
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_calc_superficial_loss_ratio_affiliate_ratios_no_buying_afs() {
+        let sell_tx = TTx{t_day: 10, act: A::Sell, shares: gez!(3), price: gez!(1),
+            af: Affiliate::default(), ..TTx::d()}.x();
+
+        let sli = SuperficialLossInfo {
+            _first_date_in_period: mk_date(0),
+            _last_date_in_period: mk_date(0),
+            all_aff_shares_at_end_of_period: pdec!(5),
+            total_aquired_in_period: pdec!(7),
+            buying_affiliates: HashSet::from([]),
+            active_affiliate_shares_at_eop: HashMap::from([
+                (Affiliate::default(), gez!(6)),
+            ]),
+        };
+
+        // This will panic, because buying_affiliates was empty, even though
+        // marked as superficial.
+        let _ = calc_superficial_loss_ratio(
+            &sell_tx, MaybeSuperficialLossInfo::Superficial(sli));
     }
 }
