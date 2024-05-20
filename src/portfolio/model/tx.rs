@@ -141,6 +141,10 @@ impl BuyTxSpecifics {
     pub fn common_buy_sell_attrs(&self) -> CommonBuySellAttrs {
         self.clone()
     }
+
+    pub fn commission_currency_and_rate(&self) -> &CurrencyAndExchangeRate {
+        self.separate_commission_currency.as_ref().unwrap_or(&self.tx_currency_and_rate)
+    }
 }
 
 #[derive(Clone, PartialEq, Eq, Debug)]
@@ -177,6 +181,10 @@ impl SellTxSpecifics {
             tx_currency_and_rate: self.tx_currency_and_rate.clone(),
             separate_commission_currency: self.separate_commission_currency.clone(),
         }
+    }
+
+    pub fn commission_currency_and_rate(&self) -> &CurrencyAndExchangeRate {
+        self.separate_commission_currency.as_ref().unwrap_or(&self.tx_currency_and_rate)
     }
 }
 
@@ -342,6 +350,12 @@ impl TryFrom<CsvTx> for Tx {
                     amount_per_share).map_err(|_| format!(
                         "RoC amount per share must not be negative. Found {}", amount_per_share))?;
 
+                if let Some(shares) = csv_tx.shares {
+                    // This will be confusing if we allow this to be specified.
+                    return Err(format!("RoC should not specify shares (found {}). This amount is automatic \
+                        (the current share balance)", shares));
+                }
+
                 let curr_and_rate = get_valid_exchange_rate(
                     CsvCol::TX_CURR, &csv_tx.tx_currency,
                     CsvCol::TX_FX, &csv_tx.tx_curr_to_local_exchange_rate
@@ -357,6 +371,17 @@ impl TryFrom<CsvTx> for Tx {
                     format!("SfLA \"{}\" not found", CsvCol::AMOUNT_PER_SHARE))?;
                 let shares = csv_tx.shares.ok_or(
                     format!("SfLA \"{}\" not found", CsvCol::SHARES))?;
+
+                // Verify that this is either CAD or not specified
+                let maybe_curr_and_rate = get_valid_exchange_rate(
+                    CsvCol::TX_CURR, &csv_tx.tx_currency,
+                    CsvCol::TX_FX, &csv_tx.tx_curr_to_local_exchange_rate
+                )?;
+                if let Some(curr_and_rate) = maybe_curr_and_rate {
+                    if !curr_and_rate.is_default() {
+        				return Err("SfLA currency must be CAD/default".to_string());
+                    }
+                }
 
                 TxActionSpecifics::Sfla(SflaTxSpecifics{
                     shares_affected: PosDecimal::try_from(shares).map_err(|_|
@@ -723,8 +748,14 @@ mod tests {
         // Fully explicit buy
         let buy_csvtx = fully_populated_csvtx(TxAction::Buy);
         let sell_csvtx = fully_populated_csvtx(TxAction::Sell);
-        let sfla_csvtx = fully_populated_csvtx(TxAction::Sfla);
-        let roc_csvtx = fully_populated_csvtx(TxAction::Roc);
+        let mut sfla_csvtx = fully_populated_csvtx(TxAction::Sfla);
+        sfla_csvtx.tx_curr_to_local_exchange_rate = None;
+        sfla_csvtx.tx_currency = None;
+        let sfla_csvtx = sfla_csvtx;
+
+        let mut roc_csvtx = fully_populated_csvtx(TxAction::Roc);
+        roc_csvtx.shares = None;
+        let roc_csvtx = roc_csvtx;
 
         let exp_buy_tx = Tx{
             security: buy_csvtx.security.clone().unwrap(),
@@ -909,5 +940,17 @@ mod tests {
 
         let err = Tx::try_from(buy_csvtx).unwrap_err();
         assert_eq!(err, "\"commission currency\" specified but \"commission exchange rate\" not found");
+
+        // Non-CAD SFLA
+        let mut sfla_csvtx = barebones_valid_sample_csvtx(TxAction::Sfla);
+        sfla_csvtx.tx_currency = Some(Currency::usd());
+        sfla_csvtx.tx_curr_to_local_exchange_rate = Some(dec!(1.5));
+        let err = Tx::try_from(sfla_csvtx).unwrap_err();
+        assert_eq!(err, "SfLA currency must be CAD/default");
+
+        // Invalid RoC, with specified shares
+        let roc_csvtx = barebones_valid_sample_csvtx(TxAction::Roc);
+        let err = Tx::try_from(roc_csvtx).unwrap_err();
+        assert_eq!(err, "RoC should not specify shares (found 123.1). This amount is automatic (the current share balance)");
     }
 }

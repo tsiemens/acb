@@ -2,7 +2,7 @@ use std::fmt::Display;
 
 use rust_decimal::Decimal;
 
-use super::decimal::{constraint, ConstrainedDecimal, DecConstraint, PosDecimal};
+use super::decimal::{constraint, ConstrainedDecimal, DecConstraint, GreaterEqualZeroDecimal, PosDecimal};
 
 #[derive(PartialEq, Eq, Debug)]
 pub struct ConstrainedDecimalRatio<CONSTRAINT: DecConstraint> {
@@ -20,6 +20,12 @@ impl <CONSTRAINT: DecConstraint> ConstrainedDecimalRatio<CONSTRAINT> {
 impl ConstrainedDecimalRatio<constraint::Pos> {
     pub fn to_posdecimal(&self) -> PosDecimal {
         PosDecimal::try_from(*self.numerator / *self.denominator).unwrap()
+    }
+}
+
+impl ConstrainedDecimalRatio<constraint::GreaterEqualZero> {
+    pub fn to_gezdecimal(&self) -> GreaterEqualZeroDecimal {
+        GreaterEqualZeroDecimal::try_from(*self.numerator / *self.denominator).unwrap()
     }
 }
 

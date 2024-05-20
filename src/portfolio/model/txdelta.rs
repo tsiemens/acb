@@ -1,6 +1,8 @@
-use rust_decimal::{prelude::Zero, Decimal};
+use std::rc::Rc;
 
-use crate::util::{decimal::GreaterEqualZeroDecimal, math::PosDecimalRatio};
+use rust_decimal::Decimal;
+
+use crate::util::{decimal::{GreaterEqualZeroDecimal, NegDecimal, PosDecimal}, math::PosDecimalRatio};
 
 use super::tx::Tx;
 
@@ -13,23 +15,21 @@ pub struct PortfolioSecurityStatus {
 }
 
 impl PortfolioSecurityStatus {
-    pub fn per_share_acb(&self) -> Option<Decimal> {
+    pub fn per_share_acb(&self) -> Option<GreaterEqualZeroDecimal> {
         if self.total_acb.is_none() {
             return None
         }
-        Some(
-            if self.share_balance.is_zero() {
-                Decimal::zero()
-            } else {
-                *self.total_acb.unwrap() / *self.share_balance
-            })
+        Some(match PosDecimal::try_from(*self.share_balance) {
+            Ok(sb) => self.total_acb.unwrap().div(sb),
+            Err(_) => GreaterEqualZeroDecimal::zero(), // balance of zero
+        })
     }
 }
 
 #[derive(PartialEq, Eq, Debug)]
 pub struct DeltaSflInfo {
     // In CAD
-    pub superficial_loss: Decimal,
+    pub superficial_loss: NegDecimal,
     // A ratio, representing <N reacquired shares which suffered SFL> / <N sold shares>
     pub ratio: PosDecimalRatio,
     pub potentially_over_applied: bool,
@@ -39,8 +39,8 @@ pub struct DeltaSflInfo {
 
 pub struct TxDelta {
     pub tx: Tx,
-    pub pre_status: PortfolioSecurityStatus,
-    pub post_status: PortfolioSecurityStatus,
+    pub pre_status: Rc<PortfolioSecurityStatus>,
+    pub post_status: Rc<PortfolioSecurityStatus>,
     pub capital_gain: Option<Decimal>,
     pub sfl: Option<DeltaSflInfo>,
 }
