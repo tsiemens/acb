@@ -12,7 +12,7 @@ pub fn min(ds: &[Decimal]) -> Decimal {
     m
 }
 
-use self::constraint::{GreaterEqualZero, LessEqualZero};
+use self::constraint::{GreaterEqualZero, LessEqualZero, Neg, Pos};
 
 // These were deprecated as methods on Decimal, so re-implement them.
 // Those implementations don't actually do zero checks, and can result
@@ -23,6 +23,10 @@ pub fn is_positive(d: &Decimal) -> bool {
 
 pub fn is_negative(d: &Decimal) -> bool {
     d.is_sign_negative() && !d.is_zero()
+}
+
+pub fn dollar_precision_str(d: &Decimal) -> String {
+    format!("{:.2}", d)
 }
 
 pub trait DecConstraint {
@@ -141,6 +145,15 @@ impl std::ops::AddAssign for ConstrainedDecimal<GreaterEqualZero> {
     }
 }
 
+impl std::ops::Mul for ConstrainedDecimal<GreaterEqualZero> {
+    type Output = Self;
+
+    fn mul(self, rhs: Self) -> Self::Output {
+        // GEZ * GEZ will never violate its own constraint
+        GreaterEqualZeroDecimal::try_from(*self * *rhs).unwrap()
+    }
+}
+
 impl From<ConstrainedDecimal<constraint::Pos>> for ConstrainedDecimal<GreaterEqualZero> {
     fn from(value: ConstrainedDecimal<constraint::Pos>) -> Self {
         GreaterEqualZeroDecimal::try_from(*value).unwrap()
@@ -151,11 +164,66 @@ impl ConstrainedDecimal<GreaterEqualZero> {
     pub fn zero() -> Self {
         Self(Decimal::ZERO, PhantomData)
     }
+
+    pub fn div(self, rhs: ConstrainedDecimal<constraint::Pos>) -> Self {
+        // GEZ * Pos will never violate its own constraint, or divide by zero
+        GreaterEqualZeroDecimal::try_from(*self / *rhs).unwrap()
+    }
+}
+
+impl std::ops::Mul for ConstrainedDecimal<Pos> {
+    type Output = Self;
+
+    fn mul(self, rhs: Self) -> Self::Output {
+        // Pos * Pos will never violate its own constraint
+        PosDecimal::try_from(*self * *rhs).unwrap()
+    }
+}
+
+impl ConstrainedDecimal<Pos> {
+    pub fn one() -> Self {
+        PosDecimal::try_from(rust_decimal_macros::dec!(1)).unwrap()
+    }
 }
 
 impl ConstrainedDecimal<LessEqualZero> {
     pub fn zero() -> Self {
         Self(Decimal::ZERO, PhantomData)
+    }
+}
+
+impl From<ConstrainedDecimal<constraint::Neg>> for ConstrainedDecimal<LessEqualZero> {
+    fn from(value: ConstrainedDecimal<constraint::Neg>) -> Self {
+        LessEqualZeroDecimal::try_from(*value).unwrap()
+    }
+}
+
+impl std::ops::Mul for ConstrainedDecimal<Neg> {
+    type Output = PosDecimal;
+
+    fn mul(self, rhs: Self) -> Self::Output {
+        // Neg * Neg will never violate its own constraint
+        PosDecimal::try_from(*self * *rhs).unwrap()
+    }
+}
+
+impl std::ops::Div for ConstrainedDecimal<Neg> {
+    type Output = PosDecimal;
+
+    fn div(self, rhs: Self) -> Self::Output {
+        // Neg / Neg will never violate its own constraint
+        PosDecimal::try_from(*self / *rhs).unwrap()
+    }
+}
+
+impl ConstrainedDecimal<Neg> {
+    pub fn neg_1() -> Self {
+        NegDecimal::try_from(rust_decimal_macros::dec!(-1)).unwrap()
+    }
+
+    pub fn mul_pos(&self, pos_rhs: PosDecimal) -> Self {
+        // Neg * Pos will never violate its own constraint
+        NegDecimal::try_from(self.0 * *pos_rhs).unwrap()
     }
 }
 
@@ -197,7 +265,7 @@ mod tests {
     use rust_decimal::Decimal;
     use rust_decimal_macros::dec;
 
-    use crate::util::decimal::{is_negative, is_positive, ConstrainedDecimal};
+    use crate::util::decimal::{dollar_precision_str, is_negative, is_positive, ConstrainedDecimal};
 
     use super::{constraint, DecConstraint};
 
@@ -269,5 +337,11 @@ mod tests {
             assert_eq!(format!("{}", valid_val), format!("{}", dec_val));
             assert_eq!(format!("{:#?}", valid_val), format!("{:#?}", dec_val));
         }
+    }
+
+    #[test]
+    fn test_dollar_precision_str() {
+        assert_eq!(dollar_precision_str(&dec!(1000)), "1000.00");
+        assert_eq!(dollar_precision_str(&dec!(1.123456)), "1.12");
     }
 }
