@@ -32,10 +32,10 @@ fn sanity_check_ptfs(pre_tx_status: &Rc<PortfolioSecurityStatus>, tx: &Tx) -> Re
         ({}) is lower than the share balance for the affiliate of the transaction ({})",
         err_prefix(), pre_tx_status.all_affiliate_share_balance, pre_tx_status.share_balance))
     } else if tx.affiliate.registered() && !pre_tx_status.total_acb.is_none() {
-		Err(format!("{} found an ACB on a registered affiliate", err_prefix()))
-	} else if !tx.affiliate.registered() && pre_tx_status.total_acb.is_none() {
-		Err(format!("{} found an invalid ACB (none)", err_prefix()))
-	} else {
+        Err(format!("{} found an ACB on a registered affiliate", err_prefix()))
+    } else if !tx.affiliate.registered() && pre_tx_status.total_acb.is_none() {
+        Err(format!("{} found an invalid ACB (none)", err_prefix()))
+    } else {
         Ok(())
     }
 }
@@ -157,7 +157,7 @@ fn delta_for_tx(idx: usize, txs: &Vec<Tx>, ptf_statuses: &AffiliatePortfolioSecu
     let pre_tx_status = ptf_statuses.get_next_pre_status(&tx.affiliate);
 
     assert_eq!(tx.security, pre_tx_status.security,
-		"delta_for_tx: securities do not match ({} and {})",
+        "delta_for_tx: securities do not match ({} and {})",
         tx.security, pre_tx_status.security);
 
     // let total_local_share_price = *tx.shares * tx
@@ -170,7 +170,7 @@ fn delta_for_tx(idx: usize, txs: &Vec<Tx>, ptf_statuses: &AffiliatePortfolioSecu
 
     let mut new_share_balance = pre_tx_status.share_balance;
     let mut new_all_affiliates_share_balance = pre_tx_status.all_affiliate_share_balance;
-	let mut new_acb_total = pre_tx_status.total_acb;
+    let mut new_acb_total = pre_tx_status.total_acb;
 
     let mut capital_gains = if tx.affiliate.registered() { None } else { Some(Decimal::ZERO) };
     let mut sfl_info: Option<DeltaSflInfo> = None;
@@ -201,7 +201,7 @@ fn delta_for_tx(idx: usize, txs: &Vec<Tx>, ptf_statuses: &AffiliatePortfolioSecu
                 .map_err(|_| format!("Sell order on {} of {} shares of {} is more than the current \
                                       total holdings across affiliates ({})",
                     tx.trade_date, sell_specs.shares, tx.security, pre_tx_status.all_affiliate_share_balance))?;
-		    // NOTE: commission plays no effect on sell order ACB
+            // NOTE: commission plays no effect on sell order ACB
             if let Some(acb_per_share) = pre_tx_status.per_share_acb() {
                 new_acb_total = Some(new_share_balance * acb_per_share);
 
@@ -245,7 +245,7 @@ fn delta_for_tx(idx: usize, txs: &Vec<Tx>, ptf_statuses: &AffiliatePortfolioSecu
             } else {
                 assert!(tx.affiliate.registered());
                 return Err(format!("Invalid RoC tx on {}: Registered affiliates do not have an ACB to adjust",
-				    tx.trade_date));
+                    tx.trade_date));
             }
         },
         crate::portfolio::TxActionSpecifics::Sfla(sfla_specs) => {
@@ -256,7 +256,7 @@ fn delta_for_tx(idx: usize, txs: &Vec<Tx>, ptf_statuses: &AffiliatePortfolioSecu
             } else {
                 assert!(tx.affiliate.registered());
                 return Err(format!("Invalid SfLA tx on {}: Registered affiliates do not have an ACB to adjust",
-				    tx.trade_date));
+                    tx.trade_date));
             }
         },
     }
@@ -296,4 +296,1009 @@ pub fn txs_to_delta_list() {
 
     println!("{:#?}, {:#?}, {:#?}",
         r.sfl_ratio, r.acb_adjust_affiliate_ratios, r.fewer_remaining_shares_than_sfl_shares);
+}
+
+// MARK: tests
+
+#[cfg(test)]
+mod tests {
+    use rust_decimal::Decimal;
+
+    use crate::portfolio::bookkeeping::AffiliatePortfolioSecurityStatuses;
+    use crate::portfolio::testlib::MAGIC_DEFAULT_CURRENCY;
+    use crate::portfolio::Affiliate;
+    use crate::portfolio::Currency;
+    use crate::portfolio::PortfolioSecurityStatus;
+    use crate::portfolio::SFLInput;
+    use crate::portfolio::Tx;
+    use crate::portfolio::TxAction as A;
+    use crate::portfolio::TxActionSpecifics;
+    use crate::portfolio::TxDelta;
+    use crate::testlib::assert_big_struct_eq;
+    use crate::testlib::assert_re;
+    use crate::util::decimal::GreaterEqualZeroDecimal;
+    use crate::util::decimal::LessEqualZeroDecimal;
+    use crate::util::decimal::NegDecimal;
+    use std::rc::Rc;
+
+    use crate::portfolio::testlib::{default_sec, TTx};
+    use crate::portfolio::bookkeeping::testlib::TPSS;
+
+    use crate::gezdec as gez;
+    use crate::lezdec as lez;
+
+    fn usd() -> Currency {
+        Currency::usd()
+    }
+
+    fn cad() -> Currency {
+        Currency::cad()
+    }
+
+    macro_rules! sdec {
+        ($arg:literal) => {{
+            use rust_decimal_macros::dec;
+            Some(dec!($arg))
+        }};
+    }
+
+    macro_rules! sgez {
+        ($arg:literal) => {{
+            use crate::gezdec;
+            Some(gezdec!($arg))
+        }};
+    }
+
+    macro_rules! sndec {
+        ($arg:literal) => {{
+            use crate::ndec;
+            Some(ndec!($arg))
+        }};
+    }
+
+    // Shortening alias
+    fn def<T: Default>() -> T {
+        Default::default()
+    }
+
+    fn delta_for_tx(tx: Tx, pre_tx_status: Rc<PortfolioSecurityStatus>)
+        -> Result<(TxDelta, Option<Vec<Tx>>), super::Error> {
+        let mut ptf_statuses = AffiliatePortfolioSecurityStatuses::new(tx.security.clone(), None);
+        let share_diff = GreaterEqualZeroDecimal::try_from(
+            *pre_tx_status.all_affiliate_share_balance - *pre_tx_status.share_balance).unwrap();
+        // Set up the previous balance to avoid assert
+        let dummy_af = Affiliate::from_strep("dummy(R)");
+        ptf_statuses.set_latest_post_status(&dummy_af, TPSS{shares: share_diff, ..def()}.x());
+        ptf_statuses.set_latest_post_status(&tx.affiliate, pre_tx_status);
+        let txs = vec![tx];
+
+        super::delta_for_tx(0, &txs, &ptf_statuses)
+    }
+
+    fn delta_for_tx_ok(tx: Tx, sptf: &PortfolioSecurityStatus) -> TxDelta {
+        delta_for_tx(tx, Rc::new(sptf.clone())).unwrap().0
+    }
+
+    fn delta_for_tx_has_err(tx: Tx, sptf: &PortfolioSecurityStatus) {
+        delta_for_tx(tx, Rc::new(sptf.clone())).unwrap_err();
+    }
+
+    fn delta_for_tx_get_err(tx: Tx, sptf: &PortfolioSecurityStatus) -> super::Error {
+        delta_for_tx(tx, Rc::new(sptf.clone())).unwrap_err()
+    }
+
+    fn validate_delta(delta: TxDelta, tdt: TDt) {
+        assert_big_struct_eq(delta.post_status, tdt.post_st.x());
+        assert_eq!(delta.capital_gain, tdt.gain);
+        assert_eq!(delta.sfl.map(|s| s.superficial_loss), tdt.sfl);
+    }
+
+    fn txs_to_delta_list_no_err(txs: Vec<Tx>) -> Vec<TxDelta> {
+        todo!();
+        // deltas, err := ptf.TxsToDeltaList(txs, nil, ptf.LegacyOptions{})
+        // require.Nil(err)
+        // return deltas
+    }
+
+    fn txs_to_delta_list_with_err(txs: Vec<Tx>) {
+        todo!();
+        // t.Helper()
+        // _, err := ptf.TxsToDeltaList(txs, nil, ptf.LegacyOptions{})
+        // require.Error(err)
+    }
+
+    fn validate_deltas(deltas: Vec<TxDelta>, exp: Vec<TDt>) {
+        todo!();
+    }
+
+    // func ValidateDeltas(t *testing.T, deltas []*ptf.TxDelta, expDeltas []TDt) {
+    //     if len(expDeltas) != len(deltas) {
+    //         for j := range deltas {
+    //             fmt.Println(j, "Tx:", deltas[j].Tx, "\n   PostStatus:", deltas[j].PostStatus)
+    //         }
+    //         require.Equal(len(expDeltas), len(deltas), "Num deltas did not match")
+    //     }
+    //     for i, delta := range deltas {
+    //         fail := false
+    //         statusDiff := cmp.Diff(expDeltas[i].PostSt.X(), delta.PostStatus)
+    //         fail = statusDiff != "" || fail
+    //         fail = !expDeltas[i].Gain.Equal(delta.CapitalGain) || fail
+    //         fail = (expDeltas[i].PotentiallyOverAppliedSfl != delta.PotentiallyOverAppliedSfl) || fail
+    //         if fail {
+    //             for j := range deltas {
+    //                 fmt.Println(j, "Tx:", deltas[j].Tx, "\n   PostStatus:", deltas[j].PostStatus,
+    //                     "\n   Gain:", deltas[j].CapitalGain, "\n   SFL:", deltas[j].SuperficialLoss,
+    //                     "\n   PotentiallyOverAppliedSfl:", deltas[j].PotentiallyOverAppliedSfl)
+    //             }
+    //             require.FailNowf("ValidateDeltas failed", "Delta %d. PostStatus diff: %s", i, statusDiff)
+    //         }
+    //     }
+    // }
+
+    fn cadsfl(superficial_loss: LessEqualZeroDecimal, force: bool) -> Option<SFLInput> {
+        Some(crate::portfolio::SFLInput{
+            superficial_loss: superficial_loss,
+            force: force,
+        })
+    }
+
+    // Test Delta
+    struct TDt {
+        pub post_st:                    TPSS,
+        pub gain:                      Option<Decimal>,
+        pub sfl:                       Option<NegDecimal>,
+        pub potentially_over_applied_sfl: bool,
+    }
+
+    impl Default for TDt {
+        fn default() -> Self {
+            Self {
+                post_st: Default::default(),
+                gain: Default::default(),
+                sfl: Default::default(),
+                potentially_over_applied_sfl: Default::default()
+            }
+        }
+    }
+
+    #[test]
+    fn test_basic_buy_acb() {
+
+        let sptf = Rc::new(PortfolioSecurityStatus {
+            security: default_sec(),
+            share_balance: gez!(0),
+            all_affiliate_share_balance: gez!(0),
+            total_acb: Some(gez!(0)),
+        });
+
+        // Basic Buy
+        let tx = TTx{act: A::Buy, shares: gez!(3), price: gez!(10.0), ..def()}.x();
+        let delta = delta_for_tx_ok(tx, &sptf);
+        validate_delta(delta,
+            TDt{post_st: TPSS{shares: gez!(3), total_acb: sgez!(30.0), ..def()}, gain: sdec!(0), ..def()});
+
+        // Test with commission
+        let tx = TTx{act: A::Buy, shares: gez!(2), price: gez!(10.0), comm: gez!(1.0), ..def()}.x();
+        let delta = delta_for_tx_ok(tx, &sptf);
+        validate_delta(delta,
+            TDt{post_st: TPSS{shares: gez!(2), total_acb: sgez!(21.0), ..def()}, gain: sdec!(0), ..def()});
+
+        // Test with exchange rates
+        let sptf = TPSS{shares: gez!(2), total_acb: sgez!(21.0), ..def()}.x();
+        let tx = TTx{act: A::Buy, shares: gez!(3), price: gez!(12.0), comm: gez!(1.0),
+            curr: usd(), fx_rate: gez!(2.0),
+            comm_curr: Currency::new("XXX"), comm_fx_rate: gez!(0.3), ..def()}.x();
+        let delta = delta_for_tx_ok(tx, &sptf);
+        validate_delta(delta,
+            TDt{post_st: TPSS{
+                    shares: gez!(5),
+                    // 21 + (12 * 2 * 3 = 72) + 0.3
+                    total_acb: Some(gez!(21.0) + gez!(72.0) + gez!(0.3)), ..def()},
+                gain: sdec!(0), ..def()});
+    }
+
+    #[test]
+    fn test_basic_sell_acb_errors() {
+        // Sell more shares than available
+        let sptf = TPSS{shares: gez!(2), total_acb: sgez!(20.0), ..def()}.x();
+        let tx = TTx{act: A::Sell, shares: gez!(3), price: gez!(10.0), ..def()}.x();
+        delta_for_tx_has_err(tx, &sptf);
+    }
+
+    #[test]
+    fn test_basic_sell_acb() {
+
+        // Sell all remaining shares
+        let sptf = TPSS{shares: gez!(2), total_acb: sgez!(20.0), ..def()}.x();
+        let tx = TTx{act: A::Sell, shares: gez!(2), price: gez!(15.0), ..def()}.x();
+
+        let delta = delta_for_tx_ok(tx, &sptf);
+        validate_delta(delta,
+            TDt{post_st: TPSS{shares: gez!(0), total_acb: sgez!(0), ..def()}, gain: sdec!(10.0), ..def()});
+
+        // Sell shares with commission
+        let sptf = TPSS{shares: gez!(3), total_acb: sgez!(30.0), ..def()}.x();
+        let tx = TTx{act: A::Sell, shares: gez!(2), price: gez!(15.0), comm: gez!(1.0), ..def()}.x();
+
+        let delta = delta_for_tx_ok(tx, &sptf);
+        validate_delta(delta,
+            TDt{post_st: TPSS{shares: gez!(1), total_acb: sgez!(10.0), ..def()}, gain: sdec!(9.0), ..def()});
+
+        // Sell shares with exchange rate
+        let sptf = TPSS{shares: gez!(3), total_acb: sgez!(30.0), ..def()}.x();
+        let tx = TTx{
+            act: A::Sell, shares: gez!(2), price: gez!(15.0), comm: gez!(2.0),
+            curr: Currency::new("XXX"), fx_rate: gez!(2.0),
+            comm_curr: Currency::new("YYY"), comm_fx_rate: gez!(0.4), ..def()}.x();
+
+        let delta = delta_for_tx_ok(tx, &sptf);
+        validate_delta(delta,
+            // ((15.0 * 2.0 * 2.0) - 20.0 - 0.8) = 39.2
+            TDt{post_st: TPSS{shares: gez!(1), total_acb: sgez!(10.0), ..def()}, gain: sdec!(39.2), ..def()});
+    }
+
+    #[test]
+    fn test_superficial_losses() {
+
+        /*
+            buy 10
+            wait
+            sell 5 (loss, not superficial)
+        */
+        let mut txs = vec![
+            TTx{t_day: 1, act: A::Buy, shares: gez!(10), price: gez!(1.0), comm: gez!(2.0), ..def()}.x(),
+            // Sell half at a loss a while later, for a total of $1
+            TTx{t_day: 50, act: A::Sell, shares: gez!(5), price: gez!(0.2), ..def()}.x(),
+        ];
+        let deltas = txs_to_delta_list_no_err(txs);
+        validate_deltas(deltas, vec![
+            TDt{post_st: TPSS{shares: gez!(10), total_acb: sgez!(12.0), ..def()}, gain: sdec!(0), ..def()},
+            TDt{post_st: TPSS{shares: gez!(5), total_acb: sgez!(6.0), ..def()}, gain: sdec!(-5.0), ..def()},
+        ]);
+
+        // (min(#sold, totalAquired, endBalance) / #sold) x (Total Loss)
+
+        /*
+            buy 10
+            sell 5 (superficial loss) -- min(5, 10, 1) / 5 * (loss of $5) = 1
+            sell 4 (superficial loss) -- min(4, 10, 1) / 4 * (loss of $4.8) = 0.6
+            wait
+            sell 1 (loss, not superficial)
+        */
+        txs = vec![
+            TTx{t_day: 1, act: A::Buy, shares: gez!(10), price: gez!(1.0), comm: gez!(2.0), ..def()}.x(),
+            // Sell soon, causing superficial losses
+            TTx{t_day: 2, act: A::Sell, shares: gez!(5), price: gez!(0.2), ..def()}.x(),
+            TTx{t_day: 15, act: A::Sell, shares: gez!(4), price: gez!(0.2), ..def()}.x(),
+            // Normal sell a while later
+            TTx{t_day: 100, act: A::Sell, shares: gez!(1), price: gez!(0.2), ..def()}.x(),
+        ];
+
+        let deltas = txs_to_delta_list_no_err(txs);
+        validate_deltas(deltas, vec![
+            TDt{post_st: TPSS{shares: gez!(10), total_acb: sgez!(12.0), ..def()}, gain: sdec!(0), ..def()},
+            TDt{post_st: TPSS{shares: gez!(5), total_acb: sgez!(6.0), ..def()}, gain: sdec!(-4.0), ..def()},      // $1 superficial
+            TDt{post_st: TPSS{shares: gez!(5), total_acb: sgez!(7.0), ..def()}, gain: sdec!(0), ..def()}, // acb adjust
+            TDt{post_st: TPSS{shares: gez!(1), total_acb: sgez!(1.4), ..def()}, gain: sdec!(-3.6), ..def()},      // $1.2 superficial
+            TDt{post_st: TPSS{shares: gez!(1), total_acb: sgez!(2.6), ..def()}, gain: sdec!(0), ..def()}, // acb adjust
+            TDt{post_st: TPSS{shares: gez!(0), total_acb: sgez!(0), ..def()}, gain: sdec!(-2.4), ..def()},
+        ]);
+
+        /*
+            buy 10
+            wait
+            sell 5 (superficial loss) -- min(5, 5, 10) / 5 = 1
+            buy 5
+        */
+        txs = vec![
+            TTx{t_day: 1, act: A::Buy, shares: gez!(10), price: gez!(1.0), comm: gez!(2.0), ..def()}.x(),
+            // Sell causing superficial loss, because of quick buyback
+            TTx{t_day: 50, act: A::Sell, shares: gez!(5), price: gez!(0.2), ..def()}.x(),
+            TTx{t_day: 51, act: A::Buy, shares: gez!(5), price: gez!(0.2), comm: gez!(2.0), ..def()}.x(),
+        ];
+        let deltas = txs_to_delta_list_no_err(txs);
+        validate_deltas(deltas, vec![
+            TDt{post_st: TPSS{shares: gez!(10), total_acb: sgez!(12.0), ..def()}, gain: sdec!(0), ..def()}, // buy
+            TDt{post_st: TPSS{shares: gez!(5), total_acb: sgez!(6.0), ..def()}, gain: sdec!(0), ..def()},   // sell sfl $1
+            TDt{post_st: TPSS{shares: gez!(5), total_acb: sgez!(11.0), ..def()}, gain: sdec!(0), ..def()},  // sfl ACB adjust
+            TDt{post_st: TPSS{shares: gez!(10), total_acb: sgez!(14.0), ..def()}, gain: sdec!(0), ..def()}, // buy
+        ]);
+
+        /*
+            USD SFL test.
+            buy 10 (in USD)
+            wait
+            sell 5 (in USD) (superficial loss) -- min(5, 5, 10) / 5 = 1
+            buy 5 (in USD)
+        */
+        txs = vec![
+            TTx{t_day: 1, act: A::Buy, shares: gez!(10), price: gez!(1.0), curr: usd(), fx_rate: gez!(1.2), comm: gez!(2.0), ..def()}.x(),
+            // Sell causing superficial loss, because of quick buyback
+            TTx{t_day: 50, act: A::Sell, shares: gez!(5), price: gez!(0.2), curr: usd(), fx_rate: gez!(1.2), ..def()}.x(),
+            TTx{t_day: 51, act: A::Buy, shares: gez!(5), price: gez!(0.2), curr: usd(), fx_rate: gez!(1.2), comm: gez!(2.0), ..def()}.x(),
+        ];
+        let deltas = txs_to_delta_list_no_err(txs);
+        validate_deltas(deltas, vec![
+            TDt{post_st: TPSS{shares: gez!(10), total_acb: sgez!(14.4), ..def()}, gain: sdec!(0), ..def()}, // buy, ACB (CAD) = (10*1.0 + 2) * 1.2
+            TDt{post_st: TPSS{shares: gez!(5), total_acb: sgez!(7.2), ..def()}, gain: sdec!(0), ..def()},   // sell sfl $1 USD (1.2 CAD)
+            TDt{post_st: TPSS{shares: gez!(5), total_acb: sgez!(13.2), ..def()}, gain: sdec!(0), ..def()},  // sfl ACB adjust
+            TDt{post_st: TPSS{shares: gez!(10), total_acb: sgez!(16.8), ..def()}, gain: sdec!(0), ..def()}, // buy
+        ]);
+
+        /*
+            buy 10
+            wait
+            sell 5 (loss)
+            sell 5 (loss)
+        */
+        txs = vec![
+            TTx{t_day: 1, act: A::Buy, shares: gez!(10), price: gez!(1.0), comm: gez!(2.0), ..def()}.x(),
+            // Sell causing superficial loss, because of quick buyback
+            TTx{t_day: 50, act: A::Sell, shares: gez!(5), price: gez!(0.2), ..def()}.x(),
+            TTx{t_day: 51, act: A::Sell, shares: gez!(5), price: gez!(0.2), ..def()}.x(),
+        ];
+        let deltas = txs_to_delta_list_no_err(txs);
+        validate_deltas(deltas, vec![
+            TDt{post_st: TPSS{shares: gez!(10), total_acb: sgez!(12.0), ..def()}, gain: sdec!(0), ..def()},
+            TDt{post_st: TPSS{shares: gez!(5), total_acb: sgez!(6.0), ..def()}, gain: sdec!(-5.0), ..def()},
+            TDt{post_st: TPSS{shares: gez!(0), total_acb: sgez!(0), ..def()}, gain: sdec!(-5.0), ..def()},
+        ]);
+
+        /*
+            buy 100
+            wait
+            sell 99 (superficial loss) -- min(99, 25, 26) / 99 = 0.252525253
+            buy 25
+        */
+        txs = vec![
+            TTx{t_day: 1, act: A::Buy, shares: gez!(100), price: gez!(3.0), comm: gez!(2.0), ..def()}.x(), // Sell causing superficial loss, because of quick buyback
+            TTx{t_day: 50, act: A::Sell, shares: gez!(99), price: gez!(2.0), ..def()}.x(),
+            TTx{t_day: 51, act: A::Buy, shares: gez!(25), price: gez!(2.2), comm: gez!(2.0), ..def()}.x(),
+        ];
+        let deltas = txs_to_delta_list_no_err(txs);
+        validate_deltas(deltas, vec![
+            TDt{post_st: TPSS{shares: gez!(100), total_acb: sgez!(302.0), ..def()}, gain: sdec!(0), ..def()},
+            TDt{post_st: TPSS{shares: gez!(1), total_acb: sgez!(3.02), ..def()}, gain: sdec!(-75.48000000000000255), ..def()},     // total loss of 100.98, 25.500000048 is superficial
+            TDt{post_st: TPSS{shares: gez!(1), total_acb: sgez!(28.51999999999999745), ..def()}, gain: sdec!(0), ..def()}, // acb adjust
+            TDt{post_st: TPSS{shares: gez!(26), total_acb: sgez!(85.51999999999999745), ..def()}, gain: sdec!(0), ..def()},
+        ]);
+
+        /*
+            buy 10
+            sell 10 (superficial loss) -- min(10, 15, 3) / 10 = 0.3
+            buy 5
+            sell 2 (superficial loss) -- min(2, 15, 3) / 2 = 1
+            wait
+            sell 3 (loss)
+        */
+        txs = vec![
+            TTx{t_day: 1, act: A::Buy, shares: gez!(10), price: gez!(1.0), comm: gez!(2.0), ..def()}.x(),
+            // Sell all
+            TTx{t_day: 2, act: A::Sell, shares: gez!(10), price: gez!(0.2), ..def()}.x(),
+            TTx{t_day: 3, act: A::Buy, shares: gez!(5), price: gez!(1.0), comm: gez!(2.0), ..def()}.x(),
+            TTx{t_day: 4, act: A::Sell, shares: gez!(2), price: gez!(0.2), ..def()}.x(),
+            TTx{t_day: 50, act: A::Sell, shares: gez!(3), price: gez!(0.2), ..def()}.x(),
+        ];
+        let deltas = txs_to_delta_list_no_err(txs);
+        validate_deltas(deltas, vec![
+            TDt{post_st: TPSS{shares: gez!(10), total_acb: sgez!(12.0), ..def()}, gain: sdec!(0), ..def()},
+            TDt{post_st: TPSS{shares: gez!(0), total_acb: sgez!(0), ..def()}, gain: sdec!(-7), ..def()},        // Superficial loss of 3
+            TDt{post_st: TPSS{shares: gez!(0), total_acb: sgez!(3), ..def()}, gain: sdec!(0), ..def()}, // acb adjust
+            TDt{post_st: TPSS{shares: gez!(5), total_acb: sgez!(10.0), ..def()}, gain: sdec!(0), ..def()},
+            TDt{post_st: TPSS{shares: gez!(3), total_acb: sgez!(6.0), ..def()}, gain: sdec!(0), ..def()}, // Superficial loss of 3.6
+            TDt{post_st: TPSS{shares: gez!(3), total_acb: sgez!(9.6), ..def()}, gain: sdec!(0), ..def()}, // acb adjust
+            TDt{post_st: TPSS{shares: gez!(0), total_acb: sgez!(0), ..def()}, gain: sdec!(-9), ..def()},
+        ]);
+
+        /*
+            buy 10
+            sell 5 (gain)
+        */
+        txs = vec![
+            TTx{t_day: 1, act: A::Buy, shares: gez!(10), price: gez!(1.0), comm: gez!(2.0), ..def()}.x(),
+            // Sell causing gain
+            TTx{t_day: 2, act: A::Sell, shares: gez!(5), price: gez!(2.0), ..def()}.x(),
+        ];
+        let deltas = txs_to_delta_list_no_err(txs);
+        validate_deltas(deltas, vec![
+            TDt{post_st: TPSS{shares: gez!(10), total_acb: sgez!(12.0), ..def()}, gain: sdec!(0), ..def()},
+            TDt{post_st: TPSS{shares: gez!(5), total_acb: sgez!(6.0), ..def()}, gain: sdec!(4.0), ..def()},
+        ]);
+
+        /* Fractional shares SFL avoidance
+           With floats, this would be hard, because we wouldn't come exactly back to zero.
+           We get around this by using Decimal
+
+           buy 5.0
+           sell 4.7
+           sell 0.3 (loss) (not superficial because we sold all shares and should have zero)
+        */
+        txs = vec![
+            TTx{t_day: 1, act: A::Buy, shares: gez!(5.0), price: gez!(1.0), comm: gez!(2.0), ..def()}.x(),
+            // Sell all in two fractional operations
+            TTx{t_day: 2, act: A::Sell, shares: gez!(4.7), price: gez!(0.2), ..def()}.x(),
+            TTx{t_day: 3, act: A::Sell, shares: gez!(0.3), price: gez!(0.2), ..def()}.x(),
+        ];
+        let deltas = txs_to_delta_list_no_err(txs);
+        validate_deltas(deltas, vec![
+            TDt{post_st: TPSS{shares: gez!(5), total_acb: sgez!(7.0), ..def()}, gain: sdec!(0), ..def()},
+            TDt{post_st: TPSS{shares: gez!(0.3), total_acb: sgez!(0.42), ..def()}, gain: sdec!(-5.64), ..def()},
+            TDt{post_st: TPSS{shares: gez!(0), total_acb: sgez!(0), ..def()}, gain: sdec!(-0.36), ..def()},
+        ]);
+
+        // ************** Explicit Superficial Losses ***************************
+        // Accurately specify a detected SFL
+        /*
+            USD SFL test.
+            buy 10 (in USD)
+            wait
+            sell 5 (in USD) (superficial loss)
+            buy 5 (in USD)
+        */
+        txs = vec![
+            TTx{t_day: 1, act: A::Buy, shares: gez!(10), price: gez!(1.0), curr: usd(), fx_rate: gez!(1.2), comm: gez!(2.0), ..def()}.x(),
+            // Sell causing superficial loss, because of quick buyback
+            TTx{t_day: 50, act: A::Sell, shares: gez!(5), price: gez!(0.2), curr: usd(), fx_rate: gez!(1.2), sfl: cadsfl(lez!(-6.0), false), ..def()}.x(),
+            // ACB adjust is partial, as if splitting some to another affiliate.
+            TTx{t_day: 50, act: A::Sfla, shares: gez!(5), price: gez!(0.02), curr: MAGIC_DEFAULT_CURRENCY.clone(), fx_rate: gez!(1.0), ..def()}.x(),
+            TTx{t_day: 51, act: A::Buy, shares: gez!(5), price: gez!(0.2), curr: usd(), fx_rate: gez!(1.2), comm: gez!(2.0), ..def()}.x(),
+        ];
+        let deltas = txs_to_delta_list_no_err(txs);
+        validate_deltas(deltas, vec![
+            TDt{post_st: TPSS{shares: gez!(10), total_acb: sgez!(14.4), ..def()}, gain: sdec!(0), ..def()}, // buy, ACB (CAD) = (10*1.0 + 2) * 1.2
+            TDt{post_st: TPSS{shares: gez!(5), total_acb: sgez!(7.2), ..def()}, gain: sdec!(0), ..def()},   // sell for $1 USD, capital loss $-5 USD before SFL deduction, sfl 0.7 CAD
+            TDt{post_st: TPSS{shares: gez!(5), total_acb: sgez!(7.3), ..def()}, gain: sdec!(0), ..def()},   // sfl ACB adjust 0.02 * 5
+            TDt{post_st: TPSS{shares: gez!(10), total_acb: sgez!(10.9), ..def()}, gain: sdec!(0), ..def()}, // buy
+        ]);
+
+        // Override a detected SFL
+        /*
+            USD SFL test.
+            buy 10 (in USD)
+            wait
+            sell 5 (in USD) (superficial loss)
+            buy 5 (in USD)
+        */
+        txs = vec![
+            TTx{t_day: 1, act: A::Buy, shares: gez!(10), price: gez!(1.0), curr: usd(), fx_rate: gez!(1.2), comm: gez!(2.0), ..def()}.x(),
+            // Sell causing superficial loss, because of quick buyback
+            TTx{t_day: 50, act: A::Sell, shares: gez!(5), price: gez!(0.2), curr: usd(), fx_rate: gez!(1.2), sfl: cadsfl(lez!(-0.7), true), ..def()}.x(),
+            // ACB adjust is partial, as if splitting some to another affiliate.
+            TTx{t_day: 50, act: A::Sfla, shares: gez!(5), price: gez!(0.02), curr: MAGIC_DEFAULT_CURRENCY.clone(), fx_rate: gez!(1.0), ..def()}.x(),
+            TTx{t_day: 51, act: A::Buy, shares: gez!(5), price: gez!(0.2), curr: usd(), fx_rate: gez!(1.2), comm: gez!(2.0), ..def()}.x(),
+        ];
+        let deltas = txs_to_delta_list_no_err(txs.clone());
+        validate_deltas(deltas, vec![
+            TDt{post_st: TPSS{shares: gez!(10), total_acb: sgez!(14.4), ..def()}, gain: sdec!(0), ..def()}, // buy, ACB (CAD) = (10*1.0 + 2) * 1.2
+            TDt{post_st: TPSS{shares: gez!(5), total_acb: sgez!(7.2), ..def()}, gain: sdec!(-5.3), ..def()},        // sell for $1 USD, capital loss $-5 USD before SFL deduction, sfl 0.7 CAD
+            TDt{post_st: TPSS{shares: gez!(5), total_acb: sgez!(7.3), ..def()}, gain: sdec!(0), ..def()},   // sfl ACB adjust 0.02 * 5
+            TDt{post_st: TPSS{shares: gez!(10), total_acb: sgez!(10.9), ..def()}, gain: sdec!(0), ..def()}, // buy
+        ]);
+
+        // Un-force the override, and check that we emit an error
+        // Expect an error since we did not force.
+        let mut tx1_sell_specs = txs[1].sell_specifics().unwrap().clone();
+        tx1_sell_specs.specified_superficial_loss = cadsfl(lez!(-0.7), false);
+        txs.get_mut(1).unwrap().action_specifics = TxActionSpecifics::Sell(tx1_sell_specs);
+        txs_to_delta_list_with_err(txs);
+
+        // Add an un-detectable SFL (ie, the buy occurred in an untracked affiliate)
+        /*
+            USD SFL test.
+            buy 10 (in USD)
+            wait
+            sell 5 (in USD) (loss)
+        */
+        txs = vec![
+            TTx{t_day: 1, act: A::Buy, shares: gez!(10), price: gez!(1.0), curr: usd(), fx_rate: gez!(1.2), comm: gez!(2.0), ..def()}.x(),
+            // Sell causing superficial loss, because of quick buyback
+            TTx{t_day: 50, act: A::Sell, shares: gez!(5), price: gez!(0.2), curr: usd(), fx_rate: gez!(1.2), sfl: cadsfl(lez!(-0.7), true), ..def()}.x(),
+            // ACB adjust is partial, as if splitting some to another affiliate.
+            TTx{t_day: 50, act: A::Sfla, shares: gez!(5), price: gez!(0.02), curr: cad(), fx_rate: gez!(1.0), ..def()}.x(),
+        ];
+        let deltas = txs_to_delta_list_no_err(txs.clone());
+        validate_deltas(deltas, vec![
+            TDt{post_st: TPSS{shares: gez!(10), total_acb: sgez!(14.4), ..def()}, gain: sdec!(0), ..def()}, // buy, ACB (CAD) = (10*1.0 + 2) * 1.2
+            TDt{post_st: TPSS{shares: gez!(5), total_acb: sgez!(7.2), ..def()}, gain: sdec!(-5.3), ..def()},        // sell for $1 USD, capital loss $-5 USD before SFL deduction, sfl 0.7 CAD
+            TDt{post_st: TPSS{shares: gez!(5), total_acb: sgez!(7.3), ..def()}, gain: sdec!(0), ..def()},   // sfl ACB adjust 0.02 * 5
+        ]);
+
+        // Un-force the override, and check that we emit an error
+        // Expect an error since we did not force.
+        let mut tx1_sell_specs = txs[1].sell_specifics().unwrap().clone();
+        tx1_sell_specs.specified_superficial_loss = cadsfl(lez!(-0.7), false);
+        txs.get_mut(1).unwrap().action_specifics = TxActionSpecifics::Sell(tx1_sell_specs);
+        txs_to_delta_list_with_err(txs);
+
+        // Currency errors
+        // Sanity check for ok by itself.
+        txs = vec![
+            TTx{t_day: 50, act: A::Sfla, shares: gez!(1), price: gez!(0.1), curr: cad(), fx_rate: gez!(1.0), ..def()}.x(),
+        ];
+        let deltas = txs_to_delta_list_no_err(txs);
+        validate_deltas(deltas, vec![
+            TDt{post_st: TPSS{shares: gez!(0), total_acb: sgez!(0.1), ..def()}, gain: sdec!(0), ..def()},
+        ]);
+
+        txs = vec![
+            TTx{t_day: 50, act: A::Sfla, shares: gez!(1), price: gez!(0.1), curr: MAGIC_DEFAULT_CURRENCY.clone(), fx_rate: gez!(1.0), ..def()}.x(),
+        ];
+        let deltas = txs_to_delta_list_no_err(txs);
+        validate_deltas(deltas, vec![
+            TDt{post_st: TPSS{shares: gez!(0), total_acb: sgez!(0.1), ..def()}, gain: sdec!(0), ..def()},
+        ]);
+        // Non 1.0 exchange rate
+        txs = vec![
+            TTx{t_day: 50, act: A::Sfla, shares: gez!(5), price: gez!(0.02), curr: usd(), fx_rate: gez!(1.0), ..def()}.x(),
+        ];
+        txs_to_delta_list_with_err(txs);
+        txs = vec![
+            // Non 1.0 exchange rate
+            TTx{t_day: 50, act: A::Sfla, shares: gez!(5), price: gez!(0.02), curr: cad(), fx_rate: gez!(1.1), ..def()}.x(),
+        ];
+        txs_to_delta_list_with_err(txs);
+    }
+
+    #[test]
+    fn test_basic_roc_acb_errors() {
+        // Test that RoC Txs always have zero shares
+        let sptf = TPSS{shares: gez!(2), total_acb: sgez!(20.0), ..def()}.x();
+        let tx = TTx{act: A::Roc, shares: gez!(3), price: gez!(10.0), ..def()}.x();
+        delta_for_tx_has_err(tx, &sptf);
+
+        // Test that RoC cannot exceed the current ACB
+        let sptf = TPSS{shares: gez!(2), total_acb: sgez!(20.0), ..def()}.x();
+        let tx = TTx{act: A::Roc, price: gez!(13.0), ..def()}.x();
+        delta_for_tx_has_err(tx, &sptf);
+
+        // Test that RoC cannot occur on registered affiliates, since they have no ACB
+        let sptf = TPSS{shares: gez!(5), total_acb: None, ..def()}.x();
+        let tx = TTx{act: A::Roc, shares: gez!(0), price: gez!(3.0), af_name: "(R)", ..def()}.x();
+        delta_for_tx_has_err(tx, &sptf);
+    }
+
+    #[test]
+    fn test_basic_roc_acb() {
+
+        // Test basic ROC with different AllAffiliatesShareBalance
+        let sptf = TPSS{shares: gez!(2), all_shares: gez!(8), total_acb: sgez!(20.0), ..def()}.x();
+        let tx = TTx{act: A::Roc, price: gez!(1.0), ..def()}.x();
+
+        let delta = delta_for_tx_ok(tx, &sptf);
+        validate_delta(delta,
+            TDt{post_st: TPSS{shares: gez!(2), all_shares: gez!(8), total_acb: sgez!(18.0), ..def()}, gain: sdec!(0), ..def()});
+
+        // Test RoC with exchange
+        let sptf = TPSS{shares: gez!(2), total_acb: sgez!(20.0), ..def()}.x();
+        let tx = TTx{act: A::Roc, price: gez!(1.0), fx_rate: gez!(2.0), ..def()}.x();
+
+        let delta = delta_for_tx_ok(tx, &sptf);
+        validate_delta(delta,
+            TDt{post_st: TPSS{shares: gez!(2), total_acb: sgez!(16.0), ..def()}, gain: sdec!(0), ..def()});
+    }
+
+    #[test]
+    fn test_basic_sfla_errors() {
+
+        // Test than an SfLA on a registered affiliate is invalid
+        let sptf = TPSS{shares: gez!(2), total_acb: None, ..def()}.x();
+        let tx = TTx{act: A::Sfla, shares: gez!(2), price: gez!(1.0), af_name: "(R)", ..def()}.x();
+        let err = delta_for_tx_get_err(tx, &sptf);
+        assert_re("Registered affiliates do not have an ACB", &err)
+    }
+
+    #[test]
+    fn test_registered_affiliate_capital_gain() {
+
+        todo!();
+
+        // Test there are no capital gains in registered accounts
+        let sptf = TPSS{shares: gez!(5), total_acb: None, ..def()}.x();
+        let tx = TTx{act: A::Sell, shares: gez!(2), price: gez!(3.0), af_name: "(R)", ..def()}.x();
+        let delta = delta_for_tx_ok(tx, &sptf);
+        assert_big_struct_eq(TPSS{shares: gez!(3), acb_per_sh: None, ..def()}.x(), delta.post_status);
+        //RqNaN(delta.CapitalGain) TODO
+
+        // Test that we fail if registered account sees non-nan acb
+        let sptf = TPSS{shares: gez!(5), total_acb: sgez!(0), ..def()}.x();
+        let tx = TTx{act: A::Sell, shares: gez!(2), price: gez!(3.0), af_name: "(R)", ..def()}.x();
+        // RqPanicsWithRegexp("bad null optional value", func() {
+        //     AddTxWithErr(tx, &sptf);
+        // })
+        // Same, but non-zero acb
+        let sptf = TPSS{shares: gez!(5), total_acb: sgez!(1.0), ..def()}.x();
+        let tx = TTx{act: A::Sell, shares: gez!(2), price: gez!(3.0), af_name: "(R)", ..def()}.x();
+        // RqPanicsWithRegexp("bad null optional value", func() {
+        //     AddTxWithErr(tx, &sptf);
+        // })
+        // Test that non-registered with NaN ACB generates an error as well
+        let sptf = TPSS{shares: gez!(5), total_acb: None, ..def()}.x();
+        let tx = TTx{act: A::Sell, shares: gez!(2), price: gez!(3.0), ..def()}.x();
+        // RqPanicsWithRegexp("bad null optional value", func() {
+        //     AddTxWithErr(tx, &sptf);
+        // })
+    }
+
+    #[test]
+    fn test_all_affiliate_share_balance_add_tx() {
+
+        // Basic buy
+        let sptf = TPSS{shares: gez!(3), all_shares: gez!(7), total_acb: sgez!(15.0), ..def()}.x();
+        let tx = TTx{act: A::Buy, shares: gez!(2), price: gez!(5.0), ..def()}.x();
+        let delta = delta_for_tx_ok(tx, &sptf);
+        validate_delta(delta,
+            TDt{post_st: TPSS{shares: gez!(5), all_shares: gez!(9), total_acb: sgez!(25.0), ..def()}, ..def()});
+
+        // Basic sell
+        let sptf = TPSS{shares: gez!(5), all_shares: gez!(8), acb_per_sh: sgez!(3.0), ..def()}.x();
+        let tx = TTx{act: A::Sell, shares: gez!(2), price: gez!(5.0), ..def()}.x();
+        let delta = delta_for_tx_ok(tx, &sptf);
+        validate_delta(delta,
+            TDt{post_st: TPSS{shares: gez!(3), all_shares: gez!(6.0), acb_per_sh: sgez!(3.0), ..def()}, gain: sdec!(4.0), ..def()});
+
+        // AllAffiliatesShareBalance too small (error).
+        // In theory this could maybe panic, since it should not be possible, but
+        // safer and easier to debug if we get a nicer error, which is in the API anyway.
+        let sptf = TPSS{shares: gez!(5), all_shares: gez!(2), total_acb: sgez!(15.0), ..def()}.x();
+        let tx = TTx{act: A::Sell, shares: gez!(2), price: gez!(5.0), ..def()}.x();
+        delta_for_tx_has_err(tx, &sptf);
+    }
+
+    #[test]
+    fn test_multi_affiliate_gains() {
+
+        /*
+            Default                Default (R)            B                    B (R)
+            --------                ------------        ---------        ------------
+            buy 10                  buy 20                buy 30            buy 40
+            sell 1 (gain)
+                                    sell 2 ("gain")
+                                                            sell 3 (gain)
+                                                                                sell 4 ("gain")
+        */
+        let txs = vec![
+            // Buys
+            TTx{act: A::Buy, shares: gez!(10), price: gez!(1.0), af_name: "", ..def()}.x(),
+            TTx{act: A::Buy, shares: gez!(20), price: gez!(1.0), af_name: "(R)", ..def()}.x(),
+            TTx{act: A::Buy, shares: gez!(30), price: gez!(1.0), af_name: "B", ..def()}.x(),
+            TTx{act: A::Buy, shares: gez!(40), price: gez!(1.0), af_name: "B (R)", ..def()}.x(),
+            // Sells
+            TTx{act: A::Sell, shares: gez!(1), price: gez!(1.2), af_name: "", ..def()}.x(),
+            TTx{act: A::Sell, shares: gez!(2), price: gez!(1.3), af_name: "(R)", ..def()}.x(),
+            TTx{act: A::Sell, shares: gez!(3), price: gez!(1.4), af_name: "B", ..def()}.x(), TTx{act: A::Sell, shares: gez!(4), price: gez!(1.5), af_name: "B (R)", ..def()}.x(),
+        ];
+        let deltas = txs_to_delta_list_no_err(txs);
+        validate_deltas(deltas, vec![
+            // Buys
+            TDt{post_st: TPSS{shares: gez!(10), all_shares: gez!(10), acb_per_sh: sgez!(1.0), ..def()}, ..def()},
+            TDt{post_st: TPSS{shares: gez!(20), all_shares: gez!(30), total_acb: None, ..def()}, gain: None, ..def()},
+            TDt{post_st: TPSS{shares: gez!(30), all_shares: gez!(60), acb_per_sh: sgez!(1.0), ..def()}, ..def()},
+            TDt{post_st: TPSS{shares: gez!(40), all_shares: gez!(100), total_acb: None, ..def()}, gain: None, ..def()},
+            // Sells
+            TDt{post_st: TPSS{shares: gez!(9), all_shares: gez!(99), acb_per_sh: sgez!(1.0), ..def()}, gain: sdec!(0.2), ..def()}, // 1 * 0.2
+            TDt{post_st: TPSS{shares: gez!(18), all_shares: gez!(97), total_acb: None, ..def()}, gain: None, ..def()},
+            TDt{post_st: TPSS{shares: gez!(27), all_shares: gez!(94), acb_per_sh: sgez!(1.0), ..def()}, gain: sdec!(1.2), ..def()}, // 3 * 0.4 = 1.2
+            TDt{post_st: TPSS{shares: gez!(36), all_shares: gez!(90), total_acb: None, ..def()}, gain: None, ..def()},
+        ]);
+    }
+
+    #[test]
+    fn test_multi_affiliate_roc() {
+
+        /*
+            Default                B
+            --------                ------------
+            buy 10                  buy 20
+                                    ROC
+            sell 10                sell 20
+        */
+        let txs = vec![
+            // Buys
+            TTx{act: A::Buy, shares: gez!(10), price: gez!(1.0), af_name: "", ..def()}.x(),
+            TTx{act: A::Buy, shares: gez!(20), price: gez!(1.0), af_name: "B", ..def()}.x(),
+            // ROC
+            TTx{act: A::Roc, shares: gez!(0), price: gez!(0.2), af_name: "B", ..def()}.x(),
+            // Sells
+            TTx{act: A::Sell, shares: gez!(10), price: gez!(1.1), af_name: "", ..def()}.x(),
+            TTx{act: A::Sell, shares: gez!(20), price: gez!(1.1), af_name: "B", ..def()}.x(),
+        ];
+        let deltas = txs_to_delta_list_no_err(txs);
+        validate_deltas(deltas, vec![
+            // Buys
+            TDt{post_st: TPSS{shares: gez!(10), all_shares: gez!(10), acb_per_sh: sgez!(1.0), ..def()}, ..def()}, // Default
+            TDt{post_st: TPSS{shares: gez!(20), all_shares: gez!(30), acb_per_sh: sgez!(1.0), ..def()}, ..def()}, // B
+            // ROC
+            TDt{post_st: TPSS{shares: gez!(20), all_shares: gez!(30), acb_per_sh: sgez!(0.8), ..def()}, ..def()}, // B
+            // Sells
+            TDt{post_st: TPSS{shares: gez!(0), all_shares: gez!(20), acb_per_sh: sgez!(0), ..def()}, gain: sdec!(1.0), ..def()}, // 10 * 0.1 = 1.0 : Default
+            TDt{post_st: TPSS{shares: gez!(0), all_shares: gez!(0), acb_per_sh: sgez!(0), ..def()}, gain: sdec!(6.0), ..def()}, // 20 * 0.3 = 6.0 : B
+        ]);
+    }
+
+    #[test]
+    fn test_other_affiliate_sfl() {
+
+        /* SFL with all buys on different affiliate
+
+        Default                B
+        --------                ------------
+        buy 10                buy 5
+        wait...
+        sell 2 (SFL)
+                                buy 2
+        */
+        let txs = vec![
+            TTx{t_day: 1, act: A::Buy, shares: gez!(10), price: gez!(1.0), af_name: "", ..def()}.x(),
+            TTx{t_day: 1, act: A::Buy, shares: gez!(5), price: gez!(1.0), af_name: "B", ..def()}.x(),
+            TTx{t_day: 40, act: A::Sell, shares: gez!(2), price: gez!(0.5), af_name: "", ..def()}.x(),
+            TTx{t_day: 41, act: A::Buy, shares: gez!(2), price: gez!(1.0), af_name: "B", ..def()}.x(),
+        ];
+        let deltas = txs_to_delta_list_no_err(txs);
+        validate_deltas(deltas, vec![
+            TDt{post_st: TPSS{shares: gez!(10), all_shares: gez!(10), total_acb: sgez!(10.0), ..def()}, ..def()},                 // Buy in Default
+            TDt{post_st: TPSS{shares: gez!(5), all_shares: gez!(15), total_acb: sgez!(5.0), ..def()}, ..def()},                   // Buy in B
+            TDt{post_st: TPSS{shares: gez!(8), all_shares: gez!(13), total_acb: sgez!(8.0), ..def()}, sfl: sndec!(-1.0), ..def()}, // SFL of 0.5 * 2 shares
+            TDt{post_st: TPSS{shares: gez!(5), all_shares: gez!(13), total_acb: sgez!(6.0), ..def()}, ..def()},                   // Auto-adjust on B
+            TDt{post_st: TPSS{shares: gez!(7), all_shares: gez!(15), total_acb: sgez!(8.0), ..def()}, ..def()},                   // B
+        ]);
+
+        /* SFL with all buys on registered affiliate
+           (same txs as above)
+        */
+        let txs = vec![
+            TTx{t_day: 1, act: A::Buy, shares: gez!(10), price: gez!(1.0), af_name: "", ..def()}.x(),
+            TTx{t_day: 1, act: A::Buy, shares: gez!(5), price: gez!(1.0), af_name: "(R)", ..def()}.x(),
+            TTx{t_day: 40, act: A::Sell, shares: gez!(2), price: gez!(0.5), af_name: "", ..def()}.x(),
+            TTx{t_day: 41, act: A::Buy, shares: gez!(2), price: gez!(1.0), af_name: "(R)", ..def()}.x(),
+        ];
+        let deltas = txs_to_delta_list_no_err(txs);
+        validate_deltas(deltas, vec![
+            TDt{post_st: TPSS{shares: gez!(10), all_shares: gez!(10), total_acb: sgez!(10.0), ..def()}, ..def()},                             // Buy in Default
+            TDt{post_st: TPSS{shares: gez!(5), all_shares: gez!(15), total_acb: None, ..def()}, gain: None, ..def()}, // Buy in (R)
+            TDt{post_st: TPSS{shares: gez!(8), all_shares: gez!(13), total_acb: sgez!(8.0), ..def()}, sfl: sndec!(-1.0), ..def()},             // SFL of 0.5 * 2 shares
+            TDt{post_st: TPSS{shares: gez!(7), all_shares: gez!(15), total_acb: None, ..def()}, gain: None, ..def()}, // Buy in (R)
+        ]);
+
+        /* SFL with all buys on other affiliate B, but sells on a second affiliate (R)
+        Make sure it doesn't interfere or cause errors.
+        */
+        let txs = vec![
+            TTx{t_day: 1, act: A::Buy, shares: gez!(10), price: gez!(1.0), af_name: "", ..def()}.x(),
+            TTx{t_day: 1, act: A::Buy, shares: gez!(5), price: gez!(1.0), af_name: "B", ..def()}.x(),
+            TTx{t_day: 1, act: A::Buy, shares: gez!(5), price: gez!(1.0), af_name: "(R)", ..def()}.x(),
+            TTx{t_day: 40, act: A::Sell, shares: gez!(2), price: gez!(0.5), af_name: "", ..def()}.x(),
+            TTx{t_day: 41, act: A::Buy, shares: gez!(2), price: gez!(1.0), af_name: "B", ..def()}.x(),
+            TTx{t_day: 41, act: A::Sell, shares: gez!(2), price: gez!(1.0), af_name: "(R)", ..def()}.x(),
+        ];
+        let deltas = txs_to_delta_list_no_err(txs);
+        validate_deltas(deltas, vec![
+            TDt{post_st: TPSS{shares: gez!(10), all_shares: gez!(10), total_acb: sgez!(10.0), ..def()}, ..def()},                             // Buy in Default
+            TDt{post_st: TPSS{shares: gez!(5), all_shares: gez!(15), total_acb: sgez!(5.0), ..def()}, ..def()},                               // Buy in B
+            TDt{post_st: TPSS{shares: gez!(5), all_shares: gez!(20), total_acb: None, ..def()}, gain: None, ..def()}, // Buy in (R)
+            TDt{post_st: TPSS{shares: gez!(8), all_shares: gez!(18), total_acb: sgez!(8.0), ..def()}, sfl: sndec!(-1.0), ..def()},             // SFL of 0.5 * 2 shares
+            TDt{post_st: TPSS{shares: gez!(5), all_shares: gez!(18), total_acb: sgez!(6.0), ..def()}, ..def()},                               // Auto-adjust on B
+            TDt{post_st: TPSS{shares: gez!(7), all_shares: gez!(20), total_acb: sgez!(8.0), ..def()}, ..def()},                               // Buy in B
+            TDt{post_st: TPSS{shares: gez!(3), all_shares: gez!(18), total_acb: None, ..def()}, gain: None, ..def()}, // Sell in (R)
+        ]);
+
+        /* SFL with buys on two other affiliates (both non-registered)
+        Default            B            C
+        --------            ------    -------
+        buy 10            buy 5        buy 7
+        wait...
+        sell 2 (SFL)
+                            buy 2        buy 2
+        */
+        let txs = vec![
+            TTx{t_day: 1, act: A::Buy, shares: gez!(10), price: gez!(1.0), af_name: "", ..def()}.x(),
+            TTx{t_day: 1, act: A::Buy, shares: gez!(5), price: gez!(1.0), af_name: "B", ..def()}.x(),
+            TTx{t_day: 1, act: A::Buy, shares: gez!(7), price: gez!(1.0), af_name: "C", ..def()}.x(),
+            TTx{t_day: 40, act: A::Sell, shares: gez!(2), price: gez!(0.5), af_name: "", ..def()}.x(),
+            TTx{t_day: 41, act: A::Buy, shares: gez!(2), price: gez!(1.0), af_name: "B", ..def()}.x(),
+            TTx{t_day: 41, act: A::Buy, shares: gez!(2), price: gez!(1.0), af_name: "C", ..def()}.x(),
+        ];
+        let deltas = txs_to_delta_list_no_err(txs);
+        validate_deltas(deltas, vec![
+            TDt{post_st: TPSS{shares: gez!(10), all_shares: gez!(10), total_acb: sgez!(10.0), ..def()}, ..def()},                 // Buy in Default
+            TDt{post_st: TPSS{shares: gez!(5), all_shares: gez!(15), total_acb: sgez!(5.0), ..def()}, ..def()},                   // Buy in B
+            TDt{post_st: TPSS{shares: gez!(7), all_shares: gez!(22), total_acb: sgez!(7.0), ..def()}, ..def()},                   // Buy in C
+            TDt{post_st: TPSS{shares: gez!(8), all_shares: gez!(20), total_acb: sgez!(8.0), ..def()}, sfl: sndec!(-1.0), ..def()}, // SFL of 0.5 * 2 shares
+            TDt{post_st: TPSS{shares: gez!(5), all_shares: gez!(20), total_acb: sgez!(5.4375), ..def()}, ..def()},                // Auto-adjust on B. Gets 7/16 (43.75%) of the SFL
+            TDt{post_st: TPSS{shares: gez!(7), all_shares: gez!(20), total_acb: sgez!(7.5625), ..def()}, ..def()},                // Auto-adjust on C. Gets 9/16 (56.25%) of the SFL
+            TDt{post_st: TPSS{shares: gez!(7), all_shares: gez!(22), total_acb: sgez!(7.4375), ..def()}, ..def()},                // Buy in B
+            TDt{post_st: TPSS{shares: gez!(9), all_shares: gez!(24), total_acb: sgez!(9.5625), ..def()}, ..def()},                // Buy in C
+        ]);
+
+        /* SFL with buys on two other affiliates (registered/non-registered)
+        Default            (R)        B
+        --------            ------    -------
+        buy 10            buy 5        buy 7
+        wait...
+        sell 2 (SFL)
+                            buy 2        buy 2
+        */
+        let txs = vec![
+            TTx{t_day: 1, act: A::Buy, shares: gez!(10), price: gez!(1.0), af_name: "", ..def()}.x(),
+            TTx{t_day: 1, act: A::Buy, shares: gez!(5), price: gez!(1.0), af_name: "(R)", ..def()}.x(),
+            TTx{t_day: 1, act: A::Buy, shares: gez!(7), price: gez!(1.0), af_name: "B", ..def()}.x(),
+            TTx{t_day: 40, act: A::Sell, shares: gez!(2), price: gez!(0.5), af_name: "", ..def()}.x(),
+            TTx{t_day: 41, act: A::Buy, shares: gez!(2), price: gez!(1.0), af_name: "(R)", ..def()}.x(),
+            TTx{t_day: 41, act: A::Buy, shares: gez!(2), price: gez!(1.0), af_name: "B", ..def()}.x(),
+        ];
+        let deltas = txs_to_delta_list_no_err(txs);
+        validate_deltas(deltas, vec![
+            TDt{post_st: TPSS{shares: gez!(10), all_shares: gez!(10), total_acb: sgez!(10.0), ..def()}, ..def()},                             // Buy in Default
+            TDt{post_st: TPSS{shares: gez!(5), all_shares: gez!(15), acb_per_sh: None, ..def()}, gain: None, ..def()}, // Buy in (R)
+            TDt{post_st: TPSS{shares: gez!(7), all_shares: gez!(22), total_acb: sgez!(7.0), ..def()}, ..def()},                               // Buy in B
+            TDt{post_st: TPSS{shares: gez!(8), all_shares: gez!(20), total_acb: sgez!(8.0), ..def()}, sfl: sndec!(-1.0), ..def()},             // SFL of 0.5 * 2 shares
+            TDt{post_st: TPSS{shares: gez!(7), all_shares: gez!(20), total_acb: sgez!(7.5625), ..def()}, ..def()},                            // Auto-adjust on B. Gets 9/16 (56.25%) of the SFL
+            TDt{post_st: TPSS{shares: gez!(7), all_shares: gez!(22), total_acb: None, ..def()}, gain: None, ..def()}, // Buy in (R)
+            TDt{post_st: TPSS{shares: gez!(9), all_shares: gez!(24), total_acb: sgez!(9.5625), ..def()}, ..def()},                            // Buy in B
+        ]);
+
+        /* SFL with buys on one other affiliate, but fewer shares in the only selling
+        affiliate than the shares affected by the superficial loss.
+
+        Default            B
+        --------            ------------
+        buy 5
+        wait...
+        sell 4 (SFL)
+                            buy 2
+                            sell 1
+        */
+        let txs = vec![
+            TTx{t_day: 1, act: A::Buy, shares: gez!(5), price: gez!(1.0), af_name: "", ..def()}.x(),
+            TTx{t_day: 40, act: A::Sell, shares: gez!(4), price: gez!(0.5), af_name: "", ..def()}.x(),
+            TTx{t_day: 41, act: A::Buy, shares: gez!(2), price: gez!(1.0), af_name: "B", ..def()}.x(),
+            TTx{t_day: 42, act: A::Sell, shares: gez!(1), price: gez!(2.0), af_name: "B", ..def()}.x(),
+        ];
+        let deltas = txs_to_delta_list_no_err(txs);
+        validate_deltas(deltas, vec![
+            TDt{post_st: TPSS{shares: gez!(5), all_shares: gez!(5), total_acb: sgez!(5.0), ..def()}, ..def()}, // Buy in Default
+            TDt{post_st: TPSS{shares: gez!(1), all_shares: gez!(1), total_acb: sgez!(1.0), ..def()}, gain: sdec!(-1.0), sfl: sndec!(-1.0),
+                potentially_over_applied_sfl: true}, // SFL of 0.5 * 2(/4) shares
+            TDt{post_st: TPSS{shares: gez!(0), all_shares: gez!(1), total_acb: sgez!(1.0), ..def()}, ..def()},               // auto adjust on B (100%)
+            TDt{post_st: TPSS{shares: gez!(2), all_shares: gez!(3), total_acb: sgez!(3.0), ..def()}, ..def()},                    // Buy in B
+            TDt{post_st: TPSS{shares: gez!(1), all_shares: gez!(2), total_acb: sgez!(1.5), ..def()}, gain: sdec!(0.50), ..def()}, // Sell in B
+        ]);
+
+        /* SFL with buys on both SFL affiliate and one other affiliate.
+
+        Default            B
+        --------            ------------
+        buy 5
+        wait...
+        sell 4 (SFL)
+                            buy 2
+        buy 1
+        */
+        let txs = vec![
+            TTx{t_day: 1, act: A::Buy, shares: gez!(5), price: gez!(1.0), af_name: "", ..def()}.x(),
+            TTx{t_day: 40, act: A::Sell, shares: gez!(4), price: gez!(0.5), af_name: "", ..def()}.x(),
+            TTx{t_day: 41, act: A::Buy, shares: gez!(2), price: gez!(1.0), af_name: "B", ..def()}.x(),
+            TTx{t_day: 42, act: A::Buy, shares: gez!(1), price: gez!(2.0), af_name: "", ..def()}.x(),
+        ];
+        let deltas = txs_to_delta_list_no_err(txs);
+        validate_deltas(deltas, vec![
+            TDt{post_st: TPSS{shares: gez!(5), all_shares: gez!(5), total_acb: sgez!(5.0), ..def()}, ..def()},                                      // Buy in Default
+            TDt{post_st: TPSS{shares: gez!(1), all_shares: gez!(1), total_acb: sgez!(1.0), ..def()}, gain: sdec!(-0.5), sfl: sndec!(-1.5), ..def()}, // SFL of 0.5 * 3(/4) shares
+            TDt{post_st: TPSS{shares: gez!(0), all_shares: gez!(1), total_acb: sgez!(0.75), ..def()}, ..def()},                                // auto adjust on B (50%)
+            TDt{post_st: TPSS{shares: gez!(1), all_shares: gez!(1), total_acb: sgez!(1.75), ..def()}, ..def()},                                     // auto adjust on default (50%)
+            TDt{post_st: TPSS{shares: gez!(2), all_shares: gez!(3), total_acb: sgez!(2.75), ..def()}, ..def()},                                     // Buy in B
+            TDt{post_st: TPSS{shares: gez!(2), all_shares: gez!(4), total_acb: sgez!(3.75), ..def()}, ..def()},                                     // Buy in default
+        ]);
+
+        /* SFL with buy on one other registered affiliate.
+
+        Default            (R)
+        --------            ------------
+        buy 5
+        wait...
+        sell 4 (SFL)
+                            buy 2
+        */
+        let txs = vec![
+            TTx{t_day: 1, act: A::Buy, shares: gez!(5), price: gez!(1.0), af_name: "", ..def()}.x(),
+            TTx{t_day: 40, act: A::Sell, shares: gez!(4), price: gez!(0.5), af_name: "", ..def()}.x(),
+            TTx{t_day: 41, act: A::Buy, shares: gez!(2), price: gez!(1.0), af_name: "(R)", ..def()}.x(),
+        ];
+        let deltas = txs_to_delta_list_no_err(txs);
+        validate_deltas(deltas, vec![
+            TDt{post_st: TPSS{shares: gez!(5), all_shares: gez!(5), total_acb: sgez!(5.0), ..def()}, ..def()},                                      // Buy in Default
+            TDt{post_st: TPSS{shares: gez!(1), all_shares: gez!(1), total_acb: sgez!(1.0), ..def()}, gain: sdec!(-1.0), sfl: sndec!(-1.0), ..def()}, // SFL of 0.5 * 2(/4) shares
+            TDt{post_st: TPSS{shares: gez!(2), all_shares: gez!(3), total_acb: None, ..def()}, gain: None, ..def()},        // Buy in B
+        ]);
+
+        /* SFL with buy on one other registered affiliate, but fewer shares in the only
+        selling affiliate than the shares affected by the superficial loss.
+
+        Default            (R)
+        --------            ------------
+        buy 5
+        wait...
+        sell 4 (SFL)
+                            buy 2
+                            sell 1
+        */
+        let txs = vec![
+            TTx{t_day: 1, act: A::Buy, shares: gez!(5), price: gez!(1.0), af_name: "", ..def()}.x(),
+            TTx{t_day: 40, act: A::Sell, shares: gez!(4), price: gez!(0.5), af_name: "", ..def()}.x(),
+            TTx{t_day: 41, act: A::Buy, shares: gez!(2), price: gez!(1.0), af_name: "(R)", ..def()}.x(),
+            TTx{t_day: 42, act: A::Sell, shares: gez!(1), price: gez!(2.0), af_name: "(R)", ..def()}.x(),
+        ];
+        let deltas = txs_to_delta_list_no_err(txs);
+        validate_deltas(deltas, vec![
+            TDt{post_st: TPSS{shares: gez!(5), all_shares: gez!(5), total_acb: sgez!(5.0), ..def()}, ..def()}, // Buy in Default
+            TDt{post_st: TPSS{shares: gez!(1), all_shares: gez!(1), total_acb: sgez!(1.0), ..def()}, gain: sdec!(-1.0), sfl: sndec!(-1.0),
+                potentially_over_applied_sfl: true}, // SFL of 0.5 * 2(/4) shares
+            TDt{post_st: TPSS{shares: gez!(2), all_shares: gez!(3), total_acb: None, ..def()}, gain: None, ..def()}, // Buy in (R)
+            TDt{post_st: TPSS{shares: gez!(1), all_shares: gez!(2), total_acb: None, ..def()}, gain: None, ..def()}, // Sell in (R)
+        ]);
+    }
+
+    #[test]
+    fn test_other_affiliate_explicit_sfl() {
+
+        /* SFL with sells on two other affiliates (both non-registered),
+           and explicitly set the SFLA (dubiously) on one of the affiliates.
+        Default            B            C
+        --------            ------    -------
+        buy 10            buy 5        buy 7
+        wait...
+        sell 2 (explicit SFL)
+                                SFLA
+                            buy 2        buy 2
+        */
+        let txs = vec![
+            TTx{t_day: 1, act: A::Buy, shares: gez!(10), price: gez!(1.0), af_name: "", ..def()}.x(),
+            TTx{t_day: 1, act: A::Buy, shares: gez!(5), price: gez!(1.0), af_name: "B", ..def()}.x(),
+            TTx{t_day: 1, act: A::Buy, shares: gez!(7), price: gez!(1.0), af_name: "C", ..def()}.x(),
+            TTx{t_day: 40, act: A::Sell, shares: gez!(2), price: gez!(0.5), af_name: "", sfl: cadsfl(lez!(-1.0), false), ..def()}.x(),
+            TTx{t_day: 40, act: A::Sfla, shares: gez!(1), price: gez!(0.5), af_name: "C", ..def()}.x(),
+            TTx{t_day: 41, act: A::Buy, shares: gez!(2), price: gez!(1.0), af_name: "B", ..def()}.x(),
+            TTx{t_day: 41, act: A::Buy, shares: gez!(2), price: gez!(1.0), af_name: "C", ..def()}.x(),
+        ];
+        let deltas = txs_to_delta_list_no_err(txs);
+        validate_deltas(deltas, vec![
+            TDt{post_st: TPSS{shares: gez!(10), all_shares: gez!(10), total_acb: sgez!(10.0), ..def()}, ..def()},                 // Buy in Default
+            TDt{post_st: TPSS{shares: gez!(5), all_shares: gez!(15), acb_per_sh: sgez!(1.0), ..def()}, ..def()},                   // Buy in B
+            TDt{post_st: TPSS{shares: gez!(7), all_shares: gez!(22), total_acb: sgez!(7.0), ..def()}, ..def()},                   // Buy in C
+            TDt{post_st: TPSS{shares: gez!(8), all_shares: gez!(20), total_acb: sgez!(8.0), ..def()}, sfl: sndec!(-1.0), ..def()}, // SFL of 0.5 * 2 shares
+            TDt{post_st: TPSS{shares: gez!(7), all_shares: gez!(20), total_acb: sgez!(7.5), ..def()}, ..def()},                   // Explicit adjust on C
+            TDt{post_st: TPSS{shares: gez!(7), all_shares: gez!(22), acb_per_sh: sgez!(1.0), ..def()}, ..def()},                   // Buy in B
+            TDt{post_st: TPSS{shares: gez!(9), all_shares: gez!(24), total_acb: sgez!(9.5), ..def()}, ..def()},                   // Buy in C
+        ]);
+
+        /* SFL with sells on two other affiliates (registered/non-registered),
+            with explicit SFL
+        Default            (R)        B
+        --------            ------    -------
+        buy 10            buy 5        buy 7
+        wait...
+        sell 2 (expicit SFL)
+                                        SFLA
+                            buy 2        buy 2
+        */
+        let txs = vec![
+            TTx{t_day: 1, act: A::Buy, shares: gez!(10), price: gez!(1.0), af_name: "", ..def()}.x(),
+            TTx{t_day: 1, act: A::Buy, shares: gez!(5), price: gez!(1.0), af_name: "(R)", ..def()}.x(),
+            TTx{t_day: 1, act: A::Buy, shares: gez!(7), price: gez!(1.0), af_name: "B", ..def()}.x(),
+            TTx{t_day: 40, act: A::Sell, shares: gez!(2), price: gez!(0.5), af_name: "", sfl: cadsfl(lez!(-1.0), false), ..def()}.x(),
+            TTx{t_day: 40, act: A::Sfla, shares: gez!(1), price: gez!(0.5), af_name: "B", ..def()}.x(),
+            TTx{t_day: 41, act: A::Buy, shares: gez!(2), price: gez!(1.0), af_name: "(R)", ..def()}.x(),
+            TTx{t_day: 41, act: A::Buy, shares: gez!(2), price: gez!(1.0), af_name: "B", ..def()}.x(),
+        ];
+
+        let deltas = txs_to_delta_list_no_err(txs);
+        validate_deltas(deltas, vec![
+            TDt{post_st: TPSS{shares: gez!(10), all_shares: gez!(10), total_acb: sgez!(10.0), ..def()}, ..def()},                             // Buy in Default
+            TDt{post_st: TPSS{shares: gez!(5), all_shares: gez!(15), acb_per_sh: None, ..def()}, gain: None, ..def()}, // Buy in (R)
+            TDt{post_st: TPSS{shares: gez!(7), all_shares: gez!(22), total_acb: sgez!(7.0), ..def()}, ..def()},                               // Buy in B
+            TDt{post_st: TPSS{shares: gez!(8), all_shares: gez!(20), total_acb: sgez!(8.0), ..def()}, sfl: sndec!(-1.0), ..def()},             // SFL of 0.5 * 2 shares
+            TDt{post_st: TPSS{shares: gez!(7), all_shares: gez!(20), total_acb: sgez!(7.5), ..def()}, ..def()},                               // Explicit adjust on B
+            TDt{post_st: TPSS{shares: gez!(7), all_shares: gez!(22), total_acb: None, ..def()}, gain: None, ..def()}, // Buy in (R)
+            TDt{post_st: TPSS{shares: gez!(9), all_shares: gez!(24), total_acb: sgez!(9.5), ..def()}, ..def()},                               // Buy in B
+        ]);
+    }
 }

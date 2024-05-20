@@ -138,7 +138,13 @@ pub mod testlib {
             })
         }
 
-        pub fn default() -> Self {
+        pub fn d() -> Self {
+            Self::default()
+        }
+    }
+
+    impl Default for TPSS {
+        fn default() -> Self {
             Self{
                 sec: default_sec(),
                 shares: GreaterEqualZeroDecimal::zero(),
@@ -146,10 +152,6 @@ pub mod testlib {
                 total_acb: None,
                 acb_per_sh: None,
             }
-        }
-
-        pub fn d() -> Self {
-            Self::default()
         }
     }
 }
