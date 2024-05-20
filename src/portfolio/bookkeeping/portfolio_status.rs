@@ -115,6 +115,7 @@ pub mod testlib {
     use crate::{portfolio::PortfolioSecurityStatus, util::decimal::GreaterEqualZeroDecimal};
 
 
+    #[derive(Debug)]
     pub struct TPSS {
         pub sec: String,
         pub shares: GreaterEqualZeroDecimal,

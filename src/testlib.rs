@@ -7,7 +7,25 @@ pub fn assert_re(pattern: &str, haystack: &str) {
             "{:?} did not match {:?}", haystack, re);
 }
 
-fn eprint_vecs<T: PartialEq + Debug>(left: &Vec<T>, right: &Vec<T>) {
+// pub fn eprint_vec<T: Debug>(left: &Vec<T>) {
+//     let mut err_str = "[\n".to_string();
+//     for o in left {
+//         err_str += &format!("{:?},\n", o).to_string();
+//     }
+//     err_str += "]";
+//     eprintln!("{}", err_str);
+// }
+
+pub fn eprint_big_struct_vec<T: Debug>(left: &Vec<T>) {
+    let mut err_str = "[\n".to_string();
+    for (i, o) in left.iter().enumerate() {
+        err_str += &format!("[{}] {:#?},\n", i, o).to_string();
+    }
+    err_str += "]";
+    eprintln!("{}", err_str);
+}
+
+pub fn eprint_vecs<L: Debug, R: Debug>(left: &Vec<L>, right: &Vec<R>) {
     let mut err_str = "left != right. left: [\n".to_string();
     for o in left {
         err_str += &format!("{:?},\n", o).to_string();
