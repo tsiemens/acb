@@ -260,6 +260,22 @@ macro_rules! gezdec {
     }};
 }
 
+#[macro_export]
+macro_rules! lezdec {
+    ($arg:literal) => {{
+        use rust_decimal_macros::dec;
+        crate::util::decimal::LessEqualZeroDecimal::try_from(dec!($arg)).unwrap()
+    }};
+}
+
+#[macro_export]
+macro_rules! ndec {
+    ($arg:literal) => {{
+        use rust_decimal_macros::dec;
+        crate::util::decimal::NegDecimal::try_from(dec!($arg)).unwrap()
+    }};
+}
+
 #[cfg(test)]
 mod tests {
     use rust_decimal::Decimal;

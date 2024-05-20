@@ -607,7 +607,11 @@ pub mod testlib {
             Tx::try_from(csv_tx).unwrap()
         }
 
-        pub fn default() -> Self {
+        pub fn d() -> Self { Self::default() }
+    }
+
+    impl Default for TTx {
+        fn default() -> Self {
             TTx {
                 sec: String::new(),
 
@@ -634,8 +638,6 @@ pub mod testlib {
                 read_index: 0,
             }
         }
-
-        pub fn d() -> Self { Self::default() }
     }
 }
 
