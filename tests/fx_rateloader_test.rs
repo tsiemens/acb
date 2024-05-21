@@ -5,9 +5,8 @@ use acb::{
         pub_testlib::MockRemoteRateLoader,
         CsvRatesCache, RateLoader,
     }, DailyRate},
-    log::WriteHandle,
     tracing,
-    util::{date::pub_testlib::doy_date, rc::RcRefCellT}
+    util::{date::pub_testlib::doy_date, rc::RcRefCellT, rw::WriteHandle}
 };
 use rust_decimal_macros::dec;
 

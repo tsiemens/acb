@@ -1,4 +1,5 @@
 mod approot;
+pub mod input_parse;
 pub mod outfmt;
 
 // Override the version in Cargo.toml, since we are not using standard
