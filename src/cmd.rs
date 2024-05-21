@@ -87,4 +87,6 @@ pub fn command_main() {
     let args = Args::parse();
 
     println!("{:#?}", args);
+
+    crate::app::print_dummy_table();
 }
