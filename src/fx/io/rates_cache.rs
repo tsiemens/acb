@@ -4,7 +4,7 @@ use rust_decimal::Decimal;
 use tracing::{error, info, trace};
 
 use crate::{
-    fx::DailyRate, log::WriteHandle, util::{date, rc::{RcRefCell, RcRefCellT}}, write_errln
+    fx::DailyRate, util::{date, rc::{RcRefCell, RcRefCellT}, rw::WriteHandle}, write_errln
 };
 
 use super::Error;
@@ -168,9 +168,8 @@ mod tests {
 
     use crate::{
         fx::DailyRate,
-        log::WriteHandle,
         testlib::{assert_re, assert_vec_eq},
-        util::date::pub_testlib::doy_date
+        util::{date::pub_testlib::doy_date, rw::WriteHandle}
     };
 
     use super::CsvRatesCache;

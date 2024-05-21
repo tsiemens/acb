@@ -7,8 +7,8 @@ use rust_decimal::Decimal;
 
 use crate::util::date::parse_standard_date;
 use crate::util::decimal::LessEqualZeroDecimal;
-use crate::util::rw::DescribedReader;
-use crate::{log::WriteHandle, write_errln};
+use crate::util::rw::{DescribedReader, WriteHandle};
+use crate::write_errln;
 use crate::portfolio::csv_common::CsvCol;
 use crate::portfolio::{Affiliate, CsvTx, Currency, SFLInput, TxAction};
 
@@ -420,10 +420,9 @@ mod tests {
     use rust_decimal_macros::dec;
 
     use crate::{
-        log::WriteHandle,
         portfolio::{io::tx_csv::testlib::TestTxCsvRow, Affiliate, CsvTx, Currency, SFLInput},
         testlib::{assert_vec_eq, assert_vecr_eq},
-        util::{date::parse_standard_date, decimal::LessEqualZeroDecimal, rw::StringBuffer}
+        util::{date::parse_standard_date, decimal::LessEqualZeroDecimal, rw::{StringBuffer, WriteHandle}}
     };
 
     use super::{parse_csv_superficial_loss, parse_tx_csv, testlib::CsvFileBuilder, Error};

@@ -6,7 +6,7 @@ use time::{Date, Duration, Month};
 use tracing::{debug, error, info, trace};
 
 use crate::write_errln;
-use crate::log::WriteHandle;
+use crate::util::rw::WriteHandle;
 use crate::{fx::DailyRate, util::date::today_local};
 
 use crate::fx::io::RemoteRateLoader;
@@ -249,7 +249,7 @@ impl RateLoader {
 pub mod testlib {
     use std::collections::HashMap;
 
-    use crate::{fx::{io::{pub_testlib::MockRemoteRateLoader, InMemoryRatesCache}, DailyRate}, log::WriteHandle, util::rc::{RcRefCell, RcRefCellT}};
+    use crate::{fx::{io::{pub_testlib::MockRemoteRateLoader, InMemoryRatesCache}, DailyRate}, util::{rc::{RcRefCell, RcRefCellT}, rw::WriteHandle}};
 
     use super::RateLoader;
 

@@ -17,6 +17,7 @@ regex = "1.10.4"
 reqwest = { version = "0.12.4", features = [ "rustls-tls", "blocking" ], default-features = false }
 rust_decimal = "1.35.0"
 rust_decimal_macros = "1.34.2"
+tabled = "0.15.0"
 time = { version = "0.3.36", features = [ "formatting", "local-offset", "parsing", "macros" ] }
 tracing = "0.1.40"
 tracing-subscriber = { version = "0.3.18", features = [ "env-filter", "fmt", "std", "time" ] }
