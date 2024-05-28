@@ -108,7 +108,14 @@ pub fn command_main() -> Result<(), ExitCode> {
         csv_readers.push(reader);
     }
 
-    let mut options = crate::app::Options::default();
+    let mut options = crate::app::Options{
+        force_download: args.force_download,
+        render_full_dollar_values: args.print_full_values,
+        summary_mode_latest_date: None, // set below
+        split_annual_summary_gains: args.summarize_annual_gains,
+        render_total_costs: args.total_costs,
+        csv_output_dir: args.csv_output_dir,
+    };
 
     if let Some(sum_before_date_str) = args.summarize_before {
         options.summary_mode_latest_date = match parse_standard_date(&sum_before_date_str) {

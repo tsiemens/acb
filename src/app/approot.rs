@@ -6,7 +6,13 @@ use time::Date;
 use crate::{
     fx::io::{RateLoader, RatesCache},
     portfolio::{
-        bookkeeping::{txs_to_delta_list, DeltaListResult}, calc_cumulative_capital_gains, calc_security_cumulative_capital_gains, io::{tx_csv::parse_tx_csv, tx_loader::load_tx_rates}, render::{self, render_aggregate_capital_gains, render_tx_table_model, RenderTable}, CumulativeCapitalGains, PortfolioSecurityStatus, Security, Tx, TxDelta},
+        bookkeeping::{txs_to_delta_list, DeltaListResult},
+        calc_cumulative_capital_gains,
+        calc_security_cumulative_capital_gains,
+        io::{tx_csv::parse_tx_csv, tx_loader::load_tx_rates},
+        render::{render_aggregate_capital_gains, render_tx_table_model, CostsTables, RenderTable},
+        CumulativeCapitalGains, PortfolioSecurityStatus, Security, Tx, TxDelta
+    },
     util::rw::{DescribedReader, WriteHandle}, write_errln
 };
 
@@ -115,7 +121,7 @@ fn get_cumulative_capital_gains(
 pub struct AppRenderResult {
     pub security_tables: HashMap<Security, RenderTable>,
     pub aggregate_gains_table: RenderTable,
-    // pub costs_table: CostsTable,
+    pub costs_tables: Option<CostsTables>,
 }
 
 /// Runs the entire ACB app in the "default" mode (processing TXs and
@@ -154,14 +160,16 @@ pub fn run_acb_app_to_render_model(
     let cumulative_gains_table = render_aggregate_capital_gains(
         &gains.aggregate_gains, render_full_dollar_values);
 
-    // let costs_table = ();
-    if render_total_costs {
-        todo!();
-    }
+    let costs_tables = if render_total_costs {
+        let costs = crate::portfolio::bookkeeping::calc_total_costs(&all_deltas);
+        Some(crate::portfolio::render::render_total_costs(
+            &costs, render_full_dollar_values))
+    } else { None };
 
     Ok(AppRenderResult {
         security_tables: sec_render_tables,
         aggregate_gains_table: cumulative_gains_table,
+        costs_tables: costs_tables,
     })
 }
 
@@ -190,7 +198,17 @@ fn write_render_result(render_res: &AppRenderResult, writer: &mut dyn AcbWriter)
         return Err(format!("Rendering aggregate gains: {err}"));
     }
 
-    // TODO costs tables
+    if let Some(costs_tables) = &render_res.costs_tables {
+        if let Err(err) = writer.print_render_table(
+            OutputType::Costs, "Total", &costs_tables.total) {
+            return Err(format!("Rendering total costs: {err}"));
+        }
+
+        if let Err(err) = writer.print_render_table(
+            OutputType::Costs, "Yearly Max", &costs_tables.yearly) {
+            return Err(format!("Rendering yearly costs: {err}"));
+        }
+    }
 
     if secs_with_errors.len() > 0 {
         println!(
@@ -198,7 +216,7 @@ fn write_render_result(render_res: &AppRenderResult, writer: &mut dyn AcbWriter)
             secs_with_errors.join(", "));
     }
 
-    todo!();
+    Ok(())
 }
 
 /// Returned Err is for exit code determination only.
