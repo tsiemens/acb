@@ -9,6 +9,8 @@ use crate::{
 
 use super::currency::{Currency, CurrencyAndExchangeRate};
 
+pub type Security = String;
+
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
 pub enum TxAction{
     Buy,
@@ -18,7 +20,7 @@ pub enum TxAction{
 }
 
 impl TxAction {
-    fn pretty_str(&self) -> &str {
+    pub fn pretty_str(&self) -> &str {
         match self {
             TxAction::Buy => "Buy",
             TxAction::Sell => "Sell",
@@ -51,7 +53,7 @@ impl SFLInput {
 // to the Tx type for processing.
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct CsvTx {
-    pub security: Option<String>,
+    pub security: Option<Security>,
     pub trade_date: Option<Date>,
     pub settlement_date: Option<Date>,
     pub action: Option<TxAction>,
@@ -229,7 +231,7 @@ impl TxActionSpecifics {
 
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct Tx {
-    pub security: String,
+    pub security: Security,
     pub trade_date: Date,
     pub settlement_date: Date,
     pub action_specifics: TxActionSpecifics,

@@ -26,7 +26,7 @@ impl PortfolioSecurityStatus {
     }
 }
 
-#[derive(PartialEq, Eq, Debug)]
+#[derive(PartialEq, Eq, Clone, Debug)]
 pub struct DeltaSflInfo {
     // In CAD
     pub superficial_loss: NegDecimal,
@@ -35,7 +35,7 @@ pub struct DeltaSflInfo {
     pub potentially_over_applied: bool,
 }
 
-#[derive(PartialEq, Eq, Debug)]
+#[derive(PartialEq, Eq, Clone, Debug)]
 
 pub struct TxDelta {
     pub tx: Tx,

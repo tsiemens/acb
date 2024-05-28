@@ -18,7 +18,7 @@ impl TextWriter {
 
 impl AcbWriter for TextWriter {
     fn print_render_table(
-        &mut self, out_type: OutputType, name: &str, table_model: RenderTable)
+        &mut self, out_type: OutputType, name: &str, table_model: &RenderTable)
         -> Result<(), super::model::Error> {
 
         let map_write_err = |e| { format!("{e}") };
@@ -41,9 +41,9 @@ impl AcbWriter for TextWriter {
 
         let n_cols = table_model.header.len();
         let mut table_bldr = tabled::builder::Builder::default();
-        table_bldr.push_record(table_model.header);
+        table_bldr.push_record(table_model.header.clone());
         let n_rows = table_model.rows.len();
-        for row in table_model.rows {
+        for row in &table_model.rows {
             table_bldr.push_record(row);
         }
 
@@ -51,7 +51,7 @@ impl AcbWriter for TextWriter {
             let mut split_line = Vec::with_capacity(table_model.footer.len());
             split_line.resize_with(table_model.footer.len(), || String::new());
             table_bldr.push_record(split_line);
-            table_bldr.push_record(table_model.footer);
+            table_bldr.push_record(table_model.footer.clone());
 
             // footer row separator index
             Some(1 + n_rows)
@@ -70,11 +70,13 @@ impl AcbWriter for TextWriter {
                          Border::new().set_left(' ').set_right(' '));
         }
 
-        for note in table_model.notes {
-            writeln!(self.w, "{note}").map_err(map_write_err)?;
-        }
         writeln!(self.w, "{table}").map_err(map_write_err)?;
 
+        for note in &table_model.notes {
+            writeln!(self.w, "{note}").map_err(map_write_err)?;
+        }
+
+        writeln!(self.w, "").map_err(map_write_err)?;
         Ok(())
     }
 }

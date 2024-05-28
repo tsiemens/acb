@@ -4,14 +4,13 @@ use rust_decimal::Decimal;
 
 use super::decimal::{constraint, ConstrainedDecimal, DecConstraint, GreaterEqualZeroDecimal, PosDecimal};
 
-#[derive(PartialEq, Eq, Debug)]
-pub struct ConstrainedDecimalRatio<CONSTRAINT: DecConstraint> {
+#[derive(PartialEq, Eq, Clone, Copy, Debug)]
+pub struct ConstrainedDecimalRatio<CONSTRAINT: DecConstraint + Clone + Copy> {
     pub numerator: ConstrainedDecimal<CONSTRAINT>,
     pub denominator: PosDecimal,
-
 }
 
-impl <CONSTRAINT: DecConstraint> ConstrainedDecimalRatio<CONSTRAINT> {
+impl <CONSTRAINT: DecConstraint + Clone + Copy> ConstrainedDecimalRatio<CONSTRAINT> {
     pub fn to_decimal(&self) -> Decimal {
         *self.numerator / *self.denominator
     }
@@ -30,7 +29,7 @@ impl ConstrainedDecimalRatio<constraint::GreaterEqualZero> {
 }
 
 // Auto-implements to_string()
-impl <CONSTRAINT: DecConstraint>  Display for ConstrainedDecimalRatio<CONSTRAINT> {
+impl <CONSTRAINT: DecConstraint + Clone + Copy>  Display for ConstrainedDecimalRatio<CONSTRAINT> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{{{}/{}}}", self.numerator, self.denominator)
     }

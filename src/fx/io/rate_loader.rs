@@ -11,7 +11,7 @@ use crate::{fx::DailyRate, util::date::today_local};
 
 use crate::fx::io::RemoteRateLoader;
 
-use super::{Error, RatesCache};
+use super::{Error, JsonRemoteRateLoader, RatesCache};
 
 // Overall utility for loading rates (both remotely and from cache).
 pub struct RateLoader {
@@ -37,6 +37,13 @@ impl RateLoader {
             fresh_loaded_years: HashSet::new(),
             err_stream: err_stream,
         }
+    }
+
+    pub fn new_cached_remote_loader(force_download: bool,
+                                    cache: Box<dyn RatesCache>,
+                                    err_stream: WriteHandle) -> RateLoader {
+        let remote_loader = Box::new(JsonRemoteRateLoader::new());
+        RateLoader::new(force_download, cache, remote_loader, err_stream)
     }
 }
 

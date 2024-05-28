@@ -73,6 +73,7 @@ impl <'a> io::Read for StrReader<'a> {
 // One use is to capture errors of interest to users, so they can
 // be presented either to the stderr, or buffer them to later
 // show in the web UI.
+#[derive(Clone)]
 pub struct WriteHandle {
     w: RcRefCell<dyn io::Write>,
 }
@@ -189,6 +190,6 @@ mod tests {
             = WriteHandle::string_buff_write_handle();
         let _ = write!(handle, "Some {}", "text");
         let _ = writeln!(handle, " 1");
-        assert_eq!(buff.borrow().as_str(), "Some text 1");
+        assert_eq!(buff.borrow().as_str(), "Some text 1\n");
     }
 }
