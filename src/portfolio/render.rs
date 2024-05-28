@@ -319,7 +319,7 @@ pub fn render_tx_table_model(
     }
 }
 
-/// RenderAggregateCapitalGains generates a RenderTable that will render out to this:
+/// render_aggregate_capital_gains generates a RenderTable that will render out to this:
 ///
 ///	| Year             | Capital Gains |
 ///	+------------------+---------------+
@@ -339,13 +339,16 @@ pub fn render_aggregate_capital_gains(
     for year in years {
         let yearly_total = gains.capital_gains_years_totals[&year];
 
-        rows.push(
-            vec![
-                year.to_string(),
-                ph.plus_minus_dollar(yearly_total, false),
-            ]
-        );
+        rows.push(vec![
+            year.to_string(),
+            ph.plus_minus_dollar(yearly_total, false),
+        ]);
     }
+
+    rows.push(vec![
+        s("Since inception"),
+        ph.plus_minus_dollar(gains.capital_gains_total, false),
+    ]);
 
     RenderTable{
         header: vec![s("Year"), s("Capital Gains")],
