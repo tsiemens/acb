@@ -2,7 +2,7 @@ use std::{collections::HashMap, str::FromStr};
 
 use rust_decimal::Decimal;
 
-use crate::{portfolio::PortfolioSecurityStatus, util::decimal::GreaterEqualZeroDecimal};
+use crate::{portfolio::{PortfolioSecurityStatus, Security}, util::decimal::GreaterEqualZeroDecimal};
 
 pub type Error = String;
 
@@ -10,7 +10,7 @@ pub type Error = String;
 /// SYM:nShares:totalAcb. Eg. GOOG:20:1000.00
 pub fn parse_initial_status(
     initial_security_states: &Vec<String>
-    ) -> Result<HashMap<String, PortfolioSecurityStatus>, Error> {
+    ) -> Result<HashMap<Security, PortfolioSecurityStatus>, Error> {
 
     let mut stati = HashMap::<String, PortfolioSecurityStatus>::with_capacity(
         initial_security_states.len());

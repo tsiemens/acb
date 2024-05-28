@@ -1,6 +1,12 @@
+use std::{path::PathBuf, process::ExitCode};
+use std::io::Write;
+
 use clap::Parser;
 
-use crate::portfolio::csv_common::CsvCol;
+use crate::app::run_acb_app_to_console;
+use crate::fx::io::CsvRatesCache;
+use crate::util::date::parse_standard_date;
+use crate::{app::input_parse::parse_initial_status, portfolio::csv_common::CsvCol, util::rw::{DescribedReader, WriteHandle}, write_errln};
 
 const ABOUT: &str = "Adjusted cost basis (ACB) calculation tool";
 
@@ -83,10 +89,49 @@ pub struct Args {
     pub csv_output_dir: Option<String>,
 }
 
-pub fn command_main() {
+pub fn command_main() -> Result<(), ExitCode> {
     let args = Args::parse();
 
-    println!("{:#?}", args);
+    let mut err_printer = WriteHandle::stderr_write_handle();
 
-    crate::app::print_dummy_table();
+    let all_init_status = match parse_initial_status(&args.symbol_base) {
+        Ok(v) => v,
+        Err(e) => {
+            write_errln!(err_printer, "Error parsing --symbol-base: {e}");
+            return Err(ExitCode::FAILURE);
+        },
+    };
+
+    let mut csv_readers = Vec::<DescribedReader>::with_capacity(args.csv_files.len());
+    for csv_name in args.csv_files {
+        let reader = DescribedReader::from_file_path(PathBuf::from(csv_name));
+        csv_readers.push(reader);
+    }
+
+    let mut options = crate::app::Options::default();
+
+    if let Some(sum_before_date_str) = args.summarize_before {
+        options.summary_mode_latest_date = match parse_standard_date(&sum_before_date_str) {
+            Ok(d) => Some(d),
+            Err(e) => {
+                write_errln!(err_printer, "Error: {e}");
+                return Err(ExitCode::FAILURE);
+            },
+        };
+    }
+
+    let home_dir = match crate::util::sys::home_dir_path() {
+        Ok(d) => d,
+        Err(e) => {
+            write_errln!(err_printer, "Unable to determine user home directory: {e}");
+            return Err(ExitCode::FAILURE);
+        },
+    };
+
+    let rates_cache = Box::new(CsvRatesCache::new(home_dir, err_printer.clone()));
+
+    run_acb_app_to_console(
+        csv_readers, all_init_status, options, rates_cache,
+        err_printer)
+    .map_err(|_| ExitCode::FAILURE)
 }

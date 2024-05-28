@@ -276,9 +276,40 @@ fn delta_for_tx(idx: usize, txs: &Vec<Tx>, ptf_statuses: &AffiliatePortfolioSecu
     Ok((delta, txs_to_inject))
 }
 
+#[derive(Debug)]
+pub struct TxDeltaListError {
+    pub partial_deltas: Vec<TxDelta>,
+    pub err_msg: String,
+}
+
+impl TxDeltaListError {
+    pub fn new(partial_deltas: Vec<TxDelta>,
+               err_msg: String) -> Self {
+        TxDeltaListError{ partial_deltas, err_msg }
+    }
+}
+
+#[derive(Debug)]
+pub struct DeltaListResult(pub Result<Vec<TxDelta>, TxDeltaListError>);
+
+impl DeltaListResult {
+    pub fn deltas_or_partial_deltas(&self) -> &Vec<TxDelta> {
+        match &self.0 {
+            Ok(d) => d,
+            Err(e) => &e.partial_deltas,
+        }
+    }
+}
+
+impl From<Result<Vec<TxDelta>, TxDeltaListError>> for DeltaListResult {
+    fn from(value: Result<Vec<TxDelta>, TxDeltaListError>) -> Self {
+        DeltaListResult(value)
+    }
+}
+
 pub fn txs_to_delta_list(
         txs: &Vec<Tx>, initial_status: Option<Rc<PortfolioSecurityStatus>>,
-    ) -> Result<Vec<TxDelta>, Error> {
+    ) -> DeltaListResult {
 
     let mut active_txs: &Vec<Tx> = txs;
     // These will be populated if we end up injecting new Txs,
@@ -288,7 +319,7 @@ pub fn txs_to_delta_list(
     let mut deltas = Vec::<TxDelta>::with_capacity(txs.len());
 
     if txs.len() == 0 {
-        return Ok(deltas);
+        return Ok(deltas).into();
     }
 
     let mut ptf_statuses = AffiliatePortfolioSecurityStatuses::new(
@@ -299,7 +330,14 @@ pub fn txs_to_delta_list(
     let mut i = 0;
     while i < active_txs.len() {
         let tx_affilliate = &active_txs[i].affiliate;
-        let (delta, m_new_txs) = delta_for_tx(i, &active_txs, &ptf_statuses)?;
+        let (delta, m_new_txs) = match delta_for_tx(i, &active_txs, &ptf_statuses) {
+            Ok(tup) => tup,
+            Err(e) => {
+                return DeltaListResult(Err(TxDeltaListError::new(
+                    deltas, e
+                )));
+            },
+        };
 
         tracing::trace!("txs_to_delta_list: adding post_status for delta: {:#?}", delta);
         ptf_statuses.set_latest_post_status(tx_affilliate, delta.post_status.clone());
@@ -324,7 +362,7 @@ pub fn txs_to_delta_list(
         i += 1;
     }
 
-    Ok(deltas)
+    Ok(deltas).into()
 }
 
 // MARK: tests
@@ -423,11 +461,11 @@ mod tests {
     }
 
     fn txs_to_delta_list_no_err(txs: Vec<Tx>) -> Vec<TxDelta> {
-        super::txs_to_delta_list(&txs, None).unwrap()
+        super::txs_to_delta_list(&txs, None).0.unwrap()
     }
 
     fn txs_to_delta_list_with_err(txs: Vec<Tx>) {
-        super::txs_to_delta_list(&txs, None).unwrap_err();
+        super::txs_to_delta_list(&txs, None).0.unwrap_err();
     }
 
     fn validate_deltas(deltas: Vec<TxDelta>, exp: Vec<TDt>) {
