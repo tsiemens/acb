@@ -2,7 +2,7 @@ use rust_decimal::Decimal;
 
 use crate::util::decimal::{dollar_precision_str, is_negative, is_positive};
 
-use super::{CumulativeCapitalGains, Currency, CurrencyAndExchangeRate, TxDelta};
+use super::{bookkeeping::Costs, CumulativeCapitalGains, CurrencyAndExchangeRate, TxDelta};
 
 pub struct RenderTable {
     pub header: Vec<String>,
@@ -53,13 +53,6 @@ impl PrintHelper {
             val.to_string()
         } else {
             dollar_precision_str(&val)
-        }
-    }
-
-    fn opt_curr_str(&self, opt_val: Option<Decimal>) -> String {
-        match opt_val {
-            Some(val) => self.curr_str(val),
-            None => self.str_for_none().to_string(),
         }
     }
 
@@ -140,14 +133,6 @@ fn wrap_str_to_width(s: &str, max_width: usize) -> String {
     }
 
     new_lines.join("\n")
-}
-
-fn str_or_dash(use_str: bool, s: &str) -> &str {
-    if use_str {
-        s
-    } else {
-        "-"
-    }
 }
 
 pub fn render_tx_table_model(
@@ -260,7 +245,7 @@ pub fn render_tx_table_model(
                 *sfla_specs.amount_per_share, &CurrencyAndExchangeRate::default());
         }
 
-        let mut acb_per_share: Option<String> =
+        let acb_per_share: Option<String> =
             if is_positive(&*d.post_status.share_balance) {
                 if let Some(post_acb) = d.post_status.total_acb {
                     Some(ph.dollar_str(*post_acb / *d.post_status.share_balance))
@@ -368,5 +353,103 @@ pub fn render_aggregate_capital_gains(
         footer: vec![],
         notes: vec![],
         errors: vec![],
+    }
+}
+
+pub fn render_total_costs(costs: &Costs, render_full_dollar_values: bool) -> CostsTables {
+    let mut securities: Vec<&String> = costs.security_set.iter().collect();
+    securities.sort();
+
+    let s = String::from;
+
+    let ph = PrintHelper::new(render_full_dollar_values);
+
+    // Total table:
+
+    let mut total_costs_headers = Vec::<String>::with_capacity(2 + securities.len());
+    total_costs_headers.push(s("Date"));
+    total_costs_headers.push(s("Total"));
+    total_costs_headers.append(&mut securities.iter().map(|s| (**s).clone()).collect());
+
+    let mut total_costs_rows = Vec::<Vec<String>>::new();
+    for max_day_costs in &costs.total {
+        // Row is: Date, Total, Securities...
+        let mut row = Vec::<String>::with_capacity(2 + securities.len());
+        row.push(max_day_costs.day.to_string());
+        row.push(ph.dollar_str(*max_day_costs.total));
+        for sec in &securities {
+            row.push(ph.dollar_str(
+                **max_day_costs.sec_max_cost_for_day.get(*sec).unwrap()))
+        }
+
+        total_costs_rows.push(row);
+    }
+
+    let total_table = RenderTable {
+        header: total_costs_headers,
+        rows: total_costs_rows,
+        footer: vec![],
+        notes: costs.ignored_deltas.clone(),
+        errors: vec![],
+    };
+
+    // Yearly table:
+
+    let mut yearly_costs_headers = Vec::<String>::with_capacity(3 + securities.len());
+    yearly_costs_headers.push(s("Year"));
+    yearly_costs_headers.push(s("Date"));
+    yearly_costs_headers.push(s("Total"));
+    yearly_costs_headers.append(&mut securities.iter().map(|s| (**s).clone()).collect());
+
+    let mut year_costs_rows = Vec::<Vec<String>>::new();
+
+    for year in costs.sorted_years() {
+        // Row is: Year, Date, Total, Securities...
+        let max_year_costs = costs.yearly.get(&year).unwrap();
+
+        let mut row = Vec::<String>::with_capacity(3 + securities.len());
+        row.push(year.to_string());
+        row.push(max_year_costs.day.to_string());
+        row.push(ph.dollar_str(*max_year_costs.total));
+        for sec in &securities {
+            row.push(ph.dollar_str(
+                **max_year_costs.sec_max_cost_for_day.get(*sec).unwrap()))
+        }
+
+        year_costs_rows.push(row);
+    }
+
+    let yearly_table = RenderTable {
+        header: yearly_costs_headers,
+        rows: year_costs_rows,
+        footer: vec![],
+        notes: costs.ignored_deltas.clone(),
+        errors: vec![],
+    };
+
+    CostsTables {
+        total: total_table,
+        yearly: yearly_table,
+    }
+}
+
+// MARK: Tests
+#[cfg(test)]
+mod tests {
+    use crate::portfolio::render::wrap_str_to_width;
+
+    #[test]
+    fn test_wrap_str_to_width() {
+        assert_eq!(wrap_str_to_width("", 10).as_str(), "");
+        assert_eq!(wrap_str_to_width("Bla", 10).as_str(), "Bla");
+        assert_eq!(wrap_str_to_width("  Bla  ", 10).as_str(), "  Bla  ");
+        assert_eq!(wrap_str_to_width("Bla\n  ", 10).as_str(), "Bla\n  ");
+        assert_eq!(wrap_str_to_width("Bla\nbla", 10).as_str(), "Bla\nbla");
+
+        assert_eq!(wrap_str_to_width("Verylongword\nbla", 5).as_str(), "Verylongword\nbla");
+        assert_eq!(wrap_str_to_width("Verylongword bla", 5).as_str(), "Verylongword\nbla");
+        assert_eq!(wrap_str_to_width("Bla Verylongword", 5).as_str(), "Bla\nVerylongword");
+        assert_eq!(wrap_str_to_width("Bla1 bla2 bla3 bla4", 10).as_str(), "Bla1 bla2\nbla3 bla4");
+
     }
 }
