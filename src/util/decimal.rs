@@ -248,7 +248,7 @@ pub type PosDecimal = ConstrainedDecimal<constraint::Pos>;
 macro_rules! pdec {
     ($arg:literal) => {{
         use rust_decimal_macros::dec;
-        crate::util::decimal::PosDecimal::try_from(dec!($arg)).unwrap()
+        $crate::util::decimal::PosDecimal::try_from(dec!($arg)).unwrap()
     }};
 }
 
@@ -256,7 +256,7 @@ macro_rules! pdec {
 macro_rules! gezdec {
     ($arg:literal) => {{
         use rust_decimal_macros::dec;
-        crate::util::decimal::GreaterEqualZeroDecimal::try_from(dec!($arg)).unwrap()
+        $crate::util::decimal::GreaterEqualZeroDecimal::try_from(dec!($arg)).unwrap()
     }};
 }
 
@@ -264,7 +264,7 @@ macro_rules! gezdec {
 macro_rules! lezdec {
     ($arg:literal) => {{
         use rust_decimal_macros::dec;
-        crate::util::decimal::LessEqualZeroDecimal::try_from(dec!($arg)).unwrap()
+        $crate::util::decimal::LessEqualZeroDecimal::try_from(dec!($arg)).unwrap()
     }};
 }
 
@@ -272,7 +272,7 @@ macro_rules! lezdec {
 macro_rules! ndec {
     ($arg:literal) => {{
         use rust_decimal_macros::dec;
-        crate::util::decimal::NegDecimal::try_from(dec!($arg)).unwrap()
+        $crate::util::decimal::NegDecimal::try_from(dec!($arg)).unwrap()
     }};
 }
 
