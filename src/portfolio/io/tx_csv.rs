@@ -510,7 +510,7 @@ mod tests {
     fn test_parse_tx_csv_basic() {
         let mut d_reader = CsvFileBuilder::with_all_modern_headers()
             .single_csv_reader(&vec![
-                Row{sec:"Foo ",td:"2020-11-11",sd:"2020-11-13",legacy_date:"",a:"Buy",sh:"123.1",aps:"10.1",
+                Row{sec:" Foo ",td:"2020-11-11",sd:"2020-11-13",legacy_date:"",a:"Buy",sh:"123.1",aps:"10.1",
                     com: "20.1", cur: "USD", fx: "1.3",c_cur: "usd", c_fx: "1.31",
                     sfl: "-1.2!", af: "(R)", m:"A memo",
                 },

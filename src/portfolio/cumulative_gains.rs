@@ -4,6 +4,7 @@ use rust_decimal::Decimal;
 
 use super::{Security, TxDelta};
 
+#[derive(Default)]
 pub struct CumulativeCapitalGains {
     // None for registered affiliates (? maybe not).
     pub capital_gains_total: Decimal,
