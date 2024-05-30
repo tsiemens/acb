@@ -141,6 +141,8 @@ pub fn run_acb_app_to_render_model(
 
     let gains = get_cumulative_capital_gains(&deltas_results_by_sec);
 
+    let default_gains = CumulativeCapitalGains::default();
+
     let mut all_deltas = Vec::<TxDelta>::new();
     let mut sec_render_tables = HashMap::new();
     for (sec, deltas_res) in deltas_results_by_sec {
@@ -148,7 +150,8 @@ pub fn run_acb_app_to_render_model(
         let mut deltas_copy = deltas.iter().cloned().collect();
         all_deltas.append(&mut deltas_copy);
         let mut table_model = render_tx_table_model(
-            deltas, gains.security_gains.get(&sec).unwrap(), render_full_dollar_values);
+            deltas, gains.security_gains.get(&sec).unwrap_or(&default_gains),
+            render_full_dollar_values);
         if let Err(e) = &deltas_res.0 {
             table_model.errors.push(e.err_msg.clone());
         }
@@ -290,5 +293,126 @@ pub fn run_acb_app_to_console(
             options.render_total_costs,
             rates_cache, err_printer)
         .map(|_| ())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::HashMap;
+
+    use crate::{
+        app::outfmt::{model::AcbWriter, text::TextWriter}, fx::io::InMemoryRatesCache, portfolio::{io::tx_csv::testlib::CsvFileBuilder, render::RenderTable, Security}, testlib::assert_re, util::rw::WriteHandle
+    };
+    use crate::portfolio::io::tx_csv::testlib::TestTxCsvRow as Row;
+
+    use super::run_acb_app_to_render_model;
+
+    fn smoke_test_render(render_table: &RenderTable) {
+        let wh = if std::env::var("VERBOSE").unwrap_or(String::new())
+            .is_empty() {
+            WriteHandle::empty_write_handle()
+        } else {
+            WriteHandle::stderr_write_handle()
+        };
+        let mut w = TextWriter::new(wh);
+        w.print_render_table(
+            crate::app::outfmt::model::OutputType::Transactions,
+            "Dummy table", render_table).unwrap();
+    }
+
+    fn get_total_cap_gain(render_table: &RenderTable) -> &str {
+        render_table.footer[9].split("\n").into_iter().next().unwrap()
+    }
+
+    fn get_and_check_foo_table(render_tables: &HashMap<Security, RenderTable>)
+        -> &RenderTable {
+        assert_eq!(render_tables.len(), 1);
+        let render_table = render_tables.get("FOO").unwrap();
+        smoke_test_render(render_table);
+        render_table
+    }
+
+    fn do_test_same_day_buy_sells(render_costs: bool, csv_splits: Vec<usize>) {
+        let readers =
+            CsvFileBuilder::with_all_modern_headers()
+            .split_csv_rows(&csv_splits, &vec![
+                Row{sec: "FOO", td: "2016-01-03", sd: "2016-01-05",
+                    a: "Buy", sh: "20", aps: "1.5", cur: "CAD", ..Row::default()},
+                Row{sec: "FOO", td: "2016-01-03", sd: "2016-01-05",
+                    a: "Sell", sh: "5", aps: "1.6", cur: "CAD", ..Row::default()},
+                Row{sec: "FOO", td: "2016-01-03", sd: "2016-01-05",
+                    a: "Buy", sh: "5", aps: "1.7", cur: "CAD", ..Row::default()},
+            ]);
+
+        let render_res = run_acb_app_to_render_model(
+            readers, HashMap::new(), false, false,
+            render_costs, Box::new(InMemoryRatesCache::new()),
+            WriteHandle::empty_write_handle()).unwrap();
+
+        let render_table = get_and_check_foo_table(&render_res.security_tables);
+        assert_eq!(render_table.rows.len(), 3);
+        assert_eq!(Vec::<String>::new(), render_table.errors);
+        assert_eq!("$0.50", get_total_cap_gain(render_table));
+    }
+
+    #[test]
+    fn test_same_day_buy_sells() {
+        do_test_same_day_buy_sells(false, vec![3]);
+        do_test_same_day_buy_sells(false, vec![1, 2]);
+        do_test_same_day_buy_sells(true, vec![1, 2]);
+    }
+
+    fn do_test_negative_stocks(render_costs: bool) {
+        let readers =
+            CsvFileBuilder::with_all_modern_headers()
+            .split_csv_rows(&vec![1], &vec![
+                Row{sec: "FOO", td: "2016-01-03", sd: "2016-01-05",
+                    a: "Sell", sh: "5", aps: "1.6", cur: "CAD", ..Row::default()},
+            ]);
+
+        let render_res = run_acb_app_to_render_model(
+            readers, HashMap::new(), false, false,
+            render_costs, Box::new(InMemoryRatesCache::new()),
+            WriteHandle::empty_write_handle()).unwrap();
+
+        let render_table = get_and_check_foo_table(&render_res.security_tables);
+        assert_eq!(render_table.rows.len(), 0);
+        assert_re("is more than the current holdings", render_table.errors[0].as_str());
+        assert_eq!("$0.00", get_total_cap_gain(render_table));
+    }
+
+    #[test]
+    fn test_negative_stocks() {
+        do_test_negative_stocks(false);
+        do_test_negative_stocks(true);
+    }
+
+    fn do_test_fractional_shares(render_costs: bool) {
+        let readers =
+            CsvFileBuilder::with_all_modern_headers()
+            .split_csv_rows(&vec![3], &vec![
+                Row{sec: "FOO", td: "2016-01-03", sd: "2016-01-05",
+                    a: "Buy", sh: "0.1", aps: "1.6", cur: "CAD", ..Row::default()},
+                Row{sec: "FOO", td: "2016-01-03", sd: "2016-01-05",
+                    a: "Sell", sh: "0.05", aps: "1.7", cur: "CAD", ..Row::default()},
+                Row{sec: "FOO", td: "2016-01-04", sd: "2016-01-06",
+                    a: "Sell", sh: "0.05", aps: "1.7", cur: "CAD", ..Row::default()},
+            ]);
+
+        let render_res = run_acb_app_to_render_model(
+            readers, HashMap::new(), false, false,
+            render_costs, Box::new(InMemoryRatesCache::new()),
+            WriteHandle::empty_write_handle()).unwrap();
+
+        let render_table = get_and_check_foo_table(&render_res.security_tables);
+        assert_eq!(render_table.rows.len(), 3);
+        assert_eq!(Vec::<String>::new(), render_table.errors);
+        assert_eq!("$0.01", get_total_cap_gain(render_table));
+    }
+
+    #[test]
+    fn test_fractional_shares() {
+        do_test_fractional_shares(false);
+        do_test_fractional_shares(true);
     }
 }
