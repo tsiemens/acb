@@ -547,20 +547,20 @@ mod tests {
         });
 
         // Basic Buy
-        let tx = TTx{act: A::Buy, shares: gez!(3), price: gez!(10.0), ..def()}.x();
+        let tx = TTx{t_day: 0, act: A::Buy, shares: gez!(3), price: gez!(10.0), ..def()}.x();
         let delta = delta_for_tx_ok(tx, &sptf);
         validate_delta(delta,
             TDt{post_st: TPSS{shares: gez!(3), total_acb: sgez!(30.0), ..def()}, ..def()});
 
         // Test with commission
-        let tx = TTx{act: A::Buy, shares: gez!(2), price: gez!(10.0), comm: gez!(1.0), ..def()}.x();
+        let tx = TTx{t_day: 0, act: A::Buy, shares: gez!(2), price: gez!(10.0), comm: gez!(1.0), ..def()}.x();
         let delta = delta_for_tx_ok(tx, &sptf);
         validate_delta(delta,
             TDt{post_st: TPSS{shares: gez!(2), total_acb: sgez!(21.0), ..def()}, ..def()});
 
         // Test with exchange rates
         let sptf = TPSS{shares: gez!(2), total_acb: sgez!(21.0), ..def()}.x();
-        let tx = TTx{act: A::Buy, shares: gez!(3), price: gez!(12.0), comm: gez!(1.0),
+        let tx = TTx{t_day: 0, act: A::Buy, shares: gez!(3), price: gez!(12.0), comm: gez!(1.0),
             curr: usd(), fx_rate: gez!(2.0),
             comm_curr: Currency::new("XXX"), comm_fx_rate: gez!(0.3), ..def()}.x();
         let delta = delta_for_tx_ok(tx, &sptf);
@@ -576,7 +576,7 @@ mod tests {
     fn test_basic_sell_acb_errors() {
         // Sell more shares than available
         let sptf = TPSS{shares: gez!(2), total_acb: sgez!(20.0), ..def()}.x();
-        let tx = TTx{act: A::Sell, shares: gez!(3), price: gez!(10.0), ..def()}.x();
+        let tx = TTx{t_day: 0, act: A::Sell, shares: gez!(3), price: gez!(10.0), ..def()}.x();
         delta_for_tx_has_err(tx, &sptf);
     }
 
@@ -585,7 +585,7 @@ mod tests {
 
         // Sell all remaining shares
         let sptf = TPSS{shares: gez!(2), total_acb: sgez!(20.0), ..def()}.x();
-        let tx = TTx{act: A::Sell, shares: gez!(2), price: gez!(15.0), ..def()}.x();
+        let tx = TTx{t_day: 0, act: A::Sell, shares: gez!(2), price: gez!(15.0), ..def()}.x();
 
         let delta = delta_for_tx_ok(tx, &sptf);
         validate_delta(delta,
@@ -593,7 +593,7 @@ mod tests {
 
         // Sell shares with commission
         let sptf = TPSS{shares: gez!(3), total_acb: sgez!(30.0), ..def()}.x();
-        let tx = TTx{act: A::Sell, shares: gez!(2), price: gez!(15.0), comm: gez!(1.0), ..def()}.x();
+        let tx = TTx{t_day: 0, act: A::Sell, shares: gez!(2), price: gez!(15.0), comm: gez!(1.0), ..def()}.x();
 
         let delta = delta_for_tx_ok(tx, &sptf);
         validate_delta(delta,
@@ -602,7 +602,7 @@ mod tests {
         // Sell shares with exchange rate
         let sptf = TPSS{shares: gez!(3), total_acb: sgez!(30.0), ..def()}.x();
         let tx = TTx{
-            act: A::Sell, shares: gez!(2), price: gez!(15.0), comm: gez!(2.0),
+            t_day: 0, act: A::Sell, shares: gez!(2), price: gez!(15.0), comm: gez!(2.0),
             curr: Currency::new("XXX"), fx_rate: gez!(2.0),
             comm_curr: Currency::new("YYY"), comm_fx_rate: gez!(0.4), ..def()}.x();
 
@@ -734,9 +734,9 @@ mod tests {
         validate_deltas(deltas, vec![
             TDt{post_st: TPSS{shares: gez!(100), total_acb: sgez!(302.0), ..def()}, ..def()},
             TDt{post_st: TPSS{shares: gez!(1), total_acb: sgez!(3.02), ..def()},
-                    gain: sdec!(-75.480000000000000000000000003), sfl: sndec!(-25.499999999999999999999999997), ..def()},  // total loss of 100.98, 25.500000048 is superficial
-            TDt{post_st: TPSS{shares: gez!(1), total_acb: sgez!(28.519999999999999999999999997), ..def()}, ..def()}, // acb adjust
-            TDt{post_st: TPSS{shares: gez!(26), total_acb: sgez!(85.52000000000000000000000000), ..def()}, ..def()},
+                    gain: sdec!(-75.48), sfl: sndec!(-25.5), ..def()},  // total loss of 100.98, 25.500000048 is superficial
+            TDt{post_st: TPSS{shares: gez!(1), total_acb: sgez!(28.52), ..def()}, ..def()}, // acb adjust
+            TDt{post_st: TPSS{shares: gez!(26), total_acb: sgez!(85.52), ..def()}, ..def()},
         ]);
 
         /*
@@ -909,12 +909,12 @@ mod tests {
     fn test_basic_roc_acb_errors() {
         // Test that RoC cannot exceed the current ACB
         let sptf = TPSS{shares: gez!(2), total_acb: sgez!(20.0), ..def()}.x();
-        let tx = TTx{act: A::Roc, price: gez!(13.0), ..def()}.x();
+        let tx = TTx{t_day: 0, act: A::Roc, price: gez!(13.0), ..def()}.x();
         delta_for_tx_has_err(tx, &sptf);
 
         // Test that RoC cannot occur on registered affiliates, since they have no ACB
         let sptf = TPSS{shares: gez!(5), total_acb: None, ..def()}.x();
-        let tx = TTx{act: A::Roc, price: gez!(3.0), af_name: "(R)", ..def()}.x();
+        let tx = TTx{t_day: 0, act: A::Roc, price: gez!(3.0), af_name: "(R)", ..def()}.x();
         delta_for_tx_has_err(tx, &sptf);
     }
 
@@ -923,7 +923,7 @@ mod tests {
 
         // Test basic ROC with different AllAffiliatesShareBalance
         let sptf = TPSS{shares: gez!(2), all_shares: gez!(8), total_acb: sgez!(20.0), ..def()}.x();
-        let tx = TTx{act: A::Roc, price: gez!(1.0), ..def()}.x();
+        let tx = TTx{t_day: 0, act: A::Roc, price: gez!(1.0), ..def()}.x();
 
         let delta = delta_for_tx_ok(tx, &sptf);
         validate_delta(delta,
@@ -931,7 +931,7 @@ mod tests {
 
         // Test RoC with exchange
         let sptf = TPSS{shares: gez!(2), total_acb: sgez!(20.0), ..def()}.x();
-        let tx = TTx{act: A::Roc, price: gez!(1.0), curr: usd(), fx_rate: gez!(2.0), ..def()}.x();
+        let tx = TTx{t_day: 0, act: A::Roc, price: gez!(1.0), curr: usd(), fx_rate: gez!(2.0), ..def()}.x();
 
         let delta = delta_for_tx_ok(tx, &sptf);
         validate_delta(delta,
@@ -943,7 +943,7 @@ mod tests {
 
         // Test than an SfLA on a registered affiliate is invalid
         let sptf = TPSS{shares: gez!(2), total_acb: None, ..def()}.x();
-        let tx = TTx{act: A::Sfla, shares: gez!(2), price: gez!(1.0), af_name: "(R)", ..def()}.x();
+        let tx = TTx{t_day: 0, act: A::Sfla, shares: gez!(2), price: gez!(1.0), af_name: "(R)", ..def()}.x();
         let err = delta_for_tx_get_err(tx, &sptf);
         assert_re("Registered affiliates do not have an ACB", &err)
     }
@@ -952,7 +952,7 @@ mod tests {
     fn test_registered_affiliate_capital_gain() {
         // Test there are no capital gains in registered accounts
         let sptf = TPSS{shares: gez!(5), total_acb: None, ..def()}.x();
-        let tx = TTx{act: A::Sell, shares: gez!(2), price: gez!(3.0), af_name: "(R)", ..def()}.x();
+        let tx = TTx{t_day: 0, act: A::Sell, shares: gez!(2), price: gez!(3.0), af_name: "(R)", ..def()}.x();
         let delta = delta_for_tx_ok(tx, &sptf);
         assert_big_struct_eq(TPSS{shares: gez!(3), acb_per_sh: None, ..def()}.x(), delta.post_status);
         assert_eq!(delta.capital_gain, None);
@@ -963,7 +963,7 @@ mod tests {
     fn test_registered_affiliate_acb_panic() {
         // Test that we fail if registered account sees non-nan acb
         let sptf = TPSS{shares: gez!(5), total_acb: sgez!(0), ..def()}.x();
-        let tx = TTx{act: A::Sell, shares: gez!(2), price: gez!(3.0), af_name: "(R)", ..def()}.x();
+        let tx = TTx{t_day: 0, act: A::Sell, shares: gez!(2), price: gez!(3.0), af_name: "(R)", ..def()}.x();
         let _ = delta_for_tx(tx, sptf);
     }
 
@@ -972,7 +972,7 @@ mod tests {
     fn test_registered_affiliate_acb_panic_nonzero() {
         // Test that we fail if registered account has non-zero acb
         let sptf = TPSS{shares: gez!(5), total_acb: sgez!(1.0), ..def()}.x();
-        let tx = TTx{act: A::Sell, shares: gez!(2), price: gez!(3.0), af_name: "(R)", ..def()}.x();
+        let tx = TTx{t_day: 0, act: A::Sell, shares: gez!(2), price: gez!(3.0), af_name: "(R)", ..def()}.x();
         let _ = delta_for_tx(tx, sptf);
     }
 
@@ -981,7 +981,7 @@ mod tests {
     fn test_non_registered_affiliate_no_acb_panic() {
         // Test that non-registered with None ACB generates an error as well
         let sptf = TPSS{shares: gez!(5), total_acb: None, ..def()}.x();
-        let tx = TTx{act: A::Sell, shares: gez!(2), price: gez!(3.0), ..def()}.x();
+        let tx = TTx{t_day: 0, act: A::Sell, shares: gez!(2), price: gez!(3.0), ..def()}.x();
         let _ = delta_for_tx(tx, sptf);
     }
 
@@ -1017,14 +1017,14 @@ mod tests {
         */
         let txs = vec![
             // Buys
-            TTx{act: A::Buy, shares: gez!(10), price: gez!(1.0), af_name: "", ..def()}.x(),
-            TTx{act: A::Buy, shares: gez!(20), price: gez!(1.0), af_name: "(R)", ..def()}.x(),
-            TTx{act: A::Buy, shares: gez!(30), price: gez!(1.0), af_name: "B", ..def()}.x(),
-            TTx{act: A::Buy, shares: gez!(40), price: gez!(1.0), af_name: "B (R)", ..def()}.x(),
+            TTx{t_day: 0, act: A::Buy, shares: gez!(10), price: gez!(1.0), af_name: "", ..def()}.x(),
+            TTx{t_day: 0, act: A::Buy, shares: gez!(20), price: gez!(1.0), af_name: "(R)", ..def()}.x(),
+            TTx{t_day: 0, act: A::Buy, shares: gez!(30), price: gez!(1.0), af_name: "B", ..def()}.x(),
+            TTx{t_day: 0, act: A::Buy, shares: gez!(40), price: gez!(1.0), af_name: "B (R)", ..def()}.x(),
             // Sells
-            TTx{act: A::Sell, shares: gez!(1), price: gez!(1.2), af_name: "", ..def()}.x(),
-            TTx{act: A::Sell, shares: gez!(2), price: gez!(1.3), af_name: "(R)", ..def()}.x(),
-            TTx{act: A::Sell, shares: gez!(3), price: gez!(1.4), af_name: "B", ..def()}.x(), TTx{act: A::Sell, shares: gez!(4), price: gez!(1.5), af_name: "B (R)", ..def()}.x(),
+            TTx{t_day: 0, act: A::Sell, shares: gez!(1), price: gez!(1.2), af_name: "", ..def()}.x(),
+            TTx{t_day: 0, act: A::Sell, shares: gez!(2), price: gez!(1.3), af_name: "(R)", ..def()}.x(),
+            TTx{t_day: 0, act: A::Sell, shares: gez!(3), price: gez!(1.4), af_name: "B", ..def()}.x(), TTx{t_day: 0, act: A::Sell, shares: gez!(4), price: gez!(1.5), af_name: "B (R)", ..def()}.x(),
         ];
         let deltas = txs_to_delta_list_no_err(txs);
         validate_deltas(deltas, vec![
@@ -1053,13 +1053,13 @@ mod tests {
         */
         let txs = vec![
             // Buys
-            TTx{act: A::Buy, shares: gez!(10), price: gez!(1.0), af_name: "", ..def()}.x(),
-            TTx{act: A::Buy, shares: gez!(20), price: gez!(1.0), af_name: "B", ..def()}.x(),
+            TTx{t_day: 0, act: A::Buy, shares: gez!(10), price: gez!(1.0), af_name: "", ..def()}.x(),
+            TTx{t_day: 0, act: A::Buy, shares: gez!(20), price: gez!(1.0), af_name: "B", ..def()}.x(),
             // ROC
-            TTx{act: A::Roc, price: gez!(0.2), af_name: "B", ..def()}.x(),
+            TTx{t_day: 0, act: A::Roc, price: gez!(0.2), af_name: "B", ..def()}.x(),
             // Sells
-            TTx{act: A::Sell, shares: gez!(10), price: gez!(1.1), af_name: "", ..def()}.x(),
-            TTx{act: A::Sell, shares: gez!(20), price: gez!(1.1), af_name: "B", ..def()}.x(),
+            TTx{t_day: 0, act: A::Sell, shares: gez!(10), price: gez!(1.1), af_name: "", ..def()}.x(),
+            TTx{t_day: 0, act: A::Sell, shares: gez!(20), price: gez!(1.1), af_name: "B", ..def()}.x(),
         ];
         let deltas = txs_to_delta_list_no_err(txs);
         validate_deltas(deltas, vec![

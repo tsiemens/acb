@@ -1,4 +1,4 @@
-use std::{fmt::Display, str::FromStr};
+use std::fmt::Display;
 
 use rust_decimal::Decimal;
 
@@ -61,7 +61,7 @@ fn round_to_effective_cent_tolerance() -> Decimal {
 /// (eg. 1.55555555555555556), and then propagated to other values.
 pub fn maybe_round_to_effective_cent(d: Decimal) -> Decimal {
     let rounded = round_to_cent(d);
-    let tolerance: Decimal = Decimal::from_str("0.00000001").unwrap();
+    let tolerance: Decimal = round_to_effective_cent_tolerance();
     if (rounded - d).abs() < tolerance {
         rounded
     } else {
