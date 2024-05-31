@@ -5,6 +5,7 @@ pub mod io;
 mod misc;
 pub mod model;
 pub mod render;
+pub mod summary;
 
 pub use self::cumulative_gains::*;
 pub use self::misc::*;

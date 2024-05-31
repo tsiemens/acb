@@ -66,11 +66,11 @@ impl MaybeSuperficialLossInfo {
     }
 }
 
-fn get_first_day_in_superficial_loss_period(settlement_date: Date) -> Date {
+pub fn get_first_day_in_superficial_loss_period(settlement_date: Date) -> Date {
     settlement_date.saturating_sub(Duration::days(30))
 }
 
-fn get_last_day_in_superficial_loss_period(settlement_date: Date) -> Date {
+pub fn get_last_day_in_superficial_loss_period(settlement_date: Date) -> Date {
     settlement_date.saturating_add(Duration::days(30))
 }
 

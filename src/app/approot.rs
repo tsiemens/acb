@@ -296,6 +296,7 @@ pub fn run_acb_app_to_console(
     }
 }
 
+// MARK: Tests
 #[cfg(test)]
 mod tests {
     use std::collections::HashMap;

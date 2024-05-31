@@ -9,10 +9,10 @@ use crate::{
         PortfolioSecurityStatus, SflaTxSpecifics,
         Tx, TxActionSpecifics, TxDelta
     },
-    util::decimal::{
+    util::{decimal::{
         GreaterEqualZeroDecimal, LessEqualZeroDecimal,
         NegDecimal, PosDecimal
-    }
+    }, math::c_maybe_round_to_effective_cent}
 };
 
 use super::{superficial_loss::get_superficial_loss_ratio, AffiliatePortfolioSecurityStatuses};
@@ -50,7 +50,8 @@ fn get_delta_superficial_loss_info(
     let m_sfl = get_superficial_loss_ratio(idx, txs, ptf_statuses)?;
 
     let calculated_sfl_amount: LessEqualZeroDecimal = match &m_sfl {
-        Some(sfl) => LessEqualZeroDecimal::from(cap_loss.mul_pos(sfl.sfl_ratio.to_posdecimal())),
+        Some(sfl) => LessEqualZeroDecimal::from(
+            c_maybe_round_to_effective_cent(cap_loss.mul_pos(sfl.sfl_ratio.to_posdecimal()))),
         None => LessEqualZeroDecimal::zero(),
     };
 
@@ -298,6 +299,10 @@ impl DeltaListResult {
             Ok(d) => d,
             Err(e) => &e.partial_deltas,
         }
+    }
+
+    pub fn unwrap_full_deltas(self) -> Vec<TxDelta> {
+        self.0.unwrap()
     }
 }
 
@@ -985,14 +990,14 @@ mod tests {
 
         // Basic buy
         let sptf = TPSS{shares: gez!(3), all_shares: gez!(7), total_acb: sgez!(15.0), ..def()}.x();
-        let tx = TTx{act: A::Buy, shares: gez!(2), price: gez!(5.0), ..def()}.x();
+        let tx = TTx{t_day: 0, act: A::Buy, shares: gez!(2), price: gez!(5.0), ..def()}.x();
         let delta = delta_for_tx_ok(tx, &sptf);
         validate_delta(delta,
             TDt{post_st: TPSS{shares: gez!(5), all_shares: gez!(9), total_acb: sgez!(25.0), ..def()}, ..def()});
 
         // Basic sell
         let sptf = TPSS{shares: gez!(5), all_shares: gez!(8), acb_per_sh: sgez!(3.0), ..def()}.x();
-        let tx = TTx{act: A::Sell, shares: gez!(2), price: gez!(5.0), ..def()}.x();
+        let tx = TTx{t_day: 0, act: A::Sell, shares: gez!(2), price: gez!(5.0), ..def()}.x();
         let delta = delta_for_tx_ok(tx, &sptf);
         validate_delta(delta,
             TDt{post_st: TPSS{shares: gez!(3), all_shares: gez!(6.0), acb_per_sh: sgez!(3.0), ..def()}, gain: sdec!(4.0), ..def()});
