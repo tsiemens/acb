@@ -11,7 +11,6 @@ use crate::{
 
 use super::{CurrencyAndExchangeRate, Security, Tx, TxDelta};
 
-type Error = String;
 type Warning = String;
 
 #[derive(Debug)]
@@ -400,10 +399,6 @@ pub struct CollectedSummaryData {
     pub txs: Vec<Tx>,
     // Warnings -> list of secs that encountered this warning
     pub warnings: HashMap<Warning, Vec<Security>>,
-    // Security -> errors encountered (populated externally)
-    // TODO delete this?
-    #[deprecated]
-    pub errors: HashMap<Security, Vec<Error>>,
 }
 
 /// Public-facing wrapper for make_summary_txs, handling
@@ -438,7 +433,7 @@ pub fn make_aggregate_summary_txs(
         all_summary_txs.extend(summary_txs.into_iter());
     }
 
-    CollectedSummaryData{ txs: all_summary_txs, warnings: all_warnings, errors: HashMap::new() }
+    CollectedSummaryData{ txs: all_summary_txs, warnings: all_warnings }
 }
 
 // MARK: Tests
@@ -448,7 +443,10 @@ mod tests {
     use rust_decimal_macros::dec;
 
     use crate::{
-        portfolio::{bookkeeping::txs_to_delta_list, testlib::TTx, SFLInput, Tx, TxDelta}, tracing::setup_tracing, util::{decimal::{GreaterEqualZeroDecimal, LessEqualZeroDecimal}, math::c_maybe_round_to_effective_cent}};
+        portfolio::{bookkeeping::txs_to_delta_list, testlib::TTx, SFLInput, Tx, TxDelta},
+        tracing::setup_tracing,
+        util::decimal::{GreaterEqualZeroDecimal, LessEqualZeroDecimal}
+    };
     use crate::util::date::pub_testlib::doy_date;
     use crate::testlib::assert_vecr_eq;
 

@@ -5,12 +5,7 @@ use time::Date;
 
 use crate::{
     app::outfmt::csv::CsvWriter, fx::io::{RateLoader, RatesCache}, portfolio::{
-        bookkeeping::{txs_to_delta_list, DeltaListResult},
-        calc_cumulative_capital_gains,
-        calc_security_cumulative_capital_gains,
-        io::{tx_csv::parse_tx_csv, tx_loader::load_tx_rates},
-        render::{render_aggregate_capital_gains, render_tx_table_model, CostsTables, RenderTable},
-        CumulativeCapitalGains, PortfolioSecurityStatus, Security, Tx, TxDelta
+        bookkeeping::{txs_to_delta_list, DeltaListResult}, calc_cumulative_capital_gains, calc_security_cumulative_capital_gains, io::{tx_csv::{parse_tx_csv, write_txs_to_csv}, tx_loader::load_tx_rates}, render::{render_aggregate_capital_gains, render_tx_table_model, CostsTables, RenderTable}, summary::{make_aggregate_summary_txs, CollectedSummaryData}, CumulativeCapitalGains, PortfolioSecurityStatus, Security, Tx, TxDelta
     }, util::rw::{DescribedReader, WriteHandle}, write_errln
 };
 
@@ -254,6 +249,94 @@ pub fn run_acb_app_to_writer(
     Ok(render_res)
 }
 
+pub struct AppSummaryError {
+    pub general_error: Option<Error>,
+    pub sec_errors: HashMap<Security, Error>,
+}
+
+pub fn run_acb_app_summary_to_model(
+    latest_date: Date,
+    csv_file_readers: Vec<DescribedReader>,
+    all_init_status: HashMap<Security, PortfolioSecurityStatus>,
+    options: Options,
+    rates_cache: Box<dyn RatesCache>,
+    err_printer: WriteHandle,
+    ) -> Result<CollectedSummaryData, AppSummaryError> {
+
+    let deltas_results_by_sec = run_acb_app_to_delta_models(
+        csv_file_readers, all_init_status, options.force_download, rates_cache, err_printer)
+        .map_err(|e| AppSummaryError{ general_error: Some(e), sec_errors: HashMap::new() })?;
+
+    let mut deltas_by_sec = HashMap::<Security, Vec<TxDelta>>::new();
+    let mut delta_errors = HashMap::new();
+    for (sec, delta_res) in deltas_results_by_sec {
+        match delta_res.0 {
+            Ok(deltas) => { deltas_by_sec.insert(sec.clone(),  deltas); },
+            Err(e) => { delta_errors.insert(sec.clone(), e.err_msg); },
+        }
+    }
+
+    if delta_errors.len() > 0 {
+        return Err(AppSummaryError{ general_error: None, sec_errors: delta_errors });
+    }
+
+    Ok(make_aggregate_summary_txs(
+        latest_date, &deltas_by_sec,
+        options.split_annual_summary_gains))
+}
+
+pub fn run_acb_app_summary_to_console(
+    latest_date: Date,
+    csv_file_readers: Vec<DescribedReader>,
+    all_init_status: HashMap<Security, PortfolioSecurityStatus>,
+    options: Options,
+    rates_cache: Box<dyn RatesCache>,
+    mut err_printer: WriteHandle,
+    ) -> Result<(), ()> {
+
+    let summ_res = run_acb_app_summary_to_model(
+        latest_date, csv_file_readers, all_init_status,
+        options, rates_cache, err_printer.clone()
+    );
+
+    let summ_data = match summ_res {
+        Ok(summ_data) => summ_data,
+        Err(err_struct) => {
+            if let Some(e) = err_struct.general_error {
+                write_errln!(err_printer, "Error: {e}");
+            }
+            for (sec, e) in err_struct.sec_errors {
+                write_errln!(err_printer, "Error in {sec}: {e}");
+            }
+            return Err(())
+        },
+    };
+
+    if summ_data.warnings.len() > 0 {
+        write_errln!(err_printer, "Warnings:");
+        for (warning, secs) in summ_data.warnings {
+            write_errln!(err_printer, " {}. Encountered for {}",
+                warning, secs.join(","));
+        }
+        write_errln!(err_printer, "");
+    }
+
+    if summ_data.txs.len() > 0 {
+        let csv_txs: Vec<crate::portfolio::CsvTx> = summ_data.txs.into_iter()
+            .map(|tx| crate::portfolio::CsvTx::from(tx))
+            .collect();
+        match write_txs_to_csv(&csv_txs, &mut WriteHandle::stdout_write_handle()) {
+            Ok(()) => (),
+            Err(e) => {
+                write_errln!(err_printer, "Error: {e}");
+                return Err(());
+            },
+        }
+    }
+
+    Ok(())
+}
+
 pub fn run_acb_app_to_console(
     csv_file_readers: Vec<DescribedReader>,
     all_init_status: HashMap<Security, PortfolioSecurityStatus>,
@@ -262,13 +345,10 @@ pub fn run_acb_app_to_console(
     mut err_printer: WriteHandle,
     ) -> Result<(), ()> {
 
-    if options.summary_mode() {
-        todo!();
-        //     ok = RunAcbAppSummaryToConsole(
-        //         options.SummaryModeLatestDate, csvFileReaders, allInitStatus,
-        //         options.ForceDownload,
-        //         options, legacyOptions, ratesCache, errPrinter,
-        //     )
+    if let Some(summary_mode_latest_date) = options.summary_mode_latest_date {
+        run_acb_app_summary_to_console(
+            summary_mode_latest_date, csv_file_readers, all_init_status,
+            options, rates_cache, err_printer)
     } else {
         let mut writer: Box<dyn AcbWriter> = match options.csv_output_dir {
             Some(dir_path) => {

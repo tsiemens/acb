@@ -123,6 +123,12 @@ impl Ord for CsvTx {
     }
 }
 
+impl From<Tx> for CsvTx {
+    fn from(value: Tx) -> Self {
+        value.to_csvtx()
+    }
+}
+
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct BuyTxSpecifics {
     pub shares: PosDecimal,
@@ -540,16 +546,11 @@ pub mod testlib {
 
     impl TTx {
         pub fn x(&self) -> Tx {
-            let get_fx_rate = |rate_arg: GreaterEqualZeroDecimal,
-                                  default_rate: GreaterEqualZeroDecimal|
-                                  -> GreaterEqualZeroDecimal {
-                if rate_arg == *MAGIC_DEFAULT_GEZ {
-                    default_rate
-                } else {
-                    rate_arg
-                }
+            let fx_rate = if self.fx_rate == *MAGIC_DEFAULT_GEZ {
+                gezdec!(1)
+            } else {
+                self.fx_rate
             };
-            let fx_rate = get_fx_rate(self.fx_rate, gezdec!(1));
             let affiliate = if self.af_name == MAGIC_DEFAULT_AF_NAME {
                 self.af.clone()
             } else {
@@ -579,15 +580,6 @@ pub mod testlib {
             } else if trade_date == *MAGIC_DEFAULT_DATE && settlement_date == *MAGIC_DEFAULT_DATE {
                 panic!("TTx.x: Both trade and settlement dates are unset");
             }
-
-            // TODO get_fx_rate need not be a function.
-            let get_curr = |specified_curr: &Currency, default_: Currency| -> Currency {
-                if *specified_curr == *MAGIC_DEFAULT_CURRENCY {
-                    default_
-                } else {
-                    specified_curr.clone()
-                }
-            };
 
             let curr = if self.curr == *MAGIC_DEFAULT_CURRENCY {
                 Currency::cad()
