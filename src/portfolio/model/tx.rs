@@ -569,15 +569,18 @@ pub mod testlib {
                 doy_date(self.s_yr, self.s_doy.into())
             } else {
                 assert_eq!(self.s_doy, MAGIC_DEFAULT_I32);
-                self.t_date
+                self.s_date
             };
 
             if settlement_date == *MAGIC_DEFAULT_DATE && trade_date != *MAGIC_DEFAULT_DATE {
                 settlement_date = trade_date.saturating_add(Duration::days(2))
             } else if trade_date == *MAGIC_DEFAULT_DATE && settlement_date != *MAGIC_DEFAULT_DATE {
                 trade_date = settlement_date.saturating_sub(Duration::days(2))
+            } else if trade_date == *MAGIC_DEFAULT_DATE && settlement_date == *MAGIC_DEFAULT_DATE {
+                panic!("TTx.x: Both trade and settlement dates are unset");
             }
 
+            // TODO get_fx_rate need not be a function.
             let get_curr = |specified_curr: &Currency, default_: Currency| -> Currency {
                 if *specified_curr == *MAGIC_DEFAULT_CURRENCY {
                     default_
@@ -586,8 +589,22 @@ pub mod testlib {
                 }
             };
 
-            let curr = get_curr(&self.curr, Currency::cad());
-            let comm_curr = get_curr(&self.comm_curr, curr.clone());
+            let curr = if self.curr == *MAGIC_DEFAULT_CURRENCY {
+                Currency::cad()
+            } else {
+                self.curr.clone()
+            };
+
+            let comm_curr = if self.comm_curr == *MAGIC_DEFAULT_CURRENCY {
+                None
+            } else {
+                Some(self.comm_curr.clone())
+            };
+            let comm_fx_rate = if self.comm_fx_rate == *MAGIC_DEFAULT_GEZ {
+                None
+            } else {
+                Some(*self.comm_fx_rate)
+            };
 
             let csv_tx = CsvTx {
                 security: Some(if self.sec.is_empty() { default_sec() } else { self.sec.clone() }),
@@ -599,8 +616,8 @@ pub mod testlib {
                 commission: if self.comm != *MAGIC_DEFAULT_GEZ { Some(*self.comm) } else { None },
                 tx_currency: Some(curr),
                 tx_curr_to_local_exchange_rate: Some(*fx_rate),
-                commission_currency: Some(comm_curr),
-                commission_curr_to_local_exchange_rate: Some(*get_fx_rate(self.comm_fx_rate, fx_rate)),
+                commission_currency: comm_curr,
+                commission_curr_to_local_exchange_rate: comm_fx_rate,
                 memo: if self.memo.is_empty() { None } else { Some(self.memo.clone()) },
                 affiliate: Some(affiliate),
                 specified_superficial_loss: self.sfl.clone(),
