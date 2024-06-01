@@ -13,10 +13,6 @@ use crate::{
 
 use super::Error;
 
-// const LINE_BUF_SIZE: u32 = 100;
-// const CSV_TIME_FORMAT: &str = "2006-01-02";
-// const CSV_PRINT_TIME_FMT: &str = "%d-%02d-%02d"; // TODO
-
 const CAD_USD_NOON_OBSERVATION: &str = "IEXE0101";
 const CAD_USD_DAILY_OBSERVATION: &str = "FXCADUSD";
 

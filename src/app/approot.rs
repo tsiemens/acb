@@ -5,7 +5,7 @@ use time::Date;
 
 use crate::{
     app::outfmt::csv::CsvWriter, fx::io::{RateLoader, RatesCache}, portfolio::{
-        bookkeeping::{txs_to_delta_list, DeltaListResult}, calc_cumulative_capital_gains, calc_security_cumulative_capital_gains, io::{tx_csv::{parse_tx_csv, write_txs_to_csv}, tx_loader::load_tx_rates}, render::{render_aggregate_capital_gains, render_tx_table_model, CostsTables, RenderTable}, summary::{make_aggregate_summary_txs, CollectedSummaryData}, CumulativeCapitalGains, PortfolioSecurityStatus, Security, Tx, TxDelta
+        bookkeeping::{txs_to_delta_list, DeltaListResult}, calc_cumulative_capital_gains, calc_security_cumulative_capital_gains, io::{tx_csv::{parse_tx_csv, write_txs_to_csv, TxCsvParseOptions}, tx_loader::load_tx_rates}, render::{render_aggregate_capital_gains, render_tx_table_model, CostsTables, RenderTable}, summary::{make_aggregate_summary_txs, CollectedSummaryData}, CumulativeCapitalGains, PortfolioSecurityStatus, Security, Tx, TxDelta
     }, util::rw::{DescribedReader, WriteHandle}, write_errln
 };
 
@@ -20,6 +20,7 @@ pub struct Options {
     pub split_annual_summary_gains: bool,
     pub render_total_costs: bool,
     pub csv_output_dir: Option<String>,
+    pub csv_parse_options: TxCsvParseOptions,
 }
 
 impl Options {
@@ -37,6 +38,7 @@ impl Default for Options {
             split_annual_summary_gains: false,
             render_total_costs: false,
             csv_output_dir: None,
+            csv_parse_options: TxCsvParseOptions::default(),
         }
     }
 }
@@ -47,6 +49,7 @@ impl Default for Options {
 pub fn run_acb_app_to_delta_models(
     csv_file_readers: Vec<DescribedReader>,
     all_init_status: HashMap<Security, PortfolioSecurityStatus>,
+    csv_parse_options: &TxCsvParseOptions,
     force_download: bool,
     rates_cache: Box<dyn RatesCache>,
     mut err_printer: WriteHandle,
@@ -59,7 +62,8 @@ pub fn run_acb_app_to_delta_models(
     let mut global_read_index: u32 = 0;
     for mut csv_reader in csv_file_readers {
         let mut csv_txs = parse_tx_csv(
-            &mut csv_reader, global_read_index, &mut err_printer)?;
+            &mut csv_reader, global_read_index,
+            &csv_parse_options, &mut err_printer)?;
 
         load_tx_rates(&mut csv_txs, &mut rate_loader)?;
 
@@ -124,6 +128,7 @@ pub struct AppRenderResult {
 pub fn run_acb_app_to_render_model(
     csv_file_readers: Vec<DescribedReader>,
     all_init_status: HashMap<Security, PortfolioSecurityStatus>,
+    csv_parse_options: &TxCsvParseOptions,
     force_download: bool,
     render_full_dollar_values: bool,
     render_total_costs: bool,
@@ -132,7 +137,9 @@ pub fn run_acb_app_to_render_model(
     ) -> Result<AppRenderResult, Error> {
 
     let deltas_results_by_sec = run_acb_app_to_delta_models(
-        csv_file_readers, all_init_status, force_download, rates_cache, err_printer)?;
+        csv_file_readers, all_init_status,
+        csv_parse_options, force_download,
+        rates_cache, err_printer)?;
 
     let gains = get_cumulative_capital_gains(&deltas_results_by_sec);
 
@@ -221,6 +228,7 @@ pub fn run_acb_app_to_writer(
     writer: &mut dyn AcbWriter,
     csv_file_readers: Vec<DescribedReader>,
     all_init_status: HashMap<Security, PortfolioSecurityStatus>,
+    csv_parse_options: &TxCsvParseOptions,
     force_download: bool,
     render_full_dollar_values: bool,
     render_total_costs: bool,
@@ -230,7 +238,7 @@ pub fn run_acb_app_to_writer(
 
     let res = run_acb_app_to_render_model(
         csv_file_readers, all_init_status,
-        force_download, render_full_dollar_values, render_total_costs,
+        csv_parse_options, force_download, render_full_dollar_values, render_total_costs,
         rates_cache, err_printer.clone());
 
     let render_res: AppRenderResult = match res {
@@ -264,7 +272,9 @@ pub fn run_acb_app_summary_to_model(
     ) -> Result<CollectedSummaryData, AppSummaryError> {
 
     let deltas_results_by_sec = run_acb_app_to_delta_models(
-        csv_file_readers, all_init_status, options.force_download, rates_cache, err_printer)
+        csv_file_readers, all_init_status,
+        &options.csv_parse_options,
+        options.force_download, rates_cache, err_printer)
         .map_err(|e| AppSummaryError{ general_error: Some(e), sec_errors: HashMap::new() })?;
 
     let mut deltas_by_sec = HashMap::<Security, Vec<TxDelta>>::new();
@@ -368,6 +378,7 @@ pub fn run_acb_app_to_console(
 
         run_acb_app_to_writer(
             writer_ref, csv_file_readers, all_init_status,
+            &options.csv_parse_options,
             options.force_download,
             options.render_full_dollar_values,
             options.render_total_costs,
@@ -382,7 +393,7 @@ mod tests {
     use std::collections::HashMap;
 
     use crate::{
-        app::outfmt::{model::AcbWriter, text::TextWriter}, fx::io::InMemoryRatesCache, portfolio::{io::tx_csv::testlib::CsvFileBuilder, render::RenderTable, Security}, testlib::assert_re, util::rw::WriteHandle
+        app::outfmt::{model::AcbWriter, text::TextWriter}, fx::io::InMemoryRatesCache, portfolio::{io::tx_csv::{testlib::CsvFileBuilder, TxCsvParseOptions}, render::RenderTable, Security}, testlib::assert_re, util::rw::WriteHandle
     };
     use crate::portfolio::io::tx_csv::testlib::TestTxCsvRow as Row;
 
@@ -426,7 +437,8 @@ mod tests {
             ]);
 
         let render_res = run_acb_app_to_render_model(
-            readers, HashMap::new(), false, false,
+            readers, HashMap::new(), &TxCsvParseOptions::default(),
+            false, false,
             render_costs, Box::new(InMemoryRatesCache::new()),
             WriteHandle::empty_write_handle()).unwrap();
 
@@ -452,7 +464,8 @@ mod tests {
             ]);
 
         let render_res = run_acb_app_to_render_model(
-            readers, HashMap::new(), false, false,
+            readers, HashMap::new(), &TxCsvParseOptions::default(),
+            false, false,
             render_costs, Box::new(InMemoryRatesCache::new()),
             WriteHandle::empty_write_handle()).unwrap();
 
@@ -481,7 +494,8 @@ mod tests {
             ]);
 
         let render_res = run_acb_app_to_render_model(
-            readers, HashMap::new(), false, false,
+            readers, HashMap::new(), &TxCsvParseOptions::default(),
+            false, false,
             render_costs, Box::new(InMemoryRatesCache::new()),
             WriteHandle::empty_write_handle()).unwrap();
 
