@@ -5,7 +5,8 @@ use clap::Parser;
 
 use crate::app::run_acb_app_to_console;
 use crate::fx::io::CsvRatesCache;
-use crate::util::date::parse_standard_date;
+use crate::portfolio::io::tx_csv::TxCsvParseOptions;
+use crate::util::date::{parse_dyn_date_format, parse_standard_date};
 use crate::{app::input_parse::parse_initial_status, portfolio::csv_common::CsvCol, util::rw::{DescribedReader, WriteHandle}, write_errln};
 
 const ABOUT: &str = "Adjusted cost basis (ACB) calculation tool";
@@ -49,8 +50,6 @@ pub struct Args {
     /// The default is "[year]-[month]-[day]".
     ///
     /// See https://time-rs.github.io/book/api/well-known-format-descriptions.html
-    ///
-    /// TODO implement this
     #[arg(long)]
     pub date_fmt: Option<String>,
 
@@ -108,6 +107,21 @@ pub fn command_main() -> Result<(), ExitCode> {
         csv_readers.push(reader);
     }
 
+    let csv_parse_options = TxCsvParseOptions{
+        date_format: match args.date_fmt {
+            Some(fmt) => {
+                match parse_dyn_date_format(fmt.as_str()) {
+                    Ok(f) => Some(f),
+                    Err(e) => {
+                        write_errln!(err_printer, "Error parsing --date-fmt: {e}");
+                        return Err(ExitCode::FAILURE);
+                    },
+                }
+            },
+            None => None,
+        },
+    };
+
     let mut options = crate::app::Options{
         force_download: args.force_download,
         render_full_dollar_values: args.print_full_values,
@@ -115,6 +129,7 @@ pub fn command_main() -> Result<(), ExitCode> {
         split_annual_summary_gains: args.summarize_annual_gains,
         render_total_costs: args.total_costs,
         csv_output_dir: args.csv_output_dir,
+        csv_parse_options: csv_parse_options,
     };
 
     if let Some(sum_before_date_str) = args.summarize_before {

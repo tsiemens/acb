@@ -5,7 +5,6 @@ use std::str::FromStr;
 
 use rust_decimal::Decimal;
 
-use crate::util::date::parse_standard_date;
 use crate::util::decimal::LessEqualZeroDecimal;
 use crate::util::rw::{DescribedReader, WriteHandle};
 use crate::write_errln;
@@ -45,30 +44,39 @@ fn parse_csv_superficial_loss(value: &str) -> Result<SFLInput, Error> {
     })
 }
 
-fn csvtx_from_csv_values(mut values: HashMap::<&str, String>, read_index: u32) -> Result<CsvTx, Error> {
+fn csvtx_from_csv_values(
+    mut values: HashMap::<&str, String>,
+    read_index: u32,
+    parse_options: &TxCsvParseOptions,
+    ) -> Result<CsvTx, Error> {
+
     let parse_decimal = |value: &str, field_name: &str| {
         Decimal::from_str(value).map_err(
             |e| format!("Failed to parse number for {} ('{}'): {}",
                                          field_name, value, e))
     };
 
+    let parse_date = |s: &str| {
+        crate::util::date::parse_date(s, &parse_options.date_format)
+    };
+
     Ok(CsvTx{
         security: values.remove(CsvCol::SECURITY),
         trade_date: match values.remove(CsvCol::TRADE_DATE) {
-            Some(s) => Some(parse_standard_date(&s).map_err(
+            Some(s) => Some(parse_date(&s).map_err(
                 |e| format!("Failed to parse {} \"{}\": {}",
                     CsvCol::TRADE_DATE, s, e))?),
             None => None,
         },
         settlement_date: {
             let s_date = match values.remove(CsvCol::SETTLEMENT_DATE) {
-                Some(s) => Some(parse_standard_date(&s).map_err(
+                Some(s) => Some(parse_date(&s).map_err(
                     |e| format!("Failed to parse {} \"{}\": {}",
                         CsvCol::SETTLEMENT_DATE, s, e))?),
                 None => None,
             };
             let legacy_s_date = match values.remove(CsvCol::LEGACY_SETTLEMENT_DATE) {
-                Some(s) => Some(parse_standard_date(&s).map_err(
+                Some(s) => Some(parse_date(&s).map_err(
                     |e| format!("Failed to parse {} \"{}\": {}",
                         CsvCol::SETTLEMENT_DATE, s, e))?),
                 None => None,
@@ -123,9 +131,20 @@ fn csvtx_from_csv_values(mut values: HashMap::<&str, String>, read_index: u32) -
     })
 }
 
+pub struct TxCsvParseOptions {
+    pub date_format: Option<crate::util::date::DynDateFormat>,
+}
+
+impl Default for TxCsvParseOptions {
+    fn default() -> Self {
+        Self { date_format: None }
+    }
+}
+
 pub fn parse_tx_csv(
     desc_reader: &mut DescribedReader,
     initial_global_read_index: u32,
+    parse_options: &TxCsvParseOptions,
     err_stream: &mut WriteHandle,
     ) -> Result<Vec<CsvTx>, Error> {
 
@@ -195,7 +214,7 @@ pub fn parse_tx_csv(
             }
         }
 
-        let tx = csvtx_from_csv_values(tx_values, global_row_index).map_err(
+        let tx = csvtx_from_csv_values(tx_values, global_row_index, parse_options).map_err(
             |e| format!("Error on row {row_num} of {csv_desc}: {e}"))?;
         txs.push(tx);
 
@@ -420,7 +439,7 @@ mod tests {
     use rust_decimal_macros::dec;
 
     use crate::{
-        portfolio::{io::tx_csv::testlib::TestTxCsvRow, Affiliate, CsvTx, Currency, SFLInput},
+        portfolio::{io::tx_csv::{testlib::TestTxCsvRow, TxCsvParseOptions}, Affiliate, CsvTx, Currency, SFLInput},
         testlib::{assert_vec_eq, assert_vecr_eq},
         util::{date::parse_standard_date, decimal::LessEqualZeroDecimal, rw::{StringBuffer, WriteHandle}}
     };
@@ -478,7 +497,7 @@ mod tests {
                 "BAR,2016-01-03,2016-01-06",
             ]);
         let err = parse_tx_csv(
-            &mut d_reader, 0,
+            &mut d_reader, 0, &TxCsvParseOptions::default(),
             &mut WriteHandle::empty_write_handle()).unwrap_err();
         assert_eq!(err, "foo0.csv contains both 'settlement date' and 'date' (deprecated) columns");
     }
@@ -494,7 +513,8 @@ mod tests {
             ]);
 
         let (mut err_writer, buff) = WriteHandle::string_buff_write_handle();
-        let txs = parse_tx_csv(&mut d_reader, 10, &mut err_writer).unwrap();
+        let txs = parse_tx_csv(&mut d_reader, 10,  &TxCsvParseOptions::default(),
+                               &mut err_writer).unwrap();
 
         assert_vecr_eq(&txs, &vec![
             CsvTx{security: Some("FOO".to_string()), read_index: 10, ..CsvTx::default()},
@@ -522,7 +542,7 @@ mod tests {
                 Row{a:"sfla", ..Default::default()},
             ]);
         let txs = parse_tx_csv(
-            &mut d_reader, 0,
+            &mut d_reader, 0, &TxCsvParseOptions::default(),
             &mut WriteHandle::empty_write_handle()).unwrap();
 
         let exp_txs = vec![
@@ -558,7 +578,7 @@ mod tests {
             let mut d_reader = CsvFileBuilder::with_all_modern_headers()
                 .single_csv_reader(&vec![row]);
             parse_tx_csv(
-                &mut d_reader, 0,
+                &mut d_reader, 0, &TxCsvParseOptions::default(),
                 &mut WriteHandle::empty_write_handle()).unwrap_err()
         };
 
@@ -593,7 +613,7 @@ mod tests {
 			    "CC,2016-01-08,2016-01-10,SfLA,2,1.3,0,CAD,,CAD,,,B,M5",
             ]);
         let parsed_txs = parse_tx_csv(
-            &mut d_reader, 0,
+            &mut d_reader, 0, &TxCsvParseOptions::default(),
             &mut WriteHandle::empty_write_handle()).unwrap();
 
         let mut str_writer = StringBuffer::new();
