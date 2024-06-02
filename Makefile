@@ -24,6 +24,9 @@ html-import:
 wasm:
 	$(MAKE) -C www wasm
 
+acb_wasm:
+	$(MAKE) -C acb_wasm
+
 clean:
 	rm bld/acb
 	rm bld/test.test
@@ -47,4 +50,4 @@ test-bin:
 test-py:
 	make -C py test
 
-.PHONY: clean test
+.PHONY: clean test acb_wasm

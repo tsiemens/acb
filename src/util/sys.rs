@@ -1,4 +1,4 @@
-use std::{fs, io, os::unix::fs::PermissionsExt, path::{Path, PathBuf}};
+use std::{fs, io, path::{Path, PathBuf}};
 
 pub type Error = String;
 
@@ -7,8 +7,16 @@ pub fn mk_writable_dir(dirpath: &Path) -> io::Result<()> {
 
     let mut perms = fs::metadata(dirpath)?.permissions();
     perms.set_readonly(false);
-    perms.set_mode(0o700);
-    fs::set_permissions(dirpath, perms)
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        perms.set_mode(0o700);
+    }
+    if cfg!(not(target_arch = "wasm32")) {
+        fs::set_permissions(dirpath, perms)
+    } else {
+        Ok(())
+    }
 }
 
 // Returns a path like $HOME/.acb/, and ensures that ~/.acb/ exists and is writable.
