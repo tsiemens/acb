@@ -152,8 +152,8 @@ pub fn command_main() -> Result<(), ExitCode> {
 
     let rates_cache = Box::new(CsvRatesCache::new(home_dir, err_printer.clone()));
 
-    run_acb_app_to_console(
+    async_std::task::block_on(run_acb_app_to_console(
         csv_readers, all_init_status, options, rates_cache,
-        err_printer)
+        err_printer))
     .map_err(|_| ExitCode::FAILURE)
 }

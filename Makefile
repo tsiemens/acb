@@ -27,9 +27,15 @@ wasm:
 acb_wasm:
 	$(MAKE) -C acb_wasm
 
+all-notest: rust acb_wasm
+
+all: all-notest test-rs
+
 clean:
 	rm bld/acb
 	rm bld/test.test
+	rm -r acb_wasm/pkg
+	rm -r target
 
 test-rs-unit:
 	# Excludes integration tests in tests/

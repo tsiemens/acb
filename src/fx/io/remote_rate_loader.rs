@@ -34,8 +34,15 @@ pub struct RateParseResult {
 
 pub type RateLoadResult = RateParseResult;
 
+// async_trait is required to be able to instantiate a Box<dyn RemoteRateLoader>
+// of this. This is because rust doesn't have full native support for returning Futures
+// from traits right now. This is marked ?Sync (not sync) because compiling against
+// wasm will break otherwise, since the underlying core types are not Sync/Send in
+// that mode. We don't actually need this to be thread-safe, so it's not an issue for now.
+// See https://smallcultfollowing.com/babysteps/blog/2019/10/26/async-fn-in-traits-are-hard/
+#[async_trait::async_trait(?Send)]
 pub trait RemoteRateLoader {
-    fn get_remote_usd_cad_rates(&mut self, year: u32) -> Result<RateLoadResult, Error>;
+    async fn get_remote_usd_cad_rates(&self, year: u32) -> Result<RateLoadResult, Error>;
 }
 
 const JSON_DATE_FORMAT: date::StaticDateFormat = date::STANDARD_DATE_FORMAT;
@@ -196,7 +203,6 @@ fn parse_rates_json(json_str: &str) -> Result<RateParseResult, Error> {
 }
 
 pub struct JsonRemoteRateLoader {
-    // user_error_stream: WriteHandle,
 }
 
 impl JsonRemoteRateLoader {
@@ -205,43 +211,16 @@ impl JsonRemoteRateLoader {
     }
 }
 
+#[async_trait::async_trait(?Send)]
 impl RemoteRateLoader for JsonRemoteRateLoader {
-    fn get_remote_usd_cad_rates(&mut self, year: u32) -> Result<RateLoadResult, Error> {
+    async fn get_remote_usd_cad_rates(&self, year: u32) -> Result<RateLoadResult, Error> {
 	    eprint!("Fetching USD/CAD exchange rates for {}\n", year);
         let url = get_fx_json_url(year);
         verboseln!("Fetching {}", url);
 
-        // wasm doesn't support blocking requests
-        #[cfg(not(target_arch = "wasm32"))]
-        {
-            let get_result = reqwest::blocking::get(url);
-            let fmt_err = |s: &str| -> Result<_, Error> {
-                Err(format!("Error getting CAD USD rates: {}", s))
-            };
-            let out = match get_result {
-                Ok(out) => out,
-                Err(e) => return fmt_err(&e.to_string()),
-            };
-            let out = match out.error_for_status() {
-                Ok(o) => o,
-                Err(e) => return fmt_err(&format!("status: {:?}", &e.status())),
-            };
-            let text = match out.text() {
-                Ok(t) => t,
-                Err(e) => return fmt_err(&e.to_string()),
-            };
-
-            return parse_rates_json(&text)
-        }
-        #[cfg(target_arch = "wasm32")]
-        {
-            // Dummy usage of parse_rate_json, since the wasm build will
-            // complain that it and a bunch of its sub-components are
-            // unused otherwise.
-            let _ = parse_rates_json(&String::new());
-            todo!("wasm32 does not support blocking net requests. They must be async. \
-                  TODO: remove dummy use of parse_rates_json above");
-        }
+        let body_text = surf::get(url).recv_string().await
+            .map_err(|e| format!("Error getting CAD USD rates: {}", e))?;
+        return parse_rates_json(&body_text);
     }
 }
 
@@ -258,13 +237,15 @@ pub mod pub_testlib {
     use super::{RateLoadResult, RemoteRateLoader, Error};
 
     pub struct MockRemoteRateLoader {
+        // pub remote_year_rates: Arc<Mutex<HashMap<u32, Vec<DailyRate>>>>
         pub remote_year_rates: RcRefCell<HashMap<u32, Vec<DailyRate>>>
     }
 
+    #[async_trait::async_trait(?Send)]
     impl RemoteRateLoader for MockRemoteRateLoader {
-        fn get_remote_usd_cad_rates(&mut self, year: u32) -> Result<RateLoadResult, Error> {
+        async fn get_remote_usd_cad_rates(&self, year: u32) -> Result<RateLoadResult, Error> {
             trace!(year = year, "MockRemoteRateLoader::get_remote_usd_cad_rates");
-            match self.remote_year_rates.borrow().get(&year) {
+            match self.remote_year_rates.borrow_mut().get(&year) {
                 Some(rates) =>
                     Ok(RateLoadResult{rates: rates.clone(),
                                       non_fatal_errors: vec![]}),
@@ -274,7 +255,7 @@ pub mod pub_testlib {
     }
 }
 
-
+// MARK: Tests
 #[cfg(test)]
 mod tests {
     use rust_decimal::Decimal;

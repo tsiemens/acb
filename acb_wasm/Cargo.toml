@@ -7,4 +7,14 @@ edition = "2021"
 crate-type = ["cdylib"]
 
 [dependencies]
-acb = { path = "../" }
+acb = { path = "../", features = [ "wasm" ], default-features = false }
+# Note that we can't go past this version of wasm-bindgen due to
+# https://github.com/rustwasm/wasm-bindgen/issues/3415
+# This may be the case as long as we are using the surf crate (it
+# has this dep tree right now, which reqwest does not:
+# surf > http-client > http-types > cookie > time > stdweb).
+# If this becomes a problem, we may have to go back to using the
+# reqwest crate, but this would require using the tokio runtime in to
+# main acb crate, as opposed to async-std (because it's not supported by
+# reqwest).
+wasm-bindgen = "=0.2.84"
