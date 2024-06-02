@@ -5,7 +5,7 @@ use crate::{fx::io::RateLoader, portfolio::{CsvTx, Currency}};
 
 type Error = String;
 
-fn load_rate_if_needed(
+async fn load_rate_if_needed(
     trade_date: &Date,
     curr: &Option<Currency>, provided_rate: &Option<Decimal>,
     rate_loader: &mut RateLoader,
@@ -30,7 +30,7 @@ fn load_rate_if_needed(
         }
     }
     // Rate is USD, and needs a rate loaded
-    let rate = rate_loader.get_effective_usd_cad_rate(trade_date.clone())?;
+    let rate = rate_loader.get_effective_usd_cad_rate(trade_date.clone()).await?;
 
     Ok(Some(rate.foreign_to_local_rate))
 }
@@ -39,7 +39,7 @@ fn load_rate_if_needed(
 // rates directly into them.
 // This will be dependent on if any currency is set to USD, but the rate
 // is None.
-pub fn load_tx_rates(
+pub async fn load_tx_rates(
     csv_txs: &mut Vec<CsvTx>,
     rate_loader: &mut RateLoader,
     ) -> Result<(), Error> {
@@ -49,7 +49,7 @@ pub fn load_tx_rates(
         let loaded_rate = load_rate_if_needed(
             trade_date,
             &tx.tx_currency, &tx.tx_curr_to_local_exchange_rate,
-            rate_loader).map_err(|e| format!(
+            rate_loader).await.map_err(|e| format!(
                 "Exchange rate error: {}", e))?;
 
         if let Some(r) = loaded_rate {
@@ -59,7 +59,7 @@ pub fn load_tx_rates(
         let c_loaded_rate = load_rate_if_needed(
             trade_date,
             &tx.commission_currency, &tx.commission_curr_to_local_exchange_rate,
-            rate_loader).map_err(|e| format!(
+            rate_loader).await.map_err(|e| format!(
                 "Commission exchange rate error: {}", e))?;
 
         if let Some(r) = c_loaded_rate {
@@ -138,7 +138,7 @@ mod tests {
                 ..CsvTx::default()},
         ];
 
-        load_tx_rates(&mut csv_txs, &mut rate_loader).unwrap();
+        async_std::task::block_on(load_tx_rates(&mut csv_txs, &mut rate_loader)).unwrap();
         // USD
         assert_eq!(csv_txs[0].tx_curr_to_local_exchange_rate, Some(dec!(1.2)));
         assert_eq!(csv_txs[0].commission_curr_to_local_exchange_rate, Some(dec!(1.2)));
@@ -183,7 +183,7 @@ mod tests {
             ]);
 
             let mut csv_txs = vec![csv_tx];
-            load_tx_rates(&mut csv_txs, &mut rate_loader).unwrap_err()
+            async_std::task::block_on(load_tx_rates(&mut csv_txs, &mut rate_loader)).unwrap_err()
         };
 
         let usd = Some(Currency::usd());

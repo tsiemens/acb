@@ -46,7 +46,7 @@ impl Default for Options {
 /// This is a partial component of the app as a whole, just to generate TxDeltas.
 /// What this does _not_ do is do any aggregation calculations, like
 /// yearly capital gains and costs.
-pub fn run_acb_app_to_delta_models(
+pub async fn run_acb_app_to_delta_models(
     csv_file_readers: Vec<DescribedReader>,
     all_init_status: HashMap<Security, PortfolioSecurityStatus>,
     csv_parse_options: &TxCsvParseOptions,
@@ -65,7 +65,7 @@ pub fn run_acb_app_to_delta_models(
             &mut csv_reader, global_read_index,
             &csv_parse_options, &mut err_printer)?;
 
-        load_tx_rates(&mut csv_txs, &mut rate_loader)?;
+        load_tx_rates(&mut csv_txs, &mut rate_loader).await?;
 
         let mut txs = Vec::<Tx>::with_capacity(csv_txs.len());
         for csv_tx in csv_txs {
@@ -125,7 +125,7 @@ pub struct AppRenderResult {
 /// generating and rendering a delta list plus some aggregations).
 /// This is output as a generic render model, so that it can be fed
 /// to alternate output formatters (like to console, CSV, or javascript object).
-pub fn run_acb_app_to_render_model(
+pub async fn run_acb_app_to_render_model(
     csv_file_readers: Vec<DescribedReader>,
     all_init_status: HashMap<Security, PortfolioSecurityStatus>,
     csv_parse_options: &TxCsvParseOptions,
@@ -139,7 +139,7 @@ pub fn run_acb_app_to_render_model(
     let deltas_results_by_sec = run_acb_app_to_delta_models(
         csv_file_readers, all_init_status,
         csv_parse_options, force_download,
-        rates_cache, err_printer)?;
+        rates_cache, err_printer).await?;
 
     let gains = get_cumulative_capital_gains(&deltas_results_by_sec);
 
@@ -224,7 +224,7 @@ fn write_render_result(render_res: &AppRenderResult, writer: &mut dyn AcbWriter)
 
 /// Returned Err is for exit code determination only.
 /// All errors are written to err_printer.
-pub fn run_acb_app_to_writer(
+pub async fn run_acb_app_to_writer(
     writer: &mut dyn AcbWriter,
     csv_file_readers: Vec<DescribedReader>,
     all_init_status: HashMap<Security, PortfolioSecurityStatus>,
@@ -239,7 +239,7 @@ pub fn run_acb_app_to_writer(
     let res = run_acb_app_to_render_model(
         csv_file_readers, all_init_status,
         csv_parse_options, force_download, render_full_dollar_values, render_total_costs,
-        rates_cache, err_printer.clone());
+        rates_cache, err_printer.clone()).await;
 
     let render_res: AppRenderResult = match res {
         Ok(render_res) => render_res,
@@ -262,7 +262,7 @@ pub struct AppSummaryError {
     pub sec_errors: HashMap<Security, Error>,
 }
 
-pub fn run_acb_app_summary_to_model(
+pub async fn run_acb_app_summary_to_model(
     latest_date: Date,
     csv_file_readers: Vec<DescribedReader>,
     all_init_status: HashMap<Security, PortfolioSecurityStatus>,
@@ -274,7 +274,7 @@ pub fn run_acb_app_summary_to_model(
     let deltas_results_by_sec = run_acb_app_to_delta_models(
         csv_file_readers, all_init_status,
         &options.csv_parse_options,
-        options.force_download, rates_cache, err_printer)
+        options.force_download, rates_cache, err_printer).await
         .map_err(|e| AppSummaryError{ general_error: Some(e), sec_errors: HashMap::new() })?;
 
     let mut deltas_by_sec = HashMap::<Security, Vec<TxDelta>>::new();
@@ -295,7 +295,7 @@ pub fn run_acb_app_summary_to_model(
         options.split_annual_summary_gains))
 }
 
-pub fn run_acb_app_summary_to_console(
+pub async fn run_acb_app_summary_to_console(
     latest_date: Date,
     csv_file_readers: Vec<DescribedReader>,
     all_init_status: HashMap<Security, PortfolioSecurityStatus>,
@@ -307,7 +307,7 @@ pub fn run_acb_app_summary_to_console(
     let summ_res = run_acb_app_summary_to_model(
         latest_date, csv_file_readers, all_init_status,
         options, rates_cache, err_printer.clone()
-    );
+    ).await;
 
     let summ_data = match summ_res {
         Ok(summ_data) => summ_data,
@@ -348,7 +348,7 @@ pub fn run_acb_app_summary_to_console(
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-pub fn run_acb_app_to_console(
+pub async fn run_acb_app_to_console(
     csv_file_readers: Vec<DescribedReader>,
     all_init_status: HashMap<Security, PortfolioSecurityStatus>,
     options: Options,
@@ -359,7 +359,7 @@ pub fn run_acb_app_to_console(
     if let Some(summary_mode_latest_date) = options.summary_mode_latest_date {
         run_acb_app_summary_to_console(
             summary_mode_latest_date, csv_file_readers, all_init_status,
-            options, rates_cache, err_printer)
+            options, rates_cache, err_printer).await
     } else {
         let mut writer: Box<dyn AcbWriter> = match options.csv_output_dir {
             Some(dir_path) => {
@@ -384,7 +384,7 @@ pub fn run_acb_app_to_console(
             options.force_download,
             options.render_full_dollar_values,
             options.render_total_costs,
-            rates_cache, err_printer)
+            rates_cache, err_printer).await
         .map(|_| ())
     }
 }
@@ -393,6 +393,8 @@ pub fn run_acb_app_to_console(
 #[cfg(test)]
 mod tests {
     use std::collections::HashMap;
+
+    use async_std::task::block_on;
 
     use crate::{
         app::outfmt::{model::AcbWriter, text::TextWriter}, fx::io::InMemoryRatesCache, portfolio::{io::tx_csv::{testlib::CsvFileBuilder, TxCsvParseOptions}, render::RenderTable, Security}, testlib::assert_re, util::rw::WriteHandle
@@ -438,11 +440,11 @@ mod tests {
                     a: "Buy", sh: "5", aps: "1.7", cur: "CAD", ..Row::default()},
             ]);
 
-        let render_res = run_acb_app_to_render_model(
+        let render_res = block_on(run_acb_app_to_render_model(
             readers, HashMap::new(), &TxCsvParseOptions::default(),
             false, false,
             render_costs, Box::new(InMemoryRatesCache::new()),
-            WriteHandle::empty_write_handle()).unwrap();
+            WriteHandle::empty_write_handle())).unwrap();
 
         let render_table = get_and_check_foo_table(&render_res.security_tables);
         assert_eq!(render_table.rows.len(), 3);
@@ -465,11 +467,11 @@ mod tests {
                     a: "Sell", sh: "5", aps: "1.6", cur: "CAD", ..Row::default()},
             ]);
 
-        let render_res = run_acb_app_to_render_model(
+        let render_res = block_on(run_acb_app_to_render_model(
             readers, HashMap::new(), &TxCsvParseOptions::default(),
             false, false,
             render_costs, Box::new(InMemoryRatesCache::new()),
-            WriteHandle::empty_write_handle()).unwrap();
+            WriteHandle::empty_write_handle())).unwrap();
 
         let render_table = get_and_check_foo_table(&render_res.security_tables);
         assert_eq!(render_table.rows.len(), 0);
@@ -495,11 +497,11 @@ mod tests {
                     a: "Sell", sh: "0.05", aps: "1.7", cur: "CAD", ..Row::default()},
             ]);
 
-        let render_res = run_acb_app_to_render_model(
+        let render_res = block_on(run_acb_app_to_render_model(
             readers, HashMap::new(), &TxCsvParseOptions::default(),
             false, false,
             render_costs, Box::new(InMemoryRatesCache::new()),
-            WriteHandle::empty_write_handle()).unwrap();
+            WriteHandle::empty_write_handle())).unwrap();
 
         let render_table = get_and_check_foo_table(&render_res.security_tables);
         assert_eq!(render_table.rows.len(), 3);
