@@ -1,17 +1,12 @@
-use std::{collections::HashMap, fs::File, io::{Read, Write}, path::PathBuf, str::FromStr};
-
-use rust_decimal::Decimal;
-use tracing::{error, info, trace};
+use std::collections::HashMap;
 
 use crate::{
-    fx::DailyRate, util::{date, rc::{RcRefCell, RcRefCellT}, rw::WriteHandle}, write_errln
+    fx::DailyRate, util::{basic::SError, rc::{RcRefCell, RcRefCellT}}
 };
 
-use super::Error;
-
 pub trait RatesCache {
-    fn write_rates(&mut self, year: u32, rates: &Vec<DailyRate>) -> Result<(), Error>;
-    fn get_usd_cad_rates(&mut self, year: u32) -> Result<Option<Vec<DailyRate>>, Error>;
+    fn write_rates(&mut self, year: u32, rates: &Vec<DailyRate>) -> Result<(), SError>;
+    fn get_usd_cad_rates(&mut self, year: u32) -> Result<Option<Vec<DailyRate>>, SError>;
 }
 
 pub struct InMemoryRatesCache {
@@ -25,15 +20,27 @@ impl InMemoryRatesCache {
 }
 
 impl RatesCache for InMemoryRatesCache {
-    fn write_rates(&mut self, year: u32, rates: &Vec<DailyRate>) -> Result<(), Error> {
+    fn write_rates(&mut self, year: u32, rates: &Vec<DailyRate>) -> Result<(), SError> {
         (*self.rates_by_year.borrow_mut()).insert(year, rates.clone());
         Ok(())
     }
 
-    fn get_usd_cad_rates(&mut self, year: u32) -> Result<Option<Vec<DailyRate>>, Error> {
+    fn get_usd_cad_rates(&mut self, year: u32) -> Result<Option<Vec<DailyRate>>, SError> {
         Ok(self.rates_by_year.borrow().get(&year).map(|f| f.clone()))
     }
 }
+
+#[cfg(not(target_arch = "wasm32"))]
+pub mod csv {
+    use std::{fs::File, io::{Read, Write}, path::PathBuf, str::FromStr};
+
+    use rust_decimal::Decimal;
+    use tracing::{error, info, trace};
+
+    use crate::{fx::DailyRate, util::{date, rw::WriteHandle}, write_errln};
+    use crate::util::basic::SError;
+
+    use super::RatesCache;
 
 pub struct CsvRatesCache {
     // Typically, this will be wherever get_home_dir() provides,
@@ -47,7 +54,7 @@ impl CsvRatesCache {
         CsvRatesCache{dir_path: dir_path, err_writer: err_writer}
     }
 
-    fn get_rates_from_csv(&mut self, r: &mut dyn Read) -> Result<Vec<DailyRate>, Error> {
+    fn get_rates_from_csv(&mut self, r: &mut dyn Read) -> Result<Vec<DailyRate>, SError> {
         let mut csv_r = csv::ReaderBuilder::new()
             .has_headers(false)
             .from_reader(r);
@@ -108,13 +115,13 @@ fn rates_csv_file_path(dir_path: &std::path::Path, year: u32) -> PathBuf {
     dir_path.join(fname_only)
 }
 
-fn open_rates_csv_file_write(dir_path: &std::path::Path, year: u32) -> Result<File, Error> {
+fn open_rates_csv_file_write(dir_path: &std::path::Path, year: u32) -> Result<File, SError> {
     let file_path = rates_csv_file_path(dir_path, year);
-    crate::util::sys::mk_writable_dir(dir_path).map_err(|e| e.to_string())?;
+    crate::util::os::mk_writable_dir(dir_path).map_err(|e| e.to_string())?;
     File::create(file_path).map_err(|e| e.to_string())
 }
 
-fn open_rates_csv_file_read(dir_path: &std::path::Path, year: u32) -> Result<Option<File>, Error> {
+fn open_rates_csv_file_read(dir_path: &std::path::Path, year: u32) -> Result<Option<File>, SError> {
     let file_path = rates_csv_file_path(dir_path, year);
     match File::open(file_path) {
         Ok(f) => Ok(Some(f)),
@@ -126,7 +133,7 @@ fn open_rates_csv_file_read(dir_path: &std::path::Path, year: u32) -> Result<Opt
 }
 
 impl RatesCache for CsvRatesCache {
-    fn write_rates(&mut self, year: u32, rates: &Vec<DailyRate>) -> Result<(), Error> {
+    fn write_rates(&mut self, year: u32, rates: &Vec<DailyRate>) -> Result<(), SError> {
         info!("CsvRatesCache::write_rates {} into {}", year,
                    if let Some(p) = self.dir_path.to_str() { p } else { "<no path ???>" } );
         let file = open_rates_csv_file_write(&self.dir_path, year)?;
@@ -149,7 +156,7 @@ impl RatesCache for CsvRatesCache {
         r
     }
 
-    fn get_usd_cad_rates(&mut self, year: u32) -> Result<Option<Vec<DailyRate>>, Error> {
+    fn get_usd_cad_rates(&mut self, year: u32) -> Result<Option<Vec<DailyRate>>, SError> {
         trace!(year = year, "CsvRatesCache::get_usd_cad_rates");
         let mut file_opt = open_rates_csv_file_read(&self.dir_path, year)?;
         match &mut file_opt {
@@ -161,7 +168,7 @@ impl RatesCache for CsvRatesCache {
 }
 
 #[cfg(test)]
-mod tests {
+mod csv_tests {
     use std::path::PathBuf;
 
     use rust_decimal_macros::dec;
@@ -285,3 +292,8 @@ mod tests {
         assert!(!loader_path.exists());
     }
 }
+
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub use csv::*;

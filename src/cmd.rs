@@ -142,7 +142,7 @@ pub fn command_main() -> Result<(), ExitCode> {
         };
     }
 
-    let home_dir = match crate::util::sys::home_dir_path() {
+    let home_dir = match crate::util::os::home_dir_path() {
         Ok(d) => d,
         Err(e) => {
             write_errln!(err_printer, "Unable to determine user home directory: {e}");

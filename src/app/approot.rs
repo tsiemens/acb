@@ -4,12 +4,12 @@ use std::io::Write;
 use time::Date;
 
 use crate::{
-    app::outfmt::csv::CsvWriter, fx::io::{RateLoader, RatesCache}, portfolio::{
+    fx::io::{RateLoader, RatesCache}, portfolio::{
         bookkeeping::{txs_to_delta_list, DeltaListResult}, calc_cumulative_capital_gains, calc_security_cumulative_capital_gains, io::{tx_csv::{parse_tx_csv, write_txs_to_csv, TxCsvParseOptions}, tx_loader::load_tx_rates}, render::{render_aggregate_capital_gains, render_tx_table_model, CostsTables, RenderTable}, summary::{make_aggregate_summary_txs, CollectedSummaryData}, CumulativeCapitalGains, PortfolioSecurityStatus, Security, Tx, TxDelta
     }, util::rw::{DescribedReader, WriteHandle}, write_errln
 };
 
-use super::outfmt::{model::{AcbWriter, OutputType}, text::TextWriter};
+use super::outfmt::model::{AcbWriter, OutputType};
 
 pub type Error = String;
 
@@ -347,6 +347,7 @@ pub fn run_acb_app_summary_to_console(
     Ok(())
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 pub fn run_acb_app_to_console(
     csv_file_readers: Vec<DescribedReader>,
     all_init_status: HashMap<Security, PortfolioSecurityStatus>,
@@ -362,7 +363,7 @@ pub fn run_acb_app_to_console(
     } else {
         let mut writer: Box<dyn AcbWriter> = match options.csv_output_dir {
             Some(dir_path) => {
-                match CsvWriter::new(&dir_path) {
+                match super::outfmt::csv::CsvWriter::new(&dir_path) {
                     Ok(w) => Box::new(w),
                     Err(e) => {
                         write_errln!(err_printer, "{e}");
@@ -371,7 +372,8 @@ pub fn run_acb_app_to_console(
                 }
             },
             None => {
-                Box::new(TextWriter::new(WriteHandle::stdout_write_handle()))
+                Box::new(super::outfmt::text::TextWriter::new(
+                    WriteHandle::stdout_write_handle()))
             },
         };
         let writer_ref: &mut dyn AcbWriter = writer.as_mut();
