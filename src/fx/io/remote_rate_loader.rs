@@ -210,24 +210,38 @@ impl RemoteRateLoader for JsonRemoteRateLoader {
 	    eprint!("Fetching USD/CAD exchange rates for {}\n", year);
         let url = get_fx_json_url(year);
         verboseln!("Fetching {}", url);
-        let get_result = reqwest::blocking::get(url);
-        let fmt_err = |s: &str| -> Result<_, Error> {
-            Err(format!("Error getting CAD USD rates: {}", s))
-        };
-        let out = match get_result {
-            Ok(out) => out,
-            Err(e) => return fmt_err(&e.to_string()),
-        };
-        let out = match out.error_for_status() {
-            Ok(o) => o,
-            Err(e) => return fmt_err(&format!("status: {:?}", &e.status())),
-        };
-        let text = match out.text() {
-            Ok(t) => t,
-            Err(e) => return fmt_err(&e.to_string()),
-        };
 
-        parse_rates_json(&text)
+        // wasm doesn't support blocking requests
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            let get_result = reqwest::blocking::get(url);
+            let fmt_err = |s: &str| -> Result<_, Error> {
+                Err(format!("Error getting CAD USD rates: {}", s))
+            };
+            let out = match get_result {
+                Ok(out) => out,
+                Err(e) => return fmt_err(&e.to_string()),
+            };
+            let out = match out.error_for_status() {
+                Ok(o) => o,
+                Err(e) => return fmt_err(&format!("status: {:?}", &e.status())),
+            };
+            let text = match out.text() {
+                Ok(t) => t,
+                Err(e) => return fmt_err(&e.to_string()),
+            };
+
+            return parse_rates_json(&text)
+        }
+        #[cfg(target_arch = "wasm32")]
+        {
+            // Dummy usage of parse_rate_json, since the wasm build will
+            // complain that it and a bunch of its sub-components are
+            // unused otherwise.
+            let _ = parse_rates_json(&String::new());
+            todo!("wasm32 does not support blocking net requests. They must be async. \
+                  TODO: remove dummy use of parse_rates_json above");
+        }
     }
 }
 
@@ -237,7 +251,7 @@ impl RemoteRateLoader for JsonRemoteRateLoader {
 pub mod pub_testlib {
     use std::collections::HashMap;
 
-    use tracing::{trace};
+    use tracing::trace;
 
     use crate::{fx::DailyRate, util::rc::RcRefCell};
 
