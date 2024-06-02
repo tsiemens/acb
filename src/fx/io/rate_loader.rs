@@ -5,13 +5,14 @@ use rust_decimal::{prelude::Zero, Decimal};
 use time::{Date, Duration, Month};
 use tracing::{debug, error, info, trace};
 
+use crate::util::basic::SError;
 use crate::write_errln;
 use crate::util::rw::WriteHandle;
 use crate::{fx::DailyRate, util::date::today_local};
 
 use crate::fx::io::RemoteRateLoader;
 
-use super::{Error, JsonRemoteRateLoader, RatesCache};
+use super::{JsonRemoteRateLoader, RatesCache};
 
 // Overall utility for loading rates (both remotely and from cache).
 pub struct RateLoader {
@@ -91,7 +92,7 @@ fn make_date_to_rate_map(rates: &Vec<DailyRate>) -> HashMap<Date, DailyRate> {
 }
 
 impl RateLoader {
-    pub fn get_effective_usd_cad_rate(&mut self, trade_date: Date) -> Result<DailyRate, Error> {
+    pub fn get_effective_usd_cad_rate(&mut self, trade_date: Date) -> Result<DailyRate, SError> {
         let fmt_err = |e| {
             format!("Unable to retrieve exchange rate for {}: {}", trade_date, e) };
         match self.get_exact_usd_cad_rate(trade_date) {
@@ -104,7 +105,7 @@ impl RateLoader {
         }
     }
 
-    fn get_exact_usd_cad_rate(&mut self, trade_date: Date) -> Result<Option<DailyRate>, Error> {
+    fn get_exact_usd_cad_rate(&mut self, trade_date: Date) -> Result<Option<DailyRate>, SError> {
         let year = trade_date.year() as u32;
 
         if !self.year_rates.contains_key(&year) {
@@ -144,7 +145,7 @@ impl RateLoader {
     // (even if it is defined as zero).
     // Using `target_date` for cache invalidation allows us to avoid invalidating the cache if
     // there are no new transactions.
-    fn fetch_usd_cad_rates_for_date_year(&mut self, target_date: &Date) -> Result<HashMap<Date, DailyRate>, Error> {
+    fn fetch_usd_cad_rates_for_date_year(&mut self, target_date: &Date) -> Result<HashMap<Date, DailyRate>, SError> {
         let year = target_date.year() as u32;
         if !self.force_download {
             // Try the cache
@@ -187,7 +188,7 @@ impl RateLoader {
             .map(|r| { make_date_to_rate_map(&r) })
     }
 
-    fn get_remote_usd_cad_rates(&mut self, year: u32) -> Result<Vec<DailyRate>, Error> {
+    fn get_remote_usd_cad_rates(&mut self, year: u32) -> Result<Vec<DailyRate>, SError> {
         trace!(year = year, "RateLoader::get_remote_usd_cad_rates");
         let res = self.remote_loader.get_remote_usd_cad_rates(year)?;
         for nfe in res.non_fatal_errors {
@@ -223,7 +224,7 @@ impl RateLoader {
     // March 1, 2017, the Bank of Canada noon rate should be used.
 
     // NOTE: This function should NOT be called for today if the rate is not yet knowable.
-    fn find_usd_cad_preceding_relevant_spot_rate(&mut self, trade_date: Date) -> Result<DailyRate, Error> {
+    fn find_usd_cad_preceding_relevant_spot_rate(&mut self, trade_date: Date) -> Result<DailyRate, SError> {
         let tax_recommendation = concat!(
             "As per Section 261(1) of the Income Tax Act, the exchange rate ",
 		    "from the preceding day for which such a rate is quoted should be ",
