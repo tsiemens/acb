@@ -7,7 +7,7 @@ use time::Date;
 
 use crate::{
     fx::DailyRate,
-    util::date,
+    util::{date, http::HttpRequester},
     verboseln
 };
 
@@ -34,12 +34,7 @@ pub struct RateParseResult {
 
 pub type RateLoadResult = RateParseResult;
 
-// async_trait is required to be able to instantiate a Box<dyn RemoteRateLoader>
-// of this. This is because rust doesn't have full native support for returning Futures
-// from traits right now. This is marked ?Sync (not sync) because compiling against
-// wasm will break otherwise, since the underlying core types are not Sync/Send in
-// that mode. We don't actually need this to be thread-safe, so it's not an issue for now.
-// See https://smallcultfollowing.com/babysteps/blog/2019/10/26/async-fn-in-traits-are-hard/
+/// See HttpRequester for why this is marked async_trait(?Send)
 #[async_trait::async_trait(?Send)]
 pub trait RemoteRateLoader {
     async fn get_remote_usd_cad_rates(&self, year: u32) -> Result<RateLoadResult, Error>;
@@ -203,11 +198,16 @@ fn parse_rates_json(json_str: &str) -> Result<RateParseResult, Error> {
 }
 
 pub struct JsonRemoteRateLoader {
+    requester: Box<dyn HttpRequester>,
 }
 
 impl JsonRemoteRateLoader {
-    pub fn new() -> JsonRemoteRateLoader {
-        JsonRemoteRateLoader{}
+    pub fn new(requester: Box<dyn HttpRequester>) -> JsonRemoteRateLoader {
+        JsonRemoteRateLoader{ requester }
+    }
+
+    pub fn new_boxed(requester: Box<dyn HttpRequester>) -> Box<JsonRemoteRateLoader> {
+        Box::new(JsonRemoteRateLoader::new(requester))
     }
 }
 
@@ -218,7 +218,7 @@ impl RemoteRateLoader for JsonRemoteRateLoader {
         let url = get_fx_json_url(year);
         verboseln!("Fetching {}", url);
 
-        let body_text = surf::get(url).recv_string().await
+        let body_text = self.requester.get(&url).await
             .map_err(|e| format!("Error getting CAD USD rates: {}", e))?;
         return parse_rates_json(&body_text);
     }
@@ -237,7 +237,6 @@ pub mod pub_testlib {
     use super::{RateLoadResult, RemoteRateLoader, Error};
 
     pub struct MockRemoteRateLoader {
-        // pub remote_year_rates: Arc<Mutex<HashMap<u32, Vec<DailyRate>>>>
         pub remote_year_rates: RcRefCell<HashMap<u32, Vec<DailyRate>>>
     }
 
