@@ -6,6 +6,7 @@ use time::{Date, Duration, Month};
 use tracing::{debug, error, info, trace};
 
 use crate::util::basic::SError;
+use crate::util::http::HttpRequester;
 use crate::write_errln;
 use crate::util::rw::WriteHandle;
 use crate::{fx::DailyRate, util::date::today_local};
@@ -42,8 +43,9 @@ impl RateLoader {
 
     pub fn new_cached_remote_loader(force_download: bool,
                                     cache: Box<dyn RatesCache>,
+                                    requester: Box<dyn HttpRequester>,
                                     err_stream: WriteHandle) -> RateLoader {
-        let remote_loader = Box::new(JsonRemoteRateLoader::new());
+        let remote_loader = Box::new(JsonRemoteRateLoader::new(requester));
         RateLoader::new(force_download, cache, remote_loader, err_stream)
     }
 }

@@ -4,9 +4,10 @@ use std::io::Write;
 use clap::Parser;
 
 use crate::app::run_acb_app_to_console;
-use crate::fx::io::CsvRatesCache;
+use crate::fx::io::{CsvRatesCache, JsonRemoteRateLoader, RateLoader};
 use crate::portfolio::io::tx_csv::TxCsvParseOptions;
 use crate::util::date::{parse_dyn_date_format, parse_standard_date};
+use crate::util::http::standalone::StandaloneAppRequester;
 use crate::{app::input_parse::parse_initial_status, portfolio::csv_common::CsvCol, util::rw::{DescribedReader, WriteHandle}, write_errln};
 
 const ABOUT: &str = "Adjusted cost basis (ACB) calculation tool";
@@ -123,7 +124,6 @@ pub fn command_main() -> Result<(), ExitCode> {
     };
 
     let mut options = crate::app::Options{
-        force_download: args.force_download,
         render_full_dollar_values: args.print_full_values,
         summary_mode_latest_date: None, // set below
         split_annual_summary_gains: args.summarize_annual_gains,
@@ -150,10 +150,14 @@ pub fn command_main() -> Result<(), ExitCode> {
         },
     };
 
-    let rates_cache = Box::new(CsvRatesCache::new(home_dir, err_printer.clone()));
+    let rate_loader = RateLoader::new(
+        args.force_download,
+        Box::new(CsvRatesCache::new(home_dir, err_printer.clone())),
+        JsonRemoteRateLoader::new_boxed(StandaloneAppRequester::new_boxed()),
+        err_printer.clone());
 
     async_std::task::block_on(run_acb_app_to_console(
-        csv_readers, all_init_status, options, rates_cache,
+        csv_readers, all_init_status, options, rate_loader,
         err_printer))
     .map_err(|_| ExitCode::FAILURE)
 }
