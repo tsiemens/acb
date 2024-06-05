@@ -1,13 +1,17 @@
-default:
-	@echo "Valid make targets: html-import, wasm, all"
-	exit 1
+default: wasm-pkg
 
-all: html-import wasm
+all: wasm-pkg
+
+wasm-pkg:
+	test -e html/pkg || ln -s ../../acb_wasm/pkg html/pkg
 
 html-import:
 	bash ./copy_system_assets.sh
 
-wasm:
+go-wasm:
 	$(MAKE) -C wasm all
 
-.PHONY: wasm
+clean:
+	rm html/pkg
+
+.PHONY: wasm-pkg go-wasm clean
