@@ -7,4 +7,7 @@ setup:
 	test -f ${HOME}/.cargo/bin/wasm-pack || \
 		cargo install wasm-pack
 
+clean:
+	rm -r pkg
+
 .PHONY: rust-wasm setup
