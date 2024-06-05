@@ -89,59 +89,53 @@ Aggregate Gains
 ------------------+----------------
 ```
 
-## Rust Installation and Building (TODO remove go instructions)
+## Installation/Build
+### Requirements
+You'll need `cargo` to either build or install the app. Installation is faily simple:
+
 https://doc.rust-lang.org/cargo/getting-started/installation.html
+
+### Installation Only
+
+If you just want the `acb` binary, you can install it by running:
+```
+cargo install --git https://github.com/tsiemens/acb.git
+```
+This will pull, build, and install it in the cargo binaries directory (`~/.cargo/bin/`). Just make sure this is in your `PATH`.
+
+Check that it is running as expected:
+```sh
+acb --help
+```
+
+Otherwise, see build instructions below.
 
 ### Building
 For convenience, `make` aliases have been added to wrap the common `cargo` commands (See `Makefile`).
 ```
+# Build a debug version of just the `acb` binary
 make
-# or
+# Build a release optimized version of the `acb` binary
 make release
+# Build everything, and run tests
+make all
 ```
+
+The executables will go into the `target/debug` or `target/release` directory.
 
 ### Testing
 ```
-make test-rs
-```
-
-## Installation
-Currently, acb must be installed via the golang toolchain.
-
-1\. Set up your go paths (exact directories used below are suggestions only) and environment variables.
-
-```sh
-mkdir $HOME/go
-export GOPATH=$HOME/go
-export PATH=$PATH:$GOPATH/bin
-```
-
-2\. Install the golang development tools. This will likely be available through your package manager (eg. apt, brew). [Manual installation instructions](https://golang.org/doc/install) are also available.
-
-3\. Download and install the acb source and dependencies into your GOPATH.
-
-```sh
-go get -u -v github.com/tsiemens/acb
-```
-
-The `acb` tool should now be ready to use (is installed to $GOPATH/bin/acb)
-
-```sh
-acb --help
+make test
 ```
 
 ## Uninstall
 
 ```sh
-# Sanity check what will be done. Don't forget to include the trailing "..." here.
-go clean -i -n github.com/tsiemens/acb...
-# Clean out installed build files
-go clean -i github.com/tsiemens/acb...
-
-# Delete the downloaded source
-rm -rf $GOPATH/src/github.com/tsiemens/acb
-
-# You may want to repeat the above steps for other required packages downloaded (shown in go get -v -u), if they are not used by any other top-level package.
+cargo uninstall acb
+# If you want to clean up all of the temporary files used to build,
+# and you have no other rust projects using them as a cache still.
+rm -r ~/.cargo/registry
+rm -r ~/.cargo/git
 ```
 
 ## Disclaimer

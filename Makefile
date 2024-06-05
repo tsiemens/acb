@@ -29,28 +29,28 @@ acb_wasm:
 
 all-notest: rust acb_wasm www
 
-all: all-notest test-rs
+all: all-notest test
 
 clean:
-	rm bld/acb
-	rm bld/test.test
-	rm -r target
+	# rm bld/acb
+	# rm bld/test.test
+	cargo clean
 	$(MAKE) -C acb_wasm clean
 	$(MAKE) -C www clean
 
-test-rs-unit:
+test-unit:
 	# Excludes integration tests in tests/
 	cargo test --lib --bins
 
-test-rs:
+test:
 	cargo test
 
-test:
+test-go:
 	# Provide -run to filter on a test name (regex)
 	# -count=1 is the idiomatic way to disable test caching.
 	go test ./test -v -count=1
 
-test-bin:
+test-go-bin:
 	go test ./test -c -o bld/test.test
 	@echo "Test binary file created: 'bld/test.test'. This should be run from the ./test/ directory"
 

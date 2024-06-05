@@ -8,6 +8,6 @@ setup:
 		cargo install wasm-pack
 
 clean:
-	rm -r pkg
+	test ! -e pkg || rm -r pkg
 
 .PHONY: rust-wasm setup
