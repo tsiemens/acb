@@ -12,6 +12,6 @@ go-wasm:
 	$(MAKE) -C wasm all
 
 clean:
-	rm html/pkg
+	test ! -e html/pkg || rm html/pkg
 
 .PHONY: wasm-pkg go-wasm clean
