@@ -15,6 +15,12 @@ impl StringBuffer {
         self.s.as_str()
     }
 
+    pub fn export_string(&mut self) -> String {
+        let mut s = String::new();
+        std::mem::swap(&mut self.s, &mut s);
+        s
+    }
+
     pub fn clear(&mut self) {
         self.s = String::new();
     }

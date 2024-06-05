@@ -4,6 +4,7 @@ use crate::util::decimal::{dollar_precision_str, is_negative, is_positive};
 
 use super::{bookkeeping::Costs, CumulativeCapitalGains, CurrencyAndExchangeRate, TxDelta};
 
+#[derive(Default)]
 pub struct RenderTable {
     pub header: Vec<String>,
     pub rows: Vec<Vec<String>>,
