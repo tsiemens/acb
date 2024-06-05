@@ -1,3 +1,9 @@
+"use strict";
+
+// TODO all of these imports should be removed from the build
+// import './imports/wasm_exec.js';
+import wasm_init, { get_acb_version, run_acb } from './pkg/acb_wasm.js';
+
 // Map of id to File object
 let filesToUse = {};
 let nextFileId = 1;
@@ -106,7 +112,7 @@ function printMetadataForFileList(fileList) {
       const type = file.type ? file.type : 'NOT SUPPORTED';
       // Unknown cross-browser support.
       const size = file.size ? file.size : 'NOT SUPPORTED';
-      data = {file, name, type, size};
+      let data = {file, name, type, size};
       console.log(data);
    }
 }
@@ -194,8 +200,8 @@ function validateInitSecRow(rowElem) {
 
 function getInitSecs() {
    const initsDiv = document.getElementById("initial-symbol-state-inputs");
-   valids = [];
-   invalids = [];
+   let valids = [];
+   let invalids = [];
    for (const rowElem of initsDiv.children) {
       const row = getRowContents(rowElem);
       const security = row.secInput.value;
@@ -316,11 +322,11 @@ function populateTables(model) {
       tablesContainer.appendChild(tableContainer);
    })();
 
-   // Symbol tables
-   const symbols = Object.keys(model["securityTables"]);
+   // Symbol tables (securityTables is a Map object)
+   const symbols = Array.from(model["securityTables"].keys());
    symbols.sort()
    for (const symbol of symbols) {
-      const symModel = model["securityTables"][symbol];
+      const symModel = model["securityTables"].get(symbol);
 
       const tr = makeTableHeaderRow(symModel);
       const tbody = newElem('tbody');
@@ -375,6 +381,18 @@ function showTextOut() {
    setTabActive('text');
 }
 
+function setupTabClicks() {
+   document.querySelector("[data-tab-label=text]")
+      .addEventListener('click', (event) => {
+         showTextOut();
+      });
+
+   document.querySelector("[data-tab-label=table]")
+      .addEventListener('click', (event) => {
+         showTableOut();
+      });
+}
+
 function setTabActive(labelStr) {
    const tabLabels = document.getElementsByClassName('tab-label');
    for (const tabLabel of tabLabels) {
@@ -417,18 +435,14 @@ async function asyncRunAcb(filenames, contents) {
    if (initSecs.invalid.length) {
       return;
    }
-   const ret = runAcb(filenames, contents, initSecs.valid,
+   const ret = run_acb(filenames, contents, initSecs.valid,
                       printFullDollarValues);
-   try {
-      const resp = await ret;
-      let error = resp.error;
-      console.log("asyncRunAcb response received" +
-                  (error === undefined ? "" : " with error"));
-      const acbOutElem = document.getElementById("acb-text-output");
-      acbOutElem.innerText = resp.result ? resp.result.textOutput : "";
-      addAcbErrorText(error !== undefined ? error : "");
 
-      populateTables(resp ? resp.result.modelOutput : {});
+   try {
+      const result = await ret;
+      const acbOutElem = document.getElementById("acb-text-output");
+      acbOutElem.innerText = result.textOutput;
+      populateTables(result.modelOutput);
    } catch (err) {
       console.log("asyncRunAcb caught error: ", err);
       addAcbErrorText("An unexpected error was encountered while processing ACB "+
@@ -495,11 +509,11 @@ function loadAllFileInfoAndRun(files) {
    setAcbErrorText("");
 
    // Takes a list of File
-   fileNames = [];
+   let fileNames = [];
    for (const file of files) {
       fileNames.push(file.name);
    }
-   loadQueue = new FileLoadQueue(fileNames);
+   let loadQueue = new FileLoadQueue(fileNames);
 
    for (const file of files) {
       if (file.type == "text/csv") {
@@ -520,7 +534,7 @@ function setupExpandableOptions(buttonId, dropdownId) {
 }
 
 function loadJSON(url, doneHandler, errorHandler) {
-   var http_request = new XMLHttpRequest();
+   let http_request = new XMLHttpRequest();
    try {
       // Opera 8.0+, Firefox, Chrome, Safari
       http_request = new XMLHttpRequest();
@@ -603,14 +617,12 @@ function loadGitUserCaveatIssues() {
 
 function updateVersionElement() {
    const versionElem = document.getElementById("acb-version");
-   versionElem.innerText = "ACB Version: " + getAcbVersion();
+   versionElem.innerText = "ACB Version: " + get_acb_version();
 }
 
-function initPageJs() {
-   const go = new Go();
-   WebAssembly.instantiateStreaming(fetch("wasm/acb.wasm"), go.importObject).then((result) => {
-       go.run(result.instance);
-       console.log("wasm instantiation complete");
+export default function initPageJs() {
+   wasm_init().then(async (result)  => {
+      console.log("Rust wasm init complete");
       updateVersionElement();
    });
 
@@ -662,10 +674,11 @@ function initPageJs() {
 
    addInitialSecurityStateRow();
 
+   setupTabClicks();
    showTableOut();
 
    loadGitUserCaveatIssues();
 
    // Return objects that need to stay alive.
-   return {"go": go}
+   return {}
 }

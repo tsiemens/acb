@@ -3,14 +3,13 @@
         <meta charset="utf-8"/>
         <link rel="icon" href="./favicon.ico"/>
         <link rel="stylesheet" href="./index.css"/>
-        <script src="imports/wasm_exec.js"></script>
-        <script src="./index.js"></script>
+        <script type="module" src="./index.js"></script>
     </head>
     <body>
       <div class="page-content-container">
          <div class="header-bar">
             <div style="display: flow-root;">
-               <h1 style="text-align: margin-bottom; float: left; 60pt">
+               <h1 style="text-align: margin-bottom; float: left;">
                   ACB - A Capital Gains Calculator For Canadians</h1>
                <h2 style="float: right!important">
                    <a
@@ -97,9 +96,9 @@
          <p id="init-secs-errors" class="errors-par page-centered-column"></p>
          <p id="acb-errors" class="errors-par page-centered-column"></p>
          <div id="acb-output-tabs" class="tab-row page-centered-column">
-            <div class="tab-label" data-tab-label="table" onclick="showTableOut()">Table</div>
+            <div class="tab-label" data-tab-label="table">Table</div>
             <span class="tab-separator"></span>
-            <div class="tab-label" data-tab-label="text" onclick="showTextOut()">Text</div>
+            <div class="tab-label" data-tab-label="text">Text</div>
          </div>
          <hr class="page-centered-column">
          <div class="acb-output-container">
@@ -108,7 +107,8 @@
          </div>
       </div> <!-- end page-content-container -->
     </body>
-    <script>
+    <script type="module">
+      import initPageJs from './index.js';
       const context = initPageJs();
    </script>
 </html>
