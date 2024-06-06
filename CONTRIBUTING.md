@@ -3,8 +3,7 @@ To get your environment set up, and download the source, follow the standard ins
 A Makefile is provided for convenience during development. A typical workflow may be:
 
 ```sh
-cd $GOPATH/src/github.com/tsiemens/acb
-make getdeps
+cd <cloned repo dir>
 make
 make test
 
@@ -12,9 +11,7 @@ make test
 make
 make test
 # Manual checks
-bld/acb ...
+target/debug/acb ...
 ```
 
-The Makefile places the development acb binary in the ./bld/ directory inside of the repo. Once you are done and want to install into the standard path, run the standard ``go install` command.
-
-Code must comply with `go fmt`
+The Makefile places the development acb binary in the ./target/debug directory inside of the repo. Once you are done and want to install into the standard path, run the standard `make install`.

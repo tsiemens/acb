@@ -1,6 +1,6 @@
 # ACB
 
-A golang CLI tool for calculating adjusted cost basis (ACB) and capital gains.
+A CLI tool for calculating adjusted cost basis (ACB) and capital gains.
 This is primarily designed for Canadians filing tax returns, who have stocks, RSUs, ESPPs, etc.
 
 ## Features
