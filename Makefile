@@ -31,6 +31,9 @@ test:
 test-py:
 	make -C py test
 
+rustfmt:
+	rustfmt `find -type f -name '*.rs'`
+
 install:
 	cargo install --path .
 

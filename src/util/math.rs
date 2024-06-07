@@ -2,7 +2,10 @@ use std::fmt::Display;
 
 use rust_decimal::Decimal;
 
-use super::decimal::{constraint, ConstrainedDecimal, DecConstraint, GreaterEqualZeroDecimal, PosDecimal};
+use super::decimal::{
+    constraint, ConstrainedDecimal, DecConstraint, GreaterEqualZeroDecimal,
+    PosDecimal,
+};
 
 #[derive(PartialEq, Eq, Clone, Copy, Debug)]
 pub struct ConstrainedDecimalRatio<CONSTRAINT: DecConstraint + Clone + Copy> {
@@ -10,7 +13,7 @@ pub struct ConstrainedDecimalRatio<CONSTRAINT: DecConstraint + Clone + Copy> {
     pub denominator: PosDecimal,
 }
 
-impl <CONSTRAINT: DecConstraint + Clone + Copy> ConstrainedDecimalRatio<CONSTRAINT> {
+impl<CONSTRAINT: DecConstraint + Clone + Copy> ConstrainedDecimalRatio<CONSTRAINT> {
     pub fn to_decimal(&self) -> Decimal {
         *self.numerator / *self.denominator
     }
@@ -24,12 +27,15 @@ impl ConstrainedDecimalRatio<constraint::Pos> {
 
 impl ConstrainedDecimalRatio<constraint::GreaterEqualZero> {
     pub fn to_gezdecimal(&self) -> GreaterEqualZeroDecimal {
-        GreaterEqualZeroDecimal::try_from(*self.numerator / *self.denominator).unwrap()
+        GreaterEqualZeroDecimal::try_from(*self.numerator / *self.denominator)
+            .unwrap()
     }
 }
 
 // Auto-implements to_string()
-impl <CONSTRAINT: DecConstraint + Clone + Copy>  Display for ConstrainedDecimalRatio<CONSTRAINT> {
+impl<CONSTRAINT: DecConstraint + Clone + Copy> Display
+    for ConstrainedDecimalRatio<CONSTRAINT>
+{
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{{{}/{}}}", self.numerator, self.denominator)
     }
@@ -42,7 +48,9 @@ pub fn round_to_cent(d: Decimal) -> Decimal {
     d.round_dp_with_strategy(2, rust_decimal::RoundingStrategy::MidpointAwayFromZero)
 }
 
-pub fn c_round_to_cent<T: DecConstraint>(d: ConstrainedDecimal<T>) -> ConstrainedDecimal<T> {
+pub fn c_round_to_cent<T: DecConstraint>(
+    d: ConstrainedDecimal<T>,
+) -> ConstrainedDecimal<T> {
     ConstrainedDecimal::<T>::try_from(round_to_cent(*d)).unwrap()
 }
 
@@ -69,7 +77,9 @@ pub fn maybe_round_to_effective_cent(d: Decimal) -> Decimal {
     }
 }
 
-pub fn c_maybe_round_to_effective_cent<T: DecConstraint>(d: ConstrainedDecimal<T>) -> ConstrainedDecimal<T> {
+pub fn c_maybe_round_to_effective_cent<T: DecConstraint>(
+    d: ConstrainedDecimal<T>,
+) -> ConstrainedDecimal<T> {
     ConstrainedDecimal::<T>::try_from(maybe_round_to_effective_cent(*d)).unwrap()
 }
 
@@ -95,17 +105,41 @@ mod tests {
     #[test]
     fn test_maybe_round_to_effective_cent() {
         // Sanity check that our raw-input value (for speed) is what we think it is.
-        assert_eq!(dec!(0.0000000001), super::round_to_effective_cent_tolerance());
+        assert_eq!(
+            dec!(0.0000000001),
+            super::round_to_effective_cent_tolerance()
+        );
 
-        assert_eq!(maybe_round_to_effective_cent(dec!(1.99999999999)), dec!(2.00));
-        assert_eq!(maybe_round_to_effective_cent(dec!(1.90999999999999999)), dec!(1.91));
-        assert_eq!(maybe_round_to_effective_cent(dec!(1.320000000000001)), dec!(1.32));
-        assert_eq!(maybe_round_to_effective_cent(dec!(-1.320000000000001)), dec!(-1.32));
+        assert_eq!(
+            maybe_round_to_effective_cent(dec!(1.99999999999)),
+            dec!(2.00)
+        );
+        assert_eq!(
+            maybe_round_to_effective_cent(dec!(1.90999999999999999)),
+            dec!(1.91)
+        );
+        assert_eq!(
+            maybe_round_to_effective_cent(dec!(1.320000000000001)),
+            dec!(1.32)
+        );
+        assert_eq!(
+            maybe_round_to_effective_cent(dec!(-1.320000000000001)),
+            dec!(-1.32)
+        );
 
         // No changes expected
-        assert_eq!(maybe_round_to_effective_cent(dec!(1.909999)), dec!(1.909999));
-        assert_eq!(maybe_round_to_effective_cent(dec!(1.194444444444444444444)), dec!(1.194444444444444444444));
-        assert_eq!(maybe_round_to_effective_cent(dec!(-1.32001)), dec!(-1.32001));
+        assert_eq!(
+            maybe_round_to_effective_cent(dec!(1.909999)),
+            dec!(1.909999)
+        );
+        assert_eq!(
+            maybe_round_to_effective_cent(dec!(1.194444444444444444444)),
+            dec!(1.194444444444444444444)
+        );
+        assert_eq!(
+            maybe_round_to_effective_cent(dec!(-1.32001)),
+            dec!(-1.32001)
+        );
         assert_eq!(maybe_round_to_effective_cent(dec!(1.001)), dec!(1.001));
     }
 }

@@ -1,13 +1,15 @@
 use std::cell::RefCell;
 
 use chrono::Datelike;
-use time::{macros::format_description, Month, UtcOffset};
 pub use time::Date;
+use time::{macros::format_description, Month, UtcOffset};
 
-pub type StaticDateFormat<'a> = &'static [time::format_description::BorrowedFormatItem<'a>];
+pub type StaticDateFormat<'a> =
+    &'static [time::format_description::BorrowedFormatItem<'a>];
 pub type DynDateFormat = time::format_description::OwnedFormatItem;
 
-pub const STANDARD_DATE_FORMAT: StaticDateFormat = format_description!("[year]-[month]-[day]");
+pub const STANDARD_DATE_FORMAT: StaticDateFormat =
+    format_description!("[year]-[month]-[day]");
 
 pub fn parse_standard_date(date_str: &str) -> Result<Date, time::error::Parse> {
     Date::parse(date_str, STANDARD_DATE_FORMAT)
@@ -20,7 +22,10 @@ pub fn parse_dyn_date_format(fmt: &str) -> Result<DynDateFormat, String> {
         .map_err(|e| format!("{}", e))
 }
 
-pub fn parse_date(date_str: &str, fmt: &Option<DynDateFormat>) -> Result<Date, time::error::Parse> {
+pub fn parse_date(
+    date_str: &str,
+    fmt: &Option<DynDateFormat>,
+) -> Result<Date, time::error::Parse> {
     match fmt {
         Some(fmt_) => Date::parse(date_str, &fmt_),
         None => parse_standard_date(date_str),
@@ -31,7 +36,8 @@ fn date_naive_to_date(dn: &chrono::NaiveDate) -> Date {
     Date::from_calendar_date(
         dn.year(),
         Month::December.nth_next(dn.month() as u8),
-        dn.day() as u8)
+        dn.day() as u8,
+    )
     .unwrap()
 }
 
@@ -69,7 +75,8 @@ pub mod pub_testlib {
     use time::{Date, Duration, Month};
 
     pub fn doy_date(year: u32, day: i64) -> Date {
-        Date::from_calendar_date(year as i32, Month::January, 1).unwrap()
+        Date::from_calendar_date(year as i32, Month::January, 1)
+            .unwrap()
             .saturating_add(Duration::days(day))
     }
 }
@@ -84,8 +91,10 @@ mod tests {
     #[test]
     fn test_parse() {
         let d = parse_standard_date("2023-01-21");
-        assert_eq!(d.unwrap(),
-            Date::from_calendar_date(2023, Month::January, 21).unwrap());
+        assert_eq!(
+            d.unwrap(),
+            Date::from_calendar_date(2023, Month::January, 21).unwrap()
+        );
 
         let d = parse_standard_date("2023-01-41");
         assert!(d.is_err());
@@ -101,6 +110,9 @@ mod tests {
     fn test_date_naive_to_date() {
         let naive_date = NaiveDate::from_ymd_opt(2024, 4, 13).unwrap();
         let date = date_naive_to_date(&naive_date);
-        assert_eq!(date, Date::from_calendar_date(2024, Month::April, 13).unwrap());
+        assert_eq!(
+            date,
+            Date::from_calendar_date(2024, Month::April, 13).unwrap()
+        );
     }
 }

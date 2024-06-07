@@ -5,11 +5,11 @@ use std::str::FromStr;
 
 use rust_decimal::Decimal;
 
+use crate::portfolio::csv_common::CsvCol;
+use crate::portfolio::{Affiliate, CsvTx, Currency, SFLInput, TxAction};
 use crate::util::decimal::LessEqualZeroDecimal;
 use crate::util::rw::{DescribedReader, WriteHandle};
 use crate::write_errln;
-use crate::portfolio::csv_common::CsvCol;
-use crate::portfolio::{Affiliate, CsvTx, Currency, SFLInput, TxAction};
 
 type Error = String;
 
@@ -24,7 +24,7 @@ fn parse_csv_action(value: &str) -> Result<TxAction, Error> {
 }
 
 fn parse_csv_superficial_loss(value: &str) -> Result<SFLInput, Error> {
-	// Check for forcing marker (a terminating !)
+    // Check for forcing marker (a terminating !)
     let force_flag = value.ends_with("!");
     let num_view = if force_flag {
         &value[..value.len() - 1]
@@ -32,56 +32,80 @@ fn parse_csv_superficial_loss(value: &str) -> Result<SFLInput, Error> {
         value
     };
 
-    let number = Decimal::from_str(num_view).map_err(
-        |_| format!("Invalid number in {}: {}",
-        CsvCol::SUPERFICIAL_LOSS, num_view))?;
-    let constrained_number = LessEqualZeroDecimal::try_from(number)
-        .map_err(|_| format!("Invalid {} {}: Was positive value",
-                                        CsvCol::SUPERFICIAL_LOSS, number))?;
-    Ok(SFLInput{
+    let number = Decimal::from_str(num_view).map_err(|_| {
+        format!(
+            "Invalid number in {}: {}",
+            CsvCol::SUPERFICIAL_LOSS,
+            num_view
+        )
+    })?;
+    let constrained_number =
+        LessEqualZeroDecimal::try_from(number).map_err(|_| {
+            format!(
+                "Invalid {} {}: Was positive value",
+                CsvCol::SUPERFICIAL_LOSS,
+                number
+            )
+        })?;
+    Ok(SFLInput {
         superficial_loss: constrained_number,
         force: force_flag,
     })
 }
 
 fn csvtx_from_csv_values(
-    mut values: HashMap::<&str, String>,
+    mut values: HashMap<&str, String>,
     read_index: u32,
     parse_options: &TxCsvParseOptions,
-    ) -> Result<CsvTx, Error> {
-
+) -> Result<CsvTx, Error> {
     let parse_decimal = |value: &str, field_name: &str| {
-        Decimal::from_str(value).map_err(
-            |e| format!("Failed to parse number for {} ('{}'): {}",
-                                         field_name, value, e))
+        Decimal::from_str(value).map_err(|e| {
+            format!(
+                "Failed to parse number for {} ('{}'): {}",
+                field_name, value, e
+            )
+        })
     };
 
-    let parse_date = |s: &str| {
-        crate::util::date::parse_date(s, &parse_options.date_format)
-    };
+    let parse_date =
+        |s: &str| crate::util::date::parse_date(s, &parse_options.date_format);
 
-    Ok(CsvTx{
+    Ok(CsvTx {
         security: values.remove(CsvCol::SECURITY),
         trade_date: match values.remove(CsvCol::TRADE_DATE) {
-            Some(s) => Some(parse_date(&s).map_err(
-                |e| format!("Failed to parse {} \"{}\": {}",
-                    CsvCol::TRADE_DATE, s, e))?),
+            Some(s) => Some(parse_date(&s).map_err(|e| {
+                format!("Failed to parse {} \"{}\": {}", CsvCol::TRADE_DATE, s, e)
+            })?),
             None => None,
         },
         settlement_date: {
             let s_date = match values.remove(CsvCol::SETTLEMENT_DATE) {
-                Some(s) => Some(parse_date(&s).map_err(
-                    |e| format!("Failed to parse {} \"{}\": {}",
-                        CsvCol::SETTLEMENT_DATE, s, e))?),
+                Some(s) => Some(parse_date(&s).map_err(|e| {
+                    format!(
+                        "Failed to parse {} \"{}\": {}",
+                        CsvCol::SETTLEMENT_DATE,
+                        s,
+                        e
+                    )
+                })?),
                 None => None,
             };
             let legacy_s_date = match values.remove(CsvCol::LEGACY_SETTLEMENT_DATE) {
-                Some(s) => Some(parse_date(&s).map_err(
-                    |e| format!("Failed to parse {} \"{}\": {}",
-                        CsvCol::SETTLEMENT_DATE, s, e))?),
+                Some(s) => Some(parse_date(&s).map_err(|e| {
+                    format!(
+                        "Failed to parse {} \"{}\": {}",
+                        CsvCol::SETTLEMENT_DATE,
+                        s,
+                        e
+                    )
+                })?),
                 None => None,
             };
-            if s_date.is_some() { s_date } else { legacy_s_date }
+            if s_date.is_some() {
+                s_date
+            } else {
+                legacy_s_date
+            }
         },
         action: match values.remove(CsvCol::ACTION) {
             Some(s) => Some(parse_csv_action(&s)?),
@@ -111,7 +135,9 @@ fn csvtx_from_csv_values(
             Some(s) => Some(Currency::new(&s)),
             None => None,
         },
-        commission_curr_to_local_exchange_rate: match values.remove(CsvCol::COMMISSION_FX) {
+        commission_curr_to_local_exchange_rate: match values
+            .remove(CsvCol::COMMISSION_FX)
+        {
             Some(s) => Some(parse_decimal(&s, CsvCol::COMMISSION_FX)?),
             None => None,
         },
@@ -146,25 +172,22 @@ pub fn parse_tx_csv(
     initial_global_read_index: u32,
     parse_options: &TxCsvParseOptions,
     err_stream: &mut WriteHandle,
-    ) -> Result<Vec<CsvTx>, Error> {
-
-    let mut reader_box = desc_reader.reader().map_err(
-        |e| e.to_string())?;
+) -> Result<Vec<CsvTx>, Error> {
+    let mut reader_box = desc_reader.reader().map_err(|e| e.to_string())?;
     let reader: &mut dyn Read = reader_box.borrow_mut();
 
-    let mut csv_r = csv::ReaderBuilder::new()
-        .has_headers(true)
-        .from_reader(reader);
+    let mut csv_r = csv::ReaderBuilder::new().has_headers(true).from_reader(reader);
 
     let csv_desc = desc_reader.desc();
 
-    let mut col_index_to_name: HashMap::<usize, &'static str> = HashMap::new();
-    let mut found_col_names: HashSet::<&'static str> = HashSet::new();
+    let mut col_index_to_name: HashMap<usize, &'static str> = HashMap::new();
+    let mut found_col_names: HashSet<&'static str> = HashSet::new();
 
     let col_names = CsvCol::get_csv_cols();
 
-    let headers_res = csv_r.headers().map_err(
-        |e| format!("Error in csv headers of {csv_desc}: {e}"))?;
+    let headers_res = csv_r
+        .headers()
+        .map_err(|e| format!("Error in csv headers of {csv_desc}: {e}"))?;
     for (i, col) in headers_res.iter().enumerate() {
         let lower_col = col.to_lowercase();
         let san_col = lower_col.trim();
@@ -172,10 +195,13 @@ pub fn parse_tx_csv(
             Some(static_str) => {
                 col_index_to_name.insert(i, static_str);
                 found_col_names.insert(static_str);
-            },
+            }
             None => {
-                write_errln!(err_stream, "Warning: Unrecognized column in {csv_desc}: {san_col}");
-            },
+                write_errln!(
+                    err_stream,
+                    "Warning: Unrecognized column in {csv_desc}: {san_col}"
+                );
+            }
         }
     }
 
@@ -183,10 +209,15 @@ pub fn parse_tx_csv(
     let col_index_to_name = col_index_to_name;
 
     // Sanity check columns
-    if found_col_names.contains(CsvCol::SETTLEMENT_DATE) &&
-       found_col_names.contains(CsvCol::LEGACY_SETTLEMENT_DATE) {
-        return Err(format!("{} contains both '{}' and '{}' (deprecated) columns",
-            csv_desc, CsvCol::SETTLEMENT_DATE, CsvCol::LEGACY_SETTLEMENT_DATE));
+    if found_col_names.contains(CsvCol::SETTLEMENT_DATE)
+        && found_col_names.contains(CsvCol::LEGACY_SETTLEMENT_DATE)
+    {
+        return Err(format!(
+            "{} contains both '{}' and '{}' (deprecated) columns",
+            csv_desc,
+            CsvCol::SETTLEMENT_DATE,
+            CsvCol::LEGACY_SETTLEMENT_DATE
+        ));
     }
 
     let mut txs = Vec::<CsvTx>::new();
@@ -201,34 +232,37 @@ pub fn parse_tx_csv(
             Ok(r) => r,
             Err(e) => {
                 return Err(format!("Error reading rates csv record in {csv_desc} at row {row_num}: {e}"));
-            },
+            }
         };
 
         let mut tx_values = HashMap::<&'static str, String>::new();
         for (i, col_val) in record.iter().enumerate() {
             if !col_val.trim().is_empty() {
                 match col_index_to_name.get(&i) {
-                    Some(col_name) => { tx_values.insert(col_name, col_val.trim().to_string()); },
+                    Some(col_name) => {
+                        tx_values.insert(col_name, col_val.trim().to_string());
+                    }
                     None => (), // This entire column was not recognized, so ignore it.
                 }
             }
         }
 
-        let tx = csvtx_from_csv_values(tx_values, global_row_index, parse_options).map_err(
-            |e| format!("Error on row {row_num} of {csv_desc}: {e}"))?;
+        let tx =
+            csvtx_from_csv_values(tx_values, global_row_index, parse_options)
+                .map_err(|e| format!("Error on row {row_num} of {csv_desc}: {e}"))?;
         txs.push(tx);
 
         global_row_index += 1;
     }
 
     Ok(txs)
-
 }
 
-pub fn write_txs_to_csv(txs: &Vec<CsvTx>, writer: &mut dyn std::io::Write) -> Result<(), csv::Error> {
-    let mut csv_w = csv::WriterBuilder::new()
-        .has_headers(true)
-        .from_writer(writer);
+pub fn write_txs_to_csv(
+    txs: &Vec<CsvTx>,
+    writer: &mut dyn std::io::Write,
+) -> Result<(), csv::Error> {
+    let mut csv_w = csv::WriterBuilder::new().has_headers(true).from_writer(writer);
 
     let headers = CsvCol::export_order_non_deprecated_cols();
 
@@ -241,22 +275,58 @@ pub fn write_txs_to_csv(txs: &Vec<CsvTx>, writer: &mut dyn std::io::Write) -> Re
         for col in headers {
             let val: String = match col {
                 CsvCol::SECURITY => tx.security.clone().unwrap_or_else(empty),
-                CsvCol::TRADE_DATE => tx.trade_date.map(|v| v.to_string()).unwrap_or_else(empty),
-                CsvCol::SETTLEMENT_DATE => tx.settlement_date.map(|v| v.to_string()).unwrap_or_else(empty),
-                CsvCol::ACTION => tx.action.map(|v| v.to_string()).unwrap_or_else(empty),
-                CsvCol::SHARES => tx.shares.map(|v| v.to_string()).unwrap_or_else(empty),
-                CsvCol::AMOUNT_PER_SHARE => tx.amount_per_share.map(|v| v.to_string()).unwrap_or_else(empty),
-                CsvCol::COMMISSION => tx.commission.map(|v| v.to_string()).unwrap_or_else(empty),
-                CsvCol::TX_CURR => tx.tx_currency.clone().map(|v| v.to_string()).unwrap_or_else(empty),
-                CsvCol::TX_FX => tx.tx_curr_to_local_exchange_rate.map(|v| v.to_string()).unwrap_or_else(empty),
-                CsvCol::COMMISSION_CURR => tx.commission_currency.clone().map(|v| v.to_string()).unwrap_or_else(empty),
-                CsvCol::COMMISSION_FX => tx.commission_curr_to_local_exchange_rate.map(|v| v.to_string()).unwrap_or_else(empty),
-                CsvCol::SUPERFICIAL_LOSS => {
-                    tx.specified_superficial_loss.as_ref().map(
-                        |v| format!("{}{}", v.superficial_loss, if v.force { "!" } else { "" }) )
-                        .unwrap_or_else(empty)
-                },
-                CsvCol::AFFILIATE => tx.affiliate.as_ref().map(|v| v.name().to_string()).unwrap_or_else(empty),
+                CsvCol::TRADE_DATE => {
+                    tx.trade_date.map(|v| v.to_string()).unwrap_or_else(empty)
+                }
+                CsvCol::SETTLEMENT_DATE => {
+                    tx.settlement_date.map(|v| v.to_string()).unwrap_or_else(empty)
+                }
+                CsvCol::ACTION => {
+                    tx.action.map(|v| v.to_string()).unwrap_or_else(empty)
+                }
+                CsvCol::SHARES => {
+                    tx.shares.map(|v| v.to_string()).unwrap_or_else(empty)
+                }
+                CsvCol::AMOUNT_PER_SHARE => {
+                    tx.amount_per_share.map(|v| v.to_string()).unwrap_or_else(empty)
+                }
+                CsvCol::COMMISSION => {
+                    tx.commission.map(|v| v.to_string()).unwrap_or_else(empty)
+                }
+                CsvCol::TX_CURR => tx
+                    .tx_currency
+                    .clone()
+                    .map(|v| v.to_string())
+                    .unwrap_or_else(empty),
+                CsvCol::TX_FX => tx
+                    .tx_curr_to_local_exchange_rate
+                    .map(|v| v.to_string())
+                    .unwrap_or_else(empty),
+                CsvCol::COMMISSION_CURR => tx
+                    .commission_currency
+                    .clone()
+                    .map(|v| v.to_string())
+                    .unwrap_or_else(empty),
+                CsvCol::COMMISSION_FX => tx
+                    .commission_curr_to_local_exchange_rate
+                    .map(|v| v.to_string())
+                    .unwrap_or_else(empty),
+                CsvCol::SUPERFICIAL_LOSS => tx
+                    .specified_superficial_loss
+                    .as_ref()
+                    .map(|v| {
+                        format!(
+                            "{}{}",
+                            v.superficial_loss,
+                            if v.force { "!" } else { "" }
+                        )
+                    })
+                    .unwrap_or_else(empty),
+                CsvCol::AFFILIATE => tx
+                    .affiliate
+                    .as_ref()
+                    .map(|v| v.name().to_string())
+                    .unwrap_or_else(empty),
                 CsvCol::MEMO => tx.memo.clone().unwrap_or_else(empty),
                 _ => panic!("Invalid col {}", col),
             };
@@ -278,21 +348,21 @@ pub mod testlib {
     // convenient as possible.
     #[derive(Default)]
     pub struct TestTxCsvRow {
-        pub sec: &'static str, // SECURITY
-        pub td: &'static str, // TRADE_DATE
-        pub sd: &'static str, // SETTLEMENT_DATE
+        pub sec: &'static str,         // SECURITY
+        pub td: &'static str,          // TRADE_DATE
+        pub sd: &'static str,          // SETTLEMENT_DATE
         pub legacy_date: &'static str, // LEGACY_SETTLEMENT_DATE
-        pub a: &'static str, // ACTION
-        pub sh: &'static str, // SHARES
-        pub aps: &'static str, // AMOUNT_PER_SHARE
-        pub com: &'static str, // COMMISSION
-        pub cur: &'static str, // TX_CURR
-        pub fx: &'static str, // TX_FX
-        pub c_cur: &'static str, // COMMISSION_CURR
-        pub c_fx: &'static str, // COMMISSION_FX
-        pub sfl: &'static str, // SUPERFICIAL_LOSS
-        pub af: &'static str, // AFFILIATE
-        pub m: &'static str, // MEMO
+        pub a: &'static str,           // ACTION
+        pub sh: &'static str,          // SHARES
+        pub aps: &'static str,         // AMOUNT_PER_SHARE
+        pub com: &'static str,         // COMMISSION
+        pub cur: &'static str,         // TX_CURR
+        pub fx: &'static str,          // TX_FX
+        pub c_cur: &'static str,       // COMMISSION_CURR
+        pub c_fx: &'static str,        // COMMISSION_FX
+        pub sfl: &'static str,         // SUPERFICIAL_LOSS
+        pub af: &'static str,          // AFFILIATE
+        pub m: &'static str,           // MEMO
     }
 
     impl TestTxCsvRow {
@@ -338,7 +408,9 @@ pub mod testlib {
 
     impl CsvFileBuilder {
         pub fn with_custom_header_line(h: &str) -> CsvFileBuilder {
-            CsvFileBuilder::WithStringHeaders(h.split(",").map(|s| s.to_string()).collect())
+            CsvFileBuilder::WithStringHeaders(
+                h.split(",").map(|s| s.to_string()).collect(),
+            )
         }
 
         //         const LEGACY_HEADER: &'static str = "security,date,action,shares,amount/share,currency,exchange rate,commission,memo,superficial loss";
@@ -355,8 +427,11 @@ pub mod testlib {
             CsvFileBuilder::WithHeaders(Vec::from_iter(headers.iter().map(|f| *f)))
         }
 
-
-        fn csv_reader_from_rows<T: ToString>(&self, desc: String, rows: std::slice::Iter<T>) -> DescribedReader {
+        fn csv_reader_from_rows<T: ToString>(
+            &self,
+            desc: String,
+            rows: std::slice::Iter<T>,
+        ) -> DescribedReader {
             let strs: Vec<String> = rows.map(|s| s.to_string()).collect();
             let contents = strs.join("\n");
             let headers = self.header_str_and_newline();
@@ -366,12 +441,8 @@ pub mod testlib {
 
         fn header_str(&self) -> String {
             match self {
-                CsvFileBuilder::WithHeaders(hs) => {
-                    hs.join(",")
-                },
-                CsvFileBuilder::WithStringHeaders(hs) => {
-                    hs.join(",")
-                }
+                CsvFileBuilder::WithHeaders(hs) => hs.join(","),
+                CsvFileBuilder::WithStringHeaders(hs) => hs.join(","),
             }
         }
 
@@ -402,32 +473,42 @@ pub mod testlib {
             rows
         }
 
-        pub fn single_csv_reader_raw<T: ToString>(&self, rows: &Vec<T>)
-            -> DescribedReader {
+        pub fn single_csv_reader_raw<T: ToString>(
+            &self,
+            rows: &Vec<T>,
+        ) -> DescribedReader {
             self.split_raw_csv_rows(&vec![rows.len()], rows).remove(0)
         }
 
-        pub fn split_raw_csv_rows<T: ToString>(&self, file_lens: &Vec<usize>, rows: &Vec<T>)
-            -> Vec<DescribedReader> {
+        pub fn split_raw_csv_rows<T: ToString>(
+            &self,
+            file_lens: &Vec<usize>,
+            rows: &Vec<T>,
+        ) -> Vec<DescribedReader> {
             let mut rows_read: usize = 0;
             let mut csv_readers = Vec::new();
             for (i, file_len) in file_lens.iter().enumerate() {
                 csv_readers.push(self.csv_reader_from_rows(
                     format!("foo{i}.csv"),
-                    rows[rows_read..rows_read+(*file_len)].iter()
+                    rows[rows_read..rows_read + (*file_len)].iter(),
                 ));
                 rows_read += *file_len;
             }
             csv_readers
         }
 
-        pub fn single_csv_reader(&self, rows: &Vec<TestTxCsvRow>)
-            -> DescribedReader {
+        pub fn single_csv_reader(
+            &self,
+            rows: &Vec<TestTxCsvRow>,
+        ) -> DescribedReader {
             self.split_csv_rows(&vec![rows.len()], rows).remove(0)
         }
 
-        pub fn split_csv_rows(&self, file_lens: &Vec<usize>, tx_rows: &Vec<TestTxCsvRow>)
-            -> Vec<DescribedReader> {
+        pub fn split_csv_rows(
+            &self,
+            file_lens: &Vec<usize>,
+            tx_rows: &Vec<TestTxCsvRow>,
+        ) -> Vec<DescribedReader> {
             let rows = self.make_row_strings(tx_rows);
             self.split_raw_csv_rows(file_lens, &rows)
         }
@@ -439,87 +520,119 @@ mod tests {
     use rust_decimal_macros::dec;
 
     use crate::{
-        portfolio::{io::tx_csv::{testlib::TestTxCsvRow, TxCsvParseOptions}, Affiliate, CsvTx, Currency, SFLInput},
+        portfolio::{
+            io::tx_csv::{testlib::TestTxCsvRow, TxCsvParseOptions},
+            Affiliate, CsvTx, Currency, SFLInput,
+        },
         testlib::{assert_vec_eq, assert_vecr_eq},
-        util::{date::parse_standard_date, decimal::LessEqualZeroDecimal, rw::{StringBuffer, WriteHandle}}
+        util::{
+            date::parse_standard_date,
+            decimal::LessEqualZeroDecimal,
+            rw::{StringBuffer, WriteHandle},
+        },
     };
 
-    use super::{parse_csv_superficial_loss, parse_tx_csv, testlib::CsvFileBuilder, Error};
+    use super::{
+        parse_csv_superficial_loss, parse_tx_csv, testlib::CsvFileBuilder, Error,
+    };
 
     type Row = TestTxCsvRow;
 
     #[test]
     fn test_parse_sfl() {
-        let sfl_ = |n, f| {
-            SFLInput{
-                superficial_loss: LessEqualZeroDecimal::try_from(n).unwrap(),
-                force: f,
-            }
+        let sfl_ = |n, f| SFLInput {
+            superficial_loss: LessEqualZeroDecimal::try_from(n).unwrap(),
+            force: f,
         };
 
         assert_eq!(
             parse_csv_superficial_loss("0!").unwrap(),
-            sfl_(dec!(0), true));
+            sfl_(dec!(0), true)
+        );
         assert_eq!(
             parse_csv_superficial_loss("-1.1!").unwrap(),
-            sfl_(dec!(-1.1), true));
+            sfl_(dec!(-1.1), true)
+        );
         assert_eq!(
             parse_csv_superficial_loss("0.0").unwrap(),
-            sfl_(dec!(0), false));
+            sfl_(dec!(0), false)
+        );
         assert_eq!(
             parse_csv_superficial_loss("-1.1").unwrap(),
-            sfl_(dec!(-1.1), false));
+            sfl_(dec!(-1.1), false)
+        );
 
         assert_eq!(
             parse_csv_superficial_loss("").unwrap_err(),
-            "Invalid number in superficial loss: ");
+            "Invalid number in superficial loss: "
+        );
         assert_eq!(
             parse_csv_superficial_loss("sfsd").unwrap_err(),
-            "Invalid number in superficial loss: sfsd");
+            "Invalid number in superficial loss: sfsd"
+        );
         assert_eq!(
             parse_csv_superficial_loss("1.1").unwrap_err(),
-            "Invalid superficial loss 1.1: Was positive value");
+            "Invalid superficial loss 1.1: Was positive value"
+        );
         assert_eq!(
             parse_csv_superficial_loss("1.1!").unwrap_err(),
-            "Invalid superficial loss 1.1: Was positive value");
+            "Invalid superficial loss 1.1: Was positive value"
+        );
         assert_eq!(
             parse_csv_superficial_loss("!-1.1").unwrap_err(),
-            "Invalid number in superficial loss: !-1.1");
+            "Invalid number in superficial loss: !-1.1"
+        );
     }
 
     #[test]
     fn test_double_settlement_date() {
-        let mut d_reader =
-            CsvFileBuilder::with_custom_header_line(
-                "security,date,settlement date\n")
-            .single_csv_reader_raw(&vec![
-                "FOO,2016-01-03,2016-01-05",
-                "BAR,2016-01-03,2016-01-06",
-            ]);
+        let mut d_reader = CsvFileBuilder::with_custom_header_line(
+            "security,date,settlement date\n",
+        )
+        .single_csv_reader_raw(&vec![
+            "FOO,2016-01-03,2016-01-05",
+            "BAR,2016-01-03,2016-01-06",
+        ]);
         let err = parse_tx_csv(
-            &mut d_reader, 0, &TxCsvParseOptions::default(),
-            &mut WriteHandle::empty_write_handle()).unwrap_err();
+            &mut d_reader,
+            0,
+            &TxCsvParseOptions::default(),
+            &mut WriteHandle::empty_write_handle(),
+        )
+        .unwrap_err();
         assert_eq!(err, "foo0.csv contains both 'settlement date' and 'date' (deprecated) columns");
     }
 
     #[test]
     fn test_double_unknown_columns() {
         let mut d_reader =
-            CsvFileBuilder::with_custom_header_line(
-                "blabla,security\n")
-            .single_csv_reader_raw(&vec![
-                ",FOO",
-                "lksjlksjdf,BAR",
-            ]);
+            CsvFileBuilder::with_custom_header_line("blabla,security\n")
+                .single_csv_reader_raw(&vec![",FOO", "lksjlksjdf,BAR"]);
 
         let (mut err_writer, buff) = WriteHandle::string_buff_write_handle();
-        let txs = parse_tx_csv(&mut d_reader, 10,  &TxCsvParseOptions::default(),
-                               &mut err_writer).unwrap();
+        let txs = parse_tx_csv(
+            &mut d_reader,
+            10,
+            &TxCsvParseOptions::default(),
+            &mut err_writer,
+        )
+        .unwrap();
 
-        assert_vecr_eq(&txs, &vec![
-            CsvTx{security: Some("FOO".to_string()), read_index: 10, ..CsvTx::default()},
-            CsvTx{security: Some("BAR".to_string()), read_index: 11, ..CsvTx::default()},
-        ]);
+        assert_vecr_eq(
+            &txs,
+            &vec![
+                CsvTx {
+                    security: Some("FOO".to_string()),
+                    read_index: 10,
+                    ..CsvTx::default()
+                },
+                CsvTx {
+                    security: Some("BAR".to_string()),
+                    read_index: 11,
+                    ..CsvTx::default()
+                },
+            ],
+        );
         assert_eq!(
             buff.borrow().as_str(),
             "Warning: Unrecognized column in foo0.csv: blabla\n"
@@ -528,9 +641,11 @@ mod tests {
 
     #[test]
     fn test_parse_tx_csv_basic() {
+        #[rustfmt::skip]
         let mut d_reader = CsvFileBuilder::with_all_modern_headers()
             .single_csv_reader(&vec![
-                Row{sec:" Foo ",td:"2020-11-11",sd:"2020-11-13",legacy_date:"",a:"Buy",sh:"123.1",aps:"10.1",
+                Row{sec:" Foo ",td:"2020-11-11",sd:"2020-11-13",legacy_date:"",
+                    a:"Buy",sh:"123.1",aps:"10.1",
                     com: "20.1", cur: "USD", fx: "1.3",c_cur: "usd", c_fx: "1.31",
                     sfl: "-1.2!", af: "(R)", m:"A memo",
                 },
@@ -542,11 +657,15 @@ mod tests {
                 Row{a:"sfla", ..Default::default()},
             ]);
         let txs = parse_tx_csv(
-            &mut d_reader, 0, &TxCsvParseOptions::default(),
-            &mut WriteHandle::empty_write_handle()).unwrap();
+            &mut d_reader,
+            0,
+            &TxCsvParseOptions::default(),
+            &mut WriteHandle::empty_write_handle(),
+        )
+        .unwrap();
 
         let exp_txs = vec![
-            CsvTx{
+            CsvTx {
                 security: Some("Foo".to_string()),
                 trade_date: Some(parse_standard_date("2020-11-11").unwrap()),
                 settlement_date: Some(parse_standard_date("2020-11-13").unwrap()),
@@ -560,13 +679,30 @@ mod tests {
                 commission_curr_to_local_exchange_rate: Some(dec!(1.31)),
                 memo: Some("A memo".to_string()),
                 affiliate: Some(Affiliate::default_registered()),
-                specified_superficial_loss: Some(SFLInput::req_from_dec(dec!(-1.2), true)),
+                specified_superficial_loss: Some(SFLInput::req_from_dec(
+                    dec!(-1.2),
+                    true,
+                )),
                 read_index: 0,
             },
-            CsvTx{read_index: 1, ..CsvTx::default()},
-            CsvTx{read_index: 2, ..CsvTx::default()},
-            CsvTx{action: Some(crate::portfolio::TxAction::Sfla), read_index: 3, ..CsvTx::default()},
-            CsvTx{action: Some(crate::portfolio::TxAction::Sfla), read_index: 4, ..CsvTx::default()},
+            CsvTx {
+                read_index: 1,
+                ..CsvTx::default()
+            },
+            CsvTx {
+                read_index: 2,
+                ..CsvTx::default()
+            },
+            CsvTx {
+                action: Some(crate::portfolio::TxAction::Sfla),
+                read_index: 3,
+                ..CsvTx::default()
+            },
+            CsvTx {
+                action: Some(crate::portfolio::TxAction::Sfla),
+                read_index: 4,
+                ..CsvTx::default()
+            },
         ];
 
         assert_vecr_eq(&txs, &exp_txs);
@@ -578,23 +714,42 @@ mod tests {
             let mut d_reader = CsvFileBuilder::with_all_modern_headers()
                 .single_csv_reader(&vec![row]);
             parse_tx_csv(
-                &mut d_reader, 0, &TxCsvParseOptions::default(),
-                &mut WriteHandle::empty_write_handle()).unwrap_err()
+                &mut d_reader,
+                0,
+                &TxCsvParseOptions::default(),
+                &mut WriteHandle::empty_write_handle(),
+            )
+            .unwrap_err()
         };
 
         // Illegal date
-        let err = parse_fatal_row(Row{td:"2020-20-20", ..Default::default()});
+        let err = parse_fatal_row(Row {
+            td: "2020-20-20",
+            ..Default::default()
+        });
         assert_eq!(err, "Error on row 2 of foo0.csv: Failed to parse trade date \"2020-20-20\": the 'month' component could not be parsed");
-        let err = parse_fatal_row(Row{sd:"2020-20-20", ..Default::default()});
+        let err = parse_fatal_row(Row {
+            sd: "2020-20-20",
+            ..Default::default()
+        });
         assert_eq!(err, "Error on row 2 of foo0.csv: Failed to parse settlement date \"2020-20-20\": the 'month' component could not be parsed");
         // Invalid action
-        let err = parse_fatal_row(Row{a:"bla", ..Default::default()});
+        let err = parse_fatal_row(Row {
+            a: "bla",
+            ..Default::default()
+        });
         assert_eq!(err, "Error on row 2 of foo0.csv: Invalid action 'bla'");
         // Invalid decimal value
-        let err = parse_fatal_row(Row{sh:"bla", ..Default::default()});
+        let err = parse_fatal_row(Row {
+            sh: "bla",
+            ..Default::default()
+        });
         assert_eq!(err, "Error on row 2 of foo0.csv: Failed to parse number for shares ('bla'): Invalid decimal: unknown character");
         // Invalid SFL
-        let err = parse_fatal_row(Row{sfl:"1", ..Default::default()});
+        let err = parse_fatal_row(Row {
+            sfl: "1",
+            ..Default::default()
+        });
         assert_eq!(err, "Error on row 2 of foo0.csv: Invalid superficial loss 1: Was positive value");
     }
 
@@ -613,8 +768,12 @@ mod tests {
 			    "CC,2016-01-08,2016-01-10,SfLA,2,1.3,0,CAD,,CAD,,,B,M5",
             ]);
         let parsed_txs = parse_tx_csv(
-            &mut d_reader, 0, &TxCsvParseOptions::default(),
-            &mut WriteHandle::empty_write_handle()).unwrap();
+            &mut d_reader,
+            0,
+            &TxCsvParseOptions::default(),
+            &mut WriteHandle::empty_write_handle(),
+        )
+        .unwrap();
 
         let mut str_writer = StringBuffer::new();
         super::write_txs_to_csv(&parsed_txs, &mut str_writer).unwrap();

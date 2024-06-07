@@ -12,7 +12,7 @@ pub struct CorsEnabledHttpRequester {}
 
 impl CorsEnabledHttpRequester {
     pub fn new_boxed() -> Box<Self> {
-        Box::new(Self{})
+        Box::new(Self {})
     }
 }
 
@@ -27,7 +27,8 @@ impl HttpRequester for CorsEnabledHttpRequester {
             .map_err(|e| format!("Error creating request for {url}: {:?}", e))?;
 
         let window = web_sys::window().unwrap();
-        let resp_value = JsFuture::from(window.fetch_with_request(&request)).await
+        let resp_value = JsFuture::from(window.fetch_with_request(&request))
+            .await
             .map_err(|e| format!("Fetch error for {url}: {:?}", e))?;
 
         // `resp_value` is a `Response` object.
@@ -37,7 +38,8 @@ impl HttpRequester for CorsEnabledHttpRequester {
         // Convert the response to text
         let text_promise = resp.text().unwrap();
         let text_js_future = JsFuture::from(text_promise);
-        let text_js_value = text_js_future.await
+        let text_js_value = text_js_future
+            .await
             .map_err(|e| format!("Error getting body text for {url}: {:?}", e))?;
 
         // Convert JsValue to String

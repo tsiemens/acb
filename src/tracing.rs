@@ -11,9 +11,9 @@ use tracing_subscriber::{fmt, EnvFilter, FmtSubscriber};
 // Global at info, fx as debug:         info,acb::fx=debug
 pub fn setup_tracing() {
     // Define the time format. 5 digits of precision is apparently good enough.
-    let time_format = format_description::parse(
-        "[hour]:[minute]:[second].[subsecond digits:5]")
-        .expect("Time format description is invalid");
+    let time_format =
+        format_description::parse("[hour]:[minute]:[second].[subsecond digits:5]")
+            .expect("Time format description is invalid");
 
     let time_offset = crate::util::date::local_utc_offset().unwrap();
     let timer = fmt::time::OffsetTime::new(time_offset, time_format);
@@ -23,7 +23,7 @@ pub fn setup_tracing() {
     let subscriber = FmtSubscriber::builder()
         .with_writer(std::io::stderr)
         .with_env_filter(EnvFilter::from_env("TRACE"))
-        .with_timer(timer)  // Use custom time formatting
+        .with_timer(timer) // Use custom time formatting
         .finish();
 
     // Set the subscriber as the default

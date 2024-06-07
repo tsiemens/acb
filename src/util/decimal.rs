@@ -4,7 +4,7 @@ use rust_decimal::Decimal;
 
 pub fn min(ds: &[Decimal]) -> Decimal {
     let mut m = ds[0];
-    for d in &ds[1 ..] {
+    for d in &ds[1..] {
         if *d < m {
             m = *d;
         }
@@ -80,20 +80,23 @@ pub mod constraint {
 // we are using it in the impl).
 pub struct ConstrainedDecimal<CONSTRAINT>(Decimal, PhantomData<CONSTRAINT>);
 
-impl <CONSTRAINT: DecConstraint> TryFrom<Decimal> for ConstrainedDecimal<CONSTRAINT> {
+impl<CONSTRAINT: DecConstraint> TryFrom<Decimal> for ConstrainedDecimal<CONSTRAINT> {
     type Error = String;
 
     fn try_from(d: Decimal) -> Result<Self, Self::Error> {
         if CONSTRAINT::is_ok(&d) {
             Ok(Self(d, PhantomData))
         } else {
-            Err(format!("{} does not match constraints of {}",
-                        d, std::any::type_name::<CONSTRAINT>()))
+            Err(format!(
+                "{} does not match constraints of {}",
+                d,
+                std::any::type_name::<CONSTRAINT>()
+            ))
         }
     }
 }
 
-impl <CONSTRAINT: DecConstraint> Deref for ConstrainedDecimal<CONSTRAINT> {
+impl<CONSTRAINT: DecConstraint> Deref for ConstrainedDecimal<CONSTRAINT> {
     type Target = Decimal;
 
     fn deref(&self) -> &Self::Target {
@@ -101,35 +104,33 @@ impl <CONSTRAINT: DecConstraint> Deref for ConstrainedDecimal<CONSTRAINT> {
     }
 }
 
-impl <CONSTRAINT: DecConstraint> Display for ConstrainedDecimal<CONSTRAINT> {
+impl<CONSTRAINT: DecConstraint> Display for ConstrainedDecimal<CONSTRAINT> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         self.0.fmt(f)
     }
 }
 
-impl <CONSTRAINT: DecConstraint> std::fmt::Debug for ConstrainedDecimal<CONSTRAINT> {
+impl<CONSTRAINT: DecConstraint> std::fmt::Debug for ConstrainedDecimal<CONSTRAINT> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         std::fmt::Debug::fmt(&self.0, f)
     }
 }
 
-impl <CONSTRAINT: DecConstraint> PartialEq for ConstrainedDecimal<CONSTRAINT> {
+impl<CONSTRAINT: DecConstraint> PartialEq for ConstrainedDecimal<CONSTRAINT> {
     fn eq(&self, other: &Self) -> bool {
         self.0 == other.0
     }
 }
 
-impl <CONSTRAINT: DecConstraint> Eq for ConstrainedDecimal<CONSTRAINT> {
-}
+impl<CONSTRAINT: DecConstraint> Eq for ConstrainedDecimal<CONSTRAINT> {}
 
-impl <CONSTRAINT: DecConstraint> Clone for ConstrainedDecimal<CONSTRAINT> {
+impl<CONSTRAINT: DecConstraint> Clone for ConstrainedDecimal<CONSTRAINT> {
     fn clone(&self) -> Self {
         Self(self.0.clone(), self.1.clone())
     }
 }
 
-impl <CONSTRAINT: DecConstraint> Copy for ConstrainedDecimal<CONSTRAINT> {
-}
+impl<CONSTRAINT: DecConstraint> Copy for ConstrainedDecimal<CONSTRAINT> {}
 
 impl std::ops::Add for ConstrainedDecimal<GreaterEqualZero> {
     type Output = Self;
@@ -154,7 +155,9 @@ impl std::ops::Mul for ConstrainedDecimal<GreaterEqualZero> {
     }
 }
 
-impl From<ConstrainedDecimal<constraint::Pos>> for ConstrainedDecimal<GreaterEqualZero> {
+impl From<ConstrainedDecimal<constraint::Pos>>
+    for ConstrainedDecimal<GreaterEqualZero>
+{
     fn from(value: ConstrainedDecimal<constraint::Pos>) -> Self {
         GreaterEqualZeroDecimal::try_from(*value).unwrap()
     }
@@ -192,7 +195,9 @@ impl ConstrainedDecimal<LessEqualZero> {
     }
 }
 
-impl From<ConstrainedDecimal<constraint::Neg>> for ConstrainedDecimal<LessEqualZero> {
+impl From<ConstrainedDecimal<constraint::Neg>>
+    for ConstrainedDecimal<LessEqualZero>
+{
     fn from(value: ConstrainedDecimal<constraint::Neg>) -> Self {
         LessEqualZeroDecimal::try_from(*value).unwrap()
     }
@@ -227,10 +232,11 @@ impl ConstrainedDecimal<Neg> {
     }
 }
 
-pub fn constrained_min<CONSTRAINT: DecConstraint>(ds: &[ConstrainedDecimal<CONSTRAINT>])
-    -> ConstrainedDecimal<CONSTRAINT> {
+pub fn constrained_min<CONSTRAINT: DecConstraint>(
+    ds: &[ConstrainedDecimal<CONSTRAINT>],
+) -> ConstrainedDecimal<CONSTRAINT> {
     let mut m = ds[0];
-    for d in &ds[1 ..] {
+    for d in &ds[1..] {
         if **d < *m {
             m = *d;
         }
@@ -281,7 +287,9 @@ mod tests {
     use rust_decimal::Decimal;
     use rust_decimal_macros::dec;
 
-    use crate::util::decimal::{dollar_precision_str, is_negative, is_positive, ConstrainedDecimal};
+    use crate::util::decimal::{
+        dollar_precision_str, is_negative, is_positive, ConstrainedDecimal,
+    };
 
     use super::{constraint, DecConstraint};
 
@@ -325,28 +333,36 @@ mod tests {
     #[test]
     fn test_constrained_decimal() {
         _test_constrained_decimal::<constraint::Neg>(
-            vec![dec!(-1)], vec![dec!(-0), dec!(0), dec!(1)]);
+            vec![dec!(-1)],
+            vec![dec!(-0), dec!(0), dec!(1)],
+        );
 
         _test_constrained_decimal::<constraint::LessEqualZero>(
-            vec![dec!(-1), dec!(0), dec!(-0)], vec![dec!(1)]);
+            vec![dec!(-1), dec!(0), dec!(-0)],
+            vec![dec!(1)],
+        );
 
         _test_constrained_decimal::<constraint::GreaterEqualZero>(
-            vec![dec!(1), dec!(0), dec!(-0)], vec![dec!(-1)]);
+            vec![dec!(1), dec!(0), dec!(-0)],
+            vec![dec!(-1)],
+        );
 
         _test_constrained_decimal::<constraint::Pos>(
-            vec![dec!(1)], vec![dec!(-0), dec!(0), dec!(-1)]);
+            vec![dec!(1)],
+            vec![dec!(-0), dec!(0), dec!(-1)],
+        );
     }
 
     fn _test_constrained_decimal<C: DecConstraint>(
-        dec_vals: Vec<Decimal>, invalid_dec_vals: Vec<Decimal>) {
-
+        dec_vals: Vec<Decimal>,
+        invalid_dec_vals: Vec<Decimal>,
+    ) {
         for inv in invalid_dec_vals {
-            let _= ConstrainedDecimal::<C>::try_from(inv).unwrap_err();
+            let _ = ConstrainedDecimal::<C>::try_from(inv).unwrap_err();
         }
 
         for dec_val in dec_vals {
-            let valid_val =
-                ConstrainedDecimal::<C>::try_from(dec_val).unwrap();
+            let valid_val = ConstrainedDecimal::<C>::try_from(dec_val).unwrap();
 
             assert_eq!(*valid_val, dec_val);
             assert_eq!(valid_val.to_string(), dec_val.to_string());

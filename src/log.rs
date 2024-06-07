@@ -19,7 +19,9 @@ pub fn set_verbose(verb: bool) {
     *var = verb;
 }
 
-pub fn get_verbose() -> bool { VERBOSE.lock().unwrap().clone() }
+pub fn get_verbose() -> bool {
+    VERBOSE.lock().unwrap().clone()
+}
 
 // tt - TokenTree
 // ($($arg:tt)*) Variable number of tts
@@ -55,8 +57,7 @@ mod tests {
 
     #[test]
     fn test_write_errln() {
-        let (mut handle, buff)
-            = WriteHandle::string_buff_write_handle();
+        let (mut handle, buff) = WriteHandle::string_buff_write_handle();
         write_errln!(handle, "Another {}", "error");
         assert_eq!(buff.borrow().as_str(), "Another error\n");
     }

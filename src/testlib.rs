@@ -2,9 +2,13 @@ use regex::Regex;
 use std::{fmt::Debug, iter::zip};
 
 pub fn assert_re(pattern: &str, haystack: &str) {
-	let re = Regex::new(pattern).unwrap();
-    assert!(re.is_match(haystack),
-            "{:?} did not match {:?}", haystack, re);
+    let re = Regex::new(pattern).unwrap();
+    assert!(
+        re.is_match(haystack),
+        "{:?} did not match {:?}",
+        haystack,
+        re
+    );
 }
 
 // pub fn eprint_vec<T: Debug>(left: &Vec<T>) {
@@ -47,12 +51,16 @@ pub fn assert_vec_eq<T: PartialEq + Debug>(left: Vec<T>, right: Vec<T>) {
 
 pub fn assert_vecr_eq<T: PartialEq + Debug>(left: &Vec<T>, right: &Vec<T>) {
     if left == right {
-        return
+        return;
     }
     eprint_vecs(&left, &right);
 
     if left.len() != right.len() {
-        eprintln!("size of left ({}) != size of right ({})", left.len(), right.len());
+        eprintln!(
+            "size of left ({}) != size of right ({})",
+            left.len(),
+            right.len()
+        );
         panic!();
     }
     let mut i = 0;

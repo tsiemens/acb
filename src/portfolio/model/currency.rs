@@ -71,10 +71,15 @@ pub struct CurrencyAndExchangeRate {
 impl CurrencyAndExchangeRate {
     pub fn try_new(c: Currency, r: PosDecimal) -> Result<Self, String> {
         if c == Currency::default() && *r != dec!(1.0) {
-            return Err(format!("Default currency (CAD) exchange rate was not 1 (was {})",
-                               r));
+            return Err(format!(
+                "Default currency (CAD) exchange rate was not 1 (was {})",
+                r
+            ));
         }
-        Ok(Self{currency: c, exchange_rate: r})
+        Ok(Self {
+            currency: c,
+            exchange_rate: r,
+        })
     }
 
     pub fn rq_new(c: Currency, r: PosDecimal) -> Self {
@@ -99,7 +104,10 @@ impl CurrencyAndExchangeRate {
 mod tests {
     use rust_decimal_macros::dec;
 
-    use crate::{pdec, portfolio::{Currency, CurrencyAndExchangeRate}};
+    use crate::{
+        pdec,
+        portfolio::{Currency, CurrencyAndExchangeRate},
+    };
 
     #[test]
     fn test_currency() {
@@ -119,8 +127,14 @@ mod tests {
         assert_eq!(cr.currency, Currency::usd());
         assert_eq!(cr.exchange_rate, pdec!(1.3));
 
-        assert_eq!(CurrencyAndExchangeRate::default(), CurrencyAndExchangeRate::cad());
-        assert_eq!(CurrencyAndExchangeRate::cad(), CurrencyAndExchangeRate::rq_new(Currency::cad(), pdec!(1.0)));
+        assert_eq!(
+            CurrencyAndExchangeRate::default(),
+            CurrencyAndExchangeRate::cad()
+        );
+        assert_eq!(
+            CurrencyAndExchangeRate::cad(),
+            CurrencyAndExchangeRate::rq_new(Currency::cad(), pdec!(1.0))
+        );
     }
 
     #[test]

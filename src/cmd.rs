@@ -1,5 +1,5 @@
-use std::{path::PathBuf, process::ExitCode};
 use std::io::Write;
+use std::{path::PathBuf, process::ExitCode};
 
 use clap::Parser;
 
@@ -8,12 +8,18 @@ use crate::fx::io::{CsvRatesCache, JsonRemoteRateLoader, RateLoader};
 use crate::portfolio::io::tx_csv::TxCsvParseOptions;
 use crate::util::date::{parse_dyn_date_format, parse_standard_date};
 use crate::util::http::standalone::StandaloneAppRequester;
-use crate::{app::input_parse::parse_initial_status, portfolio::csv_common::CsvCol, util::rw::{DescribedReader, WriteHandle}, write_errln};
+use crate::{
+    app::input_parse::parse_initial_status,
+    portfolio::csv_common::CsvCol,
+    util::rw::{DescribedReader, WriteHandle},
+    write_errln,
+};
 
 const ABOUT: &str = "Adjusted cost basis (ACB) calculation tool";
 
 fn get_long_about() -> String {
-    format!("\
+    format!(
+        "\
 A cli tool which can be used to perform Adjusted cost basis (ACB)
 calculations on RSU and stock transactions.
 
@@ -29,7 +35,8 @@ Non-essential columns like exchange rates and currency columns are optional.
 
 Exchange rates are always provided to be multiplied with the given amount to produce
 the equivalent value in the default (local) currency.",
-        CsvCol::export_order_non_deprecated_cols().join(", "))
+        CsvCol::export_order_non_deprecated_cols().join(", ")
+    )
 }
 
 #[derive(Parser, Debug)]
@@ -99,31 +106,30 @@ pub fn command_main() -> Result<(), ExitCode> {
         Err(e) => {
             write_errln!(err_printer, "Error parsing --symbol-base: {e}");
             return Err(ExitCode::FAILURE);
-        },
+        }
     };
 
-    let mut csv_readers = Vec::<DescribedReader>::with_capacity(args.csv_files.len());
+    let mut csv_readers =
+        Vec::<DescribedReader>::with_capacity(args.csv_files.len());
     for csv_name in args.csv_files {
         let reader = DescribedReader::from_file_path(PathBuf::from(csv_name));
         csv_readers.push(reader);
     }
 
-    let csv_parse_options = TxCsvParseOptions{
+    let csv_parse_options = TxCsvParseOptions {
         date_format: match args.date_fmt {
-            Some(fmt) => {
-                match parse_dyn_date_format(fmt.as_str()) {
-                    Ok(f) => Some(f),
-                    Err(e) => {
-                        write_errln!(err_printer, "Error parsing --date-fmt: {e}");
-                        return Err(ExitCode::FAILURE);
-                    },
+            Some(fmt) => match parse_dyn_date_format(fmt.as_str()) {
+                Ok(f) => Some(f),
+                Err(e) => {
+                    write_errln!(err_printer, "Error parsing --date-fmt: {e}");
+                    return Err(ExitCode::FAILURE);
                 }
             },
             None => None,
         },
     };
 
-    let mut options = crate::app::Options{
+    let mut options = crate::app::Options {
         render_full_dollar_values: args.print_full_values,
         summary_mode_latest_date: None, // set below
         split_annual_summary_gains: args.summarize_annual_gains,
@@ -133,31 +139,40 @@ pub fn command_main() -> Result<(), ExitCode> {
     };
 
     if let Some(sum_before_date_str) = args.summarize_before {
-        options.summary_mode_latest_date = match parse_standard_date(&sum_before_date_str) {
-            Ok(d) => Some(d),
-            Err(e) => {
-                write_errln!(err_printer, "Error: {e}");
-                return Err(ExitCode::FAILURE);
-            },
-        };
+        options.summary_mode_latest_date =
+            match parse_standard_date(&sum_before_date_str) {
+                Ok(d) => Some(d),
+                Err(e) => {
+                    write_errln!(err_printer, "Error: {e}");
+                    return Err(ExitCode::FAILURE);
+                }
+            };
     }
 
     let home_dir = match crate::util::os::home_dir_path() {
         Ok(d) => d,
         Err(e) => {
-            write_errln!(err_printer, "Unable to determine user home directory: {e}");
+            write_errln!(
+                err_printer,
+                "Unable to determine user home directory: {e}"
+            );
             return Err(ExitCode::FAILURE);
-        },
+        }
     };
 
     let rate_loader = RateLoader::new(
         args.force_download,
         Box::new(CsvRatesCache::new(home_dir, err_printer.clone())),
         JsonRemoteRateLoader::new_boxed(StandaloneAppRequester::new_boxed()),
-        err_printer.clone());
+        err_printer.clone(),
+    );
 
     async_std::task::block_on(run_acb_app_to_console(
-        csv_readers, all_init_status, options, rate_loader,
-        err_printer))
+        csv_readers,
+        all_init_status,
+        options,
+        rate_loader,
+        err_printer,
+    ))
     .map_err(|_| ExitCode::FAILURE)
 }

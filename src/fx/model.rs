@@ -11,7 +11,10 @@ pub struct DailyRate {
 
 impl DailyRate {
     pub fn new(date: Date, foreign_to_local_rate: Decimal) -> DailyRate {
-        DailyRate{ date: date, foreign_to_local_rate: foreign_to_local_rate }
+        DailyRate {
+            date: date,
+            foreign_to_local_rate: foreign_to_local_rate,
+        }
     }
 }
 
@@ -22,7 +25,6 @@ impl Display for DailyRate {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use rust_decimal_macros::dec;
@@ -32,7 +34,7 @@ mod tests {
 
     #[test]
     fn test_rate_string() {
-        let rate = DailyRate{
+        let rate = DailyRate {
             date: Date::from_calendar_date(2024, Month::January, 23).unwrap(),
             foreign_to_local_rate: dec!(1.1),
         };

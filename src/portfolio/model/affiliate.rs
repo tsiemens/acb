@@ -1,6 +1,9 @@
-use std::{collections::HashMap, sync::{Arc, Mutex, MutexGuard}};
 use lazy_static::lazy_static;
 use regex::Regex;
+use std::{
+    collections::HashMap,
+    sync::{Arc, Mutex, MutexGuard},
+};
 
 #[derive(PartialEq, Eq, Debug)]
 struct AffiliateData {
@@ -21,8 +24,8 @@ impl AffiliateData {
         if registered {
             pretty_name = REGISTERED_RE.replace_all(&pretty_name, " ").to_string();
         }
-        pretty_name = EXTRA_SPACE_RE.replace_all(&pretty_name, " ")
-            .trim().to_string();
+        pretty_name =
+            EXTRA_SPACE_RE.replace_all(&pretty_name, " ").trim().to_string();
         if pretty_name.is_empty() {
             pretty_name = "Default".to_string();
         }
@@ -32,7 +35,11 @@ impl AffiliateData {
             pretty_name += " (R)";
         }
 
-        AffiliateData{id: id, name: pretty_name, registered: registered}
+        AffiliateData {
+            id: id,
+            name: pretty_name,
+            registered: registered,
+        }
     }
 }
 
@@ -77,17 +84,19 @@ impl std::hash::Hash for Affiliate {
 }
 
 pub struct AffiliateDedupTable {
-    id_to_af: HashMap<String, Affiliate>
+    id_to_af: HashMap<String, Affiliate>,
 }
 
 lazy_static! {
-    static ref GLOBAL_AF_DEDUP_TABLE: Mutex<AffiliateDedupTable> = Mutex::new(
-        AffiliateDedupTable::new());
+    static ref GLOBAL_AF_DEDUP_TABLE: Mutex<AffiliateDedupTable> =
+        Mutex::new(AffiliateDedupTable::new());
 }
 
 impl AffiliateDedupTable {
     pub fn new() -> AffiliateDedupTable {
-        AffiliateDedupTable{id_to_af: HashMap::new()}
+        AffiliateDedupTable {
+            id_to_af: HashMap::new(),
+        }
     }
 
     pub fn global_table() -> MutexGuard<'static, AffiliateDedupTable> {
@@ -118,15 +127,14 @@ impl AffiliateDedupTable {
 
 #[cfg(test)]
 mod tests {
-    use super::AffiliateData;
     use super::Affiliate;
+    use super::AffiliateData;
     use super::AffiliateDedupTable;
 
     #[test]
     fn test_affiliate() {
-        let new = |s: &str| -> Affiliate {
-            Affiliate::new(AffiliateData::from_strep(s))
-        };
+        let new =
+            |s: &str| -> Affiliate { Affiliate::new(AffiliateData::from_strep(s)) };
 
         let verify = |name: &str, exp_id: &str, exp_name: &str, exp_reg: bool| {
             let af = new(name);

@@ -2,7 +2,10 @@ use std::collections::{HashMap, HashSet};
 
 use time::Date;
 
-use crate::{portfolio::{Security, TxDelta}, util::decimal::GreaterEqualZeroDecimal};
+use crate::{
+    portfolio::{Security, TxDelta},
+    util::decimal::GreaterEqualZeroDecimal,
+};
 
 /// MaxSingleDayCosts helps track the max cost (ACB) of every held/active security
 /// on a particular day, as well as the portfolio's total ACB across all
@@ -26,17 +29,26 @@ impl MaxSingleDayCosts {
         }
     }
 
-    pub fn observe_new_cost(&mut self, sec: &Security, new_cost: GreaterEqualZeroDecimal) {
-        let old_day_max_cost = self.sec_max_cost_for_day.get(sec)
+    pub fn observe_new_cost(
+        &mut self,
+        sec: &Security,
+        new_cost: GreaterEqualZeroDecimal,
+    ) {
+        let old_day_max_cost = self
+            .sec_max_cost_for_day
+            .get(sec)
             .map(|v| *v)
             .unwrap_or(GreaterEqualZeroDecimal::zero());
-        let cur_day_max_cost = GreaterEqualZeroDecimal::try_from(
-            old_day_max_cost.max(*new_cost)).unwrap();
-            self.sec_max_cost_for_day.insert(sec.clone(), cur_day_max_cost);
+        let cur_day_max_cost =
+            GreaterEqualZeroDecimal::try_from(old_day_max_cost.max(*new_cost))
+                .unwrap();
+        self.sec_max_cost_for_day.insert(sec.clone(), cur_day_max_cost);
 
         // This should never fail, if everything is sane.
         self.total = GreaterEqualZeroDecimal::try_from(
-            *self.total - *old_day_max_cost + *cur_day_max_cost).unwrap();
+            *self.total - *old_day_max_cost + *cur_day_max_cost,
+        )
+        .unwrap();
     }
 }
 
@@ -58,7 +70,8 @@ fn calc_max_day_cost_per_sec(all_deltas: &Vec<TxDelta>) -> MaxDayCosts {
     let mut max_costs_by_day = HashMap::<Date, MaxSingleDayCosts>::new();
 
     // The earliest pre-status cost for all securities
-    let mut day_zero_sec_costs = HashMap::<Security, (Date, GreaterEqualZeroDecimal)>::new();
+    let mut day_zero_sec_costs =
+        HashMap::<Security, (Date, GreaterEqualZeroDecimal)>::new();
 
     // For each MomentaryCosts::sec_cost, we need to include every security
     let mut security_set = HashSet::<Security>::new();
@@ -78,7 +91,7 @@ fn calc_max_day_cost_per_sec(all_deltas: &Vec<TxDelta>) -> MaxDayCosts {
                 ignored_delta_descs.push(format!(
                     "{date_from_delta} ({sec}) ignored transaction from registered affiliate"));
                 continue;
-            },
+            }
         };
         if !d.tx.affiliate.is_default() {
             let af_name = d.tx.affiliate.name();
@@ -90,14 +103,18 @@ fn calc_max_day_cost_per_sec(all_deltas: &Vec<TxDelta>) -> MaxDayCosts {
         security_set.insert(sec.clone());
 
         if !max_costs_by_day.contains_key(&date_from_delta) {
-            max_costs_by_day.insert(date_from_delta, MaxSingleDayCosts::new(date_from_delta));
+            max_costs_by_day
+                .insert(date_from_delta, MaxSingleDayCosts::new(date_from_delta));
         }
         let day_max_costs: &mut MaxSingleDayCosts =
             max_costs_by_day.get_mut(&date_from_delta).unwrap();
         day_max_costs.observe_new_cost(sec, total_acb);
 
         if !day_zero_sec_costs.contains_key(sec) {
-            day_zero_sec_costs.insert(sec.clone(), (date_from_delta, d.pre_status.total_acb.unwrap()));
+            day_zero_sec_costs.insert(
+                sec.clone(),
+                (date_from_delta, d.pre_status.total_acb.unwrap()),
+            );
         } else if day_zero_sec_costs.get(sec).unwrap().0 > date_from_delta {
             panic!("Deltas for {sec} were not sorted by settlement date");
         }
@@ -112,7 +129,9 @@ fn calc_max_day_cost_per_sec(all_deltas: &Vec<TxDelta>) -> MaxDayCosts {
     for day in sorted_days {
         let max_costs = max_costs_by_day.get_mut(&day).unwrap();
         for sec in &security_set {
-            let last_acb = *max_costs.sec_max_cost_for_day.get(sec)
+            let last_acb = *max_costs
+                .sec_max_cost_for_day
+                .get(sec)
                 .or_else(|| last_acbs.get(sec))
                 .unwrap_or_else(|| &day_zero_sec_costs.get(sec).unwrap().1);
 
@@ -123,7 +142,7 @@ fn calc_max_day_cost_per_sec(all_deltas: &Vec<TxDelta>) -> MaxDayCosts {
         }
     }
 
-    MaxDayCosts{
+    MaxDayCosts {
         max_costs_by_day,
         security_set,
         ignored_delta_descs,
@@ -140,24 +159,27 @@ fn calc_yearly_max_cost_day(max_day_costs: &MaxDayCosts) -> YearlyMaxCosts {
     for (day, day_cost) in &max_day_costs.max_costs_by_day {
         match max_cost_day_for_year.get(&day.year()) {
             Some(old_date) => {
-                let old_date_cost = max_day_costs.max_costs_by_day.get(old_date).unwrap();
+                let old_date_cost =
+                    max_day_costs.max_costs_by_day.get(old_date).unwrap();
                 if *old_date_cost.total < *day_cost.total {
                     max_cost_day_for_year.insert(day.year(), day.clone());
                 }
-            },
+            }
             None => {
                 max_cost_day_for_year.insert(day.year(), day.clone());
-            },
+            }
         }
     }
 
     let mut max_costs_for_year = HashMap::<i32, MaxSingleDayCosts>::new();
     for (year, date) in max_cost_day_for_year {
         max_costs_for_year.insert(
-            year, max_day_costs.max_costs_by_day.get(&date).unwrap().clone());
+            year,
+            max_day_costs.max_costs_by_day.get(&date).unwrap().clone(),
+        );
     }
 
-    YearlyMaxCosts{ max_costs_for_year }
+    YearlyMaxCosts { max_costs_for_year }
 }
 
 pub struct Costs {
@@ -225,13 +247,17 @@ pub fn calc_total_costs(all_deltas: &Vec<TxDelta>) -> Costs {
 
     let max_year_costs = calc_yearly_max_cost_day(&max_day_costs);
 
-    let mut sorted_days: Vec<Date> = max_day_costs.max_costs_by_day.keys().map(|d| *d).collect();
+    let mut sorted_days: Vec<Date> =
+        max_day_costs.max_costs_by_day.keys().map(|d| *d).collect();
     sorted_days.sort();
     let sorted_days = sorted_days; // finalize
 
-    let mut all_days_max_costs = Vec::<MaxSingleDayCosts>::with_capacity(max_day_costs.max_costs_by_day.len());
+    let mut all_days_max_costs = Vec::<MaxSingleDayCosts>::with_capacity(
+        max_day_costs.max_costs_by_day.len(),
+    );
     for day in sorted_days {
-        all_days_max_costs.push(max_day_costs.max_costs_by_day.remove(&day).unwrap());
+        all_days_max_costs
+            .push(max_day_costs.max_costs_by_day.remove(&day).unwrap());
     }
 
     Costs {
@@ -246,8 +272,5 @@ pub fn calc_total_costs(all_deltas: &Vec<TxDelta>) -> Costs {
 #[cfg(test)]
 mod tests {
     #[test]
-    fn test_calc_max_day_cost_per_sec() {
-
-
-    }
+    fn test_calc_max_day_cost_per_sec() {}
 }
