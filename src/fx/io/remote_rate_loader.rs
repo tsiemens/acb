@@ -379,10 +379,7 @@ mod tests {
         assert_eq!(r.non_fatal_errors, Vec::new() as Vec<String>);
         assert_eq!(
             r.rates,
-            vec![dr(
-                "2023-01-25",
-                invert(dec!(0.7655555555555555555555555555))
-            ),]
+            vec![dr("2023-01-25", invert(dec!(0.7655555555555555555555555555))),]
         );
 
         // Integer value

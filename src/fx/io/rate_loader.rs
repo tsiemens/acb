@@ -220,9 +220,7 @@ impl RateLoader {
             }
         }
 
-        self.get_remote_usd_cad_rates(year)
-            .await
-            .map(|r| make_date_to_rate_map(&r))
+        self.get_remote_usd_cad_rates(year).await.map(|r| make_date_to_rate_map(&r))
     }
 
     async fn get_remote_usd_cad_rates(
@@ -642,10 +640,7 @@ mod tests {
             .insert(2022, vec![dr(date_yd(2022, 0), dec!(1.0))]);
         remote_rates.borrow_mut().insert(
             2022,
-            vec![
-                dr(date_yd(2022, 0), dec!(1.0)),
-                dr(date_yd(2022, 1), dec!(1.1)),
-            ],
+            vec![dr(date_yd(2022, 0), dec!(1.0)), dr(date_yd(2022, 1), dec!(1.1))],
         );
         crate::util::date::set_todays_date_for_test(date_yd(2022, 1));
         let geucr_rate = rate_loader
@@ -666,10 +661,7 @@ mod tests {
             .insert(2022, vec![dr(date_yd(2022, 0), dec!(1.0))]);
         remote_rates.borrow_mut().insert(
             2022,
-            vec![
-                dr(date_yd(2022, 0), dec!(1.0)),
-                dr(date_yd(2022, 1), dec!(1.1)),
-            ],
+            vec![dr(date_yd(2022, 0), dec!(1.0)), dr(date_yd(2022, 1), dec!(1.1))],
         );
         crate::util::date::set_todays_date_for_test(date_yd(2022, 4));
         let geucr_rate = rate_loader
@@ -690,10 +682,7 @@ mod tests {
         // after we already invalidated and refreshed the cache with this Loader instance.
         remote_rates.borrow_mut().insert(
             2022,
-            vec![
-                dr(date_yd(2022, 0), dec!(99.0)),
-                dr(date_yd(2022, 1), dec!(99.1)),
-            ],
+            vec![dr(date_yd(2022, 0), dec!(99.0)), dr(date_yd(2022, 1), dec!(99.1))],
         );
         // Can't use today unless it's been published or specified.
         let _ = rate_loader
