@@ -38,9 +38,8 @@ fn test_get_effective_usd_cad_rate_with_csv_cache() {
         .insert(2022, vec![DailyRate::new(doy_date(2022, 1), dec!(1.2))]);
 
     // fetch mocked remote values and write to cache
-    let rate = rate_loader
-        .blocking_get_effective_usd_cad_rate(doy_date(2022, 1))
-        .unwrap();
+    let rate =
+        rate_loader.blocking_get_effective_usd_cad_rate(doy_date(2022, 1)).unwrap();
     assert_eq!(rate, DailyRate::new(doy_date(2022, 1), dec!(1.2)));
 
     // remove remote values to ensure cache is used

@@ -38,16 +38,12 @@ impl AcbWriter for CsvWriter {
 
         let mut csv_w = csv::WriterBuilder::new().has_headers(true).from_writer(fp);
 
-        csv_w
-            .write_record(&table_model.header)
-            .map_err(|e| e.to_string())?;
+        csv_w.write_record(&table_model.header).map_err(|e| e.to_string())?;
         for row in &table_model.rows {
             csv_w.write_record(row).map_err(|e| e.to_string())?;
         }
         if table_model.footer.len() > 0 {
-            csv_w
-                .write_record(&table_model.footer)
-                .map_err(|e| e.to_string())?;
+            csv_w.write_record(&table_model.footer).map_err(|e| e.to_string())?;
         }
 
         let n_cols = table_model.header.len();
