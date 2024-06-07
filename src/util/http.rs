@@ -21,7 +21,7 @@ pub trait HttpRequester {
     async fn get(&self, url: &str) -> Result<String, SError>;
 }
 
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(all(not(target_arch = "wasm32"), feature = "http_standalone"))]
 pub mod standalone {
     use crate::util::basic::SError;
 
@@ -48,10 +48,8 @@ pub mod standalone {
             //
             // Though realistically, we could also use reqwest::blocking, since
             // this only _has_ to be actually async for wasm, which is using web-sys.
-            let body_text = surf::get(url)
-                .recv_string()
-                .await
-                .map_err(|e| format!("{}", e))?;
+            let body_text =
+                surf::get(url).recv_string().await.map_err(|e| format!("{}", e))?;
             Ok(body_text)
         }
     }

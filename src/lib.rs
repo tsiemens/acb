@@ -5,7 +5,7 @@ pub mod portfolio;
 pub mod tracing;
 pub mod util;
 
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(feature = "cliapp")]
 pub mod cmd;
 
 extern crate lazy_static;
