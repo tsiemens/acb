@@ -8,7 +8,7 @@ pub struct StringBuffer {
 
 impl StringBuffer {
     pub fn new() -> StringBuffer {
-        StringBuffer{s: String::new()}
+        StringBuffer { s: String::new() }
     }
 
     pub fn as_str(&self) -> &str {
@@ -30,9 +30,7 @@ impl StringBuffer {
 impl io::Write for StringBuffer {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         let str_rep = std::str::from_utf8(buf)
-            .map_err(|e| {
-                io::Error::new(io::ErrorKind::InvalidData, e)
-            })?;
+            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
         let res = self.s.write_str(str_rep);
         match res {
             Ok(_) => Ok(buf.len()),
@@ -50,13 +48,16 @@ pub struct StrReader<'a> {
     cursor: usize,
 }
 
-impl <'a> From<&'a str> for StrReader<'a> {
+impl<'a> From<&'a str> for StrReader<'a> {
     fn from(value: &'a str) -> Self {
-        StrReader{ s: value, cursor: 0 }
+        StrReader {
+            s: value,
+            cursor: 0,
+        }
     }
 }
 
-impl <'a> io::Read for StrReader<'a> {
+impl<'a> io::Read for StrReader<'a> {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         let bytes = self.s.as_bytes();
         let len = bytes.len();
@@ -73,7 +74,6 @@ impl <'a> io::Read for StrReader<'a> {
     }
 }
 
-
 // For convenience, so we can pass around a shared stream writer.
 //
 // One use is to capture errors of interest to users, so they can
@@ -86,35 +86,32 @@ pub struct WriteHandle {
 
 impl WriteHandle {
     pub fn stdout_write_handle() -> WriteHandle {
-        WriteHandle{
-            w: RcRefCellT::new(io::stdout())
+        WriteHandle {
+            w: RcRefCellT::new(io::stdout()),
         }
     }
 
     pub fn stderr_write_handle() -> WriteHandle {
-        WriteHandle{
-            w: RcRefCellT::new(io::stderr())
+        WriteHandle {
+            w: RcRefCellT::new(io::stderr()),
         }
     }
 
     pub fn string_buff_write_handle() -> (WriteHandle, RcRefCell<StringBuffer>) {
-        let buffer =
-            RcRefCellT::new(StringBuffer::new());
-        let h = WriteHandle{
-            w: buffer.clone()
-        };
+        let buffer = RcRefCellT::new(StringBuffer::new());
+        let h = WriteHandle { w: buffer.clone() };
         (h, buffer)
     }
 
     pub fn file_write_handle(f: File) -> WriteHandle {
-        WriteHandle{
-            w: RcRefCellT::new(f)
+        WriteHandle {
+            w: RcRefCellT::new(f),
         }
     }
 
     pub fn empty_write_handle() -> WriteHandle {
-        WriteHandle{
-            w: RcRefCellT::new(io::empty())
+        WriteHandle {
+            w: RcRefCellT::new(io::empty()),
         }
     }
 }
@@ -125,7 +122,11 @@ impl io::Write for WriteHandle {
         // or use a string buffer.
         // The test framework cannot capture direct writes to stdout or stderr,
         // only writes through print/println/eprintln.
-        tracing::info!("WriteHandle::write {}", { let mut b = StringBuffer::new(); let _ = b.write(buf); b }.as_str() );
+        #[rustfmt::skip]
+        tracing::info!(
+            "WriteHandle::write {}",
+            { let mut b = StringBuffer::new(); let _ = b.write(buf); b }.as_str()
+        );
         self.w.borrow_mut().write(buf)
     }
 
@@ -155,22 +156,20 @@ impl DescribedReader {
     pub fn desc(&self) -> &str {
         match self {
             DescribedReader::String((name, _)) => name,
-            DescribedReader::FilePath(path) =>
-                path.to_str().unwrap_or("<unknown path>"),
+            DescribedReader::FilePath(path) => {
+                path.to_str().unwrap_or("<unknown path>")
+            }
         }
     }
 
-    pub fn reader<'a>(&'a self) -> Result<Box<dyn io::Read + 'a>,
-                                          std::io::Error> {
+    pub fn reader<'a>(&'a self) -> Result<Box<dyn io::Read + 'a>, std::io::Error> {
         match self {
             DescribedReader::String((_, text)) => {
                 Ok(Box::new(StrReader::from(text.as_str())))
-            },
-            DescribedReader::FilePath(path) => {
-                match std::fs::File::open(path) {
-                    Ok(x) => Ok(Box::new(x)),
-                    Err(e) => Err(e),
-                }
+            }
+            DescribedReader::FilePath(path) => match std::fs::File::open(path) {
+                Ok(x) => Ok(Box::new(x)),
+                Err(e) => Err(e),
             },
         }
     }
@@ -192,8 +191,7 @@ mod tests {
 
     #[test]
     fn test_write_handle() {
-        let (mut handle, buff)
-            = WriteHandle::string_buff_write_handle();
+        let (mut handle, buff) = WriteHandle::string_buff_write_handle();
         let _ = write!(handle, "Some {}", "text");
         let _ = writeln!(handle, " 1");
         assert_eq!(buff.borrow().as_str(), "Some text 1\n");

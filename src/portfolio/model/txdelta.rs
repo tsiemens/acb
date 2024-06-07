@@ -2,7 +2,10 @@ use std::rc::Rc;
 
 use rust_decimal::Decimal;
 
-use crate::util::{decimal::{GreaterEqualZeroDecimal, NegDecimal, PosDecimal}, math::PosDecimalRatio};
+use crate::util::{
+    decimal::{GreaterEqualZeroDecimal, NegDecimal, PosDecimal},
+    math::PosDecimalRatio,
+};
 
 use super::tx::Tx;
 
@@ -17,7 +20,7 @@ pub struct PortfolioSecurityStatus {
 impl PortfolioSecurityStatus {
     pub fn per_share_acb(&self) -> Option<GreaterEqualZeroDecimal> {
         if self.total_acb.is_none() {
-            return None
+            return None;
         }
         Some(match PosDecimal::try_from(*self.share_balance) {
             Ok(sb) => self.total_acb.unwrap().div(sb),
@@ -47,10 +50,15 @@ pub struct TxDelta {
 
 impl TxDelta {
     pub fn acb_delta(&self) -> Option<Decimal> {
-        if self.pre_status.total_acb.is_none() || self.post_status.total_acb.is_none() {
-            return None
+        if self.pre_status.total_acb.is_none()
+            || self.post_status.total_acb.is_none()
+        {
+            return None;
         }
-        Some(*self.post_status.total_acb.unwrap() - *self.pre_status.total_acb.unwrap())
+        Some(
+            *self.post_status.total_acb.unwrap()
+                - *self.pre_status.total_acb.unwrap(),
+        )
     }
 
     pub fn is_superficial_loss(&self) -> bool {

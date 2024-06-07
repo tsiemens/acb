@@ -1,8 +1,10 @@
 /// This module is for "real" OS-dependent features.
 /// wasm builds will not be able to access this module, period,
 /// since they cannot use the std::os module, or filesystem directly.
-
-use std::{fs, io, path::{Path, PathBuf}};
+use std::{
+    fs, io,
+    path::{Path, PathBuf},
+};
 
 pub type Error = String;
 
@@ -30,8 +32,7 @@ pub fn home_dir_path() -> Result<PathBuf, Error> {
     };
 
     let acb_dir_path = home_dir.join(".acb");
-    mk_writable_dir(&acb_dir_path).map_err(
-        |e| Error::from(e.to_string()))?;
+    mk_writable_dir(&acb_dir_path).map_err(|e| Error::from(e.to_string()))?;
     Ok(acb_dir_path)
 }
 

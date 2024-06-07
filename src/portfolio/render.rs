@@ -2,7 +2,9 @@ use rust_decimal::Decimal;
 
 use crate::util::decimal::{dollar_precision_str, is_negative, is_positive};
 
-use super::{bookkeeping::Costs, CumulativeCapitalGains, CurrencyAndExchangeRate, TxDelta};
+use super::{
+    bookkeeping::Costs, CumulativeCapitalGains, CurrencyAndExchangeRate, TxDelta,
+};
 
 #[derive(Default)]
 pub struct RenderTable {
@@ -14,8 +16,8 @@ pub struct RenderTable {
 }
 
 pub struct CostsTables {
-	pub total:  RenderTable,
-	pub yearly: RenderTable,
+    pub total: RenderTable,
+    pub yearly: RenderTable,
 }
 
 struct PrintHelper {
@@ -29,13 +31,14 @@ impl PrintHelper {
         // of just '-'. This can make things slightly more clear
         // while debugging.
         let display_none_env_setting = match std::env::var("DISPLAY_OPT_NONE") {
-            Ok(value) => {
-                !(value.trim().is_empty() || value.trim() == "0")
-            },
+            Ok(value) => !(value.trim().is_empty() || value.trim() == "0"),
             Err(_) => false,
         };
 
-        PrintHelper{ print_all_decimals, display_none_env_setting }
+        PrintHelper {
+            print_all_decimals,
+            display_none_env_setting,
+        }
     }
 
     /// Gets the pretty string representation we will
@@ -44,7 +47,11 @@ impl PrintHelper {
     /// detail, so we don't necessarily want to show "None",
     /// but we may in some cases for development.
     fn str_for_none(&self) -> &str {
-        if self.display_none_env_setting { "None" } else { "-" }
+        if self.display_none_env_setting {
+            "None"
+        } else {
+            "-"
+        }
     }
 
     /// Get the representation for a currency *value*, without
@@ -71,13 +78,21 @@ impl PrintHelper {
 
     /// Get a pretty representation for a currency value, which
     /// could be either in the default or a non-default currency.
-    pub fn curr_with_fx_str(&self,
-        val: Decimal, fx: &CurrencyAndExchangeRate) -> String {
+    pub fn curr_with_fx_str(
+        &self,
+        val: Decimal,
+        fx: &CurrencyAndExchangeRate,
+    ) -> String {
         if fx.currency.is_default() {
             self.dollar_str(val)
         } else {
             let local_val = val * *fx.exchange_rate;
-            format!("{}\n({} {})", self.dollar_str(local_val), self.curr_str(val), fx.currency)
+            format!(
+                "{}\n({} {})",
+                self.dollar_str(local_val),
+                self.curr_str(val),
+                fx.currency
+            )
         }
     }
 
@@ -85,10 +100,16 @@ impl PrintHelper {
         self.plus_minus_opt_dollar(Some(val), show_plus)
     }
 
-    pub fn plus_minus_opt_dollar(&self, opt_val: Option<Decimal>, show_plus: bool) -> String {
+    pub fn plus_minus_opt_dollar(
+        &self,
+        opt_val: Option<Decimal>,
+        show_plus: bool,
+    ) -> String {
         let val = match opt_val {
             Some(v) => v,
-            None => { return self.str_for_none().to_string(); },
+            None => {
+                return self.str_for_none().to_string();
+            }
         };
         if is_negative(&val) {
             format!("-${}", self.curr_str(val * Decimal::NEGATIVE_ONE))
@@ -137,18 +158,34 @@ fn wrap_str_to_width(s: &str, max_width: usize) -> String {
 }
 
 pub fn render_tx_table_model(
-	deltas: &Vec<TxDelta>, gains: &CumulativeCapitalGains,
-    render_full_dollar_values: bool
+    deltas: &Vec<TxDelta>,
+    gains: &CumulativeCapitalGains,
+    render_full_dollar_values: bool,
 ) -> RenderTable {
-
     let s = String::from;
     let ph = PrintHelper::new(render_full_dollar_values);
 
     let header: Vec<String> = vec![
-        "Security", "Trade Date", "Settl. Date", "TX", "Amount", "Shares", "Amt/Share", "ACB",
-		"Commission", "Cap. Gain", "Share Balance", "ACB +/-", "New ACB", "New ACB/Share",
-		"Affiliate", "Memo",
-    ].iter().map(|s| s.to_string()).collect();
+        "Security",
+        "Trade Date",
+        "Settl. Date",
+        "TX",
+        "Amount",
+        "Shares",
+        "Amt/Share",
+        "ACB",
+        "Commission",
+        "Cap. Gain",
+        "Share Balance",
+        "ACB +/-",
+        "New ACB",
+        "New ACB/Share",
+        "Affiliate",
+        "Memo",
+    ]
+    .iter()
+    .map(|s| s.to_string())
+    .collect();
 
     let mut rows = Vec::<Vec<String>>::new();
 
@@ -161,12 +198,19 @@ pub fn render_tx_table_model(
 
         match &tx.action_specifics {
             super::TxActionSpecifics::Sell(sell_specs) => {
-                let specified_sfl_is_forced = if let Some(sfl) = &sell_specs.specified_superficial_loss {
-                    sfl.force } else { false };
+                let specified_sfl_is_forced =
+                    if let Some(sfl) = &sell_specs.specified_superficial_loss {
+                        sfl.force
+                    } else {
+                        false
+                    };
                 if d.is_superficial_loss() {
                     let sfl = d.sfl.as_ref().unwrap();
                     let extra_sfl_note_str = if sfl.potentially_over_applied {
-                        "[1]" } else { "" };
+                        "[1]"
+                    } else {
+                        ""
+                    };
 
                     superficial_loss_asterix = format!(
                         " *\n(SfL {}{}; {}{}",
@@ -178,17 +222,19 @@ pub fn render_tx_table_model(
                     saw_superficial_loss = true;
                     saw_over_applied_sfl |= sfl.potentially_over_applied;
                 }
-            },
-            _ => {},
+            }
+            _ => {}
         }
 
         let buy_sell_specs = match &tx.action_specifics {
-            super::TxActionSpecifics::Sell(specs) => Some(specs.common_buy_sell_attrs()),
-            super::TxActionSpecifics::Buy(specs) => Some(specs.common_buy_sell_attrs()),
+            super::TxActionSpecifics::Sell(specs) => {
+                Some(specs.common_buy_sell_attrs())
+            }
+            super::TxActionSpecifics::Buy(specs) => {
+                Some(specs.common_buy_sell_attrs())
+            }
             _ => None,
         };
-
-
 
         let mut amount = String::new();
         let mut shares: Decimal = Decimal::ZERO;
@@ -199,51 +245,83 @@ pub fn render_tx_table_model(
         let mut new_share_balance = String::new();
 
         if let Some(buy_sell_specs) = buy_sell_specs {
-            amount = ph.curr_with_fx_str(*buy_sell_specs.shares * *buy_sell_specs.amount_per_share,
-                                         &buy_sell_specs.tx_currency_and_rate);
+            amount = ph.curr_with_fx_str(
+                *buy_sell_specs.shares * *buy_sell_specs.amount_per_share,
+                &buy_sell_specs.tx_currency_and_rate,
+            );
             shares = *buy_sell_specs.shares;
             amount_per_share_str = ph.curr_with_fx_str(
-                *buy_sell_specs.amount_per_share, &buy_sell_specs.tx_currency_and_rate);
+                *buy_sell_specs.amount_per_share,
+                &buy_sell_specs.tx_currency_and_rate,
+            );
             if tx.action() == super::TxAction::Sell {
                 acb_of_sale = if is_positive(&*d.pre_status.share_balance) {
                     match d.pre_status.total_acb {
                         Some(pre_total_acb) => {
-                            let pre_acb_per_share = *pre_total_acb / *d.pre_status.share_balance;
-                            Some(ph.dollar_str(pre_acb_per_share * *buy_sell_specs.shares))
-                        },
+                            let pre_acb_per_share =
+                                *pre_total_acb / *d.pre_status.share_balance;
+                            Some(ph.dollar_str(
+                                pre_acb_per_share * *buy_sell_specs.shares,
+                            ))
+                        }
                         None => None,
                     }
-                } else { None };
+                } else {
+                    None
+                };
 
                 if let Some(cap_gain) = d.capital_gain {
-                    capital_gains = Some(format!("{}{}", ph.plus_minus_dollar(cap_gain, false),
-                                         superficial_loss_asterix));
+                    capital_gains = Some(format!(
+                        "{}{}",
+                        ph.plus_minus_dollar(cap_gain, false),
+                        superficial_loss_asterix
+                    ));
                 }
             }
 
-            commission = if buy_sell_specs.commission.is_zero() { None } else {
-                Some(ph.curr_with_fx_str(*buy_sell_specs.commission,
-                                         buy_sell_specs.commission_currency_and_rate()))
+            commission = if buy_sell_specs.commission.is_zero() {
+                None
+            } else {
+                Some(ph.curr_with_fx_str(
+                    *buy_sell_specs.commission,
+                    buy_sell_specs.commission_currency_and_rate(),
+                ))
             };
 
-            new_share_balance = if d.post_status.share_balance == d.post_status.all_affiliate_share_balance {
+            new_share_balance = if d.post_status.share_balance
+                == d.post_status.all_affiliate_share_balance
+            {
                 d.post_status.share_balance.to_string()
             } else {
-                format!("{} / {}", d.post_status.share_balance, d.post_status.all_affiliate_share_balance)
+                format!(
+                    "{} / {}",
+                    d.post_status.share_balance,
+                    d.post_status.all_affiliate_share_balance
+                )
             }
-        } else if let super::TxActionSpecifics::Roc(roc_specs) = &tx.action_specifics {
+        } else if let super::TxActionSpecifics::Roc(roc_specs) = &tx.action_specifics
+        {
             shares = *d.pre_status.share_balance;
-            amount = ph.curr_with_fx_str(shares * *roc_specs.amount_per_held_share,
-                &roc_specs.tx_currency_and_rate);
+            amount = ph.curr_with_fx_str(
+                shares * *roc_specs.amount_per_held_share,
+                &roc_specs.tx_currency_and_rate,
+            );
             amount_per_share_str = ph.curr_with_fx_str(
-              *roc_specs.amount_per_held_share, &roc_specs.tx_currency_and_rate);
-
-        } else if let super::TxActionSpecifics::Sfla(sfla_specs) = &tx.action_specifics {
-            amount = ph.curr_with_fx_str(*sfla_specs.shares_affected * *sfla_specs.amount_per_share,
-                                         &CurrencyAndExchangeRate::default());
+                *roc_specs.amount_per_held_share,
+                &roc_specs.tx_currency_and_rate,
+            );
+        } else if let super::TxActionSpecifics::Sfla(sfla_specs) =
+            &tx.action_specifics
+        {
+            amount = ph.curr_with_fx_str(
+                *sfla_specs.shares_affected * *sfla_specs.amount_per_share,
+                &CurrencyAndExchangeRate::default(),
+            );
             shares = *sfla_specs.shares_affected;
             amount_per_share_str = ph.curr_with_fx_str(
-                *sfla_specs.amount_per_share, &CurrencyAndExchangeRate::default());
+                *sfla_specs.amount_per_share,
+                &CurrencyAndExchangeRate::default(),
+            );
         }
 
         let acb_per_share: Option<String> =
@@ -288,10 +366,17 @@ pub fn render_tx_table_model(
         year_val_strs.push(ph.plus_minus_dollar(yearly_total, false));
     }
     let mut total_footer_label = s("Total");
-    let mut total_footer_vals_str = ph.plus_minus_dollar(gains.capital_gains_total, false);
+    let mut total_footer_vals_str =
+        ph.plus_minus_dollar(gains.capital_gains_total, false);
     if years.len() > 0 {
-        total_footer_label = format!("{}{}{}", total_footer_label, "\n", year_strs.join("\n"));
-        total_footer_vals_str = format!("{}{}{}", total_footer_vals_str, "\n", year_val_strs.join("\n"));
+        total_footer_label =
+            format!("{}{}{}", total_footer_label, "\n", year_strs.join("\n"));
+        total_footer_vals_str = format!(
+            "{}{}{}",
+            total_footer_vals_str,
+            "\n",
+            year_val_strs.join("\n")
+        );
     }
 
     let mut footer = Vec::with_capacity(header.len());
@@ -328,7 +413,8 @@ pub fn render_tx_table_model(
 ///	| 2001             | xxxx.xx       |
 ///	| Since inception  | xxxx.xx       |
 pub fn render_aggregate_capital_gains(
-    gains: &CumulativeCapitalGains, render_full_dollar_values: bool
+    gains: &CumulativeCapitalGains,
+    render_full_dollar_values: bool,
 ) -> RenderTable {
     let s = String::from;
 
@@ -351,7 +437,7 @@ pub fn render_aggregate_capital_gains(
         ph.plus_minus_dollar(gains.capital_gains_total, false),
     ]);
 
-    RenderTable{
+    RenderTable {
         header: vec![s("Year"), s("Capital Gains")],
         rows: rows,
         footer: vec![],
@@ -360,7 +446,10 @@ pub fn render_aggregate_capital_gains(
     }
 }
 
-pub fn render_total_costs(costs: &Costs, render_full_dollar_values: bool) -> CostsTables {
+pub fn render_total_costs(
+    costs: &Costs,
+    render_full_dollar_values: bool,
+) -> CostsTables {
     let mut securities: Vec<&String> = costs.security_set.iter().collect();
     securities.sort();
 
@@ -373,7 +462,8 @@ pub fn render_total_costs(costs: &Costs, render_full_dollar_values: bool) -> Cos
     let mut total_costs_headers = Vec::<String>::with_capacity(2 + securities.len());
     total_costs_headers.push(s("Date"));
     total_costs_headers.push(s("Total"));
-    total_costs_headers.append(&mut securities.iter().map(|s| (**s).clone()).collect());
+    total_costs_headers
+        .append(&mut securities.iter().map(|s| (**s).clone()).collect());
 
     let mut total_costs_rows = Vec::<Vec<String>>::new();
     for max_day_costs in &costs.total {
@@ -382,8 +472,11 @@ pub fn render_total_costs(costs: &Costs, render_full_dollar_values: bool) -> Cos
         row.push(max_day_costs.day.to_string());
         row.push(ph.dollar_str(*max_day_costs.total));
         for sec in &securities {
-            row.push(ph.dollar_str(
-                **max_day_costs.sec_max_cost_for_day.get(*sec).unwrap()))
+            row.push(
+                ph.dollar_str(
+                    **max_day_costs.sec_max_cost_for_day.get(*sec).unwrap(),
+                ),
+            )
         }
 
         total_costs_rows.push(row);
@@ -399,11 +492,13 @@ pub fn render_total_costs(costs: &Costs, render_full_dollar_values: bool) -> Cos
 
     // Yearly table:
 
-    let mut yearly_costs_headers = Vec::<String>::with_capacity(3 + securities.len());
+    let mut yearly_costs_headers =
+        Vec::<String>::with_capacity(3 + securities.len());
     yearly_costs_headers.push(s("Year"));
     yearly_costs_headers.push(s("Date"));
     yearly_costs_headers.push(s("Total"));
-    yearly_costs_headers.append(&mut securities.iter().map(|s| (**s).clone()).collect());
+    yearly_costs_headers
+        .append(&mut securities.iter().map(|s| (**s).clone()).collect());
 
     let mut year_costs_rows = Vec::<Vec<String>>::new();
 
@@ -417,7 +512,8 @@ pub fn render_total_costs(costs: &Costs, render_full_dollar_values: bool) -> Cos
         row.push(ph.dollar_str(*max_year_costs.total));
         for sec in &securities {
             row.push(ph.dollar_str(
-                **max_year_costs.sec_max_cost_for_day.get(*sec).unwrap()))
+                **max_year_costs.sec_max_cost_for_day.get(*sec).unwrap(),
+            ))
         }
 
         year_costs_rows.push(row);
@@ -450,10 +546,21 @@ mod tests {
         assert_eq!(wrap_str_to_width("Bla\n  ", 10).as_str(), "Bla\n  ");
         assert_eq!(wrap_str_to_width("Bla\nbla", 10).as_str(), "Bla\nbla");
 
-        assert_eq!(wrap_str_to_width("Verylongword\nbla", 5).as_str(), "Verylongword\nbla");
-        assert_eq!(wrap_str_to_width("Verylongword bla", 5).as_str(), "Verylongword\nbla");
-        assert_eq!(wrap_str_to_width("Bla Verylongword", 5).as_str(), "Bla\nVerylongword");
-        assert_eq!(wrap_str_to_width("Bla1 bla2 bla3 bla4", 10).as_str(), "Bla1 bla2\nbla3 bla4");
-
+        assert_eq!(
+            wrap_str_to_width("Verylongword\nbla", 5).as_str(),
+            "Verylongword\nbla"
+        );
+        assert_eq!(
+            wrap_str_to_width("Verylongword bla", 5).as_str(),
+            "Verylongword\nbla"
+        );
+        assert_eq!(
+            wrap_str_to_width("Bla Verylongword", 5).as_str(),
+            "Bla\nVerylongword"
+        );
+        assert_eq!(
+            wrap_str_to_width("Bla1 bla2 bla3 bla4", 10).as_str(),
+            "Bla1 bla2\nbla3 bla4"
+        );
     }
 }

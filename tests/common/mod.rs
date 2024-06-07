@@ -18,12 +18,14 @@ fn test_temp_dir_path() -> PathBuf {
 }
 
 pub struct NonAutoCreatingTestDir {
-    pub path: PathBuf
+    pub path: PathBuf,
 }
 
 impl NonAutoCreatingTestDir {
     pub fn new() -> NonAutoCreatingTestDir {
-        NonAutoCreatingTestDir{path: test_temp_dir_path()}
+        NonAutoCreatingTestDir {
+            path: test_temp_dir_path(),
+        }
     }
 }
 
@@ -33,11 +35,16 @@ fn cleanup_test_dir(path: &PathBuf) {
         let skip_del_on_fail = acb::util::sys::env_var_non_empty(skip_env_var);
 
         if std::thread::panicking() && skip_del_on_fail {
-            println!("cleanup_test_dir: panicking. Skipping remove of {}",
-                     path.to_str().unwrap());
+            println!(
+                "cleanup_test_dir: panicking. Skipping remove of {}",
+                path.to_str().unwrap()
+            );
         } else {
-            println!("cleanup_test_dir: removing {}. To skip cleanup, set {}",
-                     path.to_str().unwrap(), skip_env_var);
+            println!(
+                "cleanup_test_dir: removing {}. To skip cleanup, set {}",
+                path.to_str().unwrap(),
+                skip_env_var
+            );
             let _ = fs::remove_dir_all(path);
         }
     } else {

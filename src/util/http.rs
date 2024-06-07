@@ -31,7 +31,7 @@ pub mod standalone {
 
     impl StandaloneAppRequester {
         pub fn new() -> StandaloneAppRequester {
-            StandaloneAppRequester{}
+            StandaloneAppRequester {}
         }
 
         pub fn new_boxed() -> Box<StandaloneAppRequester> {
@@ -48,7 +48,9 @@ pub mod standalone {
             //
             // Though realistically, we could also use reqwest::blocking, since
             // this only _has_ to be actually async for wasm, which is using web-sys.
-            let body_text = surf::get(url).recv_string().await
+            let body_text = surf::get(url)
+                .recv_string()
+                .await
                 .map_err(|e| format!("{}", e))?;
             Ok(body_text)
         }
@@ -65,7 +67,7 @@ pub mod testlib {
 
     impl UnusableHttpRequester {
         pub fn new_boxed() -> Box<Self> {
-            Box::new(Self{})
+            Box::new(Self {})
         }
     }
 

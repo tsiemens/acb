@@ -9,7 +9,7 @@ pub type RcRefCell<T> = Rc<RefCell<T>>;
 // add extra functions for our type alias.
 // Using a mod would also work, but the linter wants them to
 // be snake_case, which doesn't match the type name very well.
-pub struct RcRefCellT (());
+pub struct RcRefCellT(());
 
 impl RcRefCellT {
     pub fn new<T>(t: T) -> RcRefCell<T> {

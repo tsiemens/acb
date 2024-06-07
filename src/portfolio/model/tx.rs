@@ -5,17 +5,18 @@ use time::Date;
 
 use crate::{
     portfolio::{csv_common::CsvCol, Affiliate},
-    util::decimal::{GreaterEqualZeroDecimal, LessEqualZeroDecimal, PosDecimal}};
+    util::decimal::{GreaterEqualZeroDecimal, LessEqualZeroDecimal, PosDecimal},
+};
 
 use super::currency::{Currency, CurrencyAndExchangeRate};
 
 pub type Security = String;
 
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
-pub enum TxAction{
+pub enum TxAction {
     Buy,
     Sell,
-    Roc, // Return of capital
+    Roc,  // Return of capital
     Sfla, // Superficial loss ACB adjustment
 }
 
@@ -38,13 +39,16 @@ impl Display for TxAction {
 
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct SFLInput {
-	pub superficial_loss: LessEqualZeroDecimal,
-	pub force: bool
+    pub superficial_loss: LessEqualZeroDecimal,
+    pub force: bool,
 }
 
 impl SFLInput {
     pub fn req_from_dec(v: Decimal, force: bool) -> SFLInput {
-        SFLInput{ superficial_loss: LessEqualZeroDecimal::try_from(v).unwrap(), force: force }
+        SFLInput {
+            superficial_loss: LessEqualZeroDecimal::try_from(v).unwrap(),
+            force: force,
+        }
     }
 }
 
@@ -87,7 +91,7 @@ pub struct CsvTx {
 
 impl Default for CsvTx {
     fn default() -> Self {
-        CsvTx{
+        CsvTx {
             security: None,
             trade_date: None,
             settlement_date: None,
@@ -112,7 +116,9 @@ impl PartialOrd for CsvTx {
         let date_cmp = self.settlement_date.cmp(&other.settlement_date);
         match date_cmp {
             std::cmp::Ordering::Less | std::cmp::Ordering::Greater => Some(date_cmp),
-            std::cmp::Ordering::Equal => Some(self.read_index.cmp(&other.read_index)),
+            std::cmp::Ordering::Equal => {
+                Some(self.read_index.cmp(&other.read_index))
+            }
         }
     }
 }
@@ -151,7 +157,9 @@ impl BuyTxSpecifics {
     }
 
     pub fn commission_currency_and_rate(&self) -> &CurrencyAndExchangeRate {
-        self.separate_commission_currency.as_ref().unwrap_or(&self.tx_currency_and_rate)
+        self.separate_commission_currency
+            .as_ref()
+            .unwrap_or(&self.tx_currency_and_rate)
     }
 }
 
@@ -170,19 +178,22 @@ pub struct SellTxSpecifics {
 impl SellTxSpecifics {
     pub fn from_common_buy_sell_attrs(
         common: &CommonBuySellAttrs,
-        specified_superficial_loss: Option<SFLInput>) -> Self {
-        Self{
+        specified_superficial_loss: Option<SFLInput>,
+    ) -> Self {
+        Self {
             shares: common.shares,
             amount_per_share: common.amount_per_share,
             commission: common.commission,
             tx_currency_and_rate: common.tx_currency_and_rate.clone(),
-            separate_commission_currency: common.separate_commission_currency.clone(),
+            separate_commission_currency: common
+                .separate_commission_currency
+                .clone(),
             specified_superficial_loss: specified_superficial_loss,
         }
     }
 
     pub fn common_buy_sell_attrs(&self) -> CommonBuySellAttrs {
-        CommonBuySellAttrs{
+        CommonBuySellAttrs {
             shares: self.shares,
             amount_per_share: self.amount_per_share,
             commission: self.commission,
@@ -192,7 +203,9 @@ impl SellTxSpecifics {
     }
 
     pub fn commission_currency_and_rate(&self) -> &CurrencyAndExchangeRate {
-        self.separate_commission_currency.as_ref().unwrap_or(&self.tx_currency_and_rate)
+        self.separate_commission_currency
+            .as_ref()
+            .unwrap_or(&self.tx_currency_and_rate)
     }
 }
 
@@ -212,7 +225,8 @@ pub struct SflaTxSpecifics {
 impl SflaTxSpecifics {
     pub fn total_amount(&self) -> PosDecimal {
         // Just unwrap here, since positive * positive is always positive.
-        PosDecimal::try_from(*self.shares_affected * (*self.amount_per_share)).unwrap()
+        PosDecimal::try_from(*self.shares_affected * (*self.amount_per_share))
+            .unwrap()
     }
 }
 
@@ -251,14 +265,14 @@ impl Tx {
         self.action_specifics.action()
     }
 
-    pub fn buy_specifics(&self) -> Result<&BuyTxSpecifics, ()>{
+    pub fn buy_specifics(&self) -> Result<&BuyTxSpecifics, ()> {
         match &self.action_specifics {
             TxActionSpecifics::Buy(specs) => Ok(specs),
             _ => Err(()),
         }
     }
 
-    pub fn sell_specifics(&self) -> Result<&SellTxSpecifics, ()>{
+    pub fn sell_specifics(&self) -> Result<&SellTxSpecifics, ()> {
         match &self.action_specifics {
             TxActionSpecifics::Sell(specs) => Ok(specs),
             _ => Err(()),
@@ -268,7 +282,10 @@ impl Tx {
     pub fn to_csvtx(&self) -> CsvTx {
         let mut csvtx = CsvTx::default();
 
-        populate_csvtx_fields_from_action_specifics(&self.action_specifics, &mut csvtx);
+        populate_csvtx_fields_from_action_specifics(
+            &self.action_specifics,
+            &mut csvtx,
+        );
         csvtx.security = Some(self.security.clone());
         csvtx.trade_date = Some(self.trade_date);
         csvtx.settlement_date = Some(self.settlement_date);
@@ -280,50 +297,70 @@ impl Tx {
     }
 }
 
-fn get_valid_exchange_rate(curr_col_name: &str, found_curr: &Option<Currency>,
-                           fx_col_name: &str, found_fx: &Option<Decimal>,
-    ) -> Result<Option<CurrencyAndExchangeRate>, String> {
+fn get_valid_exchange_rate(
+    curr_col_name: &str,
+    found_curr: &Option<Currency>,
+    fx_col_name: &str,
+    found_fx: &Option<Decimal>,
+) -> Result<Option<CurrencyAndExchangeRate>, String> {
     if found_curr.is_none() && found_fx.is_none() {
         Ok(None)
     } else {
-        let curr = found_curr.clone().ok_or(
-            format!("\"{fx_col_name}\" specified but \"{curr_col_name}\" not found"))?;
+        let curr = found_curr.clone().ok_or(format!(
+            "\"{fx_col_name}\" specified but \"{curr_col_name}\" not found"
+        ))?;
         if curr.is_default() && found_fx.is_none() {
             // The rate here is implicitly 1, so the rate isn't required.
             // If rate is provided, we continue below to check its validity.
             return Ok(Some(CurrencyAndExchangeRate::default()));
         }
-        let rate = found_fx.ok_or(
-            format!("\"{curr_col_name}\" specified but \"{fx_col_name}\" not found"))?;
-        Ok(Some(CurrencyAndExchangeRate::try_new(curr, PosDecimal::try_from(rate).map_err(
-            |_| format!("\"{fx_col_name}\" must be a positive value"))?)?))
+        let rate = found_fx.ok_or(format!(
+            "\"{curr_col_name}\" specified but \"{fx_col_name}\" not found"
+        ))?;
+        Ok(Some(CurrencyAndExchangeRate::try_new(
+            curr,
+            PosDecimal::try_from(rate).map_err(|_| {
+                format!("\"{fx_col_name}\" must be a positive value")
+            })?,
+        )?))
     }
 }
 
 // For now, just return BuyTxSpecifics, since it is a strict subset of
 // SellTxSpecifics
-fn buy_or_sell_common_attrs_from_csv_tx(csv_tx: &CsvTx, buy_or_sell: &str) -> Result<CommonBuySellAttrs, String> {
+fn buy_or_sell_common_attrs_from_csv_tx(
+    csv_tx: &CsvTx,
+    buy_or_sell: &str,
+) -> Result<CommonBuySellAttrs, String> {
     let shares = csv_tx.shares.ok_or("\"shares\" not found")?;
-    let amount_per_share = csv_tx.amount_per_share.ok_or("\"amount/share\" not found")?;
+    let amount_per_share =
+        csv_tx.amount_per_share.ok_or("\"amount/share\" not found")?;
     let commission = csv_tx.commission.unwrap_or(Decimal::ZERO);
 
     let curr_and_rate = get_valid_exchange_rate(
-        CsvCol::TX_CURR, &csv_tx.tx_currency,
-        CsvCol::TX_FX, &csv_tx.tx_curr_to_local_exchange_rate
-    )?.unwrap_or_else(|| CurrencyAndExchangeRate::default());
+        CsvCol::TX_CURR,
+        &csv_tx.tx_currency,
+        CsvCol::TX_FX,
+        &csv_tx.tx_curr_to_local_exchange_rate,
+    )?
+    .unwrap_or_else(|| CurrencyAndExchangeRate::default());
 
     let comm_curr_and_rate = get_valid_exchange_rate(
-        CsvCol::COMMISSION_CURR, &csv_tx.commission_currency,
-        CsvCol::COMMISSION_FX, &csv_tx.commission_curr_to_local_exchange_rate
+        CsvCol::COMMISSION_CURR,
+        &csv_tx.commission_currency,
+        CsvCol::COMMISSION_FX,
+        &csv_tx.commission_curr_to_local_exchange_rate,
     )?;
 
-    let specifics = CommonBuySellAttrs{
-        shares: PosDecimal::try_from(shares).map_err(|_| format!(
-            "{buy_or_sell} shares must be a positive value"))?,
-        amount_per_share: GreaterEqualZeroDecimal::try_from(amount_per_share).map_err(|_| format!(
-            "{buy_or_sell} amount/share must not be negative"))?,
-        commission: GreaterEqualZeroDecimal::try_from(commission).map_err(|_| format!(
-            "{buy_or_sell} comission must not be negative"))?,
+    let specifics = CommonBuySellAttrs {
+        shares: PosDecimal::try_from(shares)
+            .map_err(|_| format!("{buy_or_sell} shares must be a positive value"))?,
+        amount_per_share: GreaterEqualZeroDecimal::try_from(amount_per_share)
+            .map_err(|_| {
+                format!("{buy_or_sell} amount/share must not be negative")
+            })?,
+        commission: GreaterEqualZeroDecimal::try_from(commission)
+            .map_err(|_| format!("{buy_or_sell} comission must not be negative"))?,
         tx_currency_and_rate: curr_and_rate,
         separate_commission_currency: comm_curr_and_rate,
     };
@@ -341,22 +378,30 @@ impl TryFrom<CsvTx> for Tx {
         let act_specs = match csv_tx.action.unwrap() {
             TxAction::Buy => {
                 let specs = BuyTxSpecifics::from_common_buy_sell_attrs(
-                    buy_or_sell_common_attrs_from_csv_tx(&csv_tx, "Buy")?);
+                    buy_or_sell_common_attrs_from_csv_tx(&csv_tx, "Buy")?,
+                );
                 TxActionSpecifics::Buy(specs)
-            },
+            }
             TxAction::Sell => {
                 let specs = SellTxSpecifics::from_common_buy_sell_attrs(
                     &(buy_or_sell_common_attrs_from_csv_tx(&csv_tx, "Sell")?),
-                    csv_tx.specified_superficial_loss);
+                    csv_tx.specified_superficial_loss,
+                );
                 TxActionSpecifics::Sell(specs)
-            },
+            }
             TxAction::Roc => {
-                let amount_per_share = csv_tx.amount_per_share.ok_or(
-                    format!("RoC \"{}\" not found", CsvCol::AMOUNT_PER_SHARE))?;
+                let amount_per_share = csv_tx.amount_per_share.ok_or(format!(
+                    "RoC \"{}\" not found",
+                    CsvCol::AMOUNT_PER_SHARE
+                ))?;
 
-                let amount = GreaterEqualZeroDecimal::try_from(
-                    amount_per_share).map_err(|_| format!(
-                        "RoC amount per share must not be negative. Found {}", amount_per_share))?;
+                let amount = GreaterEqualZeroDecimal::try_from(amount_per_share)
+                    .map_err(|_| {
+                        format!(
+                            "RoC amount per share must not be negative. Found {}",
+                            amount_per_share
+                        )
+                    })?;
 
                 if let Some(shares) = csv_tx.shares {
                     // This will be confusing if we allow this to be specified.
@@ -365,103 +410,142 @@ impl TryFrom<CsvTx> for Tx {
                 }
 
                 let curr_and_rate = get_valid_exchange_rate(
-                    CsvCol::TX_CURR, &csv_tx.tx_currency,
-                    CsvCol::TX_FX, &csv_tx.tx_curr_to_local_exchange_rate
-                )?.unwrap_or_else(|| CurrencyAndExchangeRate::default());
+                    CsvCol::TX_CURR,
+                    &csv_tx.tx_currency,
+                    CsvCol::TX_FX,
+                    &csv_tx.tx_curr_to_local_exchange_rate,
+                )?
+                .unwrap_or_else(|| CurrencyAndExchangeRate::default());
 
-                TxActionSpecifics::Roc(RocTxSpecifics{
+                TxActionSpecifics::Roc(RocTxSpecifics {
                     amount_per_held_share: amount,
                     tx_currency_and_rate: curr_and_rate,
                 })
-            },
+            }
             TxAction::Sfla => {
-                let amount_per_share = csv_tx.amount_per_share.ok_or(
-                    format!("SfLA \"{}\" not found", CsvCol::AMOUNT_PER_SHARE))?;
-                let shares = csv_tx.shares.ok_or(
-                    format!("SfLA \"{}\" not found", CsvCol::SHARES))?;
+                let amount_per_share = csv_tx.amount_per_share.ok_or(format!(
+                    "SfLA \"{}\" not found",
+                    CsvCol::AMOUNT_PER_SHARE
+                ))?;
+                let shares = csv_tx
+                    .shares
+                    .ok_or(format!("SfLA \"{}\" not found", CsvCol::SHARES))?;
 
                 // Verify that this is either CAD or not specified
                 let maybe_curr_and_rate = get_valid_exchange_rate(
-                    CsvCol::TX_CURR, &csv_tx.tx_currency,
-                    CsvCol::TX_FX, &csv_tx.tx_curr_to_local_exchange_rate
+                    CsvCol::TX_CURR,
+                    &csv_tx.tx_currency,
+                    CsvCol::TX_FX,
+                    &csv_tx.tx_curr_to_local_exchange_rate,
                 )?;
                 if let Some(curr_and_rate) = maybe_curr_and_rate {
                     if !curr_and_rate.is_default() {
-        				return Err("SfLA currency must be CAD/default".to_string());
+                        return Err("SfLA currency must be CAD/default".to_string());
                     }
                 }
 
-                TxActionSpecifics::Sfla(SflaTxSpecifics{
-                    shares_affected: PosDecimal::try_from(shares).map_err(|_|
-                        format!("SfLA {} must be positive (found {})", CsvCol::SHARES, shares))?,
-                    amount_per_share: PosDecimal::try_from(amount_per_share).map_err(|_|
-                        format!("SfLA {} must be positive (found {})", CsvCol::AMOUNT_PER_SHARE, amount_per_share))?,
+                TxActionSpecifics::Sfla(SflaTxSpecifics {
+                    shares_affected: PosDecimal::try_from(shares).map_err(|_| {
+                        format!(
+                            "SfLA {} must be positive (found {})",
+                            CsvCol::SHARES,
+                            shares
+                        )
+                    })?,
+                    amount_per_share: PosDecimal::try_from(amount_per_share)
+                        .map_err(|_| {
+                            format!(
+                                "SfLA {} must be positive (found {})",
+                                CsvCol::AMOUNT_PER_SHARE,
+                                amount_per_share
+                            )
+                        })?,
                 })
-            },
+            }
         };
 
-        let not_found_err = |col_name| -> String {
-            format!("\"{col_name}\" not found")
-        };
+        let not_found_err =
+            |col_name| -> String { format!("\"{col_name}\" not found") };
 
-        let tx = Tx{
-            security: csv_tx.security.ok_or_else(|| not_found_err(CsvCol::SECURITY))?,
-            trade_date: csv_tx.trade_date.ok_or_else(|| not_found_err(CsvCol::TRADE_DATE))?,
-            settlement_date: csv_tx.settlement_date.ok_or_else(|| not_found_err(CsvCol::SETTLEMENT_DATE))?,
+        let tx = Tx {
+            security: csv_tx
+                .security
+                .ok_or_else(|| not_found_err(CsvCol::SECURITY))?,
+            trade_date: csv_tx
+                .trade_date
+                .ok_or_else(|| not_found_err(CsvCol::TRADE_DATE))?,
+            settlement_date: csv_tx
+                .settlement_date
+                .ok_or_else(|| not_found_err(CsvCol::SETTLEMENT_DATE))?,
             action_specifics: act_specs,
             memo: csv_tx.memo.unwrap_or_else(|| String::new()),
             affiliate: csv_tx.affiliate.unwrap_or_else(|| Affiliate::default()),
             read_index: csv_tx.read_index,
         };
         if tx.security.is_empty() {
-            return Err(format!("\"{}\" was empty", CsvCol::SECURITY))
+            return Err(format!("\"{}\" was empty", CsvCol::SECURITY));
         }
         Ok(tx)
     }
 }
 
-fn populate_csvtx_fields_from_action_specifics(specs: &TxActionSpecifics, tx: &mut CsvTx) {
+fn populate_csvtx_fields_from_action_specifics(
+    specs: &TxActionSpecifics,
+    tx: &mut CsvTx,
+) {
     let populate_buy_sell_common_attrs = |tx: &mut CsvTx, c: CommonBuySellAttrs| {
         tx.shares = Some(*c.shares);
         tx.amount_per_share = Some(*c.amount_per_share);
         tx.commission = Some(*c.commission);
         tx.tx_currency = Some(c.tx_currency_and_rate.currency.clone());
-        tx.tx_curr_to_local_exchange_rate = if c.tx_currency_and_rate.is_default() { None } else {
-            Some(*c.tx_currency_and_rate.exchange_rate) };
+        tx.tx_curr_to_local_exchange_rate = if c.tx_currency_and_rate.is_default() {
+            None
+        } else {
+            Some(*c.tx_currency_and_rate.exchange_rate)
+        };
         tx.commission_currency = match &c.separate_commission_currency {
             Some(c_a_r) => Some(c_a_r.currency.clone()),
             None => None,
         };
-        tx.commission_curr_to_local_exchange_rate = match &c.separate_commission_currency {
-            Some(c_a_r) => if c_a_r.is_default() { None } else {
-                Some(*c_a_r.exchange_rate) },
-            None => None,
-        };
+        tx.commission_curr_to_local_exchange_rate =
+            match &c.separate_commission_currency {
+                Some(c_a_r) => {
+                    if c_a_r.is_default() {
+                        None
+                    } else {
+                        Some(*c_a_r.exchange_rate)
+                    }
+                }
+                None => None,
+            };
     };
 
     match specs {
         TxActionSpecifics::Buy(s) => {
             tx.action = Some(TxAction::Buy);
             populate_buy_sell_common_attrs(tx, s.common_buy_sell_attrs());
-        },
+        }
         TxActionSpecifics::Sell(s) => {
             tx.action = Some(TxAction::Sell);
             populate_buy_sell_common_attrs(tx, s.common_buy_sell_attrs());
             tx.specified_superficial_loss = s.specified_superficial_loss.clone();
-        },
+        }
         TxActionSpecifics::Roc(s) => {
             tx.action = Some(TxAction::Roc);
             tx.amount_per_share = Some(*s.amount_per_held_share);
             tx.tx_currency = Some(s.tx_currency_and_rate.currency.clone());
-            tx.tx_curr_to_local_exchange_rate = if s.tx_currency_and_rate.is_default() { None } else {
-                Some(*s.tx_currency_and_rate.exchange_rate) };
-        },
+            tx.tx_curr_to_local_exchange_rate =
+                if s.tx_currency_and_rate.is_default() {
+                    None
+                } else {
+                    Some(*s.tx_currency_and_rate.exchange_rate)
+                };
+        }
         TxActionSpecifics::Sfla(s) => {
             tx.action = Some(TxAction::Sfla);
             tx.shares = Some(*s.shares_affected);
             tx.amount_per_share = Some(*s.amount_per_share);
-
-        },
+        }
     }
 }
 
@@ -470,7 +554,9 @@ impl PartialOrd for Tx {
         let date_cmp = self.settlement_date.cmp(&other.settlement_date);
         match date_cmp {
             std::cmp::Ordering::Less | std::cmp::Ordering::Greater => Some(date_cmp),
-            std::cmp::Ordering::Equal => Some(self.read_index.cmp(&other.read_index)),
+            std::cmp::Ordering::Equal => {
+                Some(self.read_index.cmp(&other.read_index))
+            }
         }
     }
 }
@@ -491,8 +577,8 @@ pub mod testlib {
         portfolio::{Affiliate, Currency},
         util::{
             date::{parse_standard_date, pub_testlib::doy_date},
-            decimal::GreaterEqualZeroDecimal
-        }
+            decimal::GreaterEqualZeroDecimal,
+        },
     };
 
     use super::{CsvTx, SFLInput, Tx, TxAction};
@@ -504,9 +590,12 @@ pub mod testlib {
     pub const MAGIC_DEFAULT_AF_NAME: &str = "unset AF";
 
     lazy_static! {
-        pub static ref MAGIC_DEFAULT_GEZ: GreaterEqualZeroDecimal = gezdec!(123456789.987654321);
-        pub static ref MAGIC_DEFAULT_DATE: Date = parse_standard_date("1970-01-01").unwrap();
-        pub static ref MAGIC_DEFAULT_CURRENCY: Currency = Currency::new("magic_default");
+        pub static ref MAGIC_DEFAULT_GEZ: GreaterEqualZeroDecimal =
+            gezdec!(123456789.987654321);
+        pub static ref MAGIC_DEFAULT_DATE: Date =
+            parse_standard_date("1970-01-01").unwrap();
+        pub static ref MAGIC_DEFAULT_CURRENCY: Currency =
+            Currency::new("magic_default");
     }
 
     pub fn default_sec() -> String {
@@ -523,7 +612,7 @@ pub mod testlib {
 
         pub t_day: i32, // An arbitrary offset day. Convenience for tdate
         pub t_date: Date, // Defaults to 2 days before sdate
-        pub s_yr: u32, // Year. Convenience for s_date. Must be combined with s_doy
+        pub s_yr: u32,  // Year. Convenience for s_date. Must be combined with s_doy
         pub s_doy: i32, // Day of Year. convenience for s_date. Must be combined with s_yr
         pub s_date: Date, // Defaults to 2 days after t_date/t_day
 
@@ -573,11 +662,17 @@ pub mod testlib {
                 self.s_date
             };
 
-            if settlement_date == *MAGIC_DEFAULT_DATE && trade_date != *MAGIC_DEFAULT_DATE {
+            if settlement_date == *MAGIC_DEFAULT_DATE
+                && trade_date != *MAGIC_DEFAULT_DATE
+            {
                 settlement_date = trade_date.saturating_add(Duration::days(2))
-            } else if trade_date == *MAGIC_DEFAULT_DATE && settlement_date != *MAGIC_DEFAULT_DATE {
+            } else if trade_date == *MAGIC_DEFAULT_DATE
+                && settlement_date != *MAGIC_DEFAULT_DATE
+            {
                 trade_date = settlement_date.saturating_sub(Duration::days(2))
-            } else if trade_date == *MAGIC_DEFAULT_DATE && settlement_date == *MAGIC_DEFAULT_DATE {
+            } else if trade_date == *MAGIC_DEFAULT_DATE
+                && settlement_date == *MAGIC_DEFAULT_DATE
+            {
                 panic!("TTx.x: Both trade and settlement dates are unset");
             }
 
@@ -599,18 +694,38 @@ pub mod testlib {
             };
 
             let csv_tx = CsvTx {
-                security: Some(if self.sec.is_empty() { default_sec() } else { self.sec.clone() }),
+                security: Some(if self.sec.is_empty() {
+                    default_sec()
+                } else {
+                    self.sec.clone()
+                }),
                 trade_date: Some(trade_date),
                 settlement_date: Some(settlement_date),
                 action: Some(self.act),
-                shares: if self.shares != *MAGIC_DEFAULT_GEZ { Some(*self.shares) } else { None },
-                amount_per_share: if self.price != *MAGIC_DEFAULT_GEZ { Some(*self.price) } else { None },
-                commission: if self.comm != *MAGIC_DEFAULT_GEZ { Some(*self.comm) } else { None },
+                shares: if self.shares != *MAGIC_DEFAULT_GEZ {
+                    Some(*self.shares)
+                } else {
+                    None
+                },
+                amount_per_share: if self.price != *MAGIC_DEFAULT_GEZ {
+                    Some(*self.price)
+                } else {
+                    None
+                },
+                commission: if self.comm != *MAGIC_DEFAULT_GEZ {
+                    Some(*self.comm)
+                } else {
+                    None
+                },
                 tx_currency: Some(curr),
                 tx_curr_to_local_exchange_rate: Some(*fx_rate),
                 commission_currency: comm_curr,
                 commission_curr_to_local_exchange_rate: comm_fx_rate,
-                memo: if self.memo.is_empty() { None } else { Some(self.memo.clone()) },
+                memo: if self.memo.is_empty() {
+                    None
+                } else {
+                    Some(self.memo.clone())
+                },
                 affiliate: Some(affiliate),
                 specified_superficial_loss: self.sfl.clone(),
                 read_index: self.read_index,
@@ -618,7 +733,9 @@ pub mod testlib {
             Tx::try_from(csv_tx).unwrap()
         }
 
-        pub fn d() -> Self { Self::default() }
+        pub fn d() -> Self {
+            Self::default()
+        }
     }
 
     impl Default for TTx {
@@ -660,25 +777,29 @@ mod tests {
     use time::Date;
 
     use crate::pdec;
-    use crate::portfolio::{Affiliate, Currency, CurrencyAndExchangeRate, SellTxSpecifics, SflaTxSpecifics};
+    use crate::portfolio::{
+        Affiliate, Currency, CurrencyAndExchangeRate, SellTxSpecifics,
+        SflaTxSpecifics,
+    };
     use crate::testlib::assert_big_struct_eq;
+    use crate::util::date;
     use crate::util::decimal::{GreaterEqualZeroDecimal, PosDecimal};
     use crate::{testlib::assert_vec_eq, util::date::parse_standard_date};
-    use crate::util::date;
 
     use super::{BuyTxSpecifics, CsvTx, RocTxSpecifics, SFLInput, Tx, TxAction};
 
     pub const DEFAULT_SECURITY: &str = "FOO";
 
     pub fn tx_default() -> CsvTx {
-        CsvTx { security: Some(DEFAULT_SECURITY.to_string()),
-             trade_date: Some(Date::MIN),
-             settlement_date: Some(Date::MIN),
-             action: Some(TxAction::Buy),
-             shares: Some(dec!(1)),
-             amount_per_share: Some(dec!(0)),
+        CsvTx {
+            security: Some(DEFAULT_SECURITY.to_string()),
+            trade_date: Some(Date::MIN),
+            settlement_date: Some(Date::MIN),
+            action: Some(TxAction::Buy),
+            shares: Some(dec!(1)),
+            amount_per_share: Some(dec!(0)),
             ..CsvTx::default()
-            }
+        }
     }
 
     fn pos(d: Decimal) -> PosDecimal {
@@ -691,9 +812,10 @@ mod tests {
 
     #[test]
     fn test_tx_order() {
-        let doy_date = |day| { date::pub_testlib::doy_date(2024, day) };
-        let sdoy_date = |day| { Some(doy_date(day)) };
+        let doy_date = |day| date::pub_testlib::doy_date(2024, day);
+        let sdoy_date = |day| Some(doy_date(day));
 
+        #[rustfmt::skip]
         let mut csv_txs = vec![
             CsvTx{settlement_date: sdoy_date(4), read_index: 2, ..tx_default()},
             CsvTx{settlement_date: sdoy_date(5), read_index: 1, ..tx_default()},
@@ -701,9 +823,10 @@ mod tests {
             CsvTx{settlement_date: sdoy_date(4), read_index: 3, ..tx_default()},
             CsvTx{settlement_date: sdoy_date(1), read_index: 5, ..tx_default()},
         ];
-        let mut txs: Vec<Tx> = csv_txs.iter().map(|c_tx| {
-            Tx::try_from(c_tx.clone()).unwrap() }).collect();
+        let mut txs: Vec<Tx> =
+            csv_txs.iter().map(|c_tx| Tx::try_from(c_tx.clone()).unwrap()).collect();
 
+        #[rustfmt::skip]
         let exp_csv_txs = vec![
             CsvTx{settlement_date: sdoy_date(1), read_index: 5, ..tx_default()},
             CsvTx{settlement_date: sdoy_date(2), read_index: 4, ..tx_default()},
@@ -711,8 +834,10 @@ mod tests {
             CsvTx{settlement_date: sdoy_date(4), read_index: 3, ..tx_default()},
             CsvTx{settlement_date: sdoy_date(5), read_index: 1, ..tx_default()},
         ];
-        let exp_txs: Vec<Tx> = exp_csv_txs.iter().map(|c_tx| {
-            Tx::try_from(c_tx.clone()).unwrap() }).collect();
+        let exp_txs: Vec<Tx> = exp_csv_txs
+            .iter()
+            .map(|c_tx| Tx::try_from(c_tx.clone()).unwrap())
+            .collect();
 
         csv_txs.sort();
         assert_vec_eq(csv_txs, exp_csv_txs);
@@ -723,7 +848,7 @@ mod tests {
     }
 
     fn fully_populated_csvtx(action: TxAction) -> CsvTx {
-        CsvTx{
+        CsvTx {
             security: Some("FOO".to_string()),
             trade_date: Some(parse_standard_date("2022-10-20").unwrap()),
             settlement_date: Some(parse_standard_date("2022-10-21").unwrap()),
@@ -738,13 +863,16 @@ mod tests {
             memo: Some("A memo".to_string()),
             affiliate: Some(Affiliate::default_registered()),
             // Ignored for buy
-            specified_superficial_loss: Some(SFLInput::req_from_dec(dec!(-2.5), false)),
+            specified_superficial_loss: Some(SFLInput::req_from_dec(
+                dec!(-2.5),
+                false,
+            )),
             read_index: 5,
         }
     }
 
     fn barebones_valid_sample_csvtx(action: TxAction) -> CsvTx {
-        CsvTx{
+        CsvTx {
             security: Some("FOO".to_string()),
             trade_date: Some(parse_standard_date("2022-10-20").unwrap()),
             settlement_date: Some(parse_standard_date("2022-10-21").unwrap()),
@@ -770,20 +898,22 @@ mod tests {
         roc_csvtx.shares = None;
         let roc_csvtx = roc_csvtx;
 
-        let exp_buy_tx = Tx{
+        let exp_buy_tx = Tx {
             security: buy_csvtx.security.clone().unwrap(),
             trade_date: buy_csvtx.trade_date.clone().unwrap(),
             settlement_date: buy_csvtx.settlement_date.clone().unwrap(),
-            action_specifics: super::TxActionSpecifics::Buy(BuyTxSpecifics{
+            action_specifics: super::TxActionSpecifics::Buy(BuyTxSpecifics {
                 shares: pos(buy_csvtx.shares.unwrap()),
                 amount_per_share: gez(buy_csvtx.amount_per_share.unwrap()),
                 commission: gez(buy_csvtx.commission.unwrap()),
                 tx_currency_and_rate: CurrencyAndExchangeRate::rq_new(
                     buy_csvtx.tx_currency.clone().unwrap(),
-                    pos(buy_csvtx.tx_curr_to_local_exchange_rate.unwrap())),
+                    pos(buy_csvtx.tx_curr_to_local_exchange_rate.unwrap()),
+                ),
                 separate_commission_currency: Some(CurrencyAndExchangeRate::rq_new(
                     buy_csvtx.commission_currency.clone().unwrap(),
-                    pos(buy_csvtx.commission_curr_to_local_exchange_rate.unwrap()))),
+                    pos(buy_csvtx.commission_curr_to_local_exchange_rate.unwrap()),
+                )),
             }),
             memo: buy_csvtx.memo.clone().unwrap(),
             affiliate: buy_csvtx.affiliate.clone().unwrap(),
@@ -796,40 +926,48 @@ mod tests {
         assert_big_struct_eq(Tx::try_from(tx.to_csvtx()).unwrap(), tx);
 
         let mut exp_sell_tx = exp_buy_tx.clone();
-        exp_sell_tx.action_specifics = super::TxActionSpecifics::Sell(SellTxSpecifics{
-            shares: pos(sell_csvtx.shares.unwrap()),
-            amount_per_share: gez(sell_csvtx.amount_per_share.unwrap()),
-            commission: gez(sell_csvtx.commission.unwrap()),
-            tx_currency_and_rate: CurrencyAndExchangeRate::rq_new(
-                sell_csvtx.tx_currency.clone().unwrap(),
-                pos(sell_csvtx.tx_curr_to_local_exchange_rate.unwrap())),
-            separate_commission_currency: Some(CurrencyAndExchangeRate::rq_new(
-                sell_csvtx.commission_currency.clone().unwrap(),
-                pos(sell_csvtx.commission_curr_to_local_exchange_rate.unwrap()))),
-            specified_superficial_loss: sell_csvtx.specified_superficial_loss.clone(),
-        });
+        exp_sell_tx.action_specifics =
+            super::TxActionSpecifics::Sell(SellTxSpecifics {
+                shares: pos(sell_csvtx.shares.unwrap()),
+                amount_per_share: gez(sell_csvtx.amount_per_share.unwrap()),
+                commission: gez(sell_csvtx.commission.unwrap()),
+                tx_currency_and_rate: CurrencyAndExchangeRate::rq_new(
+                    sell_csvtx.tx_currency.clone().unwrap(),
+                    pos(sell_csvtx.tx_curr_to_local_exchange_rate.unwrap()),
+                ),
+                separate_commission_currency: Some(CurrencyAndExchangeRate::rq_new(
+                    sell_csvtx.commission_currency.clone().unwrap(),
+                    pos(sell_csvtx.commission_curr_to_local_exchange_rate.unwrap()),
+                )),
+                specified_superficial_loss: sell_csvtx
+                    .specified_superficial_loss
+                    .clone(),
+            });
 
         let tx = Tx::try_from(sell_csvtx).unwrap();
         assert_big_struct_eq(&tx, &exp_sell_tx);
         assert_big_struct_eq(Tx::try_from(tx.to_csvtx()).unwrap(), tx);
 
         let mut exp_sfla_tx = exp_buy_tx.clone();
-        exp_sfla_tx.action_specifics = super::TxActionSpecifics::Sfla(SflaTxSpecifics{
-            shares_affected: pos(sfla_csvtx.shares.unwrap()),
-            amount_per_share: pos(sfla_csvtx.amount_per_share.unwrap()),
-        });
+        exp_sfla_tx.action_specifics =
+            super::TxActionSpecifics::Sfla(SflaTxSpecifics {
+                shares_affected: pos(sfla_csvtx.shares.unwrap()),
+                amount_per_share: pos(sfla_csvtx.amount_per_share.unwrap()),
+            });
 
         let tx = Tx::try_from(sfla_csvtx).unwrap();
         assert_big_struct_eq(&tx, &exp_sfla_tx);
         assert_big_struct_eq(Tx::try_from(tx.to_csvtx()).unwrap(), tx);
 
         let mut exp_roc_tx = exp_buy_tx.clone();
-        exp_roc_tx.action_specifics = super::TxActionSpecifics::Roc(RocTxSpecifics{
-            amount_per_held_share: gez(roc_csvtx.amount_per_share.unwrap()),
-            tx_currency_and_rate: CurrencyAndExchangeRate::rq_new(
-                roc_csvtx.tx_currency.clone().unwrap(),
-                pos(roc_csvtx.tx_curr_to_local_exchange_rate.unwrap())),
-        });
+        exp_roc_tx.action_specifics =
+            super::TxActionSpecifics::Roc(RocTxSpecifics {
+                amount_per_held_share: gez(roc_csvtx.amount_per_share.unwrap()),
+                tx_currency_and_rate: CurrencyAndExchangeRate::rq_new(
+                    roc_csvtx.tx_currency.clone().unwrap(),
+                    pos(roc_csvtx.tx_curr_to_local_exchange_rate.unwrap()),
+                ),
+            });
 
         let tx = Tx::try_from(roc_csvtx).unwrap();
         assert_big_struct_eq(&tx, &exp_roc_tx);
@@ -840,11 +978,11 @@ mod tests {
     fn test_csvtx_to_tx_defaults_and_optionals() {
         let buy_csvtx = barebones_valid_sample_csvtx(TxAction::Buy);
 
-        let exp_buy_tx = Tx{
+        let exp_buy_tx = Tx {
             security: buy_csvtx.security.clone().unwrap(),
             trade_date: buy_csvtx.trade_date.clone().unwrap(),
             settlement_date: buy_csvtx.settlement_date.clone().unwrap(),
-            action_specifics: super::TxActionSpecifics::Buy(BuyTxSpecifics{
+            action_specifics: super::TxActionSpecifics::Buy(BuyTxSpecifics {
                 shares: pos(buy_csvtx.shares.unwrap()),
                 amount_per_share: gez(buy_csvtx.amount_per_share.unwrap()),
                 commission: gez(dec!(0)),
@@ -862,11 +1000,11 @@ mod tests {
 
         let sell_csvtx = barebones_valid_sample_csvtx(TxAction::Sell);
 
-        let exp_sell_tx = Tx{
+        let exp_sell_tx = Tx {
             security: sell_csvtx.security.clone().unwrap(),
             trade_date: sell_csvtx.trade_date.clone().unwrap(),
             settlement_date: sell_csvtx.settlement_date.clone().unwrap(),
-            action_specifics: super::TxActionSpecifics::Sell(SellTxSpecifics{
+            action_specifics: super::TxActionSpecifics::Sell(SellTxSpecifics {
                 shares: pos(sell_csvtx.shares.unwrap()),
                 amount_per_share: gez(sell_csvtx.amount_per_share.unwrap()),
                 commission: gez(dec!(0)),
@@ -922,21 +1060,33 @@ mod tests {
         buy_csvtx.tx_currency = Some(Currency::usd());
 
         let err = Tx::try_from(buy_csvtx).unwrap_err();
-        assert_eq!(err, "\"currency\" specified but \"exchange rate\" not found");
+        assert_eq!(
+            err,
+            "\"currency\" specified but \"exchange rate\" not found"
+        );
 
         let mut buy_csvtx = barebones_valid_sample_csvtx(TxAction::Buy);
         buy_csvtx.tx_curr_to_local_exchange_rate = Some(dec!(1.2));
 
         let err = Tx::try_from(buy_csvtx).unwrap_err();
-        assert_eq!(err, "\"exchange rate\" specified but \"currency\" not found");
+        assert_eq!(
+            err,
+            "\"exchange rate\" specified but \"currency\" not found"
+        );
 
         // (double check that CAD doesn't need a rate, and if it does, it must be 1)
         let mut buy_csvtx = barebones_valid_sample_csvtx(TxAction::Buy);
         buy_csvtx.tx_currency = Some(Currency::cad());
 
         let tx = Tx::try_from(buy_csvtx).unwrap();
-        assert_eq!(tx.buy_specifics().unwrap().tx_currency_and_rate.currency, Currency::cad());
-        assert_eq!(tx.buy_specifics().unwrap().tx_currency_and_rate.exchange_rate, pdec!(1));
+        assert_eq!(
+            tx.buy_specifics().unwrap().tx_currency_and_rate.currency,
+            Currency::cad()
+        );
+        assert_eq!(
+            tx.buy_specifics().unwrap().tx_currency_and_rate.exchange_rate,
+            pdec!(1)
+        );
 
         // Invalid default rate
         let mut buy_csvtx = barebones_valid_sample_csvtx(TxAction::Buy);
@@ -944,7 +1094,10 @@ mod tests {
         buy_csvtx.tx_curr_to_local_exchange_rate = Some(dec!(1.2));
 
         let err = Tx::try_from(buy_csvtx).unwrap_err();
-        assert_eq!(err, "Default currency (CAD) exchange rate was not 1 (was 1.2)");
+        assert_eq!(
+            err,
+            "Default currency (CAD) exchange rate was not 1 (was 1.2)"
+        );
 
         // - comm currency but no rate (and inverse). Just sanity check we're using
         // the same function.

@@ -6,9 +6,12 @@ use acb::{
     portfolio::{
         bookkeeping::calc_total_costs,
         render::{render_total_costs, RenderTable},
-        Affiliate, CurrencyAndExchangeRate, PortfolioSecurityStatus, RocTxSpecifics, Tx, TxActionSpecifics, TxDelta
+        Affiliate, CurrencyAndExchangeRate, PortfolioSecurityStatus, RocTxSpecifics,
+        Tx, TxActionSpecifics, TxDelta,
     },
-    util::{date::parse_standard_date, decimal::GreaterEqualZeroDecimal, rw::WriteHandle}
+    util::{
+        date::parse_standard_date, decimal::GreaterEqualZeroDecimal, rw::WriteHandle,
+    },
 };
 use rust_decimal::Decimal;
 use time::Date;
@@ -29,33 +32,42 @@ impl Td {
 
 fn get_delta(td: Td) -> TxDelta {
     let acb = if td.total_acb != "" {
-        Some(GreaterEqualZeroDecimal::try_from(
-            Decimal::from_str(td.total_acb).unwrap()).unwrap())
-    } else { None };
+        Some(
+            GreaterEqualZeroDecimal::try_from(
+                Decimal::from_str(td.total_acb).unwrap(),
+            )
+            .unwrap(),
+        )
+    } else {
+        None
+    };
 
     TxDelta {
-        tx: Tx{
+        tx: Tx {
             security: td.sec.to_string(),
             trade_date: parse_standard_date("1970-01-01").unwrap(),
             settlement_date: td.settle_date(),
             // This is meaningless here. Just the simplest to populate
-            action_specifics: TxActionSpecifics::Roc(RocTxSpecifics{
+            action_specifics: TxActionSpecifics::Roc(RocTxSpecifics {
                 amount_per_held_share: gezdec!(0),
-                tx_currency_and_rate: CurrencyAndExchangeRate::default() }),
+                tx_currency_and_rate: CurrencyAndExchangeRate::default(),
+            }),
             memo: String::new(),
             affiliate: Affiliate::from_strep(&td.affiliate),
             read_index: 0,
         },
-        pre_status: Rc::new(PortfolioSecurityStatus{
+        pre_status: Rc::new(PortfolioSecurityStatus {
             security: td.sec.to_string(),
             total_acb: Some(gezdec!(0)),
             share_balance: gezdec!(0),
-            all_affiliate_share_balance: gezdec!(0)}),
-        post_status: Rc::new(PortfolioSecurityStatus{
+            all_affiliate_share_balance: gezdec!(0),
+        }),
+        post_status: Rc::new(PortfolioSecurityStatus {
             security: td.sec.to_string(),
             total_acb: acb,
             share_balance: gezdec!(0),
-            all_affiliate_share_balance: gezdec!(0)}),
+            all_affiliate_share_balance: gezdec!(0),
+        }),
         capital_gain: None,
         sfl: None,
     }
@@ -68,8 +80,12 @@ fn get_deltas(tds: Vec<Td>) -> Vec<TxDelta> {
 fn render_table(rt: &RenderTable) -> String {
     let (wh, buff) = WriteHandle::string_buff_write_handle();
     let mut wr = TextWriter::new(wh);
-    wr.print_render_table(acb::app::outfmt::model::OutputType::Costs,
-                          "Table of", &rt).unwrap();
+    wr.print_render_table(
+        acb::app::outfmt::model::OutputType::Costs,
+        "Table of",
+        &rt,
+    )
+    .unwrap();
     let buff_ref = buff.borrow();
     buff_ref.as_str().to_string()
 }
@@ -85,8 +101,11 @@ fn fixup_rows(col_start_idx: usize, v: &mut Vec<Vec<String>>) {
     }
 }
 
-fn assert_tables_equal(fix_col_offset: usize,
-                       mut expected: RenderTable, mut actual: RenderTable) {
+fn assert_tables_equal(
+    fix_col_offset: usize,
+    mut expected: RenderTable,
+    mut actual: RenderTable,
+) {
     fixup_rows(fix_col_offset, &mut expected.rows);
     expected.notes.sort();
     actual.notes.sort();
@@ -109,7 +128,7 @@ where
         Ok(_) => println!("{name} passed"),
         Err(e) => {
             panic!("{name} failed: {e:#?}");
-        },
+        }
     }
 }
 
@@ -123,20 +142,27 @@ fn test_render_total_costs() {
     }
 
     for tc in vec![
-        Case { name: "none", reorg: |_| {} },
-        Case { name: "by-security", reorg: |data: &mut Vec<Td>| {
-            data.sort_by(|a, b| {
-                if a.sec != b.sec {
-                    a.sec.partial_cmp(b.sec).unwrap()
-                } else {
-                    // We must always have Txs from the same security
-                    // sorted by date.
-                    a.settle_date().partial_cmp(&b.settle_date()).unwrap()
-                }
-            });
-        } },
+        Case {
+            name: "none",
+            reorg: |_| {},
+        },
+        Case {
+            name: "by-security",
+            reorg: |data: &mut Vec<Td>| {
+                data.sort_by(|a, b| {
+                    if a.sec != b.sec {
+                        a.sec.partial_cmp(b.sec).unwrap()
+                    } else {
+                        // We must always have Txs from the same security
+                        // sorted by date.
+                        a.settle_date().partial_cmp(&b.settle_date()).unwrap()
+                    }
+                });
+            },
+        },
     ] {
         run_test(tc.name, || {
+            #[rustfmt::skip]
             let mut data = vec![
                 Td{sec: "SECA", settle: "2001-01-13", total_acb: "100", affiliate: ""},
                 Td{sec: "XXXX", settle: "2001-02-14", total_acb: "90", affiliate: ""},
@@ -170,7 +196,7 @@ fn test_render_total_costs() {
                 v.iter().map(|s| s.to_string()).collect()
             };
 
-            let exp = RenderTable{
+            let exp = RenderTable {
                 header: svec(vec!["Date", "Total", "SECA", "XXXX"]),
                 rows: vec![
                     svec(vec!["2001-01-13", "100", "100", " 0"]),
@@ -189,7 +215,7 @@ fn test_render_total_costs() {
 
             assert_tables_equal(1, exp, costs_tables.total);
 
-            let exp_year = RenderTable{
+            let exp_year = RenderTable {
                 header: svec(vec!["Year", "Date", "Total", "SECA", "XXXX"]),
                 rows: vec![
                     svec(vec!["2001", "2001-05-17", "270", "200", "70"]),

@@ -5,7 +5,13 @@ use std::collections::{HashMap, HashSet};
 
 use time::{Date, Duration};
 
-use crate::{portfolio::{Affiliate, Tx, TxAction, TxActionSpecifics}, util::{decimal::{GreaterEqualZeroDecimal, PosDecimal}, math::{GezDecimalRatio, PosDecimalRatio}}};
+use crate::{
+    portfolio::{Affiliate, Tx, TxAction, TxActionSpecifics},
+    util::{
+        decimal::{GreaterEqualZeroDecimal, PosDecimal},
+        math::{GezDecimalRatio, PosDecimalRatio},
+    },
+};
 
 use super::AffiliatePortfolioSecurityStatuses;
 
@@ -26,7 +32,7 @@ struct SuperficialLossInfo {
     // we end up inserting only-sellers simply because we don't know they
     // won't buy at some point, while we're populating.
     // We just don't bother filtering them out at the end.
-    pub active_affiliate_shares_at_eop: HashMap<Affiliate, GreaterEqualZeroDecimal>
+    pub active_affiliate_shares_at_eop: HashMap<Affiliate, GreaterEqualZeroDecimal>,
 }
 
 impl SuperficialLossInfo {
@@ -82,15 +88,18 @@ pub fn get_last_day_in_superficial_loss_period(settlement_date: Date) -> Date {
 /// for automatic detection and calculation.
 /// This will also NOT check if the sale is a loss. It assumes the Sell at idx is a loss.
 fn get_superficial_loss_info(
-    idx: usize, txs: &Vec<Tx>, ptf_statuses: &AffiliatePortfolioSecurityStatuses)
-    -> Result<MaybeSuperficialLossInfo, Error> {
-
+    idx: usize,
+    txs: &Vec<Tx>,
+    ptf_statuses: &AffiliatePortfolioSecurityStatuses,
+) -> Result<MaybeSuperficialLossInfo, Error> {
     let tx = txs.get(idx).unwrap();
     assert_eq!(tx.action(), TxAction::Sell);
     let sell_shares = tx.sell_specifics().unwrap().shares;
 
-    let first_bad_buy_date = get_first_day_in_superficial_loss_period(tx.settlement_date);
-    let last_bad_buy_date = get_last_day_in_superficial_loss_period(tx.settlement_date);
+    let first_bad_buy_date =
+        get_first_day_in_superficial_loss_period(tx.settlement_date);
+    let last_bad_buy_date =
+        get_last_day_in_superficial_loss_period(tx.settlement_date);
 
     let latest_post_status = ptf_statuses.get_latest_post_status();
 
@@ -108,14 +117,16 @@ fn get_superficial_loss_info(
         )?;
 
     // Default to post-sale share balance for the affiliate
-    let default_post_sale_share_balance = |af: &Affiliate| -> GreaterEqualZeroDecimal {
-        match ptf_statuses.get_latest_post_status_for_affiliate(af) {
-            Some(st) => st.share_balance,
-            None => GreaterEqualZeroDecimal::zero(),
-        }
-    };
+    let default_post_sale_share_balance =
+        |af: &Affiliate| -> GreaterEqualZeroDecimal {
+            match ptf_statuses.get_latest_post_status_for_affiliate(af) {
+                Some(st) => st.share_balance,
+                None => GreaterEqualZeroDecimal::zero(),
+            }
+        };
 
-    let mut all_aff_shares_at_end_of_period = all_affiliates_share_balance_after_sell;
+    let mut all_aff_shares_at_end_of_period =
+        all_affiliates_share_balance_after_sell;
     let mut total_aquired_in_period = GreaterEqualZeroDecimal::zero();
     let mut buying_affiliates = HashSet::new();
     let mut active_affiliate_shares_at_eop =
@@ -165,16 +176,21 @@ fn get_superficial_loss_info(
         // Within the 30 day window after
         match &after_tx.action_specifics {
             TxActionSpecifics::Buy(buy) => {
-                let after_tx_buy_shares =
-                    GreaterEqualZeroDecimal::from(buy.shares);
+                let after_tx_buy_shares = GreaterEqualZeroDecimal::from(buy.shares);
                 all_aff_shares_at_end_of_period += after_tx_buy_shares;
-                let old_shares_eop = active_affiliate_shares_at_eop.get(after_tx_affil)
+                let old_shares_eop = active_affiliate_shares_at_eop
+                    .get(after_tx_affil)
                     .map(|d| *d)
-                    .unwrap_or_else(|| default_post_sale_share_balance(after_tx_affil));
-                active_affiliate_shares_at_eop.insert(after_tx_affil.clone(), old_shares_eop + after_tx_buy_shares);
+                    .unwrap_or_else(|| {
+                        default_post_sale_share_balance(after_tx_affil)
+                    });
+                active_affiliate_shares_at_eop.insert(
+                    after_tx_affil.clone(),
+                    old_shares_eop + after_tx_buy_shares,
+                );
                 total_aquired_in_period += after_tx_buy_shares;
                 buying_affiliates.insert(after_tx_affil.clone());
-            },
+            }
             TxActionSpecifics::Sell(sell) => {
                 let after_tx_sell_shares =
                     GreaterEqualZeroDecimal::from(sell.shares);
@@ -188,16 +204,19 @@ fn get_superficial_loss_info(
                             after_tx.trade_date)
                 })?;
 
-                let old_shares_eop = active_affiliate_shares_at_eop.get(after_tx_affil)
+                let old_shares_eop = active_affiliate_shares_at_eop
+                    .get(after_tx_affil)
                     .map(|d| *d)
-                    .unwrap_or_else(|| default_post_sale_share_balance(after_tx_affil));
+                    .unwrap_or_else(|| {
+                        default_post_sale_share_balance(after_tx_affil)
+                    });
                 active_affiliate_shares_at_eop.insert(after_tx_affil.clone(),
                     GreaterEqualZeroDecimal::try_from(*old_shares_eop - *after_tx_sell_shares)
                         .map_err(|_|
                             format!("Share count for affiliate {} went below zero in 30-day period after sale (on {})",
                             after_tx_affil.name(), after_tx.trade_date))?
                 );
-            },
+            }
             _ => (), // ignored
         }
     }
@@ -209,7 +228,7 @@ fn get_superficial_loss_info(
             v
         } else {
             // all_aff_shares_at_end_of_period was zero
-            return Ok(MaybeSuperficialLossInfo::NotSuperficial())
+            return Ok(MaybeSuperficialLossInfo::NotSuperficial());
         };
 
     // Start just before the sell tx and work backwards
@@ -229,24 +248,26 @@ fn get_superficial_loss_info(
                     // This affiliate only bought before the superficial loss tx,
                     // so just populate them with their current status.
                     active_affiliate_shares_at_eop.insert(
-                        before_tx_affil.clone(), default_post_sale_share_balance(before_tx_affil));
+                        before_tx_affil.clone(),
+                        default_post_sale_share_balance(before_tx_affil),
+                    );
                 }
-            },
+            }
             _ => (), // ignored
         }
     }
 
-    let x = if let Ok(bought_shares_in_period) = PosDecimal::try_from(*total_aquired_in_period) {
-        MaybeSuperficialLossInfo::Superficial(
-            SuperficialLossInfo{
-                _first_date_in_period: first_bad_buy_date,
-                _last_date_in_period: last_bad_buy_date,
-                all_aff_shares_at_end_of_period: all_aff_shares_at_end_of_period,
-                total_aquired_in_period: bought_shares_in_period,
-                buying_affiliates: buying_affiliates,
-                active_affiliate_shares_at_eop: active_affiliate_shares_at_eop,
-            }
-        )
+    let x = if let Ok(bought_shares_in_period) =
+        PosDecimal::try_from(*total_aquired_in_period)
+    {
+        MaybeSuperficialLossInfo::Superficial(SuperficialLossInfo {
+            _first_date_in_period: first_bad_buy_date,
+            _last_date_in_period: last_bad_buy_date,
+            all_aff_shares_at_end_of_period: all_aff_shares_at_end_of_period,
+            total_aquired_in_period: bought_shares_in_period,
+            buying_affiliates: buying_affiliates,
+            active_affiliate_shares_at_eop: active_affiliate_shares_at_eop,
+        })
     } else {
         MaybeSuperficialLossInfo::NotSuperficial()
     };
@@ -262,7 +283,7 @@ pub(super) struct SflRatioResultResult {
     // the SFL shares, which means that the selling affiliate probably had some
     // shares they didn't sell. This can happen because we use interpretation/algo I.1
     // rather than I.2 (see the sfl wiki page) to determine the loss ratio.
-    pub fewer_remaining_shares_than_sfl_shares: bool
+    pub fewer_remaining_shares_than_sfl_shares: bool,
 }
 
 /// Calculation of partial superficial losses where
@@ -283,7 +304,7 @@ pub(super) struct SflRatioResultResult {
 /// Reference: https://www.adjustedcostbase.ca/blog/applying-the-superficial-loss-rule-for-a-partial-disposition-of-shares/
 fn calc_superficial_loss_ratio(
     sell_tx: &Tx,
-    msli: MaybeSuperficialLossInfo
+    msli: MaybeSuperficialLossInfo,
 ) -> Result<Option<SflRatioResultResult>, Error> {
     match msli {
         MaybeSuperficialLossInfo::Superficial(sli) => {
@@ -294,7 +315,7 @@ fn calc_superficial_loss_ratio(
                 sli.total_aquired_in_period,
                 sli.all_aff_shares_at_end_of_period,
             ]);
-            let ratio = PosDecimalRatio{
+            let ratio = PosDecimalRatio {
                 numerator: numerator,
                 denominator: sell_shares,
             };
@@ -304,18 +325,21 @@ fn calc_superficial_loss_ratio(
 
             // Affiliate to percentage of the SFL adjustment is attributed to it.
             let mut affiliate_adjustment_portions = HashMap::new();
-            let buying_affils_share_eop_total = sli.buying_affiliate_shares_at_eop_total();
+            let buying_affils_share_eop_total =
+                sli.buying_affiliate_shares_at_eop_total();
             // Add in ACB adjustments for the buying affiliates, if any of them have
             // shares remaining.
             // If none have shares remaining, then we are in the case where we set
             // fewer_remaining_shares_than_sfl_shares below, and it will be reported
             // as a warning. Note that that case can still occur even if we do have
             // some shares remaining on the buyers.
-            if let Ok(pos_buying_affils_share_eop_total) = PosDecimal::try_from(*buying_affils_share_eop_total) {
+            if let Ok(pos_buying_affils_share_eop_total) =
+                PosDecimal::try_from(*buying_affils_share_eop_total)
+            {
                 for af in &sli.buying_affiliates {
                     let af_share_balance_at_eop =
                         sli.active_affiliate_shares_at_eop.get(af).unwrap();
-                    let af_portion = GezDecimalRatio{
+                    let af_portion = GezDecimalRatio {
                         numerator: af_share_balance_at_eop.clone(),
                         denominator: pos_buying_affils_share_eop_total,
                     };
@@ -324,21 +348,23 @@ fn calc_superficial_loss_ratio(
             }
 
             let affected_sfl_shares = ratio.numerator;
-            Ok(Some(SflRatioResultResult{
+            Ok(Some(SflRatioResultResult {
                 sfl_ratio: ratio,
                 acb_adjust_affiliate_ratios: affiliate_adjustment_portions,
-                fewer_remaining_shares_than_sfl_shares: *buying_affils_share_eop_total < *affected_sfl_shares,
+                fewer_remaining_shares_than_sfl_shares:
+                    *buying_affils_share_eop_total < *affected_sfl_shares,
             }))
-        },
+        }
         MaybeSuperficialLossInfo::NotSuperficial() => Ok(None),
     }
 }
 
 /// See doc for `calc_superficial_loss_ratio`
 pub(super) fn get_superficial_loss_ratio(
-    idx: usize, txs: &Vec<Tx>, ptf_statuses: &AffiliatePortfolioSecurityStatuses)
-    -> Result<Option<SflRatioResultResult>, Error> {
-
+    idx: usize,
+    txs: &Vec<Tx>,
+    ptf_statuses: &AffiliatePortfolioSecurityStatuses,
+) -> Result<Option<SflRatioResultResult>, Error> {
     let msli = get_superficial_loss_info(idx, txs, ptf_statuses)?;
     calc_superficial_loss_ratio(txs.get(idx).unwrap(), msli)
 }
@@ -354,23 +380,40 @@ mod tests {
     use crate::portfolio::bookkeeping::testlib::TPSS;
     use crate::portfolio::testlib::{default_sec, mk_date, TTx};
 
-    use crate::portfolio::{bookkeeping::AffiliatePortfolioSecurityStatuses, Affiliate};
+    use crate::portfolio::{
+        bookkeeping::AffiliatePortfolioSecurityStatuses, Affiliate,
+    };
     use crate::portfolio::{SFLInput, TxAction as A};
     use crate::testlib::assert_big_struct_eq;
-    use crate::util::decimal::{GreaterEqualZeroDecimal, LessEqualZeroDecimal, PosDecimal};
+    use crate::util::decimal::{
+        GreaterEqualZeroDecimal, LessEqualZeroDecimal, PosDecimal,
+    };
     use crate::util::math::{GezDecimalRatio, PosDecimalRatio};
     use crate::{gezdec as gez, pdec};
 
-    use super::{calc_superficial_loss_ratio, get_superficial_loss_info, MaybeSuperficialLossInfo, SflRatioResultResult};
+    use super::{
+        calc_superficial_loss_ratio, get_superficial_loss_info,
+        MaybeSuperficialLossInfo, SflRatioResultResult,
+    };
 
-    fn create_test_status(af_shares: &[(Affiliate, GreaterEqualZeroDecimal)]) -> AffiliatePortfolioSecurityStatuses {
-        let mut statuses = AffiliatePortfolioSecurityStatuses::new(default_sec(), None);
+    fn create_test_status(
+        af_shares: &[(Affiliate, GreaterEqualZeroDecimal)],
+    ) -> AffiliatePortfolioSecurityStatuses {
+        let mut statuses =
+            AffiliatePortfolioSecurityStatuses::new(default_sec(), None);
         let mut total = GreaterEqualZeroDecimal::zero();
         for (af, shares) in af_shares {
             total += *shares;
             let acb = if af.registered() { None } else { Some(gez!(1)) };
-            statuses.set_latest_post_status(af,
-                TPSS{shares: shares.clone(), all_shares: total.clone(), acb_per_sh: acb, ..TPSS::d()}.x()
+            statuses.set_latest_post_status(
+                af,
+                TPSS {
+                    shares: shares.clone(),
+                    all_shares: total.clone(),
+                    acb_per_sh: acb,
+                    ..TPSS::d()
+                }
+                .x(),
             )
         }
         statuses
@@ -387,32 +430,43 @@ mod tests {
     //
     // Note that this function doesn't check if the sell is actually a loss.
     #[test]
+    #[rustfmt::skip]
     fn test_get_superficial_loss_info_non_superficial() {
         let default_af = || Affiliate::default();
         let af_br = ||Affiliate::from_strep("B(R)");
 
         let ignored_explicit_sfl = SFLInput{
-            superficial_loss: LessEqualZeroDecimal::try_from(dec!(-1)).unwrap(), force: true };
+            superficial_loss: LessEqualZeroDecimal::try_from(dec!(-1)).unwrap(),
+            force: true };
 
         // Case: Zero shares at end of period
         // - Includes fractional share check
-        let statuses = create_test_status(&[(default_af(), gez!(5)), (af_br(), gez!(10))]);
+        let statuses = create_test_status(
+            &[(default_af(), gez!(5)), (af_br(), gez!(10))]);
 
         let txs = vec![
             // Share quantity of buys before are ignored
-            TTx{t_day: 10, act: A::Buy, shares: gez!(100), price: gez!(1), af: af_br(), ..TTx::d()}.x(),
-            TTx{t_day: 10, act: A::Buy, shares: gez!(100), price: gez!(1), af: default_af(), ..TTx::d()}.x(),
+            TTx{t_day: 10, act: A::Buy, shares: gez!(100), price: gez!(1),
+                af: af_br(), ..TTx::d()}.x(),
+            TTx{t_day: 10, act: A::Buy, shares: gez!(100), price: gez!(1),
+                af: default_af(), ..TTx::d()}.x(),
             // SFL candidate
-            TTx{t_day: 11, act: A::Sell, shares: gez!(7), price: gez!(0.00001), af: af_br(),
+            TTx{t_day: 11, act: A::Sell, shares: gez!(7), price: gez!(0.00001),
+                af: af_br(),
                 sfl: Some(ignored_explicit_sfl.clone()), ..TTx::d()}.x(),
             // Buy after
-            TTx{t_day: 12, act: A::Buy, shares: gez!(1.2), price: gez!(1), af: af_br(), ..TTx::d()}.x(),
-            TTx{t_day: 13, act: A::Sell, shares: gez!(0.7), price: gez!(1), af: af_br(), ..TTx::d()}.x(),
+            TTx{t_day: 12, act: A::Buy, shares: gez!(1.2), price: gez!(1),
+                af: af_br(), ..TTx::d()}.x(),
+            TTx{t_day: 13, act: A::Sell, shares: gez!(0.7), price: gez!(1),
+                af: af_br(), ..TTx::d()}.x(),
             // Disposal of existing shares
-            TTx{t_day: 41, act: A::Sell, shares: gez!(5), price: gez!(0.5), af: default_af(), ..TTx::d()}.x(),
-            TTx{t_day: 41, act: A::Sell, shares: gez!(3.5), price: gez!(0.5), af: af_br(), ..TTx::d()}.x(),
+            TTx{t_day: 41, act: A::Sell, shares: gez!(5), price: gez!(0.5),
+                af: default_af(), ..TTx::d()}.x(),
+            TTx{t_day: 41, act: A::Sell, shares: gez!(3.5), price: gez!(0.5),
+                af: af_br(), ..TTx::d()}.x(),
             // Out of range, ignored.
-            TTx{t_day: 42, act: A::Buy, shares: gez!(100), price: gez!(1), af: af_br(), ..TTx::d()}.x(),
+            TTx{t_day: 42, act: A::Buy, shares: gez!(100), price: gez!(1),
+                af: af_br(), ..TTx::d()}.x(),
         ];
 
         let minfo = get_superficial_loss_info(2, &txs, &statuses).unwrap();
@@ -423,7 +477,8 @@ mod tests {
 
         let txs = vec![
             // SFL candidate
-            TTx{t_day: 11, act: A::Sell, shares: gez!(5), price: gez!(0.0001), af: default_af(),
+            TTx{t_day: 11, act: A::Sell, shares: gez!(5), price: gez!(0.0001),
+                af: default_af(),
                 sfl: Some(ignored_explicit_sfl.clone()), ..TTx::d()}.x(),
         ];
 
@@ -431,19 +486,25 @@ mod tests {
         assert!(!minfo.is_superficial());
 
         // Case: No buys within period.
-        let statuses = create_test_status(&[(default_af(), gez!(5)), (af_br(), gez!(10))]);
+        let statuses = create_test_status(
+            &[(default_af(), gez!(5)), (af_br(), gez!(10))]);
 
         let txs = vec![
             // Share quantity of buys before are ignored
-            TTx{t_day: 10, act: A::Buy, shares: gez!(100), price: gez!(1), af: af_br(), ..TTx::d()}.x(),
-            TTx{t_day: 10, act: A::Buy, shares: gez!(100), price: gez!(1), af: default_af(), ..TTx::d()}.x(),
+            TTx{t_day: 10, act: A::Buy, shares: gez!(100), price: gez!(1),
+                af: af_br(), ..TTx::d()}.x(),
+            TTx{t_day: 10, act: A::Buy, shares: gez!(100), price: gez!(1),
+                af: default_af(), ..TTx::d()}.x(),
             // SFL candidate
-            TTx{t_day: 41, act: A::Sell, shares: gez!(7), price: gez!(0.0001), af: af_br(),
+            TTx{t_day: 41, act: A::Sell, shares: gez!(7), price: gez!(0.0001),
+                af: af_br(),
                 sfl: Some(ignored_explicit_sfl.clone()), ..TTx::d()}.x(),
             // Other sells after (small)
-            TTx{t_day: 42, act: A::Sell, shares: gez!(1), price: gez!(1), af: af_br(), ..TTx::d()}.x(),
+            TTx{t_day: 42, act: A::Sell, shares: gez!(1), price: gez!(1),
+                af: af_br(), ..TTx::d()}.x(),
             // Out of range, ignored.
-            TTx{t_day: 72, act: A::Buy, shares: gez!(100), price: gez!(1), af: af_br(), ..TTx::d()}.x(),
+            TTx{t_day: 72, act: A::Buy, shares: gez!(100), price: gez!(1),
+                af: af_br(), ..TTx::d()}.x(),
         ];
 
         let minfo = get_superficial_loss_info(2, &txs, &statuses).unwrap();
@@ -458,28 +519,35 @@ mod tests {
     // - buys both before and after
     //     - other and selling affil
     #[test]
+    #[rustfmt::skip]
     fn test_get_superficial_loss_info_superficial_basic() {
         let default_af = || Affiliate::default();
         let af_br = ||Affiliate::from_strep("B(R)");
         let af_c = ||Affiliate::from_strep("C");
 
         // Case: Sells only before, and tx at end of vector
-        let statuses = create_test_status(&[(default_af(), gez!(5)), (af_br(), gez!(10))]);
+        let statuses = create_test_status(
+            &[(default_af(), gez!(5)), (af_br(), gez!(10))]);
 
         let txs = vec![
             // Share quantity of buys before are ignored
-            TTx{t_day: 0, act: A::Buy, shares: gez!(100), price: gez!(1), af: default_af(), ..TTx::d()}.x(),
+            TTx{t_day: 0, act: A::Buy, shares: gez!(100), price: gez!(1),
+                af: default_af(), ..TTx::d()}.x(),
             // First in period
-            TTx{t_day: 1, act: A::Buy, shares: gez!(77), price: gez!(1), af: default_af(), ..TTx::d()}.x(),
-            TTx{t_day: 1, act: A::Buy, shares: gez!(1), price: gez!(1), af: default_af(), ..TTx::d()}.x(),
+            TTx{t_day: 1, act: A::Buy, shares: gez!(77), price: gez!(1),
+                af: default_af(), ..TTx::d()}.x(),
+            TTx{t_day: 1, act: A::Buy, shares: gez!(1), price: gez!(1),
+                af: default_af(), ..TTx::d()}.x(),
             // SFL candidate
-            TTx{t_day: 31, act: A::Sell, shares: gez!(7), price: gez!(10000), af: af_br(), ..TTx::d()}.x(),
+            TTx{t_day: 31, act: A::Sell, shares: gez!(7), price: gez!(10000),
+                af: af_br(), ..TTx::d()}.x(),
         ];
 
         let minfo = get_superficial_loss_info(3, &txs, &statuses).unwrap();
         let info = minfo.info().unwrap();
         let expected = SuperficialLossInfo {
-            _first_date_in_period: mk_date(31+2-30), // Account for settlement date offset of 2 days
+            // Account for settlement date offset of 2 days
+            _first_date_in_period: mk_date(31+2-30),
             _last_date_in_period: mk_date(31+2+30),
             all_aff_shares_at_end_of_period: pdec!(8),
             total_aquired_in_period: pdec!(78),
@@ -492,23 +560,29 @@ mod tests {
         assert_big_struct_eq(info, &expected);
 
         // Case: Sells only after, and tx at start of vector
-        let statuses = create_test_status(&[(af_br(), gez!(10)), (default_af(), gez!(5))]);
+        let statuses = create_test_status(
+            &[(af_br(), gez!(10)), (default_af(), gez!(5))]);
 
         let txs = vec![
             // SFL candidate
-            TTx{t_day: 1, act: A::Sell, shares: gez!(7), price: gez!(10000), af: af_br(), ..TTx::d()}.x(),
+            TTx{t_day: 1, act: A::Sell, shares: gez!(7), price: gez!(10000),
+                af: af_br(), ..TTx::d()}.x(),
             // Buys after
-            TTx{t_day: 31, act: A::Buy, shares: gez!(77), price: gez!(1), af: default_af(), ..TTx::d()}.x(),
+            TTx{t_day: 31, act: A::Buy, shares: gez!(77), price: gez!(1),
+                af: default_af(), ..TTx::d()}.x(),
             // AF not in pre-status
-            TTx{t_day: 31, act: A::Buy, shares: gez!(5), price: gez!(1), af: af_c(), ..TTx::d()}.x(),
+            TTx{t_day: 31, act: A::Buy, shares: gez!(5), price: gez!(1),
+                af: af_c(), ..TTx::d()}.x(),
             // After period
-            TTx{t_day: 32, act: A::Buy, shares: gez!(33), price: gez!(1), af: af_br(), ..TTx::d()}.x(),
+            TTx{t_day: 32, act: A::Buy, shares: gez!(33), price: gez!(1),
+                af: af_br(), ..TTx::d()}.x(),
         ];
 
         let minfo = get_superficial_loss_info(0, &txs, &statuses).unwrap();
         let info = minfo.info().unwrap();
         let expected = SuperficialLossInfo {
-            _first_date_in_period: mk_date(1+2-30), // Account for settlement date offset of 2 days
+            // Account for settlement date offset of 2 days
+            _first_date_in_period: mk_date(1+2-30),
             _last_date_in_period: mk_date(1+2+30),
             all_aff_shares_at_end_of_period: pdec!(90),
             total_aquired_in_period: pdec!(82),
@@ -531,24 +605,33 @@ mod tests {
 
         let txs = vec![
             // First in period
-            TTx{t_day: 15, act: A::Buy, shares: gez!(1), price: gez!(1), af: af_br(), ..TTx::d()}.x(),
-            // This is technically invalid (sell below zero), but we ignore sells before.
-            TTx{t_day: 15, act: A::Sell, shares: gez!(77), price: gez!(1), af: default_af(), ..TTx::d()}.x(),
+            TTx{t_day: 15, act: A::Buy, shares: gez!(1), price: gez!(1),
+                af: af_br(), ..TTx::d()}.x(),
+            // This is technically invalid (sell below zero), but we ignore
+            // sells before.
+            TTx{t_day: 15, act: A::Sell, shares: gez!(77), price: gez!(1),
+                af: default_af(), ..TTx::d()}.x(),
             // SFL candidate
-            TTx{t_day: 40, act: A::Sell, shares: gez!(7), price: gez!(10000), af: af_br(), ..TTx::d()}.x(),
+            TTx{t_day: 40, act: A::Sell, shares: gez!(7), price: gez!(10000),
+                af: af_br(), ..TTx::d()}.x(),
             // Buys after
-            TTx{t_day: 50, act: A::Buy, shares: gez!(77), price: gez!(1), af: default_af(), ..TTx::d()}.x(),
-            TTx{t_day: 51, act: A::Sell, shares: gez!(5), price: gez!(1), af: af_c(), ..TTx::d()}.x(),
+            TTx{t_day: 50, act: A::Buy, shares: gez!(77), price: gez!(1),
+                af: default_af(), ..TTx::d()}.x(),
+            TTx{t_day: 51, act: A::Sell, shares: gez!(5), price: gez!(1),
+                af: af_c(), ..TTx::d()}.x(),
             // Ignored Tx type
-            TTx{t_day: 52, act: A::Sfla, shares: gez!(5), price: gez!(1), af: default_af(), ..TTx::d()}.x(),
+            TTx{t_day: 52, act: A::Sfla, shares: gez!(5), price: gez!(1),
+                af: default_af(), ..TTx::d()}.x(),
             // After period
-            TTx{t_day: 80, act: A::Buy, shares: gez!(1), price: gez!(1), af: af_c(), ..TTx::d()}.x(),
+            TTx{t_day: 80, act: A::Buy, shares: gez!(1), price: gez!(1),
+                af: af_c(), ..TTx::d()}.x(),
         ];
 
         let minfo = get_superficial_loss_info(2, &txs, &statuses).unwrap();
         let info = minfo.info().unwrap();
         let expected = SuperficialLossInfo {
-            _first_date_in_period: mk_date(40+2-30), // Account for settlement date offset of 2 days
+            // Account for settlement date offset of 2 days
+            _first_date_in_period: mk_date(40+2-30),
             _last_date_in_period: mk_date(40+2+30),
             all_aff_shares_at_end_of_period: pdec!(87),
             total_aquired_in_period: pdec!(78),
@@ -566,6 +649,7 @@ mod tests {
     // - all buying affiliates have zero shares at end
     // - sell all and repurchase some within period
     #[test]
+    #[rustfmt::skip]
     fn test_get_superficial_loss_info_superficial_special() {
         let default_af = || Affiliate::default();
         let af_b = ||Affiliate::from_strep("B");
@@ -576,18 +660,22 @@ mod tests {
         // wait...
         // AF B: Buy 10
         // AF B: Sell 10 (superficial)
-        let statuses = create_test_status(&[(af_b(), gez!(10)), (default_af(), gez!(1))]);
+        let statuses = create_test_status(
+            &[(af_b(), gez!(10)), (default_af(), gez!(1))]);
 
         let txs = vec![
-            TTx{t_day: 10, act: A::Buy, shares: gez!(10), price: gez!(1), af: af_b(), ..TTx::d()}.x(),
+            TTx{t_day: 10, act: A::Buy, shares: gez!(10), price: gez!(1),
+                af: af_b(), ..TTx::d()}.x(),
             // Superficial
-            TTx{t_day: 11, act: A::Sell, shares: gez!(10), price: gez!(0.5), af: af_b(), ..TTx::d()}.x(),
+            TTx{t_day: 11, act: A::Sell, shares: gez!(10), price: gez!(0.5),
+                af: af_b(), ..TTx::d()}.x(),
         ];
 
         let minfo = get_superficial_loss_info(1, &txs, &statuses).unwrap();
         let info = minfo.info().unwrap();
         let expected = SuperficialLossInfo {
-            _first_date_in_period: mk_date(11+2-30), // Account for settlement date offset of 2 days
+            // Account for settlement date offset of 2 days
+            _first_date_in_period: mk_date(11+2-30),
             _last_date_in_period: mk_date(11+2+30),
             all_aff_shares_at_end_of_period: pdec!(1),
             total_aquired_in_period: pdec!(10),
@@ -603,16 +691,21 @@ mod tests {
 
         let txs = vec![
             // SFL candidate
-            TTx{t_day: 10, act: A::Sell, shares: gez!(10), price: gez!(0.0001), af: default_af(), ..TTx::d()}.x(),
-            TTx{t_day: 11, act: A::Buy, shares: gez!(10), price: gez!(1), af: default_af(), ..TTx::d()}.x(),
-            TTx{t_day: 12, act: A::Sell, shares: gez!(10), price: gez!(1), af: default_af(), ..TTx::d()}.x(),
-            TTx{t_day: 13, act: A::Buy, shares: gez!(5), price: gez!(1), af: default_af(), ..TTx::d()}.x(),
+            TTx{t_day: 10, act: A::Sell, shares: gez!(10), price: gez!(0.0001),
+                af: default_af(), ..TTx::d()}.x(),
+            TTx{t_day: 11, act: A::Buy, shares: gez!(10), price: gez!(1),
+                af: default_af(), ..TTx::d()}.x(),
+            TTx{t_day: 12, act: A::Sell, shares: gez!(10), price: gez!(1),
+                af: default_af(), ..TTx::d()}.x(),
+            TTx{t_day: 13, act: A::Buy, shares: gez!(5), price: gez!(1),
+                af: default_af(), ..TTx::d()}.x(),
         ];
 
         let minfo = get_superficial_loss_info(0, &txs, &statuses).unwrap();
         let info = minfo.info().unwrap();
         let expected = SuperficialLossInfo {
-            _first_date_in_period: mk_date(10+2-30), // Account for settlement date offset of 2 days
+            // Account for settlement date offset of 2 days
+            _first_date_in_period: mk_date(10+2-30),
             _last_date_in_period: mk_date(10+2+30),
             all_aff_shares_at_end_of_period: pdec!(5),
             total_aquired_in_period: pdec!(15),
@@ -625,6 +718,7 @@ mod tests {
     }
 
     #[test]
+    #[rustfmt::skip]
     fn test_get_superficial_loss_info_superficial_errors() {
         let default_af = || Affiliate::default();
         let af_b = ||Affiliate::from_strep("B");
@@ -634,42 +728,55 @@ mod tests {
 
         let txs = vec![
             // SFL candidate
-            TTx{t_day: 10, act: A::Sell, shares: gez!(11), price: gez!(0.0001), af: default_af(), ..TTx::d()}.x(),
+            TTx{t_day: 10, act: A::Sell, shares: gez!(11), price: gez!(0.0001),
+                af: default_af(), ..TTx::d()}.x(),
         ];
         let e = get_superficial_loss_info(0, &txs, &statuses).unwrap_err();
-        assert_eq!("latest share balance total for all affiliates (10) is less than sold shares (11)", e);
+        assert_eq!(
+            "latest share balance total for all affiliates (10) is less than sold shares (11)",
+            e);
 
         // Case: initial sell is too much, and no status present
         let statuses = create_test_status(&[]);
 
         let txs = vec![
             // SFL candidate
-            TTx{t_day: 10, act: A::Sell, shares: gez!(11), price: gez!(0.0001), af: default_af(), ..TTx::d()}.x(),
+            TTx{t_day: 10, act: A::Sell, shares: gez!(11), price: gez!(0.0001),
+                af: default_af(), ..TTx::d()}.x(),
         ];
         let e = get_superficial_loss_info(0, &txs, &statuses).unwrap_err();
-        assert_eq!("latest share balance total for all affiliates (0) is less than sold shares (11)", e);
+        assert_eq!(
+            "latest share balance total for all affiliates (0) is less than sold shares (11)",
+            e);
 
         // Case: initial sell is too much, but not exceeding total shares
         let statuses = create_test_status(&[(af_b(), gez!(100))]);
 
         let txs = vec![
             // SFL candidate
-            TTx{t_day: 10, act: A::Sell, shares: gez!(11), price: gez!(0.0001), af: default_af(), ..TTx::d()}.x(),
+            TTx{t_day: 10, act: A::Sell, shares: gez!(11), price: gez!(0.0001),
+                af: default_af(), ..TTx::d()}.x(),
         ];
         let e = get_superficial_loss_info(0, &txs, &statuses).unwrap_err();
-        assert_eq!("latest share balance (0) for affiliate (Default) is less than sold shares (11)", e);
+        assert_eq!(
+            "latest share balance (0) for affiliate (Default) is less than sold shares (11)",
+            e);
 
         // Case: Some sell after is too large (combined with buys, order dependent)
         let statuses = create_test_status(&[(default_af(), gez!(10))]);
 
         let txs = vec![
             // SFL candidate
-            TTx{t_day: 10, act: A::Sell, shares: gez!(5), price: gez!(0.0001), af: default_af(), ..TTx::d()}.x(),
-            TTx{t_day: 11, act: A::Buy, shares: gez!(3), price: gez!(1), af: default_af(), ..TTx::d()}.x(),
+            TTx{t_day: 10, act: A::Sell, shares: gez!(5), price: gez!(0.0001),
+                af: default_af(), ..TTx::d()}.x(),
+            TTx{t_day: 11, act: A::Buy, shares: gez!(3), price: gez!(1),
+                af: default_af(), ..TTx::d()}.x(),
             // Buy on other AF has no effect
-            TTx{t_day: 12, act: A::Buy, shares: gez!(100), price: gez!(1), af: af_b(), ..TTx::d()}.x(),
+            TTx{t_day: 12, act: A::Buy, shares: gez!(100), price: gez!(1),
+                af: af_b(), ..TTx::d()}.x(),
             // Sell is too large
-            TTx{t_day: 13, act: A::Sell, shares: gez!(20), price: gez!(2), af: default_af(), ..TTx::d()}.x(),
+            TTx{t_day: 13, act: A::Sell, shares: gez!(20), price: gez!(2),
+                af: default_af(), ..TTx::d()}.x(),
         ];
 
         let e = get_superficial_loss_info(0, &txs, &statuses).unwrap_err();
@@ -681,34 +788,44 @@ mod tests {
 
         let txs = vec![
             // SFL candidate
-            TTx{t_day: 10, act: A::Sell, shares: gez!(5), price: gez!(0.0001), af: default_af(), ..TTx::d()}.x(),
-            TTx{t_day: 11, act: A::Buy, shares: gez!(3), price: gez!(1), af: af_b(), ..TTx::d()}.x(),
+            TTx{t_day: 10, act: A::Sell, shares: gez!(5), price: gez!(0.0001),
+                af: default_af(), ..TTx::d()}.x(),
+            TTx{t_day: 11, act: A::Buy, shares: gez!(3), price: gez!(1),
+                af: af_b(), ..TTx::d()}.x(),
             // Sell is too large
-            TTx{t_day: 13, act: A::Sell, shares: gez!(4), price: gez!(2), af: af_b(), ..TTx::d()}.x(),
+            TTx{t_day: 13, act: A::Sell, shares: gez!(4), price: gez!(2),
+                af: af_b(), ..TTx::d()}.x(),
         ];
 
         let e = get_superficial_loss_info(0, &txs, &statuses).unwrap_err();
         assert_eq!("Share count for affiliate B went below zero in \
                     30-day period after sale (on 2017-01-14)", &e);
 
-        // Case: Some sell after is too large, on other affiliate, and goes below total for all affiliates
+        // Case: Some sell after is too large, on other affiliate, and goes
+        // below total for all affiliates
         let statuses = create_test_status(&[(default_af(), gez!(10))]);
 
         let txs = vec![
             // SFL candidate
-            TTx{t_day: 10, act: A::Sell, shares: gez!(5), price: gez!(0.0001), af: default_af(), ..TTx::d()}.x(),
-            TTx{t_day: 11, act: A::Buy, shares: gez!(3), price: gez!(1), af: af_b(), ..TTx::d()}.x(),
+            TTx{t_day: 10, act: A::Sell, shares: gez!(5), price: gez!(0.0001),
+                af: default_af(), ..TTx::d()}.x(),
+            TTx{t_day: 11, act: A::Buy, shares: gez!(3), price: gez!(1),
+                af: af_b(), ..TTx::d()}.x(),
             // Sell is too large
-            TTx{t_day: 13, act: A::Sell, shares: gez!(20), price: gez!(2), af: af_b(), ..TTx::d()}.x(),
+            TTx{t_day: 13, act: A::Sell, shares: gez!(20), price: gez!(2),
+                af: af_b(), ..TTx::d()}.x(),
         ];
 
         let e = get_superficial_loss_info(0, &txs, &statuses).unwrap_err();
-        assert_eq!("Total share count went below zero in 30-day period after sale (on 2017-01-14)", &e);
+        assert_eq!(
+            "Total share count went below zero in 30-day period after sale (on 2017-01-14)",
+            &e);
     }
 
     // MARK: get_superficial_loss_ratio / calc_superficial_loss_ratio tests
 
     #[test]
+    #[rustfmt::skip]
     fn test_calc_superficial_loss_ratio_not_superficial() {
         let sell_tx = TTx{t_day: 10, act: A::Sell, shares: gez!(5), price: gez!(1),
                           af: Affiliate::default(), ..TTx::d()}.x();
@@ -718,14 +835,21 @@ mod tests {
     }
 
     fn pratio(n: PosDecimal, d: PosDecimal) -> PosDecimalRatio {
-        PosDecimalRatio{ numerator: n, denominator: d }
+        PosDecimalRatio {
+            numerator: n,
+            denominator: d,
+        }
     }
 
     fn zratio(n: GreaterEqualZeroDecimal, d: PosDecimal) -> GezDecimalRatio {
-        GezDecimalRatio{ numerator: n, denominator: d }
+        GezDecimalRatio {
+            numerator: n,
+            denominator: d,
+        }
     }
 
     #[test]
+    #[rustfmt::skip]
     fn test_calc_superficial_loss_ratio_basic_ratio() {
         let default_af = || Affiliate::default();
 
@@ -827,6 +951,7 @@ mod tests {
     // buyingAffilsShareEOPTotal is zero
 
     #[test]
+    #[rustfmt::skip]
     fn test_calc_superficial_loss_ratio_affiliate_ratios() {
         let default_af = || Affiliate::default();
         let af_b = ||Affiliate::from_strep("B");
@@ -939,6 +1064,7 @@ mod tests {
 
     #[test]
     #[should_panic]
+    #[rustfmt::skip]
     fn test_calc_superficial_loss_ratio_affiliate_ratios_no_buying_afs() {
         let sell_tx = TTx{t_day: 10, act: A::Sell, shares: gez!(3), price: gez!(1),
             af: Affiliate::default(), ..TTx::d()}.x();

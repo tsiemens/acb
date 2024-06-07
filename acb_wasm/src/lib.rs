@@ -16,8 +16,7 @@ pub async fn run_acb(
     file_contents: Vec<String>,
     initial_security_states: Vec<String>,
     render_full_values: bool,
-    ) -> Result<JsValue, JsValue> {
-
+) -> Result<JsValue, JsValue> {
     if file_descs.len() != file_contents.len() {
         return Err("".to_string().into());
     }
@@ -30,9 +29,10 @@ pub async fn run_acb(
     let all_init_status = parse_initial_status(&initial_security_states)
         .map_err(|e| JsValue::from_str(&e))?;
 
-    let result = app_shim::run_acb_app(
-            csv_readers, all_init_status, render_full_values).await
-        .map_err(|e| JsValue::from_str(&e))?;
+    let result =
+        app_shim::run_acb_app(csv_readers, all_init_status, render_full_values)
+            .await
+            .map_err(|e| JsValue::from_str(&e))?;
 
     Ok(serde_wasm_bindgen::to_value(&result)?)
 }
