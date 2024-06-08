@@ -1,7 +1,5 @@
 "use strict";
 
-// TODO all of these imports should be removed from the build
-// import './imports/wasm_exec.js';
 import wasm_init, { get_acb_version, run_acb } from './pkg/acb_wasm.js';
 
 // Map of id to File object
