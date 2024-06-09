@@ -213,7 +213,7 @@ pub fn render_tx_table_model(
                     };
 
                     superficial_loss_asterix = format!(
-                        " *\n(SfL {}{}; {}{}",
+                        " *\n(SfL {}{}; {}{})",
                         ph.plus_minus_dollar(*sfl.superficial_loss, false),
                         if specified_sfl_is_forced { "!" } else { "" },
                         sfl.ratio,

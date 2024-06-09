@@ -7,7 +7,7 @@ use super::decimal::{
     PosDecimal,
 };
 
-#[derive(PartialEq, Eq, Clone, Copy, Debug)]
+#[derive(PartialEq, Eq, Clone, Copy)]
 pub struct ConstrainedDecimalRatio<CONSTRAINT: DecConstraint + Clone + Copy> {
     pub numerator: ConstrainedDecimal<CONSTRAINT>,
     pub denominator: PosDecimal,
@@ -34,6 +34,16 @@ impl ConstrainedDecimalRatio<constraint::GreaterEqualZero> {
 
 // Auto-implements to_string()
 impl<CONSTRAINT: DecConstraint + Clone + Copy> Display
+    for ConstrainedDecimalRatio<CONSTRAINT>
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.numerator.fmt(f)?;
+        write!(f, "/")?;
+        self.denominator.fmt(f)
+    }
+}
+
+impl<CONSTRAINT: DecConstraint + Clone + Copy> core::fmt::Debug
     for ConstrainedDecimalRatio<CONSTRAINT>
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -88,7 +98,22 @@ pub fn c_maybe_round_to_effective_cent<T: DecConstraint>(
 mod tests {
     use rust_decimal_macros::dec;
 
-    use crate::util::math::{maybe_round_to_effective_cent, round_to_cent};
+    use crate::{
+        pdec,
+        util::math::{maybe_round_to_effective_cent, round_to_cent},
+    };
+
+    use super::PosDecimalRatio;
+
+    #[test]
+    fn test_ratio_display() {
+        let ratio = PosDecimalRatio {
+            numerator: pdec!(1.123456),
+            denominator: pdec!(9.87654),
+        };
+        assert_eq!(format!("{ratio}"), "1.123456/9.87654");
+        assert_eq!(format!("{ratio:.2}"), "1.12/9.87");
+    }
 
     #[test]
     fn test_round_to_cent() {
