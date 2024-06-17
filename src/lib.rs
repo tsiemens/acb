@@ -1,6 +1,7 @@
 pub mod app;
 pub mod fx;
 pub mod log;
+pub mod peripheral;
 pub mod portfolio;
 pub mod tracing;
 pub mod util;
