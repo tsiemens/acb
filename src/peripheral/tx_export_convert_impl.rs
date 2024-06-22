@@ -1,4 +1,5 @@
 use std::collections::HashSet;
+use std::io::Write;
 use std::path::Path;
 use std::path::PathBuf;
 
@@ -11,19 +12,38 @@ use office::{Excel, Range};
 use crate::peripheral::broker::Account;
 use crate::portfolio::Currency;
 use crate::util::basic::SError;
+use crate::util::rw::WriteHandle;
+use crate::write_errln;
 
 use super::broker::questrade;
 use super::broker::BrokerTx;
 
-/// Sheet here is a 1-based index.
-fn read_xl_file(path: &Path, sheet: usize) -> Result<Range, SError> {
+/// Reads the named sheet or the only sheet.
+/// If no sheet name is provided, there must only be a single sheet,
+/// otherwise returns Err.
+///
+/// Note: This could not/cannot be based on the sheet index,
+/// because the office library does not provide an API to get the
+/// sheets in any particular order. They end up coming back in a random
+/// order.
+fn read_xl_file(path: &Path, sheet_name: Option<&str>) -> Result<Range, SError> {
     let mut workbook = Excel::open(path).map_err(|e| format!("{e}"))?;
-    let sheet_index = sheet - 1;
 
-    let sheet_names = workbook.sheet_names().map_err(|e| format!("{e}"))?;
-    let sheet_name = sheet_names.get(sheet_index).ok_or(format!("No sheet {sheet_index}"))?;
+    let sheet_names: Vec<String>;
 
-    workbook.worksheet_range(sheet_name).map_err(|e| format!("{e}"))
+    let sheet = if let Some(sn) = sheet_name {
+        sn
+    } else {
+        sheet_names = workbook.sheet_names().map_err(|e| format!("{e}"))?;
+        if sheet_names.len() > 1 {
+            return Err(format!(
+                "Workbook has more than one one sheet: {sheet_names:?}. \
+                Sheet name must be specified"))
+        }
+        sheet_names.get(0).ok_or_else(|| "Workbook has no sheets".to_string())?
+    };
+
+    workbook.worksheet_range(sheet).map_err(|e| format!("{e}"))
 }
 
 fn filter_and_verify_tx_accounts(account_filter: &Option<Regex>, txs: Vec<BrokerTx>)
@@ -51,7 +71,7 @@ fn filter_and_verify_tx_accounts(account_filter: &Option<Regex>, txs: Vec<Broker
 }
 
 #[derive(clap::ValueEnum, Clone, Debug)]
-enum BrokerArg {
+pub enum BrokerArg {
     Questrade,
 }
 
@@ -67,11 +87,11 @@ impl std::fmt::Display for BrokerArg {
 /// Currently only supports Questrade.
 #[derive(Parser, Debug)]
 #[command(author, version, about)]
-struct Args {
+pub struct Args {
     /// Table file exported from your brokerage platform.
     /// A .xlsx for Questrade
     #[arg(required = true)]
-    export_file: PathBuf,
+    pub export_file: PathBuf,
 
     #[arg(long, default_value_t = false)]
     pub no_sort: bool,
@@ -108,18 +128,26 @@ struct Args {
     #[arg(long)]
     pub pretty: bool,
 
-    /// Select which sheet in the spreadsheet file to use.
-    #[arg(long, default_value_t = 1)]
-    pub sheet: usize,
+    /// Select which sheet (by name) in the spreadsheet file to use.
+    #[arg(long)]
+    pub sheet: Option<String>,
 }
 
 pub fn run() -> Result<(), ()> {
     let args = Args::parse();
+    run_with_args(
+        args,
+        WriteHandle::stdout_write_handle(),
+        WriteHandle::stderr_write_handle())
+}
 
-    let rg = match read_xl_file(&args.export_file, args.sheet) {
+pub fn run_with_args(args: Args, mut out_w: WriteHandle, mut err_w: WriteHandle)
+-> Result<(), ()>  {
+    let rg = match read_xl_file(&args.export_file,
+                                args.sheet.as_ref().map(|v| v.as_str())) {
         Ok(rg) => rg,
         Err(e) => {
-            eprintln!("{e}");
+            write_errln!(err_w, "{e}");
             return Err(());
         },
     };
@@ -135,9 +163,9 @@ pub fn run() -> Result<(), ()> {
                 (partial_txs, Some(res_err.errors))
             } else {
                 // Fatal error. No partial output.
-                eprint!("Error:");
+                let _ = write!(err_w, "Error:");
                 for e in res_err.errors {
-                    eprintln!("{e}");
+                    write_errln!(err_w, "{e}");
                 }
                 return Err(());
             }
@@ -147,7 +175,7 @@ pub fn run() -> Result<(), ()> {
     txs = match filter_and_verify_tx_accounts(&args.account, txs) {
         Ok(txs_) => txs_,
         Err(e) => {
-            eprintln!("{e}");
+            write_errln!(err_w, "{e}");
             return Err(());
         },
     };
@@ -176,20 +204,19 @@ pub fn run() -> Result<(), ()> {
     if args.pretty {
         todo!();
     } else {
-        match crate::portfolio::io::tx_csv::write_txs_to_csv(
-            &csv_txs, &mut std::io::stdout()) {
-                Ok(()) => (),
-                Err(e) => {
-                    eprintln!("{e}");
-                    return Err(());
-                },
-            }
+        match crate::portfolio::io::tx_csv::write_txs_to_csv(&csv_txs, &mut out_w) {
+            Ok(()) => (),
+            Err(e) => {
+                write_errln!(err_w, "{e}");
+                return Err(());
+            },
+        }
     }
 
     if let Some(es) = errors {
-        eprintln!("Errors:");
+        let _ = write!(err_w, "Errors:");
         for e in es {
-            eprintln!(" - {e}");
+            write_errln!(err_w, " - {e}");
         }
         Err(())
     } else {

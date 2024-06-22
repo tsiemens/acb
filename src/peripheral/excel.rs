@@ -57,7 +57,8 @@ impl <'a> SheetReader<'a> {
                 Some(Decimal::from_f64(*v).ok_or(
                     self.err(format!("{v} in {name} unconvertible to Decimal")))?),
             DataType::String(s) =>
-                Some(Decimal::from_str(s).map_err(|e| self.err(format!("{e}")))?),
+                Some(Decimal::from_str(s).map_err(|e| self.err(
+                    format!("Unable to parse number from \"{s}\" in {name}: {e}")))?),
             DataType::Bool(b) => {
                 return Err(self.err(
                     format!("{b} in {name} not convertible to Decimal")));

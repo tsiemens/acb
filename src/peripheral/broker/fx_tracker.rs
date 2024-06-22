@@ -1,3 +1,5 @@
+use std::mem::swap;
+
 use rust_decimal::{prelude::One, Decimal};
 use time::Date;
 
@@ -52,12 +54,16 @@ impl FxTracker {
     /// be called twice for each conversion - Once for CAD and once for
     /// the other currency.
     pub fn add_fxt_row(&mut self, fxt_row: FxtRow) -> Result<(), SheetParseError> {
-        let adj_fxt = if let Some(f) = &self.adjacent_fxt {
-            f
-        } else {
+        if self.adjacent_fxt.is_none() {
             self.adjacent_fxt = Some(fxt_row);
             return Ok(());
-        };
+        }
+
+        // Swap these here, so that a failure doesn't cause us to re-use
+        // the adjacent_fxt
+        let mut adj_fx_opt: Option<FxtRow> = None;
+        swap(&mut adj_fx_opt, &mut self.adjacent_fxt);
+        let adj_fxt = adj_fx_opt.as_ref().unwrap();
 
         let (cad_fxt, other_fxt): (&FxtRow, &FxtRow) =
             if adj_fxt.currency == Currency::cad() {
@@ -67,7 +73,7 @@ impl FxTracker {
             };
 
         if cad_fxt.currency != Currency::cad()
-            || other_fxt.currency != Currency::cad()
+            || other_fxt.currency == Currency::cad()
         {
             return Err(SheetParseError::new(
                 fxt_row.row_num,
@@ -92,7 +98,7 @@ impl FxTracker {
             return Err(SheetParseError::new(
                 fxt_row.row_num,
                 format!(
-                    "adjacent FXT rows on {} and {} were on different dates",
+                    "Adjacent FXT rows on {} and {} were on different dates",
                     other_fxt.trade_date, cad_fxt.trade_date
                 ),
             ));
@@ -112,12 +118,12 @@ impl FxTracker {
             return Err(if cad_fxt.amount > Decimal::ZERO {
                 SheetParseError::new(
                     fxt_row.row_num,
-                    String::from("both FXts have positive amounts"),
+                    String::from("Both FXTs have positive amounts"),
                 )
             } else {
                 SheetParseError::new(
                     fxt_row.row_num,
-                    String::from("both FXts have negative amounts"),
+                    String::from("Both FXTs have negative amounts"),
                 )
             });
         }
@@ -138,7 +144,6 @@ impl FxTracker {
 
         self.txs.push(tx);
 
-        self.adjacent_fxt = None;
         Ok(())
     }
 
@@ -163,8 +168,6 @@ impl FxTracker {
             return Ok(());
         }
 
-        let account_str = tx.account.account_str();
-
         let tx = FxTracker::fx_tx(
             tx.currency.clone(),
             tx.trade_date.clone(),
@@ -174,7 +177,7 @@ impl FxTracker {
             tx.row_num as usize,
             tx.account.clone(),
             None,
-            format!("from {} {}", tx.security, account_str),
+            format!("from {} {}", tx.security, tx.action.to_string()),
         )?;
 
         self.txs.push(tx);
@@ -192,7 +195,7 @@ impl FxTracker {
         if let Some(adj_fxt) = &self.adjacent_fxt {
             return Err((
                 &self.txs,
-                SheetParseError::new(adj_fxt.row_num, "Unparied FXT".to_string()),
+                SheetParseError::new(adj_fxt.row_num, "Unpaired FXT".to_string()),
             ));
         }
 
@@ -216,7 +219,7 @@ impl FxTracker {
             TxAction::Sell
         };
         let (shares, amount_per_share) = match &currency {
-            c if c == &Currency::usd() => (amount, Decimal::one()),
+            c if c == &Currency::usd() => (amount.abs(), Decimal::one()),
             _ => {
                 return Err(SheetParseError::new(
                     row_num,
