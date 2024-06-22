@@ -7,7 +7,7 @@ use rust_decimal::Decimal;
 
 use crate::portfolio::csv_common::CsvCol;
 use crate::portfolio::{Affiliate, CsvTx, Currency, SFLInput, TxAction};
-use crate::util::decimal::LessEqualZeroDecimal;
+use crate::util::decimal::{to_string_min_precision, LessEqualZeroDecimal};
 use crate::util::rw::{DescribedReader, WriteHandle};
 use crate::write_errln;
 
@@ -264,7 +264,42 @@ pub fn write_txs_to_csv(
 ) -> Result<(), csv::Error> {
     let mut csv_w = csv::WriterBuilder::new().has_headers(true).from_writer(writer);
 
-    let headers = CsvCol::export_order_non_deprecated_cols();
+    let all_headers = CsvCol::export_order_non_deprecated_cols();
+    let optional_headers = HashSet::<&'static str>::from([
+        CsvCol::TX_FX,
+        CsvCol::COMMISSION_CURR,
+        CsvCol::COMMISSION_FX,
+        CsvCol::SUPERFICIAL_LOSS,
+        CsvCol::AFFILIATE,
+    ]);
+
+    // We can avoid outputting some columns if they are entirely empty
+    let mut optional_cols_in_use = HashSet::<&'static str>::new();
+    for tx in txs {
+        if tx.tx_curr_to_local_exchange_rate.is_some() {
+            optional_cols_in_use.insert(CsvCol::TX_FX);
+        }
+        if tx.commission_currency.is_some() {
+            optional_cols_in_use.insert(CsvCol::COMMISSION_CURR);
+        }
+        if tx.commission_curr_to_local_exchange_rate.is_some() {
+            optional_cols_in_use.insert(CsvCol::COMMISSION_FX);
+        }
+        if tx.specified_superficial_loss.is_some() {
+            optional_cols_in_use.insert(CsvCol::SUPERFICIAL_LOSS);
+        }
+        if let Some(af) = &tx.affiliate {
+            if *af != Affiliate::default() {
+                optional_cols_in_use.insert(CsvCol::AFFILIATE);
+            }
+        }
+    }
+    let headers: Vec<&'static str> = all_headers.iter()
+        .filter(|h| {
+            !optional_headers.contains(*h) || optional_cols_in_use.contains(*h)
+        })
+        .map(|h| *h)
+        .collect();
 
     csv_w.write_record(&headers)?;
 
@@ -272,8 +307,8 @@ pub fn write_txs_to_csv(
 
     for tx in txs {
         let mut record = Vec::with_capacity(headers.len());
-        for col in headers {
-            let val: String = match col {
+        for col in &headers {
+            let val: String = match *col {
                 CsvCol::SECURITY => tx.security.clone().unwrap_or_else(empty),
                 CsvCol::TRADE_DATE => {
                     tx.trade_date.map(|v| v.to_string()).unwrap_or_else(empty)
@@ -285,13 +320,15 @@ pub fn write_txs_to_csv(
                     tx.action.map(|v| v.to_string()).unwrap_or_else(empty)
                 }
                 CsvCol::SHARES => {
-                    tx.shares.map(|v| v.to_string()).unwrap_or_else(empty)
+                    tx.shares.map(|v| to_string_min_precision(&v, 0)).unwrap_or_else(empty)
                 }
                 CsvCol::AMOUNT_PER_SHARE => {
-                    tx.amount_per_share.map(|v| v.to_string()).unwrap_or_else(empty)
+                    tx.amount_per_share.map(|v| to_string_min_precision(&v, 2))
+                    .unwrap_or_else(empty)
                 }
                 CsvCol::COMMISSION => {
-                    tx.commission.map(|v| v.to_string()).unwrap_or_else(empty)
+                    tx.commission.map(|v| to_string_min_precision(&v, 2))
+                    .unwrap_or_else(empty)
                 }
                 CsvCol::TX_CURR => tx
                     .tx_currency
@@ -300,7 +337,7 @@ pub fn write_txs_to_csv(
                     .unwrap_or_else(empty),
                 CsvCol::TX_FX => tx
                     .tx_curr_to_local_exchange_rate
-                    .map(|v| v.to_string())
+                    .map(|v| to_string_min_precision(&v, 0))
                     .unwrap_or_else(empty),
                 CsvCol::COMMISSION_CURR => tx
                     .commission_currency
@@ -309,7 +346,7 @@ pub fn write_txs_to_csv(
                     .unwrap_or_else(empty),
                 CsvCol::COMMISSION_FX => tx
                     .commission_curr_to_local_exchange_rate
-                    .map(|v| v.to_string())
+                    .map(|v| to_string_min_precision(&v, 0))
                     .unwrap_or_else(empty),
                 CsvCol::SUPERFICIAL_LOSS => tx
                     .specified_superficial_loss
@@ -317,7 +354,7 @@ pub fn write_txs_to_csv(
                     .map(|v| {
                         format!(
                             "{}{}",
-                            v.superficial_loss,
+                            v.superficial_loss.to_string_min_precision(2),
                             if v.force { "!" } else { "" }
                         )
                     })
@@ -783,11 +820,11 @@ mod tests {
             "security,trade date,settlement date,action,shares,amount/share,commission,\
                 currency,exchange rate,commission currency,commission exchange rate,\
                 superficial loss,affiliate,memo\n\
-            FOO,2016-01-03,2016-01-05,Sell,5,1.6,0,CAD,,CAD,,,Default,a memo\n\
-            BAR,2016-01-03,2016-01-06,Buy,7,1.7,1,USD,1.11,USD,1.11,,Default,a memo 2\n\
-            AA,2016-01-04,2016-01-07,Sell,1,1.7,1,USD,1.11,USD,1.11,-1.2,Default,M3\n\
-            BB,2016-01-05,2016-01-08,Sell,2,1.7,1,USD,1.11,USD,1.11,-1.3!,Default (R),M4\n\
-            CC,2016-01-08,2016-01-10,SfLA,2,1.3,0,CAD,,CAD,,,B,M5\n"
+            FOO,2016-01-03,2016-01-05,Sell,5,1.60,0.00,CAD,,CAD,,,Default,a memo\n\
+            BAR,2016-01-03,2016-01-06,Buy,7,1.70,1.00,USD,1.11,USD,1.11,,Default,a memo 2\n\
+            AA,2016-01-04,2016-01-07,Sell,1,1.70,1.00,USD,1.11,USD,1.11,-1.20,Default,M3\n\
+            BB,2016-01-05,2016-01-08,Sell,2,1.70,1.00,USD,1.11,USD,1.11,-1.30!,Default (R),M4\n\
+            CC,2016-01-08,2016-01-10,SfLA,2,1.30,0.00,CAD,,CAD,,,B,M5\n"
                 .split("\n").map(|s| s.to_string()).collect::<Vec<String>>());
     }
 }

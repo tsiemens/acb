@@ -1,6 +1,7 @@
 use std::{fmt::Display, marker::PhantomData, ops::Deref};
 
 use rust_decimal::Decimal;
+use lazy_static::lazy_static;
 
 pub fn min(ds: &[Decimal]) -> Decimal {
     let mut m = ds[0];
@@ -27,6 +28,28 @@ pub fn is_negative(d: &Decimal) -> bool {
 
 pub fn dollar_precision_str(d: &Decimal) -> String {
     format!("{:.2}", d)
+}
+
+/// Formats the decimal as a String, and ensures that it is rendered
+/// with at a minumum min_presision decimal places. If it has more precision
+/// than this, it will render only as many decimal places as are required
+/// to exactly represent the value.
+pub fn to_string_min_precision(d: &Decimal, min_precision: usize) -> String {
+    let strep = d.to_string();
+    lazy_static! {
+        static ref DECIMAL_RE: regex::Regex = regex::Regex::new(
+        r"^(-?\d+)(\.((0+)|(\d*[1-9])0*))?$").unwrap();
+    }
+
+    let m = DECIMAL_RE.captures(&strep).unwrap();
+    let actual_trimmed_precision = if let Some(nz_decs) = m.get(5) {
+        nz_decs.len()
+    } else {
+        0
+    };
+
+    let precision_to_use = std::cmp::max(actual_trimmed_precision, min_precision);
+    format!("{:.1$}", d, precision_to_use)
 }
 
 pub trait DecConstraint {
@@ -79,6 +102,12 @@ pub mod constraint {
 // Otherwise, it will complain that the generic parameter is unused (even though
 // we are using it in the impl).
 pub struct ConstrainedDecimal<CONSTRAINT>(Decimal, PhantomData<CONSTRAINT>);
+
+impl<CONSTRAINT: DecConstraint> ConstrainedDecimal<CONSTRAINT> {
+    pub fn to_string_min_precision(&self, min_precision: usize) -> String {
+        to_string_min_precision(&self.0, min_precision)
+    }
+}
 
 impl<CONSTRAINT: DecConstraint> TryFrom<Decimal> for ConstrainedDecimal<CONSTRAINT> {
     type Error = String;
@@ -288,7 +317,7 @@ mod tests {
     use rust_decimal_macros::dec;
 
     use crate::util::decimal::{
-        dollar_precision_str, is_negative, is_positive, ConstrainedDecimal,
+        dollar_precision_str, is_negative, is_positive, to_string_min_precision, ConstrainedDecimal
     };
 
     use super::{constraint, DecConstraint};
@@ -375,5 +404,17 @@ mod tests {
     fn test_dollar_precision_str() {
         assert_eq!(dollar_precision_str(&dec!(1000)), "1000.00");
         assert_eq!(dollar_precision_str(&dec!(1.123456)), "1.12");
+    }
+
+    #[test]
+    fn test_to_string_min_precision() {
+        assert_eq!(to_string_min_precision(&dec!(0), 0), "0");
+        assert_eq!(to_string_min_precision(&dec!(1), 0), "1");
+        assert_eq!(to_string_min_precision(&dec!(1.0), 0), "1");
+        assert_eq!(to_string_min_precision(&dec!(1.1), 0), "1.1");
+        assert_eq!(to_string_min_precision(&dec!(-1.20), 0), "-1.2");
+        assert_eq!(to_string_min_precision(&dec!(-10.120300), 0), "-10.1203");
+
+        assert_eq!(to_string_min_precision(&dec!(1.0), 2), "1.00");
     }
 }

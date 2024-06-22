@@ -81,7 +81,7 @@ pub fn sheet_to_txs(sheet: &Range) -> Result<Vec<BrokerTx>, SheetToTxsErr> {
             let trade_date = convert_date_str(&trade_date_str_full).map_err(err)?;
             let settlement_date_str_full = reader.get_str("Settlement Date")?;
             let settlement_date =
-                convert_date_str(&trade_date_str_full).map_err(err)?;
+                convert_date_str(&settlement_date_str_full).map_err(err)?;
 
             let account_type = reader.get_str("Account Type")?;
             let account_num = reader.get_str("Account #")?;
@@ -103,6 +103,10 @@ pub fn sheet_to_txs(sheet: &Range) -> Result<Vec<BrokerTx>, SheetToTxsErr> {
             };
 
             let pre_alias_symbol = reader.get_str("Symbol")?;
+            if pre_alias_symbol.is_empty() {
+                return Err(SheetParseError::new(
+                    row_num, "Symbol was empty".to_string()));
+            }
 
             if action_str == "DIV" {
                 if reader.get_str("Currency")?.to_uppercase() == "USD" {
@@ -200,6 +204,17 @@ pub fn sheet_to_txs(sheet: &Range) -> Result<Vec<BrokerTx>, SheetToTxsErr> {
             errors.push(e)
         }
     } // END for row in rows
+
+    // Add the FXTs
+    let mut fx_txs: Vec<BrokerTx> = match fx_tracker.get_fx_txs() {
+        Ok(txs) => txs,
+        Err((txs, e)) => {
+            errors.push(e);
+            txs
+        },
+    }.iter().map(|t| (*t).clone()).collect();
+    // These will get sorted by the caller.
+    txs.append(&mut fx_txs);
 
     if errors.len() > 0 {
         Err(SheetToTxsErr{ txs: Some(txs), errors: errors })

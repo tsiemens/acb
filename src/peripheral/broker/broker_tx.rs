@@ -68,8 +68,15 @@ impl PartialOrd for BrokerTx {
                         return Some(sort_tiebreak_cmp),
                     std::cmp::Ordering::Equal => (),
                 }
+            } else {
+                return Some(std::cmp::Ordering::Greater);
+            }
+        } else {
+            if other.sort_tiebreak.is_some() {
+                return Some(std::cmp::Ordering::Less);
             }
         }
+        // Neither have sort tiebreak
 
         Some(self.row_num.cmp(&other.row_num))
     }

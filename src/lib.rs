@@ -11,5 +11,5 @@ pub mod cmd;
 
 extern crate lazy_static;
 
-#[cfg(test)]
-mod testlib;
+#[cfg(feature = "testlib")]
+pub mod testlib;

@@ -14,6 +14,7 @@ cliapp = [ "http_standalone" ]
 pdf_parse = [ "pdf-extract" ]
 xlsx_read = [ "office" ]
 wasm=[]
+testlib=[]
 
 # Specify binaries here that have feature requirements,
 # or you want to have an executable name different from
@@ -53,3 +54,6 @@ tabled = "0.15.0"
 time = { version = "0.3.36", features = [ "formatting", "local-offset", "parsing", "macros" ] }
 tracing = "0.1.40"
 tracing-subscriber = { version = "0.3.18", features = [ "env-filter", "fmt", "std", "time" ] }
+
+[dev-dependencies]
+acb = { path = ".", features = [ "default", "testlib" ] }
