@@ -11,7 +11,7 @@ rust-version = "1.77"
 default = [ "cliapp", "pdf_parse", "xlsx_read", "xlsx_write" ]
 http_standalone = [ "surf/h1-client-rustls" ]
 cliapp = [ "http_standalone" ]
-pdf_parse = [ "pdf-extract" ]
+pdf_parse = [ "pdf-extract","lopdf" ]
 xlsx_read = [ "office" ]
 xlsx_write = [ "rust_xlsxwriter" ]
 wasm=[]
@@ -50,6 +50,7 @@ csv = "1.3.0"
 dirs = "5.0.1"
 json = "0.12.4"
 lazy_static = "1.4.0"
+lopdf = { version = "0.32.0", features = [ "pom_parser" ], default-features = false, optional = true }
 office = { version = "0.8.1", optional = true }
 pdf-extract = { version = "0.7.7", optional = true }
 regex = "1.10.4"
