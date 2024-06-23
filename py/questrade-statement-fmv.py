@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+import ensure_in_venv
+
 import argparse
 import io
 import re

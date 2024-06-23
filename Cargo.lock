@@ -15,6 +15,7 @@ dependencies = [
  "dirs",
  "json",
  "lazy_static",
+ "lopdf",
  "office",
  "pdf-extract",
  "regex",
@@ -62,7 +63,7 @@ version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "261a937a307ddc70a1605dec925987d7256adb00232161a1855ef9cc820bd8d5"
 dependencies = [
- "pom",
+ "pom 1.1.0",
 ]
 
 [[package]]
@@ -561,6 +562,17 @@ dependencies = [
  "quote",
  "syn 2.0.59",
  "syn_derive",
+]
+
+[[package]]
+name = "bstr"
+version = "1.9.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "05efc5cfd9110c8416e471df0e96702d58690178e206e61b7173706673c93706"
+dependencies = [
+ "memchr",
+ "regex-automata 0.4.6",
+ "serde",
 ]
 
 [[package]]
@@ -1606,6 +1618,7 @@ dependencies = [
  "log 0.4.21",
  "md5",
  "nom 7.1.3",
+ "pom 3.4.0",
  "time 0.3.36",
  "weezl",
 ]
@@ -1931,6 +1944,15 @@ name = "pom"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "60f6ce597ecdcc9a098e7fddacb1065093a3d66446fa16c675e7e71d1b5c28e6"
+
+[[package]]
+name = "pom"
+version = "3.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6c972d8f86e943ad532d0b04e8965a749ad1d18bb981a9c7b3ae72fe7fd7744b"
+dependencies = [
+ "bstr",
+]
 
 [[package]]
 name = "postscript"
@@ -2893,7 +2915,7 @@ version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d3d6cc09e1a99c7e01f2afe4953789311a1c50baebbdac5b477ecf78e2e92a5b"
 dependencies = [
- "pom",
+ "pom 1.1.0",
 ]
 
 [[package]]
