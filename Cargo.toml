@@ -8,11 +8,12 @@ rust-version = "1.77"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [features]
-default = [ "cliapp", "pdf_parse", "xlsx_read" ]
+default = [ "cliapp", "pdf_parse", "xlsx_read", "xlsx_write" ]
 http_standalone = [ "surf/h1-client-rustls" ]
 cliapp = [ "http_standalone" ]
 pdf_parse = [ "pdf-extract" ]
 xlsx_read = [ "office" ]
+xlsx_write = [ "rust_xlsxwriter" ]
 wasm=[]
 testlib=[]
 
@@ -35,6 +36,11 @@ name = "tx-export-convert"
 path = "src/bin/tx_export_convert.rs"
 required-features = [ "xlsx_read" ]
 
+[[bin]]
+name = "csv-to-xlsx"
+path = "src/bin/csv_to_xlsx.rs"
+required-features = [ "xlsx_write" ]
+
 [dependencies]
 async-std = "1.12.0"
 async-trait = "0.1.80"
@@ -54,6 +60,7 @@ tabled = "0.15.0"
 time = { version = "0.3.36", features = [ "formatting", "local-offset", "parsing", "macros" ] }
 tracing = "0.1.40"
 tracing-subscriber = { version = "0.3.18", features = [ "env-filter", "fmt", "std", "time" ] }
+rust_xlsxwriter = { version = "0.68.0", optional = true }
 
 [dev-dependencies]
 acb = { path = ".", features = [ "default", "testlib" ] }
