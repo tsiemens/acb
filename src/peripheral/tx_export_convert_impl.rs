@@ -86,7 +86,7 @@ impl std::fmt::Display for BrokerArg {
 /// transaction csv format.
 /// Currently only supports Questrade.
 #[derive(Parser, Debug)]
-#[command(author, version, about)]
+#[command(author, about)]
 pub struct Args {
     /// Table file exported from your brokerage platform.
     /// A .xlsx for Questrade

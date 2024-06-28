@@ -26,6 +26,12 @@ pub fn is_negative(d: &Decimal) -> bool {
     d.is_sign_negative() && !d.is_zero()
 }
 
+/// Parses larger formatted numbers, with comma separators.
+pub fn parse_large_decimal(s: &str) -> Result<Decimal, rust_decimal::Error> {
+    let sanitized = s.replace(",", "");
+    Decimal::from_str_exact(&sanitized)
+}
+
 pub fn dollar_precision_str(d: &Decimal) -> String {
     format!("{:.2}", d)
 }
@@ -357,6 +363,12 @@ mod tests {
 
         // This is what really matters though. Zero is always equal.
         assert_eq!(zero, neg_zero);
+    }
+
+    #[test]
+    fn test_parse_large_decimal() {
+        assert_eq!(super::parse_large_decimal("1,000,000.0").unwrap(),
+                   dec!(1000000));
     }
 
     #[test]
