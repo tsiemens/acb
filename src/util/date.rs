@@ -41,6 +41,38 @@ fn date_naive_to_date(dn: &chrono::NaiveDate) -> Date {
     .unwrap()
 }
 
+pub fn parse_month(m: &str) -> Result<Month, ()> {
+    let m_lower = m.to_lowercase();
+    let trimmed = m_lower.trim();
+    if trimmed.starts_with("jan") {
+        Ok(Month::January)
+    } else if trimmed.starts_with("feb") {
+        Ok(Month::February)
+    } else if trimmed.starts_with("mar") {
+        Ok(Month::March)
+    } else if trimmed.starts_with("apr") {
+        Ok(Month::April)
+    } else if trimmed.starts_with("may") {
+        Ok(Month::May)
+    } else if trimmed.starts_with("jun") {
+        Ok(Month::June)
+    } else if trimmed.starts_with("jul") {
+        Ok(Month::July)
+    } else if trimmed.starts_with("aug") {
+        Ok(Month::August)
+    } else if trimmed.starts_with("sep") {
+        Ok(Month::September)
+    } else if trimmed.starts_with("oct") {
+        Ok(Month::October)
+    } else if trimmed.starts_with("nov") {
+        Ok(Month::November)
+    } else if trimmed.starts_with("dec") {
+        Ok(Month::December)
+    } else {
+        Err(())
+    }
+}
+
 thread_local! {
     static TODAYS_DATE_FOR_TEST_TL: RefCell<Date> = RefCell::new(Date::MIN);
 }

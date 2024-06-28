@@ -95,6 +95,7 @@ impl AcbWriter for TextWriter {
             OutputType::Transactions => format!("Transactions for {}", name),
             OutputType::AggregateGains => "Aggregate Gains".to_string(),
             OutputType::Costs => format!("{} Costs", name),
+            OutputType::Raw => name.to_string(),
         };
 
         writeln!(self.w, "{}", title).map_err(map_write_err)?;

@@ -123,7 +123,7 @@ impl io::Write for WriteHandle {
         // The test framework cannot capture direct writes to stdout or stderr,
         // only writes through print/println/eprintln.
         #[rustfmt::skip]
-        tracing::info!(
+        tracing::trace!(
             "WriteHandle::write {}",
             { let mut b = StringBuffer::new(); let _ = b.write(buf); b }.as_str()
         );

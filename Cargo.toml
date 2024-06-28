@@ -41,6 +41,11 @@ name = "csv-to-xlsx"
 path = "src/bin/csv_to_xlsx.rs"
 required-features = [ "xlsx_write" ]
 
+[[bin]]
+name = "questrade-statement-fmv"
+path = "src/bin/questrade_statement_fmv.rs"
+required-features = [ "pdf_parse" ]
+
 [dependencies]
 async-std = "1.12.0"
 async-trait = "0.1.80"

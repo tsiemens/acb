@@ -9,6 +9,9 @@ use tracing_subscriber::{fmt, EnvFilter, FmtSubscriber};
 // All targets, info level:             info
 // All modules under fx, debug level:   acb::fx=debug
 // Global at info, fx as debug:         info,acb::fx=debug
+//
+// More generally: target[span{field=value}]=level
+// https://docs.rs/tracing-subscriber/latest/tracing_subscriber/filter/struct.EnvFilter.html
 pub fn setup_tracing() {
     // Define the time format. 5 digits of precision is apparently good enough.
     let time_format =

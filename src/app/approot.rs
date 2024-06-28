@@ -427,7 +427,7 @@ pub async fn run_acb_app_to_console(
         .await
     } else {
         let mut writer: Box<dyn AcbWriter> = match options.csv_output_dir {
-            Some(dir_path) => match super::outfmt::csv::CsvWriter::new(&dir_path) {
+            Some(dir_path) => match super::outfmt::csv::CsvWriter::new_to_output_dir(&dir_path) {
                 Ok(w) => Box::new(w),
                 Err(e) => {
                     write_errln!(err_printer, "{e}");

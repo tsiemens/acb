@@ -4,6 +4,7 @@ pub enum OutputType {
     Transactions,
     AggregateGains,
     Costs,
+    Raw,
 }
 
 pub type Error = String;
