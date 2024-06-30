@@ -73,6 +73,10 @@ pub fn parse_month(m: &str) -> Result<Month, ()> {
     }
 }
 
+pub fn to_pretty_string(d: &Date) -> String {
+    format!("{} {}, {}", d.month(), d.day(), d.year())
+}
+
 thread_local! {
     static TODAYS_DATE_FOR_TEST_TL: RefCell<Date> = RefCell::new(Date::MIN);
 }
@@ -118,6 +122,8 @@ mod tests {
     use chrono::NaiveDate;
     use time::{Date, Month};
 
+    use crate::util::date::to_pretty_string;
+
     use super::{date_naive_to_date, parse_standard_date};
 
     #[test]
@@ -146,5 +152,13 @@ mod tests {
             date,
             Date::from_calendar_date(2024, Month::April, 13).unwrap()
         );
+    }
+
+    #[test]
+    fn test_to_pretty_string() {
+        assert_eq!(
+            to_pretty_string(&parse_standard_date("2024-03-01").unwrap()),
+            "March 1, 2024"
+            );
     }
 }

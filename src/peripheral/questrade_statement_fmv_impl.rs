@@ -3,11 +3,10 @@ use std::{collections::HashMap, path::PathBuf};
 use clap::Parser;
 use regex::{Regex, RegexBuilder};
 use rust_decimal::Decimal;
-use time::Month;
+use time::Date;
 
 use crate::{
-    app::outfmt::model::AcbWriter,
-    portfolio::render::RenderTable,
+    app::outfmt::model::AcbWriter, peripheral::pdf, portfolio::render::RenderTable,
     util::{basic::SError, date::parse_month, decimal::dollar_precision_str, rw::WriteHandle}
 };
 
@@ -216,18 +215,27 @@ fn parse_fmvs_from_page(page: &str) -> Result<(Vec<Fmv>, Decimal), SError> {
 
 #[derive(PartialEq, Eq, Debug)]
 pub struct StatementFmvs {
-    pub month: Month,
+    pub month_date: Date,
     pub fmvs: Vec<Fmv>,
     pub total: Decimal,
 }
 
 /// Parses statement pdf text, and finds the FMV for each security
 /// as well as the month the statement is for.
-pub fn parse_statement_text(pages: &Vec<String>) -> Result<StatementFmvs, SError> {
-    let mut month: Option<Month> = None;
+///
+/// Usage:
+/// parse_statement_text(my_vec_of_string.iter())
+/// parse_statement_text(my_vec_of_rc_string.iter().cloned())
+pub fn parse_statement_text<'a, I, T>(pages: I)
+-> Result<StatementFmvs, SError>
+where
+    I: Iterator<Item = T>,
+    T: std::borrow::Borrow<String> + 'a,
+{
+    let mut month_date: Option<Date> = None;
 
     let current_month_re = RegexBuilder::new(
-        r"\bCurrent month:\s+(?P<month>\S+) \d+, \d+")
+        r"\bCurrent month:\s+(?P<month>\S+) (?P<day>\d+), (?P<year>\d+)")
         .case_insensitive(true)
         .build().unwrap();
 
@@ -235,22 +243,27 @@ pub fn parse_statement_text(pages: &Vec<String>) -> Result<StatementFmvs, SError
         .unwrap();
 
     for page in pages {
-        if month.is_none() {
-            if let Some(m) = current_month_re.captures(page) {
-                if let Ok(mo) = parse_month(m.name("month").unwrap().as_str()) {
-                    month = Some(mo);
+        if month_date.is_none() {
+            if let Some(m) = current_month_re.captures(page.borrow()) {
+                if let Ok(month) = parse_month(m.name("month").unwrap().as_str()) {
+                    let year = m.name("year").unwrap().as_str().parse::<i32>()
+                        .map_err(|e| e.to_string())?;
+                    let day = m.name("day").unwrap().as_str().parse::<u8>()
+                        .map_err(|e| e.to_string())?;
+                    month_date = Some(Date::from_calendar_date(year, month, day).
+                        map_err(|e| e.to_string())?);
                 }
             }
         }
 
-        if !fmv_page_marker.is_match(page) {
+        if !fmv_page_marker.is_match(page.borrow()) {
             continue;
         }
 
-        let (fmvs, total) = parse_fmvs_from_page(page)?;
-        let some_month = month.ok_or("Could not find month")?;
+        let (fmvs, total) = parse_fmvs_from_page(page.borrow())?;
+        let some_month = month_date.ok_or("Could not find month")?;
         return Ok(StatementFmvs {
-            month: some_month,
+            month_date: some_month,
             fmvs,
             total,
         })
@@ -350,7 +363,7 @@ fn render_table_for_statements(statements: &Vec<StatementFmvs>) -> RenderTable {
             st.fmvs.iter().map(|f| (&f.security_desc, f))
         );
         let mut row = vec![
-            st.month.to_string(),
+            crate::util::date::to_pretty_string(&st.month_date),
             dollar_precision_str(&st.total),
         ];
         for sec_ab in &sorted_sec_abbrevs {
@@ -392,11 +405,19 @@ pub fn run() -> Result<(), ()> {
 
     for file_path in args.files {
         tracing::info!("Parsing {}...", file_path.to_string_lossy());
-        let pages = super::pdf::get_all_pages_text_from_path(&file_path)
-            .map_err(|e| {
-                eprintln!("Error in {}: {}", file_path.to_string_lossy(), e)
-            })?;
-        let statement_fmvs = parse_statement_text(&pages)
+        let doc = lopdf::Document::load(&file_path).map_err(|e| {
+            eprintln!("Error loading {}: {}", file_path.to_string_lossy(), e)
+        })?;
+        // We expect out date and FMV to be on pages 1 and 7. Allow some wiggle
+        // room and also check 6 and 8 before falling back to the rest.
+        let optimal_page_groups = vec![vec![1, 7], vec![6, 8]];
+        let page_groups = pdf::LazyPageTextVec::safe_page_chunks_with_remainder(
+            &doc, &optimal_page_groups);
+        let mut lazy_pages = pdf::LazyPageTextVec::new(std::sync::Arc::new(doc));
+        let page_iter = lazy_pages.optimized_iter(page_groups);
+
+        let statement_fmvs = parse_statement_text(
+            page_iter.map(|(_, txt)| txt))
             .map_err(|e| {
                 eprintln!("Error in {}: {}", file_path.to_string_lossy(), e)
             })?;
@@ -404,8 +425,7 @@ pub fn run() -> Result<(), ()> {
     }
 
     // Month is not Ord for some reason, so mock out a date for now.
-    statements.sort_by_cached_key(
-        |st| time::Date::from_calendar_date(1970, st.month, 1).unwrap());
+    statements.sort_by_cached_key(|st| st.month_date);
 
     let table = render_table_for_statements(&statements);
 
@@ -571,7 +591,7 @@ mod tests {
     #[test]
     fn test_parse_statement_text() {
         let month_page = s("Leading garbage
-            Account #:  1234 Current month:  February 30, 2024 trailing garbage");
+            Account #:  1234 Current month:  February 28, 2024 trailing garbage");
         let fmv_page = s(" Leading garbage
         Securities Owned
 
@@ -583,13 +603,14 @@ mod tests {
         100.0 100,000.01
         ");
 
-        let statement = parse_statement_text(&vec![
+        let statement = parse_statement_text(vec![
             month_page.clone(),
             fmv_page.clone()
-        ] ).unwrap();
+        ].iter() ).unwrap();
 
         let exp_fmvs = super::StatementFmvs {
-            month: time::Month::February,
+            month_date: time::Date::from_calendar_date(
+                2024, time::Month::February, 28).unwrap(),
             fmvs: vec![
                 Fmv { security_desc: s("BLABLA ETF (BLABLA)"),
                       allocation: dec!(80), fmv: dec!(80000) },
@@ -600,7 +621,7 @@ mod tests {
         assert_big_struct_eq(&statement, &exp_fmvs);
 
         // Two FMV pages for some reason (second is ignored)
-        let statement = parse_statement_text(&vec![
+        let statement = parse_statement_text(vec![
             month_page.clone(),
             fmv_page.clone(),
             s("Securities Owned Combined in (CAD)
@@ -608,16 +629,16 @@ mod tests {
             ■ FOO ETF (FOO) 80.0 80,000.0
             100.0 100,000.01
             "),
-        ]).unwrap();
+        ].iter()).unwrap();
 
         assert_big_struct_eq(&statement, &exp_fmvs);
 
         // Month page second, for whatever reason
         assert_eq!(
-            parse_statement_text(&vec![
+            parse_statement_text(vec![
                 fmv_page.clone(),
                 month_page.clone(),
-            ]).unwrap_err(),
+            ].iter()).unwrap_err(),
             s("Could not find month"));
     }
 
