@@ -308,6 +308,29 @@ fn abbrev_alt(sec_abbrev: &str, alt: u32) -> String {
     format!("{sec_abbrev}_{alt}")
 }
 
+fn parse_statement(file_path: &PathBuf, parallel_pages: bool)
+ -> Result<StatementFmvs, SError> {
+    tracing::info!("Parsing {}...", file_path.to_string_lossy());
+    let doc = lopdf::Document::load(&file_path).map_err(|e| {
+        format!("Error loading {}: {}", file_path.to_string_lossy(), e)
+    })?;
+    // We expect out date and FMV to be on pages 1 and 7. Allow some wiggle
+    // room and also check 6 and 8 before falling back to the rest.
+    let optimal_page_groups = vec![vec![1, 7], vec![6, 8]];
+    let page_groups = pdf::LazyPageTextVec::safe_page_chunks_with_remainder(
+        &doc, &optimal_page_groups);
+    let mut lazy_pages = pdf::LazyPageTextVec::new(
+        std::sync::Arc::new(doc), parallel_pages);
+    let page_iter = lazy_pages.optimized_iter(page_groups);
+
+    let statement_fmvs = parse_statement_text(
+        page_iter.map(|(_, txt)| txt))
+        .map_err(|e| {
+            format!("Error in {}: {}", file_path.to_string_lossy(), e)
+        })?;
+    Ok(statement_fmvs)
+}
+
 /// Renders a table like so for the statements:
 /// Month | Total FMV (CAD) | SEC1 | SEC2 | ...
 /// Jan
@@ -396,33 +419,77 @@ struct Args {
     pub pretty: bool,
 }
 
+/// Parses statements in parallel. Pages are all parsed in an (optimized) sequence.
+/// (I don't know how to do nested tasks right now).
+async fn parse_statements_parallel(file_paths: &Vec<PathBuf>)
+-> Result<Vec<StatementFmvs>, Vec<SError>> {
+    let start = std::time::Instant::now();
+
+    let mut handles = Vec::with_capacity(file_paths.len());
+    for file_path in file_paths {
+        let fp_clone = file_path.clone();
+        let handle = async_std::task::spawn(async move {
+            parse_statement(&fp_clone, false)
+        });
+        handles.push(handle);
+    }
+
+    let mut results = Vec::with_capacity(file_paths.len());
+    for handle in handles {
+        results.push(handle.await);
+    }
+
+    let mut statements = Vec::with_capacity(results.len());
+    let mut errors = Vec::new();
+    for result in results {
+        match result {
+            Ok(st) => { statements.push(st); },
+            Err(e) => { errors.push(e); },
+        }
+    }
+
+    tracing::debug!("parse_statements_async took {:?}", start.elapsed());
+    if errors.is_empty() { Ok(statements) } else { Err(errors) }
+}
+
+/// Parses statements, and loads pages asynchronously, but processes
+/// statements sequentially (I don't know how to do nested tasks right now).
+fn parse_statements_pages_parallel(file_paths: &Vec<PathBuf>)
+-> Result<Vec<StatementFmvs>, Vec<SError>> {
+    let start = std::time::Instant::now();
+
+    let mut statements = Vec::<StatementFmvs>::new();
+    for file_path in file_paths {
+        let statement_fmvs = parse_statement(&file_path, true).map_err(|e| {
+            vec![e]
+        })?;
+        statements.push(statement_fmvs);
+    }
+
+    tracing::debug!("parse_statements_async took {:?}", start.elapsed());
+    Ok(statements)
+}
+
 pub fn run() -> Result<(), ()> {
     let args = Args::parse();
 
     crate::tracing::setup_tracing();
 
-    let mut statements = Vec::new();
-
-    for file_path in args.files {
-        tracing::info!("Parsing {}...", file_path.to_string_lossy());
-        let doc = lopdf::Document::load(&file_path).map_err(|e| {
-            eprintln!("Error loading {}: {}", file_path.to_string_lossy(), e)
+    let mut statements =
+        if crate::util::sys::env_var_non_empty("PARALLEL_STATEMENTS") {
+            // This optimization path is not recommended, at least from some
+            // limited testing. Though the actual parse step is noticeably faster
+            // here, the overall runtime (at least on a 4-core laptop from 2015) is
+            // slower. This may because loading all of the statements in parallel
+            // creates an IO bottleneck. We could maybe adjust this based on certain
+            // parameters, but without more machine variety to test on, how to do
+            // that isn't clear.
+            async_std::task::block_on(parse_statements_parallel(&args.files))
+        } else {
+            parse_statements_pages_parallel(&args.files)
+        }.map_err(|e| {
+            eprintln!("{}", e.join("\n"))
         })?;
-        // We expect out date and FMV to be on pages 1 and 7. Allow some wiggle
-        // room and also check 6 and 8 before falling back to the rest.
-        let optimal_page_groups = vec![vec![1, 7], vec![6, 8]];
-        let page_groups = pdf::LazyPageTextVec::safe_page_chunks_with_remainder(
-            &doc, &optimal_page_groups);
-        let mut lazy_pages = pdf::LazyPageTextVec::new(std::sync::Arc::new(doc));
-        let page_iter = lazy_pages.optimized_iter(page_groups);
-
-        let statement_fmvs = parse_statement_text(
-            page_iter.map(|(_, txt)| txt))
-            .map_err(|e| {
-                eprintln!("Error in {}: {}", file_path.to_string_lossy(), e)
-            })?;
-        statements.push(statement_fmvs);
-    }
 
     // Month is not Ord for some reason, so mock out a date for now.
     statements.sort_by_cached_key(|st| st.month_date);
