@@ -65,8 +65,9 @@ impl<'a> Iterator for StringHolderIter<'a> {
 
 pub struct LazyPageTextVec {
     doc: Arc<Document>,
-    // Contains loaded text. Indexed by page_number - 1
+    load_async_blocking: bool,
 
+    // Contains loaded text. Indexed by page_number - 1
     // This is an Rc<String> so we can pass the ref from the iterator.
     // Directly using &String from the iterator isn't allowed because the iterator
     // takes LazyPageTextVec by &mut
@@ -77,16 +78,21 @@ pub struct LazyPageTextVec {
 }
 
 impl LazyPageTextVec {
-    pub fn new(doc: Arc<Document>) -> Self {
+    pub fn new(doc: Arc<Document>, load_async_blocking: bool) -> Self {
         Self {
             doc,
+            load_async_blocking,
             page_texts: Vec::new(),
             last_error: None,
         }
     }
 
     pub fn load_pages(&mut self, page_numbers: &[u32]) -> Result<(), &SError> {
-        let page_texts_res = get_pages_text_arc(self.doc.clone(), &page_numbers);
+        let page_texts_res = if self.load_async_blocking {
+            get_pages_text_async_blocking(self.doc.clone(), &page_numbers)
+        } else {
+            get_pages_text(self.doc.as_ref(), &page_numbers)
+        };
         match page_texts_res {
             Ok(page_texts) => {
                 for (page_num, text) in page_numbers.iter().zip(page_texts) {
@@ -259,6 +265,20 @@ pub fn get_page_text(doc: &Document, page: u32)
     Ok(buf.export_string())
 }
 
+pub fn get_pages_text_sync(doc: &Document, page_numbers: &[u32])
+-> Result<Vec<String>, pdf_extract::OutputError> {
+    let start = std::time::Instant::now();
+
+    let mut pages = Vec::with_capacity(page_numbers.len());
+    for page_num in page_numbers {
+        let page_text = get_page_text(doc, *page_num)?;
+        pages.push(page_text);
+    }
+
+    tracing::debug!("get_pages_text_sync took {:?}", start.elapsed());
+    Ok(pages)
+}
+
 pub async fn get_pages_text_async(doc: Arc<Document>, page_numbers: &[u32])
 -> Result<Vec<String>, pdf_extract::OutputError> {
     let start = std::time::Instant::now();
@@ -292,16 +312,18 @@ pub async fn get_pages_text_async(doc: Arc<Document>, page_numbers: &[u32])
     Ok(pages)
 }
 
-pub fn get_pages_text_arc(doc: Arc<Document>, page_numbers: &[u32])
+/// Note that this MUST NOT be called from inside another task, or it will
+/// block forever.
+pub fn get_pages_text_async_blocking(doc: Arc<Document>, page_numbers: &[u32])
 -> Result<Vec<String>, pdf_extract::OutputError> {
     let pages =
         async_std::task::block_on(get_pages_text_async(doc, page_numbers))?;
     Ok(pages)
 }
 
-pub fn get_pages_text(doc: Document, page_numbers: &[u32])
+pub fn get_pages_text(doc: &Document, page_numbers: &[u32])
 -> Result<Vec<String>, pdf_extract::OutputError> {
-    get_pages_text_arc(Arc::new(doc), page_numbers)
+    get_pages_text_sync(doc, page_numbers)
 }
 
 pub async fn get_all_pages_text_async(doc: Document)
