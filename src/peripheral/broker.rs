@@ -4,6 +4,7 @@ mod broker_tx;
 mod fx_tracker;
 
 // Individual brokers
+pub mod etrade;
 pub mod questrade;
 
 // pub fn sheet_to_txs(sheet: &Range) -> Result<Vec<BrokerTx>, Vec<SheetParseError>> {

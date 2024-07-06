@@ -1,0 +1,823 @@
+use std::path::Path;
+
+use rust_decimal::Decimal;
+use time::Date;
+
+use crate::util::{basic::SError, decimal::parse_large_decimal};
+
+struct Searcher {
+    bldr: regex::RegexBuilder,
+}
+
+impl Searcher {
+    pub fn new(pattern: &str) -> Self {
+        Searcher{ bldr: regex::RegexBuilder::new(pattern) }
+    }
+
+    /// dot_matches_new_line ('s' is the defacto flag name for this)
+    pub fn s(&mut self) -> &mut Self {
+        self.bldr.dot_matches_new_line(true);
+        self
+    }
+
+    pub fn get_opt_from(&self, text: &str, group: usize) -> Option<String> {
+        let re = self.bldr.build().unwrap();
+        match re.captures(text) {
+            Some(m) => m.get(group).map(|c| c.as_str().to_string()),
+            None => None,
+        }
+    }
+
+    pub fn get_from(&self, text: &str, group: usize) -> Result<String, SError> {
+        let re = self.bldr.build().unwrap();
+        match re.captures(text) {
+            Some(m) => m.get(group).map(|c| c.as_str().to_string()).ok_or(
+                format!("Could not get group {group} from {re}")),
+            None => Err(format!("Could not find {re}")),
+        }
+    }
+
+    pub fn get1_opt_from(&self, text: &str) -> Option<String> {
+        self.get_opt_from(text, 1)
+    }
+
+    pub fn get1_from(&self, text: &str) -> Result<String, SError> {
+        self.get_from(text, 1)
+    }
+
+    // Convenience alias
+    pub fn str1(&self, text: &str) -> Result<String, SError> {
+        self.get1_from(text)
+    }
+
+    pub fn get1_opt_dec_from(&self, text: &str) -> Result<Option<Decimal>, SError> {
+        match self.get1_opt_from(text) {
+            Some(val_str) => {
+                let d_val = parse_large_decimal(&val_str).map_err(|e| e.to_string())?;
+                Ok(Some(d_val))
+            },
+            None => Ok(None),
+        }
+    }
+
+    // Convenience alias
+    pub fn opt_dec1(&self, text: &str) -> Result<Option<Decimal>, SError> {
+        self.get1_opt_dec_from(text)
+    }
+
+    pub fn get1_dec_from(&self, text: &str) -> Result<Decimal, SError> {
+        let val_str = self.get_from(text, 1)?;
+        parse_large_decimal(&val_str).map_err(|e| e.to_string())
+    }
+
+    // Convenience alias
+    pub fn dec1(&self, text: &str) -> Result<Decimal, SError> {
+        self.get1_dec_from(text)
+    }
+}
+
+fn srch(pattern: &str) -> Searcher {
+    Searcher::new(pattern)
+}
+
+fn get_filename(path: &Path) -> String {
+    path.file_name().map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_else(|| "<unnamed file>".to_string())
+}
+
+#[derive(PartialEq, Eq, Clone, Debug)]
+pub struct BenefitEntry {
+    pub security: String,
+
+   pub acquire_tx_date: Date,
+   pub acquire_settle_date: Date,
+   pub acquire_share_price: Decimal,
+   pub acquire_shares: Decimal,
+
+   pub sell_to_cover_tx_date: Option<Date>,
+   pub sell_to_cover_settle_date: Option<Date>,
+   pub sell_to_cover_price: Option<Decimal>,
+   pub sell_to_cover_shares: Option<Decimal>,
+   pub sell_to_cover_fee: Option<Decimal>,
+
+   pub plan_note: String,
+   pub sell_note: Option<String>,
+   pub filename: String,
+}
+
+// Common to all benefit PDFs
+#[derive(PartialEq, Debug)]
+struct BenefitCommonData {
+    #[allow(dead_code)]
+    pub employee_id: String,
+    #[allow(dead_code)]
+    pub account_number: String,
+    pub symbol: String,
+}
+
+fn parse_benefit_common_data(benefit_pdf_text: &str) -> Result<BenefitCommonData, SError> {
+    let text = benefit_pdf_text;
+    Ok(BenefitCommonData {
+        employee_id: srch(r"Employee ID:\s*(\d+)").str1(text)?,
+        account_number: srch(r"Account (?:Number|Stock Plan \(\S+\) -)\s*(\d+)").str1(text)?,
+        symbol: srch(r"Company Name\s*\(Symbol\)*.*\(([A-Za-z\.]+)\)").s().str1(text)?,
+    })
+}
+
+pub const ETRADE_DASH_DATE_FORMAT: crate::util::date::StaticDateFormat =
+    time::macros::format_description!("[month]-[day]-[year]");
+pub const ETRADE_SLASH_DATE_FORMAT: crate::util::date::StaticDateFormat =
+    time::macros::format_description!("[month]/[day]/[year]");
+
+struct RsuData {
+    pub common_benefit_data: BenefitCommonData,
+    pub release_date: Date,
+    pub award_number: String,
+    pub shares_released: Decimal,
+    pub shares_sold: Decimal,
+    #[allow(dead_code)]
+    pub shares_issued: Decimal,
+    pub fmv_per_share: Decimal,
+    pub sale_price_per_share: Decimal,
+    #[allow(dead_code)]
+    pub market_value: Decimal,
+    #[allow(dead_code)]
+    pub total_sale_price: Decimal,
+    #[allow(dead_code)]
+    pub total_tax: Decimal,
+    #[allow(dead_code)]
+    pub fee: Decimal,
+    #[allow(dead_code)]
+    pub cash_leftover: Decimal,
+}
+
+fn parse_rsu_data(rsu_pdf_text: &str) -> Result<RsuData, SError> {
+    let text = rsu_pdf_text;
+
+    Ok(RsuData {
+        common_benefit_data: parse_benefit_common_data(text)?,
+        release_date: Date::parse(
+            &srch(r"Release Date\s*(\d+-\d+-\d+)").str1(text)?,
+            ETRADE_DASH_DATE_FORMAT
+        ).map_err(|e| e.to_string())?,
+        award_number: srch(r"Award Number\s*(R\d+)").str1(text)?,
+        shares_released: srch(r"Shares Released\s*(\d+\.\d+)").dec1(text)?,
+        shares_sold: srch(r"Shares Sold\s*\((\d+\.\d+)\)").dec1(text)?,
+        shares_issued: srch(r"Shares Issued\s*(\d+\.\d+)").dec1(text)?,
+        fmv_per_share: srch(r"Market Value Per Share\s*\$(\d+\.\d+)").dec1(text)?,
+        sale_price_per_share: srch(r"Sale Price Per Share\s*\$(\d+\.\d+)").dec1(text)?,
+        market_value: srch(r"Market Value\s*\$([\d,]+\.\d+)").dec1(text)?,
+        total_sale_price: srch(r"Total Sale Price\s*\$([\d,]+\.\d+)").dec1(text)?,
+        total_tax: srch(r"Total Tax\s*\$([\d,]+\.\d+)").dec1(text)?,
+        fee: srch(r"Fee\s*\(\$(\d+\.\d+)").dec1(text)?,
+        cash_leftover: srch(r"Total Due Participant\s*\$([\d,]+\.\d+)").dec1(text)?,
+    })
+}
+
+fn parse_rsu_entry(rsu_pdf_text: &str, filepath: &Path) -> Result<BenefitEntry, SError> {
+    let rsu_data = parse_rsu_data(rsu_pdf_text)?;
+
+    Ok(BenefitEntry {
+        security: rsu_data.common_benefit_data.symbol,
+        // The FMV is for the release date, so treat that as the tx date.
+        acquire_tx_date: rsu_data.release_date,
+        // There is no way to know the settlement date in RSU distributions.
+        // Since they are never near the year-end boundary, just use the release date.
+        acquire_settle_date: rsu_data.release_date,
+        acquire_share_price: rsu_data.fmv_per_share,
+        acquire_shares: rsu_data.shares_released,
+
+        // The sell-to-cover date is almost always a day or two after the release
+        // date. This needs to be looked up separately if we want an accurate
+        // USD/CAD exchange rate.
+        sell_to_cover_tx_date: None,
+        sell_to_cover_settle_date: None,
+        sell_to_cover_price: Some(rsu_data.sale_price_per_share),
+        sell_to_cover_shares: Some(rsu_data.shares_sold),
+        sell_to_cover_fee: Some(rsu_data.fee),
+
+        plan_note: format!("RSU {}", rsu_data.award_number),
+        sell_note: None,
+        filename: get_filename(filepath),
+    })
+}
+
+#[derive(PartialEq, Debug)]
+struct EsoGrantData {
+    grant_number: u64,
+    exercise_fmv: Decimal,
+    shares_exercised: Decimal,
+    sale_price: Decimal,
+    fee: Decimal,
+}
+
+#[derive(PartialEq, Debug)]
+struct EsoData {
+    pub common_benefit_data: BenefitCommonData,
+    pub exercise_type: String,
+    pub exercise_date: Date,
+    pub shares_sold: Decimal,
+
+    pub grants: Vec<EsoGrantData>,
+}
+
+/// Attempts to look for all rows within text that are of the format:
+/// KEY: VAL_PAT VAL_PAT?
+/// NOTE: Why the second VAL_PAT is here is not really clear right now, as the
+///       value is never included in our output.
+fn search_for_rows(key: &str, val_pat: &str, text: &str) -> Result<Vec<String>, SError> {
+    let main_re = regex::Regex::new(&format!(
+        r"{key}(?:\s+(?P<rowvalue1>{val_pat})(?:\s+(?P<rowvalue2>{val_pat}))?)"))
+        .unwrap();
+
+    let mut vals = Vec::<String>::new();
+    for m in main_re.captures_iter(text) {
+        vals.push(m.name("rowvalue1").unwrap().as_str().to_string());
+    }
+    if vals.is_empty() {
+        Err(format!("Could not find {main_re:?}"))
+    } else {
+        Ok(vals)
+    }
+}
+
+fn search_for_dec_rows(key: &str, dollar_prefix: bool, text: &str)
+-> Result<Vec<Decimal>, SError> {
+    let prefix = if dollar_prefix { r"\$" } else { "" };
+    let strs = search_for_rows(key, &format!(r"{prefix}([\d,\.]+)"), text)?;
+    let mut decs = Vec::<Decimal>::with_capacity(strs.len());
+    for s in strs {
+        let sanitized_s = s.replace("$", "");
+        decs.push(parse_large_decimal(&sanitized_s).map_err(|e| format!(
+            "Decimal error in \"{sanitized_s}\" on \"{key}\" row: {e}"))?);
+    }
+    Ok(decs)
+}
+
+fn parse_eso_data(eso_pdf_text: &str) -> Result<EsoData, SError> {
+    let text = eso_pdf_text;
+
+    let body_m_res = regex::RegexBuilder::new(r"^(.*)(Exercise Details.*Exercise Date).*$")
+        .dot_matches_new_line(true).build().unwrap().captures(text);
+    let (header, body) = if let Some(body_m) = body_m_res {
+        (body_m.get(1).unwrap().as_str(), body_m.get(2).unwrap().as_str())
+    } else {
+        return Err("Unable to parse exercise details".to_string());
+    };
+
+    let grant_indicies: Vec<String> =
+        regex::Regex::new(r"Grant (\d+)").unwrap().find_iter(body)
+            .map(|m| m.as_str().to_string()).collect();
+    tracing::debug!("parse_eso_data grants: {:?}", grant_indicies);
+
+    let grant_numbers: Vec<u64> = search_for_rows("Grant Number", r"\d+", body)?
+        .into_iter().map(|s| s.parse::<u64>().unwrap_or_default()).collect();
+    let grant_exercise_fmvs = search_for_dec_rows("Exercise Market Value", true, body)?;
+    let grant_shares_exercised = search_for_dec_rows("Shares Exercised", false, body)?;
+    let grant_sale_prices = search_for_dec_rows("Sale Price", true, body)?;
+    let grant_fees = search_for_dec_rows("Comission/Fee", true, body)?;
+
+    let mut grants = Vec::with_capacity(grant_indicies.len());
+    for (((((_, num), fmv), shares), s_price), fee) in grant_indicies.iter()
+                .zip(grant_numbers)
+                .zip(grant_exercise_fmvs)
+                .zip(grant_shares_exercised)
+                .zip(grant_sale_prices)
+                .zip(grant_fees) {
+        grants.push(EsoGrantData {
+            grant_number: num,
+            exercise_fmv: fmv,
+            shares_exercised: shares,
+            sale_price: s_price,
+            fee: fee,
+        });
+    }
+
+    Ok(EsoData {
+        common_benefit_data: parse_benefit_common_data(text)?,
+        exercise_type: srch(r"Exercise Type:\s+(.*)\s+Registration").str1(text)?,
+        exercise_date: Date::parse(
+            &srch(r"Exercise Date:\s+(\d+/\d+/\d+)").str1(text)?,
+            ETRADE_SLASH_DATE_FORMAT
+        ).map_err(|e| e.to_string())?,
+        shares_sold: srch(r"Shares Sold\s+([\d,\.]+)").dec1(header)?,
+        grants: grants,
+    })
+}
+
+/// Parses BenefitEntries out of exercies stock options confirmations.
+/// Each form can contain of multiple grants exercises, and each will yield
+/// a separate benefit entry.
+/// Due to how some attributes are consolidated (sold shares, for example),
+/// some parts are added into just the last BenefitEntry.
+fn parse_eso_entries(eso_pdf_text: &str, filepath: &Path)
+    -> Result<Vec<BenefitEntry>, SError> {
+    let eso_data = parse_eso_data(eso_pdf_text)?;
+
+    let mut entries = Vec::with_capacity(eso_data.grants.len());
+    let last_grant = eso_data.grants.last().ok_or_else(
+        || format!("No exercised grants found in {filepath:?}"))?;
+
+    // Decimal doesn't implement Sum, so we have to manually accumulate it.
+    let fee_sum = eso_data.grants.iter().fold(Decimal::ZERO, |acc, g| acc + g.fee);
+
+    for (i, grant) in eso_data.grants.iter().enumerate() {
+        if grant.sale_price != last_grant.sale_price {
+            return Err(format!("Non-equal ESO sale prices {} and {}",
+                grant.sale_price, last_grant.sale_price));
+        }
+
+        let is_last = i == eso_data.grants.len() - 1;
+        entries.push(BenefitEntry {
+            security: eso_data.common_benefit_data.symbol.clone(),
+            acquire_tx_date: eso_data.exercise_date,
+            acquire_settle_date: eso_data.exercise_date,
+            acquire_share_price: grant.exercise_fmv,
+            acquire_shares: grant.shares_exercised,
+            sell_to_cover_tx_date:
+                if is_last { Some(eso_data.exercise_date) } else { None },
+            sell_to_cover_settle_date:
+                if is_last { Some(eso_data.exercise_date) } else { None },
+            sell_to_cover_price:
+                if is_last { Some(grant.sale_price) } else { None },
+            sell_to_cover_shares:
+                if is_last { Some(eso_data.shares_sold) } else { None },
+            sell_to_cover_fee:
+                if is_last { Some(fee_sum) } else { None },
+            plan_note: format!("Option Grant {}", grant.grant_number),
+            sell_note: Some(eso_data.exercise_type.clone()),
+            filename: get_filename(filepath),
+        });
+    }
+    Ok(entries)
+}
+
+struct EsppData {
+    pub common_benefit_data: BenefitCommonData,
+    pub purchase_date: Date,
+    pub shares_purchased: Decimal,
+    pub fmv_per_share: Decimal,
+    #[allow(dead_code)]
+    pub purchase_price_per_share: Decimal,
+    #[allow(dead_code)]
+    pub total_price: Decimal,
+    #[allow(dead_code)]
+    pub total_value: Decimal,
+    #[allow(dead_code)]
+    pub taxable_gain: Decimal,
+    #[allow(dead_code)]
+    pub market_value_at_grant: Decimal,
+
+    #[allow(dead_code)]
+    pub total_tax: Option<Decimal>,
+    pub shares_sold: Option<Decimal>,
+    pub sale_price_per_share: Option<Decimal>,
+    #[allow(dead_code)]
+    pub total_sale_price: Option<Decimal>,
+    pub fee: Option<Decimal>,
+    #[allow(dead_code)]
+    pub cash_leftover: Option<Decimal>,
+
+}
+
+fn parse_espp_data(espp_pdf_text: &str) -> Result<EsppData, SError> {
+    let text = espp_pdf_text;
+
+    Ok(EsppData {
+        common_benefit_data: parse_benefit_common_data(text)?,
+        purchase_date: Date::parse(
+            &srch(r"Purchase Date\s*(\d+-\d+-\d+)").str1(text)?,
+            ETRADE_DASH_DATE_FORMAT
+        ).map_err(|e| e.to_string())?,
+        shares_purchased: srch(r"Shares Purchased\s*(\d+\.\d+)").dec1(text)?,
+        fmv_per_share: srch(r"Purchase Value per Share\s*\$(\d+\.\d+)").dec1(text)?,
+        purchase_price_per_share:
+            srch(r"Purchase Price per Share\s*\([^\)]*\)\s*\$(\d+\.\d+)")
+            .s().dec1(text)?,
+        total_price: srch(r"Total Price\s*\(\$([\d,]+\.\d+)\)").dec1(text)?,
+        total_value: srch(r"Total Value\s*\$([\d,]+\.\d+)").dec1(text)?,
+        taxable_gain: srch(r"Taxable Gain\s*\$([\d,]+\.\d+)").dec1(text)?,
+        market_value_at_grant: srch(r"Market Value\s*\$([\d,]+\.\d+)").dec1(text)?,
+
+        total_tax:
+            srch(r"Total Taxes Collected at purchase\s\(\$([\d,]+\.\d+)\)")
+            .opt_dec1(text)?,
+        shares_sold: srch(r"Shares Sold to Cover Taxes\s*(\d+\.\d+)").opt_dec1(text)?,
+        sale_price_per_share:
+            srch(r"Sale Price for Shares Sold to Cover Taxes\s*\$(\d+\.\d+)")
+            .opt_dec1(text)?,
+        total_sale_price:
+            srch(r"Value Of Shares Sold\s\$([\d,]+\.\d+)").opt_dec1(text)?,
+        fee: srch(r"Fees\s*\(\$(\d+\.\d+)").opt_dec1(text)?,
+        cash_leftover:
+            srch(r"Amount in Excess of Tax Due\s\$(\d+\.\d+)").opt_dec1(text)?,
+    })
+}
+
+fn parse_espp_entry(espp_pdf_text: &str, filepath: &Path)
+-> Result<BenefitEntry, SError> {
+    let espp_data = parse_espp_data(espp_pdf_text)?;
+
+    Ok(BenefitEntry {
+        security: espp_data.common_benefit_data.symbol,
+        acquire_tx_date: espp_data.purchase_date,
+        // There is no way to know the settlement date in ESPP distributions.
+        // Since they are never near the year-end boundary, just use the purchase
+        // date.
+        acquire_settle_date: espp_data.purchase_date,
+        acquire_share_price: espp_data.fmv_per_share,
+        acquire_shares: espp_data.shares_purchased,
+        // The sell-to-cover date is almost always a day or two after the release
+        // date. This needs to be looked up separately if we want an accurate
+        // USD/CAD exchange rate.
+        sell_to_cover_tx_date: None,
+        sell_to_cover_settle_date: None,
+        sell_to_cover_price: espp_data.sale_price_per_share,
+        sell_to_cover_shares: espp_data.shares_sold,
+        sell_to_cover_fee: espp_data.fee,
+
+        plan_note: "ESPP".to_string(),
+        sell_note: None,
+        filename: get_filename(filepath),
+    })
+}
+
+// TODO use BrokerTx. Needs filename added.
+pub struct TradeConfirmation {
+
+}
+
+pub enum EtradePdfContent {
+    BenefitConfirmation(Vec<BenefitEntry>),
+    TradeConfirmation(Vec<TradeConfirmation>),
+}
+
+use lazy_static::lazy_static;
+
+lazy_static! {
+    static ref RSU_PATTERN: regex::Regex = regex::Regex::new(
+        r"STOCK\s+PLAN\s+RELEASE\s+CONFIRMATION").unwrap();
+    static ref ESO_PATTERN: regex::Regex = regex::Regex::new(
+        r"STOCK\s+PLAN\s+EXERCISE\s+CONFIRMATION").unwrap();
+    static ref ESPP_PATTERN: regex::Regex = regex::Regex::new(
+        r"Plan\s*(2014|ESP2)").unwrap();
+    static ref PRE_MS_2023_TRADE_CONF_PATTERN: regex::Regex = regex::Regex::new(
+        r"TRADE\s*CONFIRMATION").unwrap();
+    static ref POST_MS_2023_TRADE_CONF_PATTERN: regex::Regex = regex::Regex::new(
+        r"This\s+transaction\s+is\s+confirmed").unwrap();
+}
+
+pub fn parse_pdf_text(etrade_pdf_text: &str, filepath: &Path)
+-> Result<EtradePdfContent, SError> {
+
+    if RSU_PATTERN.is_match(etrade_pdf_text) {
+        tracing::trace!("parse_pdf_text: {filepath:?} is RSU");
+        Ok(EtradePdfContent::BenefitConfirmation(
+            vec![parse_rsu_entry(etrade_pdf_text, filepath)?]))
+    } else if ESO_PATTERN.is_match(etrade_pdf_text) {
+        Ok(EtradePdfContent::BenefitConfirmation(
+            parse_eso_entries(etrade_pdf_text, filepath)?))
+    } else if ESPP_PATTERN.is_match(etrade_pdf_text) {
+        Ok(EtradePdfContent::BenefitConfirmation(
+            vec![parse_espp_entry(etrade_pdf_text, filepath)?]))
+    } else if PRE_MS_2023_TRADE_CONF_PATTERN.is_match(etrade_pdf_text) {
+        todo!()
+    } else if POST_MS_2023_TRADE_CONF_PATTERN.is_match(etrade_pdf_text) {
+        todo!()
+    } else {
+        Err("Cannot categorize layout of PDF".to_string())
+    }
+}
+
+// MARK: tests
+
+#[cfg(test)]
+mod tests {
+    use rust_decimal_macros::dec;
+
+    use crate::{testlib::assert_big_struct_eq, util::date::parse_standard_date};
+
+    use super::{parse_eso_data, parse_eso_entries, parse_espp_entry, parse_rsu_entry, BenefitCommonData, BenefitEntry, EsoData, EsoGrantData};
+
+    fn s(_str: &str) -> String {
+        _str.to_string()
+    }
+
+    fn date(date_str: &str) -> time::Date {
+        parse_standard_date(date_str).unwrap()
+    }
+
+    #[test]
+    fn test_parse_rsu_entry() {
+        let pdf_text = " Release Summary
+
+            Account Number 11223344
+            Tax Payment Method Sell-to-cover
+            Company Name (Symbol) Foo Inc.
+            (FOO)
+            Award Number R98765
+            Award Date 05-08-2020
+            Award Type RSU
+            Plan 2014
+            Release Date 10-20-2023
+            Shares Released 123.0000
+            Market Value Per Share $215.350000
+            Award Price Per Share $0.000000
+            Sale Price Per Share $213.773300
+
+            Release Details
+
+            Calculation of Gain
+            Market Value $26,488.05
+            Award Price ($0.00)
+            Total Gain $26,488.05
+
+            Stock Distribution
+            Award Shares 123.0000
+            Shares Sold (67.0000)
+            Shares Issued 56.0000
+
+            Registration: Morgan Stanley Smith Barney
+            Calculation of Taxes
+            Taxable Gain $ Rate % Amount $
+            Canada-BC 26,488.05 53.500 14,171.10
+            Total Tax $14,171.10
+
+            Cash Distribution
+            Total Sale Price $14,322.81
+            Total Tax ($14,171.10)
+            Fee ($4.13)
+            Total Due Participant $147.58
+
+            EMPLOYEE STOCK PLAN RELEASE CONFIRMATION
+            Provided by Foo Inc.
+            John Doe
+            Employee ID: 1111
+            ";
+
+        let rsu_entry = parse_rsu_entry(
+            pdf_text, &std::path::PathBuf::from("foo/bar/myrsu.pdf")).unwrap();
+
+        assert_big_struct_eq(rsu_entry, BenefitEntry {
+            security: "FOO".to_string(),
+            acquire_tx_date: date("2023-10-20"),
+            acquire_settle_date: date("2023-10-20"),
+            acquire_share_price: dec!(215.35),
+            acquire_shares: dec!(123),
+            sell_to_cover_tx_date: None,
+            sell_to_cover_settle_date: None,
+            sell_to_cover_price: Some(dec!(213.7733)),
+            sell_to_cover_shares: Some(dec!(67)),
+            sell_to_cover_fee: Some(dec!(4.13)),
+            plan_note: s("RSU R98765"),
+            sell_note: None,
+            filename: s("myrsu.pdf"),
+        })
+    }
+
+    const SAMPLE_ESO: &str = "
+        Account Number 11223344
+        Tax Payment Method Sell-to-cover
+        Company Name (Symbol) Foo Inc.
+        (FOO)
+
+        Exercise Type: Same-Day Sale Registration
+
+        Shares Sold 1,002
+
+        Exercise Details
+
+        Grant 1
+        Grant Number 1234
+        Exercise Market Value $1,000.00
+        Shares Exercised 100
+        Sale Price $1,001.00
+        Comission/Fee $10.00
+
+        Grant 2
+        Grant Number 1235
+        Exercise Market Value $2,000.00
+        Shares Exercised 200
+        Sale Price $2,001.00
+        Comission/Fee $11.00
+
+        Exercise Date:  10/20/2024
+
+        Provided by Foo Inc.
+        John Doe
+        Employee ID: 1111
+        STOCK PLAN EXERCISE CONFIRMATION
+        ";
+
+    #[test]
+    fn test_parse_eso_data() {
+        let eso_data = parse_eso_data(SAMPLE_ESO).unwrap();
+        assert_big_struct_eq(eso_data,
+            EsoData {
+                common_benefit_data: BenefitCommonData {
+                    employee_id: s("1111"),
+                    account_number: s("11223344"),
+                    symbol: s("FOO"),
+                },
+                exercise_type: s("Same-Day Sale"),
+                exercise_date: date("2024-10-20"),
+                shares_sold: dec!(1002),
+                grants: vec![
+                    EsoGrantData {
+                        grant_number: 1234,
+                        exercise_fmv: dec!(1000.00),
+                        shares_exercised: dec!(100),
+                        sale_price: dec!(1001.00),
+                        fee: dec!(10.00),
+                    },
+                    EsoGrantData {
+                        grant_number: 1235,
+                        exercise_fmv: dec!(2000.00),
+                        shares_exercised: dec!(200),
+                        sale_price: dec!(2001.00),
+                        fee: dec!(11.00),
+                    },
+                ],
+            });
+    }
+
+    #[test]
+    fn test_parse_eso_entries() {
+        // Sale prices must all be equal
+        let fixed_eso_data =
+            SAMPLE_ESO.replace("Sale Price $2,001.00", "Sale Price $1,001.00");
+
+        let eso_entries = parse_eso_entries(
+            &fixed_eso_data, &std::path::PathBuf::from("foo/bar/myeso.pdf")).unwrap();
+        assert_big_struct_eq(eso_entries, vec![
+            BenefitEntry {
+                security: s("FOO"),
+                acquire_tx_date: date("2023-10-20"),
+                acquire_settle_date: date("2023-10-20"),
+                acquire_share_price: dec!(1000.00),
+                acquire_shares: dec!(100),
+                sell_to_cover_tx_date: None,
+                sell_to_cover_settle_date: None,
+                sell_to_cover_price: None,
+                sell_to_cover_shares: None,
+                sell_to_cover_fee: None,
+                plan_note: s("Option Grant 1234"),
+                sell_note: Some(s("Same-Day Sale")),
+                filename: s("myeso.pdf"),
+            },
+            BenefitEntry {
+                security: s("FOO"),
+                acquire_tx_date: date("2023-10-20"),
+                acquire_settle_date: date("2023-10-20"),
+                acquire_share_price: dec!(2000.00),
+                acquire_shares: dec!(200),
+                sell_to_cover_tx_date: Some(date("2023-10-20")),
+                sell_to_cover_settle_date: Some(date("2023-10-20")),
+                sell_to_cover_price: Some(dec!(1001.00)),
+                sell_to_cover_shares: Some(dec!(1002)),
+                sell_to_cover_fee: Some(dec!(21.00)),
+                plan_note: s("Option Grant 1235"),
+                sell_note: Some(s("Same-Day Sale")),
+                filename: s("myeso.pdf"),
+            }
+        ]);
+
+    }
+
+    #[test]
+    fn test_parse_espp_entry() {
+        let pdf_text = " Purchase Summary
+
+        Account Number 11223344
+        Company Name (Symbol) Foo Systems,
+        INC.(FOO)
+        Plan ESP2
+        Grant Date 08-01-2022
+        Purchase Begin Date 01-01-2023
+        Purchase Date 10-20-2023
+        Shares Purchased to Date in Current Offering
+        Beginning Balance 0.0000
+        Shares Purchased 123.0000
+        Total shares Purchased for Offering 124.0000
+        Shares Deposited in STREETNAME to
+        ETRADE 124.0000
+
+        Shares Sold to Cover Taxes 67.0000
+
+        Purchase Details
+
+        Contributions
+        Foreign Contributions 1,000,000.00
+        Average Exchange Rate $0.740000
+        Previous Carry Forward $0.00
+        Current Contributions $0.00
+        Total Contributions $0.00*
+
+        Total Price ($5,000.00)
+        Carry Forward ($0.00)
+
+        Calculation of Gain
+        Total Value $1,000,000.00
+        Total Price ($1,000,000.00)
+        Taxable Gain $1,000,000.00
+        Calculation of Shares Purchased
+        Grant Date Market Value $10.990
+        Purchase Value per Share $215.350000
+        Purchase Price per Share
+                (90.000% of $215.350000) $193.81500
+        Total Price
+                (Shares Purchased x Purchase Price) $1,000,000.00
+        Sale Price for Shares Sold to Cover Taxes $213.773300
+
+        Tax Assessment $1,840.84 Fees ($4.13)
+        Adjusted Tax Assessment $1,000,000.00
+        Amount in Excess of Tax Due $0.00
+
+        Excess of Taxes Applied To
+
+        Cash Due Participant
+
+        Net Carry Forward $0.00
+
+        EMPLOYEE STOCK PLAN PURCHASE CONFIRMATION
+        Provided by Foo Inc.
+        John Doe
+        Employee ID: 1111
+        ";
+
+        let espp_entry = parse_espp_entry(
+            pdf_text, &std::path::PathBuf::from("foo/bar/myespp.pdf")).unwrap();
+
+        assert_big_struct_eq(espp_entry, BenefitEntry {
+            security: "FOO".to_string(),
+            acquire_tx_date: date("2023-10-20"),
+            acquire_settle_date: date("2023-10-20"),
+            acquire_share_price: dec!(215.35),
+            acquire_shares: dec!(123),
+            sell_to_cover_tx_date: None,
+            sell_to_cover_settle_date: None,
+            sell_to_cover_price: Some(dec!(213.7733)),
+            sell_to_cover_shares: Some(dec!(67)),
+            sell_to_cover_fee: Some(dec!(4.13)),
+            plan_note: s("ESPP"),
+            sell_note: None,
+            filename: s("myespp.pdf"),
+        });
+
+        // Test no sell-to-cover
+        let pdf_text = " Purchase Summary
+
+        Account Number 11223344
+        Company Name (Symbol) Foo Systems,
+        INC.(FOO)
+        Plan ESP2
+        Grant Date 08-01-2022
+        Purchase Begin Date 01-01-2023
+        Purchase Date 10-20-2023
+        Shares Purchased to Date in Current Offering
+        Beginning Balance 0.0000
+        Shares Purchased 123.0000
+        Total shares Purchased for Offering 124.0000
+        Shares Deposited in STREETNAME to
+        ETRADE 124.0000
+
+        Total Price ($5,000.00)
+
+        Calculation of Gain
+        Total Value $1,000,000.00
+        Total Price ($1,000,000.00)
+        Taxable Gain $1,000,000.00
+        Calculation of Shares Purchased
+        Grant Date Market Value $10.990
+        Purchase Value per Share $215.350000
+        Purchase Price per Share
+                (90.000% of $215.350000) $193.81500
+        Total Price
+                (Shares Purchased x Purchase Price) $1,000,000.00
+
+
+        EMPLOYEE STOCK PLAN PURCHASE CONFIRMATION
+        Employee ID: 1111
+        ";
+
+        let espp_entry = parse_espp_entry(
+            pdf_text, &std::path::PathBuf::from("foo/bar/myespp.pdf")).unwrap();
+
+        assert_big_struct_eq(espp_entry, BenefitEntry {
+            security: "FOO".to_string(),
+            acquire_tx_date: date("2023-10-20"),
+            acquire_settle_date: date("2023-10-20"),
+            acquire_share_price: dec!(215.35),
+            acquire_shares: dec!(123),
+            sell_to_cover_tx_date: None,
+            sell_to_cover_settle_date: None,
+            sell_to_cover_price: None,
+            sell_to_cover_shares: None,
+            sell_to_cover_fee: None,
+            plan_note: s("ESPP"),
+            sell_note: None,
+            filename: s("myespp.pdf"),
+        });
+
+    }
+}
