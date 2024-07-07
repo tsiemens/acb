@@ -7,7 +7,6 @@ mod fx_tracker;
 pub mod etrade;
 pub mod questrade;
 
-// pub fn sheet_to_txs(sheet: &Range) -> Result<Vec<BrokerTx>, Vec<SheetParseError>> {
 pub struct SheetToTxsErr {
     // Note that both of these can be populated at the same time.
     // txs is an incomplete set of the parsed txs.

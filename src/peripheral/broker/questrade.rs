@@ -19,7 +19,8 @@ use super::SheetToTxsErr;
 const QUESTRADE_ACCOUNT_BROKER_NAME: &str = "Questrade";
 
 /// Converts a QT spreadsheet into Txs
-pub fn sheet_to_txs(sheet: &Range) -> Result<Vec<BrokerTx>, SheetToTxsErr> {
+pub fn sheet_to_txs(sheet: &Range, fpath: Option<&std::path::Path>)
+-> Result<Vec<BrokerTx>, SheetToTxsErr> {
     // Column names:
     //  'Transaction Date', 'Settlement Date', 'Action''Symbol', 'Description',
     //  'Quantity', 'Price', 'Gross Amount', 'Commission', 'Net Amount',
@@ -191,6 +192,7 @@ pub fn sheet_to_txs(sheet: &Range) -> Result<Vec<BrokerTx>, SheetToTxsErr> {
                 row_num: row_num as u32,
                 account: account,
                 sort_tiebreak: None,
+                filename: fpath.map(|p| p.to_string_lossy().to_string())
             };
             txs.push(b_tx.clone());
 
