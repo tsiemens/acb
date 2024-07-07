@@ -31,6 +31,20 @@ impl TxAction {
     }
 }
 
+impl TryFrom<&str> for TxAction {
+    type Error = String;
+
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        match value.trim().to_lowercase().as_str() {
+            "buy" => Ok(TxAction::Buy),
+            "sell" => Ok(TxAction::Sell),
+            "roc" => Ok(TxAction::Roc),
+            "sfla" => Ok(TxAction::Sfla),
+            _ => Err(format!("Unable to parse action from '{value}'")),
+        }
+    }
+}
+
 impl Display for TxAction {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.pretty_str())

@@ -42,8 +42,10 @@ pub struct BrokerTx {
 
     pub row_num: u32,
     pub account: Account,
-    // Only has an effect if two Txs both have non-None values
+    /// Only has an effect if two Txs both have non-None values
     pub sort_tiebreak: Option<u32>,
+
+    pub filename: Option<String>,
 }
 
 impl PartialOrd for BrokerTx {

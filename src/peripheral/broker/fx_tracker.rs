@@ -251,6 +251,7 @@ impl FxTracker {
             account: account,
             // We need all FX to buy first, then sell. Otherwise we have quantity issues
             sort_tiebreak: Some(if action == TxAction::Buy { 1 } else { 2 }),
+            filename: None,
         })
     }
 }

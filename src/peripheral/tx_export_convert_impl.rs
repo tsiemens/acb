@@ -153,7 +153,8 @@ pub fn run_with_args(args: Args, mut out_w: WriteHandle, mut err_w: WriteHandle)
     };
 
     let tx_res = match args.broker {
-        BrokerArg::Questrade => questrade::sheet_to_txs(&rg),
+        BrokerArg::Questrade => questrade::sheet_to_txs(
+            &rg, Some(&args.export_file)),
     };
 
     let (mut txs, errors) = match tx_res {

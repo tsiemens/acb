@@ -3,7 +3,20 @@ use std::path::Path;
 use rust_decimal::Decimal;
 use time::Date;
 
-use crate::util::{basic::SError, decimal::parse_large_decimal};
+use crate::{portfolio::TxAction, util::{basic::SError, date::StaticDateFormat, decimal::parse_large_decimal}};
+use super::BrokerTx;
+
+use lazy_static::lazy_static;
+
+const ETRADE_ACCOUNT_BROKER_NAME: &str = "E*TRADE";
+
+pub fn new_account(account_number: String) -> super::Account {
+    super::Account {
+        broker_name: ETRADE_ACCOUNT_BROKER_NAME,
+        account_type: String::new(),
+        account_num: account_number,
+    }
+}
 
 struct Searcher {
     bldr: regex::RegexBuilder,
@@ -124,10 +137,32 @@ fn parse_benefit_common_data(benefit_pdf_text: &str) -> Result<BenefitCommonData
     })
 }
 
-pub const ETRADE_DASH_DATE_FORMAT: crate::util::date::StaticDateFormat =
+pub const ETRADE_DASH_DATE_FORMAT: StaticDateFormat =
     time::macros::format_description!("[month]-[day]-[year]");
-pub const ETRADE_SLASH_DATE_FORMAT: crate::util::date::StaticDateFormat =
+pub const ETRADE_SLASH_DATE_FORMAT: StaticDateFormat =
     time::macros::format_description!("[month]/[day]/[year]");
+lazy_static! {
+    static ref ETRADE_SHORT_SLASH_DATE_RE: regex::Regex = regex::Regex::new(
+        r"(\d+/\d+)/(\d+)").unwrap();
+}
+
+/// This is required, because the default parse lib doesn't like two-digit years,
+/// even if it lets you specify [year repr:last_two], it will just fail, claiming
+/// there isn't enough information to construct the Date.
+///
+/// This function just cheats, and assumes we're in the 21st century.
+fn parse_short_year_date(date_str: &str) -> Result<Date, SError> {
+    match ETRADE_SHORT_SLASH_DATE_RE.captures(date_str) {
+        Some(m) => {
+            let long_date = format!("{}/20{}",
+                m.get(1).unwrap().as_str(), m.get(2).unwrap().as_str());
+            Date::parse(&long_date, ETRADE_SLASH_DATE_FORMAT)
+                .map_err(|e| e.to_string())
+        },
+        None => Err(format!("Failed to parse date. {} did not match \
+                            {:?}", date_str, *ETRADE_SHORT_SLASH_DATE_RE)),
+    }
+}
 
 struct RsuData {
     pub common_benefit_data: BenefitCommonData,
@@ -442,17 +477,83 @@ fn parse_espp_entry(espp_pdf_text: &str, filepath: &Path)
     })
 }
 
-// TODO use BrokerTx. Needs filename added.
-pub struct TradeConfirmation {
+/// Trade confirmation form before Morgan Stanley aquired ETRADE
+/// (mid 2023 and before)
+fn parse_pre_ms_2023_trade_confirmations(pdf_text: &str, filepath: &Path)
+-> Result<Vec<BrokerTx>, SError> {
+    let account_number = srch(r"Account\s+Number:\s*(\S+)\s").str1(pdf_text)?;
 
+    let trade_pat = regex::Regex::new(concat!(
+        r"(?P<txdate>\d+/\d+/\d+)\s+(?P<sdate>\d+/\d+/\d+)\s+",
+        r"(?P<mkt>\d+)\s+(?P<cpt>\d+)\s+",
+        r"(?P<sym>\S+)\s+(?P<act>\S+)\s+(?P<nshares>\d+)\s+\$(?P<price>\d+\.\d+)[^\n]*\n",
+        r"[^\n]*(COMMISSION\s+\$(?P<commission>\d+\.\d+)[^\n]*\n)?",
+        r"[^\n]*(FEE\s+\$(?P<fee>\d+\.\d+)[^\n]*\n)?",
+        r"[^\n]*NET\s+AMOUNT"),
+    ).unwrap();
+
+    let mut txs = Vec::<BrokerTx>::new();
+    for (i, m) in trade_pat.captures_iter(pdf_text).enumerate() {
+        let opt_group = |name| { m.name(name).map(|v| v.as_str()) };
+        let opt_dec_group = |name| -> Result<Option<Decimal>, SError> {
+            match opt_group(name) {
+                Some(grp_val) => {
+                    parse_large_decimal(grp_val)
+                    .map(|v| Some(v))
+                    .map_err(|e| format!("Error parsing decimal from \"{}\": {}",
+                                         grp_val, e))
+                },
+                None => Ok(None),
+            }
+        };
+
+        let group = |name| { opt_group(name).unwrap() };
+        let dec_group = |name| -> Result<Decimal, SError> {
+            Ok(opt_dec_group(name)?.unwrap())
+        };
+
+        txs.push(BrokerTx {
+            security: group("sym").to_string(),
+            trade_date: parse_short_year_date(
+                group("txdate")).map_err(
+                    |e| format!("Date parse error in {}: {}", group("txdate"), e))?,
+            settlement_date: parse_short_year_date(
+                group("sdate")).map_err(
+                    |e| format!("Date parse error in {}: {}", group("sdate"), e))?,
+            trade_date_and_time: group("txdate").to_string(),
+            settlement_date_and_time: group("sdate").to_string(),
+            action: TxAction::try_from(group("act"))?,
+            amount_per_share: dec_group("price")?,
+            num_shares: dec_group("nshares")?,
+            commission: opt_dec_group("commission")?.unwrap_or(Decimal::ZERO) +
+                opt_dec_group("fee")?.unwrap_or(Decimal::ZERO),
+            currency: crate::portfolio::Currency::usd(),
+            memo: String::new(),
+            exchange_rate: None,
+            affiliate: crate::portfolio::Affiliate::default(),
+            row_num: (i + 1).try_into().unwrap(),
+            account: new_account(account_number.clone()),
+            sort_tiebreak: None,
+            filename: Some(get_filename(filepath)),
+        });
+    }
+    Ok(txs)
+}
+
+/// Trade confirmation form after Morgan Stanley aquired ETRADE
+/// (mid 2023 and later)
+fn parse_post_ms_2023_trade_confirmations(pdf_text: &str, filepath: &Path)
+-> Result<Vec<BrokerTx>, SError> {
+
+    let mut txs = Vec::<BrokerTx>::new();
+
+    Ok(txs)
 }
 
 pub enum EtradePdfContent {
     BenefitConfirmation(Vec<BenefitEntry>),
-    TradeConfirmation(Vec<TradeConfirmation>),
+    TradeConfirmation(Vec<BrokerTx>),
 }
-
-use lazy_static::lazy_static;
 
 lazy_static! {
     static ref RSU_PATTERN: regex::Regex = regex::Regex::new(
@@ -481,9 +582,11 @@ pub fn parse_pdf_text(etrade_pdf_text: &str, filepath: &Path)
         Ok(EtradePdfContent::BenefitConfirmation(
             vec![parse_espp_entry(etrade_pdf_text, filepath)?]))
     } else if PRE_MS_2023_TRADE_CONF_PATTERN.is_match(etrade_pdf_text) {
-        todo!()
+        Ok(EtradePdfContent::TradeConfirmation(
+            parse_pre_ms_2023_trade_confirmations(etrade_pdf_text, filepath)?))
     } else if POST_MS_2023_TRADE_CONF_PATTERN.is_match(etrade_pdf_text) {
-        todo!()
+        Ok(EtradePdfContent::TradeConfirmation(
+            parse_post_ms_2023_trade_confirmations(etrade_pdf_text, filepath)?))
     } else {
         Err("Cannot categorize layout of PDF".to_string())
     }
@@ -495,9 +598,9 @@ pub fn parse_pdf_text(etrade_pdf_text: &str, filepath: &Path)
 mod tests {
     use rust_decimal_macros::dec;
 
-    use crate::{testlib::assert_big_struct_eq, util::date::parse_standard_date};
+    use crate::{peripheral::broker::BrokerTx, portfolio::TxAction, testlib::{assert_big_struct_eq, assert_vec_eq}, util::date::parse_standard_date};
 
-    use super::{parse_eso_data, parse_eso_entries, parse_espp_entry, parse_rsu_entry, BenefitCommonData, BenefitEntry, EsoData, EsoGrantData};
+    use super::{new_account, parse_eso_data, parse_eso_entries, parse_espp_entry, parse_pre_ms_2023_trade_confirmations, parse_rsu_entry, BenefitCommonData, BenefitEntry, EsoData, EsoGrantData};
 
     fn s(_str: &str) -> String {
         _str.to_string()
@@ -819,5 +922,108 @@ mod tests {
             filename: s("myespp.pdf"),
         });
 
+    }
+
+    #[test]
+    fn test_parse_pre_ms_2023_trade_confirmations() {
+        let pdf_text = "
+            E*TRADE Securities LLC
+            P.O. Box 484
+            Jersey City, NJ 07303-0484
+
+            DETACH HERE DETACH HERE
+
+            Make checks payable to E*TRADE Securities LLC.
+            Mail deposits to:
+            E TRADE
+
+            Please do not send cash Dollars Cents
+
+            TOTAL DEPOSIT
+
+            Account Name:
+            John Doe
+
+            E TRADE Securities LLC
+            P.O. Box 484
+            Jersey City, NJ 07303-0484
+            021620230001 900361157028
+
+            Account Number: XXXX-9876
+            Use This Deposit Slip Acct: XXXX-9876
+
+            Investment Account
+
+            John Doe
+            Employee ID: 1111
+            TRADE CONFIRMATION
+
+            Page 1 of 2
+
+            TRADE
+            DATE SETL
+            DATE MKT /
+            CPT SYMBOL /
+            CUSIP BUY /
+            SELL QUANTITY PRICE ACCT
+            TYPE
+            02/20/23 02/22/23 6 1 FOO SELL 6 $120.01 Stock Plan PRINCIPAL $720.06
+            FOOSYSTEMS INC COM COMMISSION $20.05
+            FEE $0.02
+            NET AMOUNT $740.13
+
+            02/20/23 02/22/23 6 1 FOO SELL 1 $120.011 Stock Plan PRINCIPAL $120.01
+            FOOSYSTEMS INC COM FEE $0.01
+            NET AMOUNT $120.02
+
+            EMPLOYEE STOCK PLAN PURCHASE CONFIRMATION
+            Provided by Foo Inc.
+            John Doe
+            Employee ID: 1111
+            ";
+
+        let txs = parse_pre_ms_2023_trade_confirmations(pdf_text,
+            &std::path::PathBuf::from("foo/bar/tconf.pdf")).unwrap();
+
+        assert_vec_eq(txs, vec![
+            BrokerTx {
+                security: s("FOO"),
+                trade_date: date("2023-02-20"),
+                settlement_date: date("2023-02-22"),
+                trade_date_and_time: s("02/20/23"),
+                settlement_date_and_time: s("02/22/23"),
+                action: TxAction::Sell,
+                amount_per_share: dec!(120.01),
+                num_shares: dec!(6),
+                commission: dec!(20.07),
+                currency: crate::portfolio::Currency::usd(),
+                memo: s(""),
+                exchange_rate: None,
+                affiliate: crate::portfolio::Affiliate::default(),
+                row_num: 1,
+                account: new_account(s("XXXX-9876")),
+                sort_tiebreak: None,
+                filename: Some(s("tconf.pdf")),
+            },
+            BrokerTx {
+                security: s("FOO"),
+                trade_date: date("2023-02-20"),
+                settlement_date: date("2023-02-22"),
+                trade_date_and_time: s("02/20/23"),
+                settlement_date_and_time: s("02/22/23"),
+                action: TxAction::Sell,
+                amount_per_share: dec!(120.011),
+                num_shares: dec!(1),
+                commission: dec!(0.01),
+                currency: crate::portfolio::Currency::usd(),
+                memo: s(""),
+                exchange_rate: None,
+                affiliate: crate::portfolio::Affiliate::default(),
+                row_num: 2,
+                account: new_account(s("XXXX-9876")),
+                sort_tiebreak: None,
+                filename: Some(s("tconf.pdf")),
+            },
+        ]);
     }
 }
