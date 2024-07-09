@@ -3,7 +3,7 @@ workspace = { members = ["acb_wasm"] }
 name = "acb"
 version = "0.0.0"
 edition = "2021"
-rust-version = "1.77"
+rust-version = "1.77.2"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
