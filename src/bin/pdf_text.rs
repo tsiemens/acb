@@ -1,18 +1,33 @@
-use std::{io::Write, path::PathBuf};
+use std::path::PathBuf;
 
 use clap::Parser;
 
 use acb::peripheral::pdf;
 
+#[derive(clap::ValueEnum, PartialEq, Clone, Debug)]
+pub enum ReaderArg {
+    Auto,
+    Pypdf,
+    Lopdf,
+}
+
+impl std::fmt::Display for ReaderArg {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let s = format!("{self:?}").to_lowercase();
+        write!(f, "{s}")
+    }
+}
+
 /// This is a simple wrapper around the pdf parser library to help generate test
 /// files for any pdf-handling logic.
+///
 /// Contributors should manually sanitize sensitive information before committing to
 /// the repo as a test file.
 /// It is recommended to keep copies of the original PDFs somewhere, so the text
 /// can be regenerated if it is noticed that the behaviour of pdf_extract changes in
 /// a material way.
 #[derive(Parser, Debug)]
-#[command(author, about, long_about = None)]
+#[command(author, about, long_about)]
 struct Args {
     /// Input file
     #[arg(required = true)]
@@ -30,6 +45,14 @@ struct Args {
     /// Can be provided multiple times
     #[arg(short = 'p', long = "page", value_name = "PAGE")]
     pub pages: Option<Vec<u32>>,
+
+    /// Select a PDF reader library to use
+    ///
+    /// Some PDFs are not compatible with all reader libraries. "auto" will
+    /// try to find a reader which is compatible with the provided PDF.
+    #[arg(short = 'r', long = "reader", value_name = "PDF_READER",
+          default_value_t=ReaderArg::Auto)]
+    pub reader: ReaderArg
 }
 
 /// page_num should be one-based
@@ -40,34 +63,34 @@ fn page_marker_line(page_num: u32) -> String {
 fn main() -> Result<(), ()> {
     let args = Args::parse();
 
-    let mut pdf_doc = lopdf::Document::load(args.input).unwrap();
+    let page_getter = match args.reader {
+        ReaderArg::Auto => pdf::get_pages_text_from_path,
+        ReaderArg::Pypdf => pdf::get_pages_text_from_path_py,
+        ReaderArg::Lopdf => pdf::get_pages_text_from_path_lo,
+    };
 
-    if args.show_page_numbers || args.parsable_page_markers {
-        let mut has_printed = false;
-        for (i, _) in pdf_doc.page_iter().enumerate() {
-            let page_num = ((i + 1)).try_into().unwrap();
-            if let Some(pages_to_show) = &args.pages {
-                if !pages_to_show.contains(&page_num) {
-                    continue;
-                }
-            }
+    let path = args.input;
+    let pages_refs: Option<&Vec<u32>> = args.pages.as_ref().map(|v| v);
 
-            if args.parsable_page_markers {
-                print!("{}", pdf::parseable_page_marker(page_num));
-            } else {
-                println!("{}{}",
-                    if !has_printed { "" } else { "\n" },
-                    page_marker_line(page_num));
-            }
-            pdf::write_page_text(&pdf_doc, page_num, &mut std::io::stdout()).unwrap();
-            std::io::stdout().flush().unwrap();
-            has_printed = true;
+    let pages = page_getter(&path, pages_refs.clone().map(|v| v.as_ref()))
+        .map_err(|e| eprintln!("Error getting pages from {path:?}: {e}"))?;
+    for (i, page) in pages.iter().enumerate() {
+        let page_num: u32 = match pages_refs {
+            Some(pnums) => pnums.get(i).map(|n| *n).unwrap_or(0),
+            None => i as u32 + 1,
+        };
+        if args.parsable_page_markers {
+            print!("{}", pdf::parseable_page_marker(page_num));
+        } else if args.show_page_numbers {
+            println!("{}{}",
+                if i == 0 { "" } else { "\n" },
+                page_marker_line(page_num));
         }
-    } else {
-        if let Some(pages_to_show) = args.pages {
-            pdf::filter_pdf_pages(&mut pdf_doc, &pages_to_show);
+        if args.parsable_page_markers {
+            print!("{}", page);
+        } else {
+            println!("{}", page);
         }
-        pdf::write_doc_text(&pdf_doc, &mut std::io::stdout()).unwrap();
     }
 
     Ok(())

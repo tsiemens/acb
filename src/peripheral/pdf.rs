@@ -2,7 +2,7 @@ use std::{collections::VecDeque, rc::Rc, sync::Arc};
 
 use lopdf::Document;
 
-use crate::util::{basic::SError, rw::StringBuffer};
+use crate::util::{basic::SError, py::run_python_script_file, rw::StringBuffer};
 
 /// page_num should be one-based
 pub fn parseable_page_marker(page_num: u32) -> String {
@@ -341,10 +341,83 @@ pub fn get_all_pages_text(doc: Document)
     Ok(pages)
 }
 
-pub fn get_all_pages_text_from_path(p: &std::path::PathBuf)
+/// *Sigh*... This is a stupid solution to a stupid problem.
+/// extract_pdf / lopdf (a popular rust PDF lib) is not yet quite sofisticated
+/// enough to handle the full range of PDFs that etrade can throw at us.
+/// It will just yield empty text on some kinds of documents.
+/// This unfortunately means we have to fall back to python's more grown-up
+/// pdf lib pypdf, which we've wrapped up in a venv'd script here.
+pub fn get_pages_text_from_path_py(p: &std::path::PathBuf,
+                                   page_numbers: Option<&[u32]>)
 -> Result<Vec<String>, crate::util::basic::SError> {
+    let mut args = vec!["--parsable-page-markers".to_string()];
+    if let Some(pns) = page_numbers {
+        for pn in pns {
+            args.push("-p".to_string());
+            args.push(pn.to_string());
+        }
+    }
+    args.push(p.display().to_string());
+
+    let output = run_python_script_file(
+        &crate::util::py::get_python_script_dir().join("pdf_text.py"),
+        args)?;
+
+    let split_pat = regex::Regex::new(r"PAGE_BREAK<\d+>").unwrap();
+
+    Ok(split_pat.split(&output)
+        .enumerate()
+        .filter(|(i, _)| *i != 0)
+        .map(|(_, s)| s.to_string())
+        .collect())
+
+}
+
+/// Uses the lopdf as the reading engine.
+pub fn get_pages_text_from_path_lo(p: &std::path::PathBuf,
+                                   page_numbers: Option<&[u32]>)
+-> Result<Vec<String>, SError> {
     let doc = Document::load(p).map_err(|e| e.to_string())?;
-    get_all_pages_text(doc).map_err(|e| e.to_string())
+    match page_numbers {
+        Some(pns) => get_pages_text(&doc, pns).map_err(|e| e.to_string()),
+        None => get_all_pages_text(doc).map_err(|e| e.to_string()),
+    }
+}
+
+/// Automatically determines the reader engine to use for this PDF.
+/// Mind you, this isn't a very efficient process, because it relies on
+/// successive reader engines to fail to parse the document.
+pub fn get_pages_text_from_path(p: &std::path::PathBuf,
+                                page_numbers: Option<&[u32]>)
+-> Result<Vec<String>, SError> {
+    match get_pages_text_from_path_lo(p, page_numbers) {
+        Ok(pages) => {
+            if pages.iter().any(|p| !p.trim().is_empty()) {
+                // At least one page has something on it that was parsed out,
+                // so the document format is probably readable by this engine.
+                return Ok(pages);
+            }
+            // Nothing was found. Go to the next engine as a backup.
+        },
+        Err(_) => (),
+    }
+
+    get_pages_text_from_path_py(p, page_numbers)
+}
+
+pub fn get_all_pages_text_from_path_py(p: &std::path::PathBuf)
+-> Result<Vec<String>, SError> {
+    get_pages_text_from_path_py(p, None)
+}
+
+pub fn get_all_pages_text_from_path_lo(p: &std::path::PathBuf)
+-> Result<Vec<String>, SError> {
+    get_pages_text_from_path_lo(p, None)
+}
+
+pub fn get_all_pages_text_from_path(p: &std::path::PathBuf)
+-> Result<Vec<String>, SError> {
+    get_pages_text_from_path(p, None)
 }
 
 #[cfg(test)]
