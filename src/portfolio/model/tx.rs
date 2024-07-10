@@ -36,8 +36,8 @@ impl TryFrom<&str> for TxAction {
 
     fn try_from(value: &str) -> Result<Self, Self::Error> {
         match value.trim().to_lowercase().as_str() {
-            "buy" => Ok(TxAction::Buy),
-            "sell" => Ok(TxAction::Sell),
+            "buy" | "bought" => Ok(TxAction::Buy),
+            "sell" | "sold" => Ok(TxAction::Sell),
             "roc" => Ok(TxAction::Roc),
             "sfla" => Ok(TxAction::Sfla),
             _ => Err(format!("Unable to parse action from '{value}'")),

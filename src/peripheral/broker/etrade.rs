@@ -93,6 +93,40 @@ fn srch(pattern: &str) -> Searcher {
     Searcher::new(pattern)
 }
 
+struct CapturesHelper<'a> {
+    pub m: regex::Captures<'a>,
+}
+
+impl <'a> CapturesHelper<'a> {
+    pub fn new(m: regex::Captures<'a>) -> CapturesHelper<'a> {
+        Self{ m }
+    }
+
+    pub fn opt_group(&self, name: &str) -> Option<&str> {
+        self.m.name(name).map(|v| v.as_str())
+    }
+
+    pub fn opt_dec_group(&self, name: &str) -> Result<Option<Decimal>, SError> {
+        match self.opt_group(name) {
+            Some(grp_val) => {
+                parse_large_decimal(grp_val)
+                .map(|v| Some(v))
+                .map_err(|e| format!("Error parsing decimal from \"{}\": {}",
+                                     grp_val, e))
+            },
+            None => Ok(None),
+        }
+    }
+
+    pub fn group(&self, name: &str) -> &str {
+        self.opt_group(name).unwrap()
+    }
+
+    pub fn dec_group(&self, name: &str) -> Result<Decimal, SError> {
+        Ok(self.opt_dec_group(name)?.unwrap())
+    }
+}
+
 fn get_filename(path: &Path) -> String {
     path.file_name().map(|n| n.to_string_lossy().to_string())
         .unwrap_or_else(|| "<unnamed file>".to_string())
@@ -494,39 +528,23 @@ fn parse_pre_ms_2023_trade_confirmations(pdf_text: &str, filepath: &Path)
 
     let mut txs = Vec::<BrokerTx>::new();
     for (i, m) in trade_pat.captures_iter(pdf_text).enumerate() {
-        let opt_group = |name| { m.name(name).map(|v| v.as_str()) };
-        let opt_dec_group = |name| -> Result<Option<Decimal>, SError> {
-            match opt_group(name) {
-                Some(grp_val) => {
-                    parse_large_decimal(grp_val)
-                    .map(|v| Some(v))
-                    .map_err(|e| format!("Error parsing decimal from \"{}\": {}",
-                                         grp_val, e))
-                },
-                None => Ok(None),
-            }
-        };
-
-        let group = |name| { opt_group(name).unwrap() };
-        let dec_group = |name| -> Result<Decimal, SError> {
-            Ok(opt_dec_group(name)?.unwrap())
-        };
+        let h = CapturesHelper::new(m);
 
         txs.push(BrokerTx {
-            security: group("sym").to_string(),
+            security: h.group("sym").to_string(),
             trade_date: parse_short_year_date(
-                group("txdate")).map_err(
-                    |e| format!("Date parse error in {}: {}", group("txdate"), e))?,
+                h.group("txdate")).map_err(
+                    |e| format!("Date parse error in {}: {}", h.group("txdate"), e))?,
             settlement_date: parse_short_year_date(
-                group("sdate")).map_err(
-                    |e| format!("Date parse error in {}: {}", group("sdate"), e))?,
-            trade_date_and_time: group("txdate").to_string(),
-            settlement_date_and_time: group("sdate").to_string(),
-            action: TxAction::try_from(group("act"))?,
-            amount_per_share: dec_group("price")?,
-            num_shares: dec_group("nshares")?,
-            commission: opt_dec_group("commission")?.unwrap_or(Decimal::ZERO) +
-                opt_dec_group("fee")?.unwrap_or(Decimal::ZERO),
+                h.group("sdate")).map_err(
+                    |e| format!("Date parse error in {}: {}", h.group("sdate"), e))?,
+            trade_date_and_time: h.group("txdate").to_string(),
+            settlement_date_and_time: h.group("sdate").to_string(),
+            action: TxAction::try_from(h.group("act"))?,
+            amount_per_share: h.dec_group("price")?,
+            num_shares: h.dec_group("nshares")?,
+            commission: h.opt_dec_group("commission")?.unwrap_or(Decimal::ZERO) +
+                h.opt_dec_group("fee")?.unwrap_or(Decimal::ZERO),
             currency: crate::portfolio::Currency::usd(),
             memo: String::new(),
             exchange_rate: None,
@@ -542,12 +560,55 @@ fn parse_pre_ms_2023_trade_confirmations(pdf_text: &str, filepath: &Path)
 
 /// Trade confirmation form after Morgan Stanley aquired ETRADE
 /// (mid 2023 and later)
-fn parse_post_ms_2023_trade_confirmations(pdf_text: &str, filepath: &Path)
--> Result<Vec<BrokerTx>, SError> {
+///
+/// Note that these PDFs have to be parsed by pypdf. This is handled by the
+/// automatic parsing in get_pages_text_from_path though.
+fn parse_post_ms_2023_trade_confirmation(pdf_text: &str, filepath: &Path)
+-> Result<BrokerTx, SError> {
 
-    let mut txs = Vec::<BrokerTx>::new();
+    let account_number = srch(r"Account\s+Number:\s*(\S+)\s").str1(pdf_text)?;
 
-    Ok(txs)
+    let trade_pat = regex::Regex::new(concat!(
+        r"Trade\s+Date\s+Settlement\s+Date\s+Quantity\s+Price\s+Settlement\s+Amount\s+",
+        r"(?P<txdate>\d+/\d+/\d+)\s+(?P<sdate>\d+/\d+/\d+)\s+(?P<nshares>\d+)\s+",
+        r"(?P<price>\d+\.\d+)\s+",
+        r"Transaction\s+Type:\s*(?P<act>\S+)\s*",
+        r"Description.*\n.*ISIN:\s*(?P<sym>\S+)",
+        r"([\s\S]*Commission\s+\$(?P<commission>\d+\.\d+))?",
+        r"([\s\S]*Transaction\s+Fee\s+\$(?P<fee>\d+\.\d+))?")
+    ).unwrap();
+
+    if let Some(m) = trade_pat.captures(pdf_text) {
+        let h = CapturesHelper::new(m);
+
+        Ok(BrokerTx {
+            security: h.group("sym").to_string(),
+            trade_date: Date::parse(
+                h.group("txdate"), ETRADE_SLASH_DATE_FORMAT).map_err(
+                    |e| format!("Date parse error in {}: {}", h.group("txdate"), e))?,
+            settlement_date: Date::parse(
+                h.group("sdate"), ETRADE_SLASH_DATE_FORMAT).map_err(
+                    |e| format!("Date parse error in {}: {}", h.group("sdate"), e))?,
+            trade_date_and_time: h.group("txdate").to_string(),
+            settlement_date_and_time: h.group("sdate").to_string(),
+            action: TxAction::try_from(h.group("act"))?,
+            amount_per_share: h.dec_group("price")?,
+            num_shares: h.dec_group("nshares")?,
+            commission: h.opt_dec_group("commission")?.unwrap_or(Decimal::ZERO) +
+                h.opt_dec_group("fee")?.unwrap_or(Decimal::ZERO),
+            currency: crate::portfolio::Currency::usd(),
+            memo: String::new(),
+            exchange_rate: None,
+            affiliate: crate::portfolio::Affiliate::default(),
+            row_num: 1,
+            account: new_account(account_number.clone()),
+            sort_tiebreak: None,
+            filename: Some(get_filename(filepath)),
+        })
+    } else {
+        Err("No transaction found in Morgan Stanley/Etrade trade confirmation slip"
+            .to_string())
+    }
 }
 
 pub enum EtradePdfContent {
@@ -586,7 +647,7 @@ pub fn parse_pdf_text(etrade_pdf_text: &str, filepath: &Path)
             parse_pre_ms_2023_trade_confirmations(etrade_pdf_text, filepath)?))
     } else if POST_MS_2023_TRADE_CONF_PATTERN.is_match(etrade_pdf_text) {
         Ok(EtradePdfContent::TradeConfirmation(
-            parse_post_ms_2023_trade_confirmations(etrade_pdf_text, filepath)?))
+            vec![parse_post_ms_2023_trade_confirmation(etrade_pdf_text, filepath)?]))
     } else {
         Err("Cannot categorize layout of PDF".to_string())
     }
@@ -600,7 +661,7 @@ mod tests {
 
     use crate::{peripheral::broker::BrokerTx, portfolio::TxAction, testlib::{assert_big_struct_eq, assert_vec_eq}, util::date::parse_standard_date};
 
-    use super::{new_account, parse_eso_data, parse_eso_entries, parse_espp_entry, parse_pre_ms_2023_trade_confirmations, parse_rsu_entry, BenefitCommonData, BenefitEntry, EsoData, EsoGrantData};
+    use super::{new_account, parse_eso_data, parse_eso_entries, parse_espp_entry, parse_post_ms_2023_trade_confirmation, parse_pre_ms_2023_trade_confirmations, parse_rsu_entry, BenefitCommonData, BenefitEntry, EsoData, EsoGrantData};
 
     fn s(_str: &str) -> String {
         _str.to_string()
@@ -612,6 +673,7 @@ mod tests {
 
     #[test]
     fn test_parse_rsu_entry() {
+        // lopdf-based output
         let pdf_text = " Release Summary
 
             Account Number 11223344
@@ -678,6 +740,7 @@ mod tests {
         })
     }
 
+    // lopdf-based output
     const SAMPLE_ESO: &str = "
         Account Number 11223344
         Tax Payment Method Sell-to-cover
@@ -789,6 +852,7 @@ mod tests {
 
     #[test]
     fn test_parse_espp_entry() {
+        // lopdf-based output
         let pdf_text = " Purchase Summary
 
         Account Number 11223344
@@ -868,6 +932,7 @@ mod tests {
         });
 
         // Test no sell-to-cover
+        // lopdf-based output
         let pdf_text = " Purchase Summary
 
         Account Number 11223344
@@ -926,6 +991,7 @@ mod tests {
 
     #[test]
     fn test_parse_pre_ms_2023_trade_confirmations() {
+        // lopdf-based output
         let pdf_text = "
             E*TRADE Securities LLC
             P.O. Box 484
@@ -1025,5 +1091,58 @@ mod tests {
                 filename: Some(s("tconf.pdf")),
             },
         ]);
+    }
+
+    #[test]
+    fn test_parse_post_ms_2023_trade_confirmation() {
+        // pypdf-based output
+        let pdf_text = "
+            Morgan Stanley Smith Barney LLC. Member SIPC. The transaction(s) may have been executed with Morgan Stanley & Co. LLC, an
+            affiliate, which may receive compensation for any such services. E*TRADE is a business of Morgan Stanley.
+            1 of 2Your Account Number: 123-XXX123-123
+            Account Type - Cash
+            John Doe
+            E*TRADE from Morgan Stanley
+            P.O. BOX 484
+            JERSEY CITY, NJ 07303-0484
+            (800)-387-2331
+            This transaction is confirmed in accordance with the information provided on the Conditions and Disclosures page.
+            Trade Date Settlement Date Quantity Price Settlement Amount
+            11/01/2023 11/03/2023 123 200.01
+            Transaction Type: Sold
+            Description: FOOSYSTEMS INC
+            Symbol / CUSIP / ISIN: FOO / 123456789 / US0123456789Principal $24,601.23
+            Commission $3.91
+            Supplemental
+            Transaction Fee $0.21
+            Net Amount $24,605.35
+            Unsolicited trade
+            Morgan Stanley Smith Barney LLC acted as agent.
+            ";
+
+            let tx = parse_post_ms_2023_trade_confirmation(pdf_text,
+                &std::path::PathBuf::from("foo/bar/tconf.pdf")).unwrap();
+
+            assert_big_struct_eq(tx,
+                BrokerTx {
+                    security: s("FOO"),
+                    trade_date: date("2023-11-01"),
+                    settlement_date: date("2023-11-03"),
+                    trade_date_and_time: s("11/01/2023"),
+                    settlement_date_and_time: s("11/03/2023"),
+                    action: TxAction::Sell,
+                    amount_per_share: dec!(200.01),
+                    num_shares: dec!(123),
+                    commission: dec!(4.12),
+                    currency: crate::portfolio::Currency::usd(),
+                    memo: s(""),
+                    exchange_rate: None,
+                    affiliate: crate::portfolio::Affiliate::default(),
+                    row_num: 1,
+                    account: new_account(s("123-XXX123-123")),
+                    sort_tiebreak: None,
+                    filename: Some(s("tconf.pdf")),
+                },
+            );
     }
 }
