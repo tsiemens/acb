@@ -2,7 +2,139 @@ use std::path::PathBuf;
 
 use clap::Parser;
 
-use super::broker::etrade::BenefitEntry;
+use crate::app::outfmt::csv::CsvWriter;
+use crate::app::outfmt::model::{AcbWriter, OutputType};
+use crate::app::outfmt::text::TextWriter;
+use crate::portfolio::render::RenderTable;
+use crate::util::rw::WriteHandle;
+use crate::{peripheral::pdf, util::basic::SError};
+use crate::peripheral::broker::etrade;
+use super::broker::{etrade::BenefitEntry, BrokerTx};
+
+struct PdfData {
+    pub benefits: Vec<BenefitEntry>,
+    pub trade_confs: Vec<BrokerTx>,
+}
+
+fn parse_pdfs(files: &Vec<PathBuf>, debug: bool)
+-> Result<PdfData, SError> {
+    let mut benefits: Vec<BenefitEntry> = Vec::new();
+    let mut trade_confs: Vec<BrokerTx> = Vec::new();
+
+    for (i, fpath) in files.iter().enumerate() {
+        if i != 0 {
+            if debug {
+                // Line separator between entries
+                eprintln!()
+            }
+        }
+        if debug {
+            eprintln!("Parsing {fpath:?}");
+        }
+
+        let pdf_text = pdf::get_all_pages_text_from_path(fpath)
+            .map_err(|e| format!("Failed to read {fpath:?}: {e}"))?
+            .join("\n");
+        let pdf_content = etrade::parse_pdf_text(&pdf_text, fpath)
+            .map_err(|e| format!("Failed to parse {fpath:?}: {e}"))?;
+        match pdf_content {
+            etrade::EtradePdfContent::BenefitConfirmation(mut bs) => {
+                if debug {
+                    eprintln!("{bs:#?}");
+                }
+                benefits.append(&mut bs);
+            },
+            etrade::EtradePdfContent::TradeConfirmation(mut txs) => {
+                if debug {
+                    for tx in &txs {
+                        eprintln!("{tx:#?}");
+                    }
+                }
+                trade_confs.append(&mut txs);
+            },
+        }
+    }
+
+    Ok(PdfData{benefits, trade_confs})
+}
+
+fn dump_extracted_data(pdf_data: &PdfData, pretty: bool) {
+    let mut printer: Box<dyn AcbWriter> = if pretty {
+        Box::new(TextWriter::new(WriteHandle::stdout_write_handle()))
+    } else {
+        Box::new(CsvWriter::new_to_writer(WriteHandle::stdout_write_handle()))
+    };
+
+    if pdf_data.benefits.is_empty() {
+        eprintln!("WARN: No benefits entries");
+    }
+    let mut rt = RenderTable::default();
+    rt.header.extend(vec![
+        "security", "acquire_tx_date", "acquire_settle_date",
+        "acquire_share_price", "acquire_shares",
+        "sell_to_cover_tx_date", "sell_to_cover_settle_date",
+        "sell_to_cover_price", "sell_to_cover_shares", "sell_to_cover_fee",
+        "plan_note", "sell_note", "filename"].into_iter().map(String::from));
+
+    for b in &pdf_data.benefits {
+        // println!("{benefit:?}");
+        rt.rows.push(vec![
+            b.security.clone(),
+            b.acquire_tx_date.to_string(),
+            b.acquire_settle_date.to_string(),
+            b.acquire_share_price.to_string(),
+            b.acquire_shares.to_string(),
+
+            format!("{:?}", b.sell_to_cover_tx_date),
+            format!("{:?}", b.sell_to_cover_settle_date),
+            format!("{:?}", b.sell_to_cover_price),
+            format!("{:?}", b.sell_to_cover_shares),
+            format!("{:?}", b.sell_to_cover_fee),
+
+            b.plan_note.clone(),
+            format!("{:?}", b.sell_note),
+            b.filename.clone(),
+        ]);
+    }
+    let _ = printer.print_render_table(OutputType::Raw, "benefits", &rt).unwrap();
+
+    println!("");
+    if pdf_data.trade_confs.is_empty() {
+        eprintln!("WARN: No trades entries");
+    }
+
+    let mut rt = RenderTable::default();
+    rt.header.extend(vec![
+        "security", "trade_date", "settlement_date", "action", "amount_per_share",
+        "num_shares", "commission", "currency", "memo", "exchange_rate", "affiliate",
+        "row_num", "account", "sort_tiebreak", "filename"
+        ].into_iter().map(String::from));
+
+    for t in &pdf_data.trade_confs {
+        // println!("{trade:?}");
+        rt.rows.push(vec![
+            t.security.clone(),
+            format!("{} ({})", t.trade_date, t.trade_date_and_time),
+            format!("{} ({})", t.settlement_date, t.settlement_date_and_time),
+            t.action.to_string(),
+            t.amount_per_share.to_string(),
+            t.num_shares.to_string(),
+            t.commission.to_string(),
+            t.currency.to_string(),
+            t.memo.clone(),
+            format!("{:?}", t.exchange_rate),
+            t.affiliate.name().to_string(),
+
+            t.row_num.to_string(),
+            t.account.memo_str(),
+            format!("{:?}", t.sort_tiebreak),
+
+            format!("{:?}", t.filename),
+        ]);
+    }
+
+    let _ = printer.print_render_table(OutputType::Raw, "trades", &rt).unwrap();
+}
 
 /// A convenience script to extract transactions from PDFs downloaded from
 /// us.etrade.com
@@ -47,33 +179,11 @@ pub fn run() -> Result<(), ()> {
 
     crate::tracing::setup_tracing();
 
-    let mut benefits: Vec<BenefitEntry> = Vec::new();
-    for (i, fpath) in args.files.iter().enumerate() {
-        if i != 0 {
-            if args.debug {
-                // Line separator between entries
-                eprintln!()
-            }
-        }
-        if args.debug {
-            eprintln!("Parsing {fpath:?}");
-        }
-        use crate::peripheral::pdf;
-        use crate::peripheral::broker::etrade;
-        let pdf_text = pdf::get_all_pages_text_from_path(fpath)
-            .map_err(|e| eprintln!("Failed to read {fpath:?}: {e}"))?
-            .join("\n");
-        let pdf_content = etrade::parse_pdf_text(&pdf_text, fpath)
-            .map_err(|e| eprintln!("Failed to parse {fpath:?}: {e}"))?;
-        match pdf_content {
-            etrade::EtradePdfContent::BenefitConfirmation(mut bs) => {
-                if args.debug {
-                    eprintln!("{bs:#?}");
-                }
-                benefits.append(&mut bs);
-            },
-            etrade::EtradePdfContent::TradeConfirmation(_) => todo!(),
-        }
+    let pdf_data = parse_pdfs(&args.files, args.debug)
+        .map_err(|e| eprintln!("{}", e))?;
+
+    if args.extract_only {
+        dump_extracted_data(&pdf_data, args.pretty);
     }
 
     Ok(())
