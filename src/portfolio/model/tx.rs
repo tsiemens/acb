@@ -12,7 +12,7 @@ use super::currency::{Currency, CurrencyAndExchangeRate};
 
 pub type Security = String;
 
-#[derive(Copy, Clone, PartialEq, Eq, Debug)]
+#[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
 pub enum TxAction {
     Buy,
     Sell,
