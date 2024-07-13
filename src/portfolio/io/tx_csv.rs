@@ -258,11 +258,12 @@ pub fn parse_tx_csv(
     Ok(txs)
 }
 
-pub fn write_txs_to_csv(
-    txs: &Vec<CsvTx>,
-    writer: &mut dyn std::io::Write,
-) -> Result<(), csv::Error> {
-    let mut csv_w = csv::WriterBuilder::new().has_headers(true).from_writer(writer);
+pub struct PlainCsvTable {
+    pub header: Vec<&'static str>,
+    pub rows: Vec<Vec<String>>,
+}
+
+pub fn txs_to_csv_table(txs: &Vec<CsvTx>) -> PlainCsvTable {
 
     let all_headers = CsvCol::export_order_non_deprecated_cols();
     let optional_headers = HashSet::<&'static str>::from([
@@ -301,9 +302,9 @@ pub fn write_txs_to_csv(
         .map(|h| *h)
         .collect();
 
-    csv_w.write_record(&headers)?;
-
     let empty = || String::new();
+
+    let mut records = Vec::<Vec<String>>::with_capacity(txs.len());
 
     for tx in txs {
         let mut record = Vec::with_capacity(headers.len());
@@ -369,10 +370,29 @@ pub fn write_txs_to_csv(
             };
             record.push(val);
         }
-
-        csv_w.write_record(record)?;
+        records.push(record);
     }
 
+    PlainCsvTable {
+        header: headers,
+        rows: records,
+    }
+}
+
+/// NOTE: This is mostly obsolete. In most cases, it will be preferable to
+/// convert the output of txs_to_csv_table to a RenderTable, and then optionally
+/// render that in plain csv or pretty (readable) format.
+pub fn write_txs_to_csv(
+    txs: &Vec<CsvTx>,
+    writer: &mut dyn std::io::Write,
+) -> Result<(), csv::Error> {
+    let table = txs_to_csv_table(txs);
+
+    let mut csv_w = csv::WriterBuilder::new().has_headers(true).from_writer(writer);
+    csv_w.write_record(&table.header)?;
+    for row in &table.rows {
+        csv_w.write_record(row)?;
+    }
     csv_w.flush()?;
     Ok(())
 }

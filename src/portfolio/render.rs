@@ -15,6 +15,18 @@ pub struct RenderTable {
     pub errors: Vec<String>,
 }
 
+impl From<super::io::tx_csv::PlainCsvTable> for RenderTable {
+    fn from(value: super::io::tx_csv::PlainCsvTable) -> Self {
+        RenderTable {
+            header: value.header.into_iter().map(String::from).collect(),
+            rows: value.rows,
+            footer: Vec::new(),
+            notes: Vec::new(),
+            errors: Vec::new(),
+        }
+    }
+}
+
 pub struct CostsTables {
     pub total: RenderTable,
     pub yearly: RenderTable,

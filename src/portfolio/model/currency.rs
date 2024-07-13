@@ -4,13 +4,13 @@ use rust_decimal_macros::dec;
 
 use crate::{pdec, util::decimal::PosDecimal};
 
-#[derive(Clone, Debug)]
+#[derive(Hash, Clone, Debug)]
 enum CurrImpl {
     Static(&'static str),
     Dyn(String),
 }
 
-#[derive(Clone, Debug)]
+#[derive(Hash, Clone, Debug)]
 pub struct Currency(CurrImpl);
 
 impl Currency {
