@@ -24,7 +24,7 @@ impl Account {
 
 /// This is similar to CsvTx, but slightly less constrained, as it
 /// represents a Tx imported from any broker's exported data.
-#[derive(PartialEq, Eq, Clone, Debug)]
+#[derive(PartialEq, Eq, Hash, Clone, Debug)]
 pub struct BrokerTx {
     pub security: Security,
     pub trade_date: Date,

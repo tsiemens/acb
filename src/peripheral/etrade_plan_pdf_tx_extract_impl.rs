@@ -1,11 +1,15 @@
+use std::collections::HashSet;
 use std::path::PathBuf;
 
 use clap::Parser;
+use itertools::Itertools;
+use rust_decimal::Decimal;
 
 use crate::app::outfmt::csv::CsvWriter;
 use crate::app::outfmt::model::{AcbWriter, OutputType};
 use crate::app::outfmt::text::TextWriter;
 use crate::portfolio::render::RenderTable;
+use crate::portfolio::{CsvTx, Currency, TxAction};
 use crate::util::rw::WriteHandle;
 use crate::{peripheral::pdf, util::basic::SError};
 use crate::peripheral::broker::etrade;
@@ -136,6 +140,248 @@ fn dump_extracted_data(pdf_data: &PdfData, pretty: bool) {
     let _ = printer.print_render_table(OutputType::Raw, "trades", &rt).unwrap();
 }
 
+/// Constructs/extracts CsvTxs from the BenefitsAndTrades, and emits a sorted result.
+/// Errors if sell-to-cover data is incomplete.
+fn txs_from_data(trade_data: &BenefitsAndTrades)
+-> Result<Vec<crate::portfolio::CsvTx>, SError> {
+    let mut csv_txs = Vec::new();
+
+    for (i, b) in trade_data.benefits.iter().enumerate() {
+        let buy_tx = crate::portfolio::CsvTx {
+            security: Some(b.security.clone()),
+            trade_date: Some(b.acquire_tx_date),
+            settlement_date: Some(b.acquire_settle_date),
+            action: Some(TxAction::Buy),
+            shares: Some(b.acquire_shares),
+            amount_per_share: Some(b.acquire_share_price),
+            commission: Some(Decimal::ZERO),
+            tx_currency: Some(Currency::usd()),
+            tx_curr_to_local_exchange_rate: None,
+            commission_currency: None,
+            commission_curr_to_local_exchange_rate: None,
+            memo: Some(b.plan_note.clone()),
+            affiliate: None,
+            specified_superficial_loss: None,
+            read_index: (i * 2).try_into().unwrap(),
+        };
+
+        csv_txs.push(buy_tx);
+
+        if let Some(sell_to_cover) = b.sell_to_cover_data()? {
+            let sell_note = b.sell_note.as_ref()
+                .map(|n| n.as_str()).unwrap_or("sell-to-cover");
+            let sell_tx = CsvTx {
+                security: Some(b.security.clone()),
+                trade_date: Some(sell_to_cover.sell_to_cover_tx_date),
+                settlement_date: Some(sell_to_cover.sell_to_cover_settle_date),
+                action: Some(TxAction::Sell),
+                shares: Some(sell_to_cover.sell_to_cover_shares),
+                amount_per_share: Some(sell_to_cover.sell_to_cover_shares),
+                commission: Some(sell_to_cover.sell_to_cover_fee),
+                tx_currency: Some(Currency::usd()),
+                tx_curr_to_local_exchange_rate: None,
+                commission_currency: None,
+                commission_curr_to_local_exchange_rate: None,
+                memo: Some(format!("{} {}", b.plan_note, sell_note)),
+                affiliate: None,
+                specified_superficial_loss: None,
+                read_index: ((i * 2) + 1).try_into().unwrap(),
+            };
+
+            csv_txs.push(sell_tx);
+        }
+    }
+
+    // Remaining trades
+    let read_index_base = csv_txs.len();
+    for (i, trade) in trade_data.other_trades.iter().enumerate() {
+        let mut tx: CsvTx = trade.clone().into();
+        tx.memo = Some(match tx.memo {
+            Some(memo) => if memo.is_empty() { memo } else { memo + " " },
+            None => String::new(),
+        } + "(manual trade)");
+        tx.read_index = (read_index_base + i).try_into().unwrap();
+        csv_txs.push(tx);
+    }
+
+    csv_txs.sort();
+
+    Ok(csv_txs)
+
+}
+
+fn render_txs_from_data(trade_data: &BenefitsAndTrades, pretty: bool)
+ -> Result<(), SError> {
+    let txs = txs_from_data(trade_data)?;
+
+    let mut printer: Box<dyn AcbWriter> = if pretty {
+        Box::new(TextWriter::new(WriteHandle::stdout_write_handle()))
+    } else {
+        Box::new(CsvWriter::new_to_writer(WriteHandle::stdout_write_handle()))
+    };
+    let table_name = if pretty { "Benefit TXs" } else { "benefit_txs" };
+    let csv_table = crate::portfolio::io::tx_csv::txs_to_csv_table(&txs);
+    printer.print_render_table(
+        crate::app::outfmt::model::OutputType::Raw,
+        &table_name,
+        &crate::portfolio::render::RenderTable::from(csv_table))
+}
+
+/// Searches through trade_confs and finds a set of trades which fully correspond
+/// to the sell-to-cover of the benefit.
+///
+/// trade_confs should be pre-filtered to only contain trades within a reasonable
+/// date range of benefit.
+fn find_sell_to_cover_trade_set<'a>(benefit: &BenefitEntry,
+                                    trade_confs: &Vec<&'a BrokerTx>)
+-> Result<Vec<&'a BrokerTx>, SError> {
+    let sell_to_cover_shares = benefit.sell_to_cover_shares.unwrap();
+
+    let benefit_err_desc = || { format!(
+        "{}: {} {}", benefit.filename, benefit.plan_note, benefit.acquire_tx_date) };
+
+    // Step 1: run through combinations of trades, and find some combo where
+    // the security of all matches and the number of shares matches.
+    // Error out if multiple combinations satisfy this condition.
+    let mut matching_trades_o: Option<Vec<&BrokerTx>> = None;
+    for n in (1 ..= trade_confs.len()).rev() {
+        tracing::trace!("find_sell_to_cover_trade_set combos len {n}");
+
+        // (combinations from itertools crate, here)
+        for trades in trade_confs.iter().combinations(n) {
+            if ! trades.iter().all(|t| t.security == benefit.security) {
+                tracing::trace!("find_sell_to_cover_trade_set skipping set with not \
+                                all securities matched");
+                continue;
+            }
+            let n_shares: Decimal = trades.iter().map(|t| t.num_shares).sum();
+            if n_shares == sell_to_cover_shares {
+                if let Some(matching_trades) = &matching_trades_o {
+                    // We already found a candidate set. We may run into the same
+                    // combination again in a different arrangement, or a different
+                    // set, in which case we won't be able to pick between the two.
+                    if HashSet::<&&BrokerTx>::from_iter(matching_trades.iter()) !=
+                       HashSet::<&&BrokerTx>::from_iter(trades.iter().map(|t| *t)) {
+                        return Err(format!("Multiple trade combinations \
+                                            could potentially constitute the \
+                                            sell-to-cover for {}",
+                                            benefit_err_desc()));
+                    }
+                    // If these are basically equivalent sets of trades, just skip.
+                    // This is most likely to happen when multiple sells get split
+                    // into X and 1.
+                    tracing::trace!(
+                        "find_sell_to_cover_trade_set equivalent candidates found");
+                } else {
+                    tracing::trace!("find_sell_to_cover_trade_set candidates found");
+                    matching_trades_o =
+                        Some(trades.into_iter().map(|t| *t).collect());
+                }
+            }
+        }
+    }
+
+    if let Some(matching_trades) = matching_trades_o {
+        tracing::debug!("Found matching trade confirmations for benefit:\n{:#?}",
+                        benefit);
+        for t in &matching_trades {
+            tracing::debug!("  {t:#?}");
+        }
+        Ok(matching_trades)
+    } else {
+        Err(format!("Found no trades matching the sell-to-cover for {}",
+                    benefit_err_desc()))
+    }
+}
+
+#[derive(Debug)]
+struct BenefitsAndTrades {
+    pub benefits: Vec<BenefitEntry>,
+    pub other_trades: Vec<BrokerTx>,
+}
+
+#[derive(Debug)]
+struct AmendBenefitsRes {
+    benefits_and_trades: BenefitsAndTrades,
+    warnings: Vec<String>,
+}
+
+/// Goes through benefits, and populates their sell-to-cover information, based on
+/// the available trade_confs.
+/// Entries in trade_confs are "consumed" when this match occurs.
+/// A new BenefitsAndTrades is returned.
+/// Consumes the pdf_data, as it moves much of its contents into the output.
+fn amend_benefit_sales(pdf_data: PdfData)
+-> Result<AmendBenefitsRes, Vec<SError>> {
+    let trade_confs = pdf_data.trade_confs;
+    let mut benefits = pdf_data.benefits;
+    let mut leftover_trade_confs = trade_confs.clone();
+
+    let mut warnings = Vec::new();
+    let mut errors = Vec::new();
+    for benefit in &mut benefits {
+        if benefit.sell_to_cover_shares.is_none() {
+            continue;
+        }
+
+        // Find the sale(s) which could constitute this sell-to-cover
+        // We'll take any sell that is between the benefit data and 5 days after.
+        let latest_day = benefit.acquire_tx_date.saturating_add(
+            time::Duration::days(5));
+        let mut candidate_trades = Vec::new();
+        for trade in &leftover_trade_confs {
+            if trade.action == TxAction::Sell &&
+                benefit.acquire_tx_date <= trade.trade_date &&
+                trade.trade_date <= latest_day {
+                candidate_trades.push(trade);
+            }
+        }
+
+        match find_sell_to_cover_trade_set(benefit, &candidate_trades) {
+            Ok(matched_trades) => {
+                // Ament the benefit dates
+                let t0 = matched_trades[0];
+                for t in &matched_trades {
+                    if t0.trade_date != t.trade_date ||
+                        t0.settlement_date != t.settlement_date {
+                        let mut warn = format!(
+                            "sell-to-cover trades have varrying dates:");
+                        for t_ in &matched_trades {
+                            warn += &format!("\n  TD: {}, SD: {}, shares of {}: {}",
+                                t_.trade_date, t_.settlement_date,
+                                t_.security, t_.num_shares);
+                        }
+                        warnings.push(warn);
+                    }
+                }
+                benefit.sell_to_cover_tx_date = Some(t0.trade_date);
+                benefit.sell_to_cover_settle_date = Some(t0.settlement_date);
+
+                // Remove matches from leftover trades
+                let mut indexes = Vec::<usize>::with_capacity(matched_trades.len());
+                for t in matched_trades {
+                    let index = leftover_trade_confs.iter()
+                        .position(|t_| t_ == t).unwrap();
+                    indexes.push(index);
+                }
+                // Sort reversed
+                indexes.sort();
+                for i in indexes.iter().rev() {
+                    leftover_trade_confs.remove(*i);
+                }
+            },
+            Err(e) => errors.push(e),
+        }
+    }
+
+    if errors.is_empty() {
+        let bat = BenefitsAndTrades{ benefits, other_trades: leftover_trade_confs };
+        Ok(AmendBenefitsRes{ benefits_and_trades: bat, warnings })
+    } else {
+        Err(errors)
+    }
+}
+
 /// A convenience script to extract transactions from PDFs downloaded from
 /// us.etrade.com
 ///
@@ -177,6 +423,10 @@ struct Args {
 pub fn run() -> Result<(), ()> {
     let args = Args::parse();
 
+    if args.debug {
+        crate::tracing::enable_trace_env(
+            "acb::peripheral::etrade_plan_pdf_tx_extract_impl=debug");
+    }
     crate::tracing::setup_tracing();
 
     let pdf_data = parse_pdfs(&args.files, args.debug)
@@ -184,7 +434,498 @@ pub fn run() -> Result<(), ()> {
 
     if args.extract_only {
         dump_extracted_data(&pdf_data, args.pretty);
+        return Ok(());
     }
 
+    let amend_res = amend_benefit_sales(pdf_data);
+    let benefits_and_trades = match amend_res {
+        Ok(r) => {
+            for w in r.warnings {
+                eprintln!("Warning: {w}");
+            }
+            r.benefits_and_trades
+        },
+        Err(errs) => {
+            for err in errs {
+                eprintln!("Error: {err}");
+            }
+            return Err(());
+        },
+    };
+
+    if args.debug {
+        eprintln!("\nAmmended benefit entries:");
+        for b in &benefits_and_trades.benefits {
+            eprintln!("{b:#?}");
+        }
+        eprintln!("\nRemaining trades:");
+        for t in &benefits_and_trades.other_trades {
+            eprintln!("{t:#?}");
+        }
+    }
+
+    render_txs_from_data(&benefits_and_trades, args.pretty)
+        .map_err(|e| eprintln!("Error: {e}"))?;
+
     Ok(())
+}
+
+// MARK: tests
+
+#[cfg(test)]
+mod tests {
+    use rust_decimal::Decimal;
+    use rust_decimal_macros::dec;
+
+    use crate::peripheral::broker::{etrade::BenefitEntry, BrokerTx};
+    use crate::peripheral::etrade_plan_pdf_tx_extract_impl::{
+        amend_benefit_sales, PdfData};
+    use crate::portfolio::testlib::MAGIC_DEFAULT_DATE;
+    use crate::portfolio::{CsvTx, Currency, TxAction};
+    use crate::util::date::pub_testlib::doy_date;
+    use crate::testlib::{assert_re, assert_vec_eq};
+
+    use super::find_sell_to_cover_trade_set;
+
+    fn foo() -> String {
+        String::from("FOO")
+    }
+
+    fn dt(doy: i64) -> time::Date {
+        doy_date(2024, doy)
+    }
+
+    /// Test Benefit factory
+    struct TBen {
+        pub sec: String,
+        pub tdate: time::Date,
+        pub n_sh: u32,
+        pub n_stc: Option<u32>,
+        pub stc_tdate: Option<time::Date>,
+    }
+
+    impl Default for TBen {
+        fn default() -> Self {
+            Self {
+                sec: foo(),
+                tdate: *MAGIC_DEFAULT_DATE,
+                n_sh: 100,
+                n_stc: Some(50),
+                stc_tdate: None,
+            }
+        }
+    }
+
+    impl TBen {
+        pub fn x(self) -> BenefitEntry {
+            let tdate = if self.tdate == *MAGIC_DEFAULT_DATE { dt(10) }
+                        else { self.tdate };
+            let sdate = tdate.saturating_add(time::Duration::days(2));
+            let has_stc = self.n_stc.is_some();
+            BenefitEntry {
+                security: self.sec,
+                acquire_tx_date: tdate,
+                acquire_settle_date: sdate,
+                acquire_share_price: dec!(1),
+                acquire_shares: Decimal::from(self.n_sh),
+                // Pre-amend states for stc.
+                sell_to_cover_tx_date: self.stc_tdate,
+                sell_to_cover_settle_date: self.stc_tdate
+                    .map(|d| d.saturating_add(time::Duration::days(2))),
+                sell_to_cover_price: if has_stc { Some(dec!(100)) } else { None },
+                sell_to_cover_shares: self.n_stc.map(|s| Decimal::from(s)),
+                sell_to_cover_fee: if has_stc { Some(dec!(5.99)) } else { None },
+                plan_note: "XXXX Vest".to_string(),
+                sell_note: if has_stc { Some("XXX STC".to_string()) } else { None },
+                filename: "a_file.pdf".to_string(),
+            }
+        }
+    }
+
+    /// Test trade
+    struct TTx {
+        pub sec: String,
+        pub tdate: time::Date,
+        pub n_sh: u32,
+        pub act: TxAction,
+    }
+
+    impl Default for TTx {
+        fn default() -> Self {
+            Self {
+                sec: foo(),
+                tdate: *MAGIC_DEFAULT_DATE,
+                n_sh: 50,
+                act: TxAction::Sell,
+            }
+        }
+    }
+
+    impl TTx {
+        pub fn x(self) -> BrokerTx {
+            let tdate = if self.tdate == *MAGIC_DEFAULT_DATE { dt(10) }
+                        else { self.tdate };
+            let sdate = tdate.saturating_add(time::Duration::days(2));
+
+            BrokerTx {
+                security: self.sec,
+                trade_date: tdate,
+                settlement_date: sdate,
+                trade_date_and_time: tdate.to_string(),
+                settlement_date_and_time: sdate.to_string(),
+                action: self.act,
+                amount_per_share: dec!(1),
+                num_shares: Decimal::from(self.n_sh),
+                commission: dec!(5.99),
+                currency: Currency::usd(),
+                memo: "test trade conf".to_string(),
+                exchange_rate: None,
+                affiliate: crate::portfolio::Affiliate::default(),
+                row_num: 100 + self.n_sh,
+                account: crate::peripheral::broker::etrade::new_account("x".to_string()),
+                sort_tiebreak: None,
+                filename: Some("conf.pdf".to_string()),
+            }
+        }
+    }
+
+    fn benefit_n_shares(n_shares: u32) -> BenefitEntry {
+        BenefitEntry {
+            security: foo(),
+            acquire_tx_date: dt(10),
+            acquire_settle_date: dt(10),
+            acquire_share_price: dec!(1),
+            acquire_shares: dec!(100),
+            sell_to_cover_tx_date: Some(dt(10)),
+            sell_to_cover_settle_date: Some(dt(12)),
+            sell_to_cover_price: Some(dec!(100)),
+            sell_to_cover_shares: Some(Decimal::from(n_shares)),
+            sell_to_cover_fee: Some(dec!(0)),
+            plan_note: "XXXX Vest".to_string(),
+            sell_note: Some("XXX STC".to_string()),
+            filename: "a_file.pdf".to_string(),
+        }
+    }
+
+    fn tx_n_shares(n_shares: u32) -> BrokerTx {
+        BrokerTx {
+            security: foo(),
+            trade_date: dt(10),
+            settlement_date: dt(12),
+            trade_date_and_time: "2024-01-10".to_string(),
+            settlement_date_and_time: "2024-01-12".to_string(),
+            action: TxAction::Sell,
+            amount_per_share: dec!(1),
+            num_shares: Decimal::from(n_shares),
+            commission: dec!(0),
+            currency: Currency::usd(),
+            memo: "Sell to cover".to_string(),
+            exchange_rate: None,
+            affiliate: crate::portfolio::Affiliate::default(),
+            row_num: 100 + n_shares,
+            account: crate::peripheral::broker::etrade::new_account("x".to_string()),
+            sort_tiebreak: None,
+            filename: Some("conf.pdf".to_string()),
+        }
+    }
+
+    fn dflt<T: Default>() -> T {
+        T::default()
+    }
+
+    fn assert_sorted_vec_eq<T>(mut left: Vec<T>, mut right: Vec<T>)
+        where  T: PartialEq + Ord + std::fmt::Debug,
+    {
+        left.sort();
+        right.sort();
+        assert_vec_eq(left, right);
+    }
+
+    #[test]
+    fn test_find_sell_to_cover_trade_set() {
+        if std::env::var("VERBOSE").is_ok() {
+            crate::tracing::enable_trace_env(
+                "acb::peripheral::etrade_plan_pdf_tx_extract_impl=trace");
+        }
+        crate::tracing::setup_tracing();
+
+        // Very basic case
+        let trades = vec![tx_n_shares(5)];
+        let matching_trades = find_sell_to_cover_trade_set(
+            &benefit_n_shares(5), &trades.iter().collect()).unwrap();
+
+        assert_vec_eq(trades.iter().collect(), matching_trades);
+
+        // Basic multiple case
+        let trades = vec![tx_n_shares(5), tx_n_shares(1)];
+        let matching_trades = find_sell_to_cover_trade_set(
+            &benefit_n_shares(6), &trades.iter().collect()).unwrap();
+        assert_sorted_vec_eq(trades.iter().collect(), matching_trades);
+
+        // Multiple, reconcilable case
+        let trades = vec![tx_n_shares(5), tx_n_shares(2), tx_n_shares(1)];
+        let matching_trades = find_sell_to_cover_trade_set(
+            &benefit_n_shares(6), &trades.iter().collect()).unwrap();
+        assert_sorted_vec_eq(vec![&trades[0], &trades[2]], matching_trades);
+
+        // Multiple, exact duplicates (we arbitrarily take the first encountered
+        // match).
+        let trades = vec![tx_n_shares(5), tx_n_shares(1), tx_n_shares(12),
+                          tx_n_shares(1)];
+        let matching_trades = find_sell_to_cover_trade_set(
+            &benefit_n_shares(6), &trades.iter().collect()).unwrap();
+        assert_sorted_vec_eq(vec![&trades[0], &trades[1]], matching_trades);
+
+        // No match
+        let trades = vec![tx_n_shares(5), tx_n_shares(1)];
+        let err = find_sell_to_cover_trade_set(
+            &benefit_n_shares(2), &trades.iter().collect()).unwrap_err();
+        assert_eq!(err,
+            "Found no trades matching the sell-to-cover for a_file.pdf: \
+            XXXX Vest 2024-01-11");
+
+        // No candidates
+        let trades = vec![];
+        let err = find_sell_to_cover_trade_set(
+            &benefit_n_shares(2), &trades.iter().collect()).unwrap_err();
+        assert_eq!(err,
+            "Found no trades matching the sell-to-cover for a_file.pdf: \
+            XXXX Vest 2024-01-11");
+
+        // Unreconcilable case (conflicts)
+        let trades = vec![tx_n_shares(5), tx_n_shares(1),
+                          tx_n_shares(4), tx_n_shares(2)];
+        let err = find_sell_to_cover_trade_set(
+            &benefit_n_shares(6), &trades.iter().collect()).unwrap_err();
+        assert_eq!(err,
+            "Multiple trade combinations could potentially constitute the \
+            sell-to-cover for a_file.pdf: XXXX Vest 2024-01-11");
+    }
+
+    #[test]
+    fn test_amend_benefit_sales() {
+        // Cases:
+        // - With non-sell-to-cover benefit (and no available trades for it)
+        // - Benefit with trades exactly 5 days after (and 6 days after, and before,
+        //     creating error)
+        // - Multiple trades for stc with inconsistent dates.
+        // - Leftover trades
+        // - Removing possible trades from other later stcs (would error otherwise)
+        // - Ignore buys (that would break the search algo)
+
+        // Case: With non-sell-to-cover benefit (and no available trades for it)
+        let benefits = vec![TBen{tdate: dt(20), n_sh: 2, n_stc: None, ..dflt()}.x()];
+        let trade_confs = vec![TTx{tdate: dt(20), n_sh: 1, ..dflt()}.x()];
+        let amend_res = amend_benefit_sales(PdfData{benefits, trade_confs}).unwrap();
+        assert_eq!(amend_res.benefits_and_trades.benefits[0].sell_to_cover_tx_date,
+                   None);
+        assert_eq!(amend_res.benefits_and_trades.other_trades.len(), 1);
+        assert!(amend_res.warnings.is_empty());
+
+        // Case: Benefit with trades exactly 5 days after
+        let benefits = vec![TBen{tdate: dt(20), n_stc: Some(5), ..dflt()}.x()];
+        let trade_confs = vec![TTx{tdate: dt(25), n_sh: 5, ..dflt()}.x()];
+        let amend_res = amend_benefit_sales(PdfData{benefits, trade_confs}).unwrap();
+        let amended_benefits = amend_res.benefits_and_trades.benefits;
+        assert_eq!(amended_benefits[0].sell_to_cover_tx_date, Some(dt(25)));
+        assert_eq!(amended_benefits[0].sell_to_cover_settle_date, Some(dt(27)));
+        assert_eq!(amend_res.benefits_and_trades.other_trades.len(), 0);
+        assert!(amend_res.warnings.is_empty());
+
+        // Case: Benefit with trades exactly 6 days after, creating error
+        let benefits = vec![TBen{tdate: dt(20), n_stc: Some(5), ..dflt()}.x()];
+        let trade_confs = vec![TTx{tdate: dt(26), n_sh: 5, ..dflt()}.x()];
+        let errs = amend_benefit_sales(PdfData{benefits, trade_confs})
+            .unwrap_err();
+        assert_eq!(errs.len(), 1);
+        assert_re("Found no trades matching the sell-to-cover for", &errs[0]);
+
+        // Case: Benefit with trade 1 day before, creating error
+        let benefits = vec![TBen{tdate: dt(20), n_stc: Some(5), ..dflt()}.x()];
+        let trade_confs = vec![TTx{tdate: dt(19), n_sh: 5, ..dflt()}.x()];
+        let errs = amend_benefit_sales(PdfData{benefits, trade_confs})
+            .unwrap_err();
+        assert_eq!(errs.len(), 1);
+        assert_re("Found no trades matching the sell-to-cover for", &errs[0]);
+
+        // Case: Multiple trades for stc with inconsistent dates (also, leftovers)
+        let benefits = vec![TBen{tdate: dt(20), n_stc: Some(5), ..dflt()}.x()];
+        let trade_confs = vec![
+            TTx{tdate: dt(20), n_sh: 4, ..dflt()}.x(),
+            TTx{tdate: dt(21), n_sh: 1, ..dflt()}.x(),
+            TTx{tdate: dt(21), n_sh: 3, ..dflt()}.x(),
+            TTx{tdate: dt(1), n_sh: 3, ..dflt()}.x(),
+        ];
+        let amend_res = amend_benefit_sales(PdfData{benefits, trade_confs}).unwrap();
+        let amended_benefits = amend_res.benefits_and_trades.benefits;
+        if amended_benefits[0].sell_to_cover_tx_date != Some(dt(20)) &&
+           amended_benefits[0].sell_to_cover_tx_date != Some(dt(21)) {
+            // It could be either. Just pick one arbitrarily to assert on.
+            assert_eq!(amended_benefits[0].sell_to_cover_tx_date, Some(dt(20)));
+        }
+        assert_vec_eq(amend_res.benefits_and_trades.other_trades, vec![
+            TTx{tdate: dt(21), n_sh: 3, ..dflt()}.x(),
+            TTx{tdate: dt(1), n_sh: 3, ..dflt()}.x(),
+        ]);
+        assert_eq!(amend_res.warnings.len(), 1);
+        assert_re("sell-to-cover trades have varrying dates",
+                  &amend_res.warnings[0]);
+
+        // Case: Removing possible trades from other later stcs (would error
+        // otherwise)
+        let mut benefits = vec![
+            TBen{tdate: dt(20), n_stc: Some(3), ..dflt()}.x(),
+            TBen{tdate: dt(21), n_stc: Some(7), ..dflt()}.x(),
+        ];
+        let trade_confs = vec![
+            TTx{tdate: dt(21), n_sh: 3, ..dflt()}.x(),
+            TTx{tdate: dt(22), n_sh: 4, ..dflt()}.x(), // leftover
+            TTx{tdate: dt(23), n_sh: 5, ..dflt()}.x(),
+            TTx{tdate: dt(23), n_sh: 2, ..dflt()}.x(),
+        ];
+        let amend_res = amend_benefit_sales(
+            PdfData{benefits: benefits.clone(), trade_confs: trade_confs.clone()})
+            .unwrap();
+        let amended_benefits = amend_res.benefits_and_trades.benefits;
+        assert_eq!(amend_res.warnings.len(), 0);
+        assert_eq!(amended_benefits[0].sell_to_cover_tx_date, Some(dt(21)));
+        assert_eq!(amended_benefits[1].sell_to_cover_tx_date, Some(dt(23)));
+
+        benefits.reverse();
+        let errs = amend_benefit_sales(PdfData{benefits: benefits, trade_confs})
+            .unwrap_err();
+        assert_eq!(errs.len(), 1);
+        assert_re("Multiple trade combinations could potentially", &errs[0]);
+
+        // Case: Ignore buys
+        let benefits = vec![
+            TBen{tdate: dt(20), n_stc: Some(3), ..dflt()}.x(),
+        ];
+        let trade_confs = vec![
+            TTx{tdate: dt(21), n_sh: 3, ..dflt()}.x(),
+            TTx{tdate: dt(22), n_sh: 2, act: TxAction::Buy,
+                ..dflt()}.x(),
+            TTx{tdate: dt(23), n_sh: 1, act: TxAction::Buy,
+                ..dflt()}.x(),
+        ];
+        let amend_res = amend_benefit_sales(
+            PdfData{benefits: benefits.clone(), trade_confs: trade_confs.clone()})
+            .unwrap();
+        let amended_benefits = amend_res.benefits_and_trades.benefits;
+        assert_eq!(amend_res.warnings.len(), 0);
+        assert_eq!(amended_benefits[0].sell_to_cover_tx_date, Some(dt(21)));
+    }
+
+    #[test]
+    fn test_txs_from_data() {
+
+        let txs = super::txs_from_data(&super::BenefitsAndTrades {
+            benefits: vec![
+                // With StC
+                TBen{tdate: dt(20), n_stc: Some(3), stc_tdate: Some(dt(21)),
+                     ..dflt()}.x(),
+                // Without StC
+                TBen{tdate: dt(15), n_stc: None, ..dflt()}.x(),
+            ],
+            other_trades: vec![
+                // Extra sell
+                TTx{tdate: dt(18), n_sh: 3, ..dflt()}.x(),
+                // Extra buy
+                TTx{tdate: dt(19), n_sh: 2, act: TxAction::Buy,
+                    ..dflt()}.x(),
+            ]
+        }).unwrap();
+
+        assert_vec_eq(txs, vec![
+            // Vest without Stc
+            CsvTx {
+                security: Some(foo()),
+                trade_date: Some(dt(15)), // Some(2024-01-16),
+                settlement_date: Some(dt(17)), // Some(2024-01-18),
+                action: Some(TxAction::Buy),
+                shares: Some(dec!(100)),
+                amount_per_share: Some(dec!(1)),
+                commission: Some(dec!(0)),
+                tx_currency: Some(Currency::usd()),
+                tx_curr_to_local_exchange_rate: None,
+                commission_currency: None,
+                commission_curr_to_local_exchange_rate: None,
+                memo: Some("XXXX Vest".to_string()),
+                affiliate: None,
+                specified_superficial_loss: None,
+                read_index: 2,
+            },
+            // Extra sell
+            CsvTx {
+                security: Some(foo()),
+                trade_date: Some(dt(18)), // Some(2024-01-19),
+                settlement_date: Some(dt(20)), // Some(2024-01-21),
+                action: Some(TxAction::Sell),
+                shares: Some(dec!(3)),
+                amount_per_share: Some(dec!(1)),
+                commission: Some(dec!(5.99)),
+                tx_currency: Some(Currency::usd()),
+                tx_curr_to_local_exchange_rate: None,
+                commission_currency: None,
+                commission_curr_to_local_exchange_rate: None,
+                memo: Some("test trade conf (manual trade)".to_string()),
+                affiliate: Some(crate::portfolio::Affiliate::default()),
+                specified_superficial_loss: None,
+                read_index: 3,
+            },
+            // Extra buy
+            CsvTx {
+                security: Some(foo()),
+                trade_date: Some(dt(19)), // Some(2024-01-20),
+                settlement_date: Some(dt(21)), // Some(2024-01-22),
+                action: Some(TxAction::Buy),
+                shares: Some(dec!(2)),
+                amount_per_share: Some(dec!(1)),
+                commission: Some(dec!(5.99)),
+                tx_currency: Some(Currency::usd()),
+                tx_curr_to_local_exchange_rate: None,
+                commission_currency: None,
+                commission_curr_to_local_exchange_rate: None,
+                memo: Some("test trade conf (manual trade)".to_string()),
+                affiliate: Some(crate::portfolio::Affiliate::default()),
+                specified_superficial_loss: None,
+                read_index: 4 },
+            // Vest with StC
+            CsvTx {
+                security: Some(foo()),
+                trade_date: Some(dt(20)), // Some(2024-01-21),
+                settlement_date: Some(dt(22)), // Some(2024-01-23),
+                action: Some(TxAction::Buy),
+                shares: Some(dec!(100)),
+                amount_per_share: Some(dec!(1)),
+                commission: Some(dec!(0)),
+                tx_currency: Some(Currency::usd()),
+                tx_curr_to_local_exchange_rate: None,
+                commission_currency: None,
+                commission_curr_to_local_exchange_rate: None,
+                memo: Some("XXXX Vest".to_string()),
+                affiliate: None,
+                specified_superficial_loss: None,
+                read_index: 0,
+            },
+            // Stc
+            CsvTx {
+                security: Some(foo()),
+                trade_date: Some(dt(21)), // Some(2024-01-22),
+                settlement_date: Some(dt(23)), // Some(2024-01-24),
+                action: Some(TxAction::Sell),
+                shares: Some(dec!(3)),
+                amount_per_share: Some(dec!(3)),
+                commission: Some(dec!(5.99)),
+                tx_currency: Some(Currency::usd()),
+                tx_curr_to_local_exchange_rate: None,
+                commission_currency: None,
+                commission_curr_to_local_exchange_rate: None,
+                memo: Some("XXXX Vest XXX STC".to_string()),
+                affiliate: None,
+                specified_superficial_loss: None,
+                read_index: 1,
+            },
+        ]);
+    }
 }

@@ -9,6 +9,9 @@ use rust_decimal::Decimal;
 
 use office::{Excel, Range};
 
+use crate::app::outfmt::csv::CsvWriter;
+use crate::app::outfmt::model::AcbWriter;
+use crate::app::outfmt::text::TextWriter;
 use crate::peripheral::broker::Account;
 use crate::portfolio::Currency;
 use crate::util::basic::SError;
@@ -141,7 +144,7 @@ pub fn run() -> Result<(), ()> {
         WriteHandle::stderr_write_handle())
 }
 
-pub fn run_with_args(args: Args, mut out_w: WriteHandle, mut err_w: WriteHandle)
+pub fn run_with_args(args: Args, out_w: WriteHandle, mut err_w: WriteHandle)
 -> Result<(), ()>  {
     let rg = match read_xl_file(&args.export_file,
                                 args.sheet.as_ref().map(|v| v.as_str())) {
@@ -202,17 +205,22 @@ pub fn run_with_args(args: Args, mut out_w: WriteHandle, mut err_w: WriteHandle)
     let csv_txs: Vec<crate::portfolio::CsvTx> = txs.into_iter().map(|t| t.into())
         .collect();
 
-    if args.pretty {
-        todo!();
+    let mut printer: Box<dyn AcbWriter> = if args.pretty {
+        Box::new(TextWriter::new(out_w))
     } else {
-        match crate::portfolio::io::tx_csv::write_txs_to_csv(&csv_txs, &mut out_w) {
-            Ok(()) => (),
-            Err(e) => {
-                write_errln!(err_w, "{e}");
-                return Err(());
-            },
-        }
-    }
+        Box::new(CsvWriter::new_to_writer(out_w))
+    };
+    let table_name = if args.pretty {
+        format!("{} TXs", args.export_file.display())
+    } else {
+        format!("{}_txs", args.export_file.display())
+    };
+    let csv_table = crate::portfolio::io::tx_csv::txs_to_csv_table(&csv_txs);
+    printer.print_render_table(
+        crate::app::outfmt::model::OutputType::Raw,
+        &table_name,
+        &crate::portfolio::render::RenderTable::from(csv_table))
+    .map_err(|e| { write_errln!(err_w, "{e}"); })?;
 
     if let Some(es) = errors {
         let _ = write!(err_w, "Errors:");
