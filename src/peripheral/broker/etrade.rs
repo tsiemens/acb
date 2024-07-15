@@ -152,6 +152,56 @@ pub struct BenefitEntry {
    pub filename: String,
 }
 
+pub struct SellToCoverData {
+    pub sell_to_cover_tx_date: Date,
+    pub sell_to_cover_settle_date: Date,
+    pub sell_to_cover_price: Decimal,
+    pub sell_to_cover_shares: Decimal,
+    pub sell_to_cover_fee: Decimal,
+}
+
+impl BenefitEntry {
+    /// Retrieves the sell-to-cover data (if present) for the benefit.
+    /// Returns Err if incomplete StC data is populated, and Ok(None) if no
+    /// StC data is populated.
+    pub fn sell_to_cover_data(&self) -> Result<Option<SellToCoverData>, SError> {
+        #[derive(PartialEq, Default, Debug)]
+        struct StcOpts {
+            sell_to_cover_tx_date: Option<Date>,
+            sell_to_cover_settle_date: Option<Date>,
+            sell_to_cover_price: Option<Decimal>,
+            sell_to_cover_shares: Option<Decimal>,
+            sell_to_cover_fee: Option<Decimal>,
+        }
+        let stc_opts = StcOpts{
+            sell_to_cover_tx_date: self.sell_to_cover_tx_date,
+            sell_to_cover_settle_date: self.sell_to_cover_settle_date,
+            sell_to_cover_price: self.sell_to_cover_price,
+            sell_to_cover_shares: self.sell_to_cover_shares,
+            sell_to_cover_fee: self.sell_to_cover_fee,
+        };
+        if stc_opts == StcOpts::default() {
+            return Ok(None)
+        }
+
+        let err = || {
+            format!("Some, but not all, sell-to-cover fields were found for \
+                    {} shares of {} aquired on {}. StC {:?}",
+                    self.acquire_shares, self.security, self.acquire_tx_date,
+                    stc_opts)
+        };
+
+        Ok(Some(SellToCoverData{
+            sell_to_cover_tx_date: stc_opts.sell_to_cover_tx_date.ok_or_else(err)?,
+            sell_to_cover_settle_date: stc_opts.sell_to_cover_settle_date.ok_or_else(err)?,
+            sell_to_cover_price: stc_opts.sell_to_cover_price.ok_or_else(err)?,
+            sell_to_cover_shares: stc_opts.sell_to_cover_shares.ok_or_else(err)?,
+            sell_to_cover_fee: stc_opts.sell_to_cover_fee.ok_or_else(err)?,
+        }))
+    }
+
+}
+
 // Common to all benefit PDFs
 #[derive(PartialEq, Debug)]
 struct BenefitCommonData {
@@ -815,11 +865,11 @@ mod tests {
 
         let eso_entries = parse_eso_entries(
             &fixed_eso_data, &std::path::PathBuf::from("foo/bar/myeso.pdf")).unwrap();
-        assert_big_struct_eq(eso_entries, vec![
+        assert_vec_eq(eso_entries, vec![
             BenefitEntry {
                 security: s("FOO"),
-                acquire_tx_date: date("2023-10-20"),
-                acquire_settle_date: date("2023-10-20"),
+                acquire_tx_date: date("2024-10-20"),
+                acquire_settle_date: date("2024-10-20"),
                 acquire_share_price: dec!(1000.00),
                 acquire_shares: dec!(100),
                 sell_to_cover_tx_date: None,
@@ -833,12 +883,12 @@ mod tests {
             },
             BenefitEntry {
                 security: s("FOO"),
-                acquire_tx_date: date("2023-10-20"),
-                acquire_settle_date: date("2023-10-20"),
+                acquire_tx_date: date("2024-10-20"),
+                acquire_settle_date: date("2024-10-20"),
                 acquire_share_price: dec!(2000.00),
                 acquire_shares: dec!(200),
-                sell_to_cover_tx_date: Some(date("2023-10-20")),
-                sell_to_cover_settle_date: Some(date("2023-10-20")),
+                sell_to_cover_tx_date: Some(date("2024-10-20")),
+                sell_to_cover_settle_date: Some(date("2024-10-20")),
                 sell_to_cover_price: Some(dec!(1001.00)),
                 sell_to_cover_shares: Some(dec!(1002)),
                 sell_to_cover_fee: Some(dec!(21.00)),

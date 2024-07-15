@@ -32,3 +32,12 @@ pub fn setup_tracing() {
     // Set the subscriber as the default
     let _ = tracing::subscriber::set_global_default(subscriber);
 }
+
+pub fn enable_trace_env(trade_env: &str) {
+    const VAR_NAME: &str = "TRACE";
+    if let Ok(existing_env) = std::env::var(VAR_NAME) {
+        std::env::set_var(VAR_NAME, existing_env + "," + trade_env);
+    } else {
+        std::env::set_var(VAR_NAME, trade_env);
+    }
+}
