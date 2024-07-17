@@ -1,4 +1,5 @@
 use std::collections::HashSet;
+use std::io::Read;
 use std::path::PathBuf;
 
 use clap::Parser;
@@ -36,9 +37,22 @@ fn parse_pdfs(files: &Vec<PathBuf>, debug: bool)
             eprintln!("Parsing {fpath:?}");
         }
 
-        let pdf_text = pdf::get_all_pages_text_from_path(fpath)
-            .map_err(|e| format!("Failed to read {fpath:?}: {e}"))?
-            .join("\n");
+        let pdf_text = if fpath.extension().unwrap_or_default()
+                            .to_string_lossy() == "txt" {
+            // This is mostly for testing. We can just read the pre-parsed pdf text
+            tracing::trace!("Getting raw text from {:?}", fpath);
+            let mut buf = String::new();
+            std::fs::File::open(fpath)
+                .map_err(|e| format!("Failed to open text file {fpath:?}: {e}"))?
+                .read_to_string(&mut buf)
+                .map_err(|e| format!("Failed to read text file {fpath:?}: {e}"))?;
+            buf
+        } else {
+            pdf::get_all_pages_text_from_path(fpath)
+                .map_err(|e| format!("Failed to read {fpath:?}: {e}"))?
+                .join("\n")
+        };
+
         let pdf_content = etrade::parse_pdf_text(&pdf_text, fpath)
             .map_err(|e| format!("Failed to parse {fpath:?}: {e}"))?;
         match pdf_content {
@@ -401,6 +415,9 @@ fn amend_benefit_sales(pdf_data: PdfData)
 #[command(author, about, long_about)]
 struct Args {
     /// ETRADE statement PDFs
+    ///
+    /// These can also be plain .txt files, and will not be interpreted as actual
+    /// PDFs, but just the text emitted by a tool like pdf-text.
     #[arg(required = true)]
     pub files: Vec<PathBuf>,
 

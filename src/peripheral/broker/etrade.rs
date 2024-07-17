@@ -569,7 +569,7 @@ fn parse_pre_ms_2023_trade_confirmations(pdf_text: &str, filepath: &Path)
 
     let trade_pat = regex::Regex::new(concat!(
         r"(?P<txdate>\d+/\d+/\d+)\s+(?P<sdate>\d+/\d+/\d+)\s+",
-        r"(?P<mkt>\d+)\s+(?P<cpt>\d+)\s+",
+        r"(?P<mkt>\d+)\s*(?P<cpt>\d+)\s+",
         r"(?P<sym>\S+)\s+(?P<act>\S+)\s+(?P<nshares>\d+)\s+\$(?P<price>\d+\.\d+)[^\n]*\n",
         r"[^\n]*(COMMISSION\s+\$(?P<commission>\d+\.\d+)[^\n]*\n)?",
         r"[^\n]*(FEE\s+\$(?P<fee>\d+\.\d+)[^\n]*\n)?",
@@ -709,7 +709,7 @@ pub fn parse_pdf_text(etrade_pdf_text: &str, filepath: &Path)
 mod tests {
     use rust_decimal_macros::dec;
 
-    use crate::{peripheral::broker::BrokerTx, portfolio::TxAction, testlib::{assert_big_struct_eq, assert_vec_eq}, util::date::parse_standard_date};
+    use crate::{peripheral::broker::BrokerTx, portfolio::TxAction, testlib::{assert_big_struct_eq, assert_vec_eq, assert_vecr_eq}, util::date::parse_standard_date};
 
     use super::{new_account, parse_eso_data, parse_eso_entries, parse_espp_entry, parse_post_ms_2023_trade_confirmation, parse_pre_ms_2023_trade_confirmations, parse_rsu_entry, BenefitCommonData, BenefitEntry, EsoData, EsoGrantData};
 
@@ -1092,16 +1092,53 @@ mod tests {
             FOOSYSTEMS INC COM FEE $0.01
             NET AMOUNT $120.02
 
-            EMPLOYEE STOCK PLAN PURCHASE CONFIRMATION
-            Provided by Foo Inc.
-            John Doe
-            Employee ID: 1111
+            JOHN DOE
+            1 BLAH DR
+            VANCOUVER BCHOH OHO
+            CANADA
             ";
 
-        let txs = parse_pre_ms_2023_trade_confirmations(pdf_text,
-            &std::path::PathBuf::from("foo/bar/tconf.pdf")).unwrap();
+        // (Note how the mkt and cpt here are joined. These values don't actually
+        // get used, so this doesn't matter much).
+        let pypdf_text = "
+            E*TRADE Securities LLC
+            P.O. Box484
+            Jersey City, NJ07303-0484DETACH HERE DETACH HERE
+            Make checks payable toE*TRADE Securities LLC.
+            Mail deposits to:ETRADE
+            Please donotsend cash Dollars Cents
+            TOTAL DEPOSITAccount Name:
+            JOHN DOE
+            ETRADE Securities LLC
+            P.O.Box484
+            Jersey City, NJ07303-0484
+            021620220001 900123456788Account Number: XXXX-9876
+            UseThis Deposit Slip Acct: XXXX-9876Investment Account
+            JOHN DOE
+            1 BLAH DR
+            VANCOUVER BCHOH OHO
+            CANADATRADECONFIRMATIONPage 1of2
+            TRADE
+            DATESETL
+            DATEMKT /
+            CPTSYMBOL /
+            CUSIPBUY /
+            SELL QUANTITY PRICEACCT
+            TYPE
+            02/20/23 02/22/23 61 FOO SELL 6 $120.01 Stock Plan PRINCIPAL $720.06
+            FOOSYSTEMS INC COM COMMISSION $20.05
+            FEE $0.02
+            NET AMOUNT $740.13
+            02/20/23 02/22/23 61 FOO SELL 1 $120.011 Stock Plan PRINCIPAL $120.01
+            FOOSYSTEMS INC COM FEE $0.01
+            NET AMOUNT $120.02
 
-        assert_vec_eq(txs, vec![
+            JOHN DOE
+            1 BLAH DR
+            VANCOUVER BCHOH OHO
+            CANADA
+        ";
+        let exp_txs = vec![
             BrokerTx {
                 security: s("FOO"),
                 trade_date: date("2023-02-20"),
@@ -1140,7 +1177,16 @@ mod tests {
                 sort_tiebreak: None,
                 filename: Some(s("tconf.pdf")),
             },
-        ]);
+        ];
+
+
+        let txs = parse_pre_ms_2023_trade_confirmations(pdf_text,
+            &std::path::PathBuf::from("foo/bar/tconf.pdf")).unwrap();
+        assert_vecr_eq(&txs, &exp_txs);
+
+        let py_txs = parse_pre_ms_2023_trade_confirmations(pypdf_text,
+            &std::path::PathBuf::from("foo/bar/tconf.pdf")).unwrap();
+        assert_vecr_eq(&py_txs, &exp_txs);
     }
 
     #[test]
