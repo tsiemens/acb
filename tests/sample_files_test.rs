@@ -49,7 +49,7 @@ fn do_test_sample_csv_file_validity(render_costs: bool) {
     let dir = NonAutoCreatingTestDir::new();
 
     validate_sample_csv_file(
-        Path::new("./pytest/test_combined.csv"),
+        Path::new("./tests/data/test_combined.csv"),
         &dir.path,
         render_costs,
     );

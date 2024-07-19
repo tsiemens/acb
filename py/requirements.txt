@@ -1,3 +1,0 @@
-openpyxl
-PyPDF2
-pytest
