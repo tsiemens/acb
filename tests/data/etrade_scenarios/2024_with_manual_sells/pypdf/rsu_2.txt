@@ -1,0 +1,44 @@
+ Release Summary
+Account Number 123456789
+Tax Payment Method Sell-to-cover
+Company Name (Symbol) FOO SYSTEMS, INC.
+(FOO)
+Award Number R12307
+Award Date 06-10-2022
+Award Type RSU
+Plan 2014Release Date 02-20-2024
+Shares Released 50.0000
+Market Value Per Share $110.610000
+Award Price Per Share $0.000000
+Sale Price Per Share $111.360000
+ Release Details
+Calculation of Gain 
+Market Value $1,000.00
+Award Price ($0.00)
+Total Gain $1,000.00
+Stock Distribution 
+Award Shares 50.0000
+Shares Sold (10.0000)
+Shares Issued 40.0000
+Registration: Morgan Stanley Smith BarneyCalculation of Taxes
+ Taxable Gain $ Rate % Amount $
+Canada-BC 1,000.00 100.000 1,000.00
+Total Tax $1,000.00
+Cash Distribution 
+Total Sale Price $1,000.00
+Total Tax ($1,000.00)
+Fee ($1.11)
+Total Due Participant $0.00EMPLOYEE STOCK PLAN RELEASE CONFIRMATION
+Provided by FOO SYSTEMS, INC.
+JOHN DOE
+1 BLAH DRIVE
+VANCOUVER, BC CA HOH OHOEmployee ID: 0001
+This information was provided to E*TRADE Securities LLC, a subsidiary of Morgan Stanley, ("E*TRADE") by your company. E*TRADE does not guarantee the accuracy
+or completeness of the information provided by your company. If a sale is associated with these shares, the trade confirmation provided by E*TRADE Securities LLC is
+the only accurate record of the sale transaction.
+The data shown on this statement is based on your company's records. The company reserves the right to make corrections to this data. The purchase shown on this
+statement is subject to the terms of the plan under which the purchase was made.
+03/05/2024 12:04:41 AM ET Page 1 of
+1
+
+
