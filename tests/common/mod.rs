@@ -1,5 +1,11 @@
 use std::{fs, path::PathBuf};
 
+// Note: Because this module is declared with mod in each integration test,
+// functions here may appear as dead code while compiling each respective
+// test, if the test doesn't use every single part of the lib. IDE may also
+// get confused, depending on what context its compiling the file from.
+
+#[allow(dead_code)]
 fn test_temp_dir_path() -> PathBuf {
     let tmpdir = std::env::temp_dir();
 
@@ -22,6 +28,7 @@ pub struct NonAutoCreatingTestDir {
 }
 
 impl NonAutoCreatingTestDir {
+    #[allow(dead_code)]
     pub fn new() -> NonAutoCreatingTestDir {
         NonAutoCreatingTestDir {
             path: test_temp_dir_path(),
@@ -55,5 +62,25 @@ fn cleanup_test_dir(path: &PathBuf) {
 impl Drop for NonAutoCreatingTestDir {
     fn drop(&mut self) {
         cleanup_test_dir(&self.path);
+    }
+}
+
+/// Used to run a sub-testlet, where test T is some kind of
+/// function/lambda. Useful for iterating permutations.
+/// Will nicely print out what the test name that failed is.
+/// Will not result in deferred failures (the first testlet to fail
+/// will block subsequent testlets from running).
+#[allow(dead_code)]
+pub fn run_test<T>(name: &str, test: T)
+where
+    T: FnOnce() + std::panic::UnwindSafe,
+{
+    println!("Running test: {}", name);
+    let result = std::panic::catch_unwind(test);
+    match result {
+        Ok(_) => println!("{name} passed"),
+        Err(e) => {
+            panic!("{name} failed: {e:#?}");
+        }
     }
 }
