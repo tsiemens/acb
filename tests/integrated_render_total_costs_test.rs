@@ -1,3 +1,5 @@
+mod common;
+
 use std::{rc::Rc, str::FromStr};
 
 use acb::{
@@ -13,6 +15,7 @@ use acb::{
         date::parse_standard_date, decimal::GreaterEqualZeroDecimal, rw::WriteHandle,
     },
 };
+use common::run_test;
 use rust_decimal::Decimal;
 use time::Date;
 
@@ -115,20 +118,6 @@ fn assert_tables_equal(
     if exp_str != act_str {
         eprintln!("Actual:\n{act_str}\n != expected:\n{exp_str}");
         assert_eq!(exp_str, act_str);
-    }
-}
-
-fn run_test<T>(name: &str, test: T)
-where
-    T: FnOnce() + std::panic::UnwindSafe,
-{
-    println!("Running test: {}", name);
-    let result = std::panic::catch_unwind(test);
-    match result {
-        Ok(_) => println!("{name} passed"),
-        Err(e) => {
-            panic!("{name} failed: {e:#?}");
-        }
     }
 }
 

@@ -1,0 +1,54 @@
+ Purchase Summary
+Account Number 12345678
+Company Name (Symbol) FOO SYSTEMS,
+INC.(FOO)
+Plan ESP2
+Grant Date 08-17-2020
+Purchase Begin Date 08-17-2021
+Purchase Date 02-15-2022Shares Purchased to Date in Current Offering
+Beginning Balance 0.0000
+Shares Purchased 57.0000
+Total shares Purchased for Offering 57.0000
+Shares Deposited in STREETNAME to
+ETRADE57.0000
+Shares Sold to Cover Taxes 15.0000
+ Purchase Details
+Contributions 
+Foreign Contributions 0.00
+Average Exchange Rate $0.790122
+Previous Carry Forward $0.00
+Current Contributions $0.00
+Total Contributions $0.00*
+Total Price ($2,422.51)
+Carry Forward ($0.00)
+Calculation of Gain 
+Total Value $4,844.58
+Total Price ($2,422.51)
+Taxable Gain $4,802.27Calculation of Shares Purchased 
+Grant Date Market Value $50.00000
+Purchase Value per Share $100.500000
+Purchase Price per Share 
+        (85.000% of $50.00000) $42.500000
+Total Price 
+        (Shares Purchased x Purchase Price) $2,422.507200
+Sale Price for Shares Sold to Cover Taxes $101.000000
+ Total Taxes Collected at purchase ($2,200.21)
+Fees ($20.22)
+Value Of Shares Sold $2,500.0000
+Amount in Excess of Tax Due $202.0700
+Excess of Taxes Applied To 
+Cash Due Participant
+Net Carry Forward $0.00EMPLOYEE STOCK PLAN PURCHASE CONFIRMATION
+Provided by FOO SYSTEMS, INC.
+JOHN DOE
+1 BLAH DRIVE
+VANCOUVER, BC CA HOH OHOEmployee ID: 0001
+This information was provided to E*TRADE Securities LLC, a subsidiary of Morgan Stanley, ("E*TRADE") by your company. E*TRADE does not guarantee the accuracy
+or completeness of the information provided by your company. If a sale is associated with these shares, the trade confirmation provided by E*TRADE Securities LLC is
+the only accurate record of the sale transaction.
+The data shown on this statement is based on your company's records. The company reserves the right to make corrections to this data. The purchase shown on this
+statement is subject to the terms of the plan under which the purchase was made.
+08/19/2022 11:09:42 AM ET Page 1 of
+1
+
+

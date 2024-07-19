@@ -1,5 +1,5 @@
 use std::collections::HashSet;
-use std::io::Read;
+use std::io::{Read, Write};
 use std::path::PathBuf;
 
 use clap::Parser;
@@ -12,6 +12,7 @@ use crate::app::outfmt::text::TextWriter;
 use crate::portfolio::render::RenderTable;
 use crate::portfolio::{CsvTx, Currency, TxAction};
 use crate::util::rw::WriteHandle;
+use crate::write_errln;
 use crate::{peripheral::pdf, util::basic::SError};
 use crate::peripheral::broker::etrade;
 use super::broker::{etrade::BenefitEntry, BrokerTx};
@@ -76,15 +77,16 @@ fn parse_pdfs(files: &Vec<PathBuf>, debug: bool)
     Ok(PdfData{benefits, trade_confs})
 }
 
-fn dump_extracted_data(pdf_data: &PdfData, pretty: bool) {
+fn dump_extracted_data(pdf_data: &PdfData, pretty: bool,
+                       mut out_w: WriteHandle, mut err_w: WriteHandle) {
     let mut printer: Box<dyn AcbWriter> = if pretty {
-        Box::new(TextWriter::new(WriteHandle::stdout_write_handle()))
+        Box::new(TextWriter::new(out_w.clone()))
     } else {
-        Box::new(CsvWriter::new_to_writer(WriteHandle::stdout_write_handle()))
+        Box::new(CsvWriter::new_to_writer(out_w.clone()))
     };
 
     if pdf_data.benefits.is_empty() {
-        eprintln!("WARN: No benefits entries");
+         write_errln!(err_w, "WARN: No benefits entries");
     }
     let mut rt = RenderTable::default();
     rt.header.extend(vec![
@@ -95,7 +97,6 @@ fn dump_extracted_data(pdf_data: &PdfData, pretty: bool) {
         "plan_note", "sell_note", "filename"].into_iter().map(String::from));
 
     for b in &pdf_data.benefits {
-        // println!("{benefit:?}");
         rt.rows.push(vec![
             b.security.clone(),
             b.acquire_tx_date.to_string(),
@@ -116,9 +117,9 @@ fn dump_extracted_data(pdf_data: &PdfData, pretty: bool) {
     }
     let _ = printer.print_render_table(OutputType::Raw, "benefits", &rt).unwrap();
 
-    println!("");
+    let _ = writeln!(out_w, "");
     if pdf_data.trade_confs.is_empty() {
-        eprintln!("WARN: No trades entries");
+         write_errln!(err_w, "WARN: No trades entries");
     }
 
     let mut rt = RenderTable::default();
@@ -129,7 +130,6 @@ fn dump_extracted_data(pdf_data: &PdfData, pretty: bool) {
         ].into_iter().map(String::from));
 
     for t in &pdf_data.trade_confs {
-        // println!("{trade:?}");
         rt.rows.push(vec![
             t.security.clone(),
             format!("{} ({})", t.trade_date, t.trade_date_and_time),
@@ -224,14 +224,15 @@ fn txs_from_data(trade_data: &BenefitsAndTrades)
 
 }
 
-fn render_txs_from_data(trade_data: &BenefitsAndTrades, pretty: bool)
+fn render_txs_from_data(trade_data: &BenefitsAndTrades, pretty: bool,
+                        out_w: WriteHandle)
  -> Result<(), SError> {
     let txs = txs_from_data(trade_data)?;
 
     let mut printer: Box<dyn AcbWriter> = if pretty {
-        Box::new(TextWriter::new(WriteHandle::stdout_write_handle()))
+        Box::new(TextWriter::new(out_w))
     } else {
-        Box::new(CsvWriter::new_to_writer(WriteHandle::stdout_write_handle()))
+        Box::new(CsvWriter::new_to_writer(out_w))
     };
     let table_name = if pretty { "Benefit TXs" } else { "benefit_txs" };
     let csv_table = crate::portfolio::io::tx_csv::txs_to_csv_table(&txs);
@@ -413,7 +414,7 @@ fn amend_benefit_sales(pdf_data: PdfData)
 /// Run this script, giving the name of all PDFs as arguments.
 #[derive(Parser, Debug)]
 #[command(author, about, long_about)]
-struct Args {
+pub struct Args {
     /// ETRADE statement PDFs
     ///
     /// These can also be plain .txt files, and will not be interpreted as actual
@@ -439,18 +440,29 @@ struct Args {
 
 pub fn run() -> Result<(), ()> {
     let args = Args::parse();
+    run_with_args(
+        args,
+        WriteHandle::stdout_write_handle(),
+        WriteHandle::stderr_write_handle())
+}
 
+pub fn run_with_args(mut args: Args, out_w: WriteHandle, mut err_w: WriteHandle)
+-> Result<(), ()>  {
     if args.debug {
         crate::tracing::enable_trace_env(
             "acb::peripheral::etrade_plan_pdf_tx_extract_impl=debug");
     }
     crate::tracing::setup_tracing();
 
+    // Sort the files, so that we can deterministically output them in the same
+    // order. This affects tie-breaks when we have multiple TXs on the same day.
+    args.files.sort();
+
     let pdf_data = parse_pdfs(&args.files, args.debug)
-        .map_err(|e| eprintln!("{}", e))?;
+        .map_err(|e| write_errln!(err_w, "{}", e))?;
 
     if args.extract_only {
-        dump_extracted_data(&pdf_data, args.pretty);
+        dump_extracted_data(&pdf_data, args.pretty, out_w, err_w);
         return Ok(());
     }
 
@@ -458,19 +470,20 @@ pub fn run() -> Result<(), ()> {
     let benefits_and_trades = match amend_res {
         Ok(r) => {
             for w in r.warnings {
-                eprintln!("Warning: {w}");
+                write_errln!(err_w, "Warning: {w}");
             }
             r.benefits_and_trades
         },
         Err(errs) => {
             for err in errs {
-                eprintln!("Error: {err}");
+                write_errln!(err_w, "Error: {err}");
             }
             return Err(());
         },
     };
 
     if args.debug {
+        // Do not use err_w for debug.
         eprintln!("\nAmmended benefit entries:");
         for b in &benefits_and_trades.benefits {
             eprintln!("{b:#?}");
@@ -481,8 +494,8 @@ pub fn run() -> Result<(), ()> {
         }
     }
 
-    render_txs_from_data(&benefits_and_trades, args.pretty)
-        .map_err(|e| eprintln!("Error: {e}"))?;
+    render_txs_from_data(&benefits_and_trades, args.pretty, out_w)
+        .map_err(|e| write_errln!(err_w, "Error: {e}"))?;
 
     Ok(())
 }
