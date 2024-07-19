@@ -15,7 +15,7 @@ fn run_and_get_output(args: Args) -> (Result<(), ()>, String, String) {
 fn parse_args(mut flags: Vec<&str>) -> Args {
     let mut args = vec!["tx-export-convert"];
     args.append(&mut flags);
-    args.push("./pytest/QT_Test_Export.xlsx");
+    args.push("./tests/data/QT_Test_Export.xlsx");
     Args::parse_from(args)
 }
 

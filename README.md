@@ -15,7 +15,8 @@ This is primarily designed for Canadians filing tax returns, who have stocks, RS
 - Supports multiple "affiliated persons", or "affiliates". Eg. your spouse or your registered accounts (RRSPs, TFSAs, etc.).
 
 ### "Bonus" Script Features
-In addition to the main `acb` app, a few extra scripts are provided for convenience. See the `py/` directory (you'll need to run `setup.sh` first).
+In addition to the main `acb` app, a few extra utilities are provided for convenience.
+Most/all of the complex scripts are also compiled into `target/...` or your cargo bin (see installation below), though some simpler scripts (without any dependencies) are in the `py/` directory.
 - tx-export-convert: Convert exported transaction spreadsheets to acb-compatible csv files (Questrade-only for now)
 - etrade-plan-pdf-tx-extract: Generate acb csv files from ETRADE stock plan PDFs.
 
@@ -126,6 +127,8 @@ The executables will go into the `target/debug` or `target/release` directory.
 ### Testing
 ```
 make test
+# OR
+cargo t <options>
 ```
 
 ## Uninstall
