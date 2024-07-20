@@ -1,4 +1,8 @@
-use acb::{peripheral::tx_export_convert_impl::{run_with_args, Args}, testlib::assert_vec_eq, util::rw::{StrReader, StringBuffer, WriteHandle}};
+use acb::{
+    peripheral::tx_export_convert_impl::{run_with_args, Args},
+    testlib::assert_vec_eq,
+    util::rw::{StrReader, StringBuffer, WriteHandle},
+};
 use clap::Parser;
 
 fn run_and_get_output(args: Args) -> (Result<(), ()>, String, String) {
@@ -21,15 +25,17 @@ fn parse_args(mut flags: Vec<&str>) -> Args {
 
 fn padded_csv_text_to_unpadded(padded_csv_text: &str) -> String {
     let r = StrReader::from(padded_csv_text);
-    let mut csv_r =
-        csv::ReaderBuilder::new().has_headers(false).from_reader(r);
+    let mut csv_r = csv::ReaderBuilder::new().has_headers(false).from_reader(r);
     let mut sbuf = StringBuffer::new();
     {
-        let mut csv_w = csv::WriterBuilder::new().has_headers(false).from_writer(&mut sbuf);
+        let mut csv_w =
+            csv::WriterBuilder::new().has_headers(false).from_writer(&mut sbuf);
         for rec_res in csv_r.records() {
-            let trimmed_record: Vec<String> = rec_res.unwrap().iter().map(|v| {
-                v.to_string().trim().to_string()
-            } ).collect();
+            let trimmed_record: Vec<String> = rec_res
+                .unwrap()
+                .iter()
+                .map(|v| v.to_string().trim().to_string())
+                .collect();
             csv_w.write_record(trimmed_record).unwrap();
         }
     }
@@ -38,16 +44,19 @@ fn padded_csv_text_to_unpadded(padded_csv_text: &str) -> String {
 
 fn remove_columns(csv_text: &str, col_indexes: &Vec<usize>) -> String {
     let r = StrReader::from(csv_text);
-    let mut csv_r =
-        csv::ReaderBuilder::new().has_headers(false).from_reader(r);
+    let mut csv_r = csv::ReaderBuilder::new().has_headers(false).from_reader(r);
     let mut sbuf = StringBuffer::new();
     {
-        let mut csv_w = csv::WriterBuilder::new().has_headers(false).from_writer(&mut sbuf);
+        let mut csv_w =
+            csv::WriterBuilder::new().has_headers(false).from_writer(&mut sbuf);
         for rec_res in csv_r.records() {
-            let filtered_record: Vec<String> = rec_res.unwrap().into_iter()
-            .enumerate().filter(|(i, _)| !col_indexes.contains(i))
-            .map(|(_, v)| v.to_string())
-            .collect();
+            let filtered_record: Vec<String> = rec_res
+                .unwrap()
+                .into_iter()
+                .enumerate()
+                .filter(|(i, _)| !col_indexes.contains(i))
+                .map(|(_, v)| v.to_string())
+                .collect();
             csv_w.write_record(filtered_record).unwrap();
         }
     }
@@ -56,7 +65,8 @@ fn remove_columns(csv_text: &str, col_indexes: &Vec<usize>) -> String {
 
 fn include_lines(s: &str, include_pattern: &str) -> String {
     let pattern = regex::Regex::new(include_pattern).unwrap();
-    s.split("\n").into_iter()
+    s.split("\n")
+        .into_iter()
         .filter(|l| pattern.is_match(l) || l.contains("security"))
         .collect::<Vec<&str>>()
         .join("\n")
@@ -64,7 +74,8 @@ fn include_lines(s: &str, include_pattern: &str) -> String {
 
 fn exclude_lines(s: &str, exclude_pattern: &str) -> String {
     let pattern = regex::Regex::new(exclude_pattern).unwrap();
-    s.split("\n").into_iter()
+    s.split("\n")
+        .into_iter()
         .filter(|l| !pattern.is_match(l) || l.contains("security"))
         .collect::<Vec<&str>>()
         .join("\n")
@@ -83,8 +94,8 @@ fn verify_csv(csv_str: &str, exp_csv_str: &str) {
 
 #[test]
 fn test_txs_basic_and_ignored_actions() {
-    let (res, out, err) = run_and_get_output(
-        parse_args(vec!["--account", ".", "--sheet", "TXs"]));
+    let (res, out, err) =
+        run_and_get_output(parse_args(vec!["--account", ".", "--sheet", "TXs"]));
 
     assert_eq!("", &err);
     res.unwrap();
@@ -116,23 +127,42 @@ fn test_txs_basic_and_ignored_actions() {
     verify_csv(&out, &exp_csv);
 
     // Test filters
-    let (res, out, err) = run_and_get_output(
-        parse_args(vec!["--account", "margin", "--sheet", "TXs"]));
+    let (res, out, err) = run_and_get_output(parse_args(vec![
+        "--account",
+        "margin",
+        "--sheet",
+        "TXs",
+    ]));
     assert_eq!("", &err);
     res.unwrap();
-    verify_csv(&out,
-        &remove_columns(&include_lines(&exp_csv, "margin"), &vec![AFFIL_COL]));
+    verify_csv(
+        &out,
+        &remove_columns(&include_lines(&exp_csv, "margin"), &vec![AFFIL_COL]),
+    );
 
     let (res, out, err) = run_and_get_output(parse_args(vec![
-        "--account", "margin", "--security", "UCO","--sheet", "TXs"]));
+        "--account",
+        "margin",
+        "--security",
+        "UCO",
+        "--sheet",
+        "TXs",
+    ]));
     assert_eq!("", &err);
     res.unwrap();
     const AFFIL_COL: usize = 8;
-    verify_csv(&out,
-        &remove_columns(&include_lines(&exp_csv, r"UCO.*margin"), &vec![AFFIL_COL]));
+    verify_csv(
+        &out,
+        &remove_columns(&include_lines(&exp_csv, r"UCO.*margin"), &vec![AFFIL_COL]),
+    );
 
     let (res, out, err) = run_and_get_output(parse_args(vec![
-        "--account", ".", "--no-fx","--sheet", "TXs"]));
+        "--account",
+        ".",
+        "--no-fx",
+        "--sheet",
+        "TXs",
+    ]));
     assert_eq!("", &err);
     res.unwrap();
     verify_csv(&out, &exclude_lines(&exp_csv, r"USD\.FX"));
@@ -146,8 +176,8 @@ const BASIC_HEADER: &str =
 
 #[test]
 fn test_fxt_basic() {
-    let (res, out, err) = run_and_get_output(
-        parse_args(vec!["--account", ".", "--sheet", "FXTs"]));
+    let (res, out, err) =
+        run_and_get_output(parse_args(vec!["--account", ".", "--sheet", "FXTs"]));
 
     assert_eq!("", &err);
     res.unwrap();
@@ -160,8 +190,13 @@ fn test_fxt_basic() {
     verify_csv(&out, &exp_csv);
 
     // Filter all FXTs
-    let (res, out, err) = run_and_get_output(
-        parse_args(vec!["--account", ".", "--no-fx", "--sheet", "FXTs"]));
+    let (res, out, err) = run_and_get_output(parse_args(vec![
+        "--account",
+        ".",
+        "--no-fx",
+        "--sheet",
+        "FXTs",
+    ]));
     assert_eq!("", &err);
     res.unwrap();
     verify_csv(&out, BASIC_HEADER);
@@ -169,8 +204,12 @@ fn test_fxt_basic() {
 
 #[test]
 fn test_tx_errors() {
-    let (res, out, err) = run_and_get_output(
-        parse_args(vec!["--account", ".", "--sheet", "TX Errors"]));
+    let (res, out, err) = run_and_get_output(parse_args(vec![
+        "--account",
+        ".",
+        "--sheet",
+        "TX Errors",
+    ]));
 
     res.unwrap_err();
     // Partial shares are allowed
@@ -204,8 +243,12 @@ Errors: - Row 2: Unable to parse date \"2023-1-7\"
 
 #[test]
 fn test_fxt_errors() {
-    let (res, out, err) = run_and_get_output(
-        parse_args(vec!["--account", ".", "--sheet", "FXT Errors"]));
+    let (res, out, err) = run_and_get_output(parse_args(vec![
+        "--account",
+        ".",
+        "--sheet",
+        "FXT Errors",
+    ]));
 
     res.unwrap_err();
     verify_csv(&out, "\
@@ -230,8 +273,8 @@ Errors: - Row 5: Both FXTs have positive amounts
 
 #[test]
 fn test_sort() {
-    let (res, out, err) = run_and_get_output(
-        parse_args(vec!["--account", ".", "--sheet", "Sorting"]));
+    let (res, out, err) =
+        run_and_get_output(parse_args(vec!["--account", ".", "--sheet", "Sorting"]));
 
     assert_eq!("", &err);
     res.unwrap();

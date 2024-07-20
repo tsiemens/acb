@@ -19,8 +19,10 @@ use super::SheetToTxsErr;
 const QUESTRADE_ACCOUNT_BROKER_NAME: &str = "Questrade";
 
 /// Converts a QT spreadsheet into Txs
-pub fn sheet_to_txs(sheet: &Range, fpath: Option<&std::path::Path>)
--> Result<Vec<BrokerTx>, SheetToTxsErr> {
+pub fn sheet_to_txs(
+    sheet: &Range,
+    fpath: Option<&std::path::Path>,
+) -> Result<Vec<BrokerTx>, SheetToTxsErr> {
     // Column names:
     //  'Transaction Date', 'Settlement Date', 'Action''Symbol', 'Description',
     //  'Quantity', 'Price', 'Gross Amount', 'Commission', 'Net Amount',
@@ -44,8 +46,13 @@ pub fn sheet_to_txs(sheet: &Range, fpath: Option<&std::path::Path>)
 
     let mut rows = sheet.rows();
 
-    let mut reader = crate::peripheral::excel::SheetReader::new(&mut rows)
-        .map_err(|e| SheetToTxsErr{ txs: None, errors: vec![e] } )?;
+    let mut reader =
+        crate::peripheral::excel::SheetReader::new(&mut rows).map_err(|e| {
+            SheetToTxsErr {
+                txs: None,
+                errors: vec![e],
+            }
+        })?;
 
     let mut txs = Vec::<BrokerTx>::new();
 
@@ -106,7 +113,9 @@ pub fn sheet_to_txs(sheet: &Range, fpath: Option<&std::path::Path>)
             let pre_alias_symbol = reader.get_str("Symbol")?;
             if pre_alias_symbol.is_empty() {
                 return Err(SheetParseError::new(
-                    row_num, "Symbol was empty".to_string()));
+                    row_num,
+                    "Symbol was empty".to_string(),
+                ));
             }
 
             if action_str == "DIV" {
@@ -192,7 +201,7 @@ pub fn sheet_to_txs(sheet: &Range, fpath: Option<&std::path::Path>)
                 row_num: row_num as u32,
                 account: account,
                 sort_tiebreak: None,
-                filename: fpath.map(|p| p.to_string_lossy().to_string())
+                filename: fpath.map(|p| p.to_string_lossy().to_string()),
             };
             txs.push(b_tx.clone());
 
@@ -213,13 +222,19 @@ pub fn sheet_to_txs(sheet: &Range, fpath: Option<&std::path::Path>)
         Err((txs, e)) => {
             errors.push(e);
             txs
-        },
-    }.iter().map(|t| (*t).clone()).collect();
+        }
+    }
+    .iter()
+    .map(|t| (*t).clone())
+    .collect();
     // These will get sorted by the caller.
     txs.append(&mut fx_txs);
 
     if errors.len() > 0 {
-        Err(SheetToTxsErr{ txs: Some(txs), errors: errors })
+        Err(SheetToTxsErr {
+            txs: Some(txs),
+            errors: errors,
+        })
     } else {
         Ok(txs)
     }

@@ -6,8 +6,13 @@ use rust_decimal::Decimal;
 use time::Date;
 
 use crate::{
-    app::outfmt::model::AcbWriter, peripheral::pdf, portfolio::render::RenderTable,
-    util::{basic::SError, date::parse_month, decimal::dollar_precision_str, rw::WriteHandle}
+    app::outfmt::model::AcbWriter,
+    peripheral::pdf,
+    portfolio::render::RenderTable,
+    util::{
+        basic::SError, date::parse_month, decimal::dollar_precision_str,
+        rw::WriteHandle,
+    },
 };
 
 #[derive(PartialEq, Eq, Clone, Debug)]
@@ -88,7 +93,7 @@ mod sm {
                         if line.contains("ALLOCATION") {
                             self.state = State::LookingForFirstSecurityStart;
                         }
-                    },
+                    }
                     State::LookingForFirstSecurityStart => {
                         if line.contains(SEC_SEPARATOR) {
                             self.state = State::GatheringSecurities;
@@ -98,7 +103,7 @@ mod sm {
                             self.gather_total_line(line)?;
                             return Ok(());
                         }
-                    },
+                    }
                     State::GatheringSecurities => {
                         if TOTAL_ROW_RE.is_match(line) {
                             // Maybe done. Try to terminate last security.
@@ -118,7 +123,7 @@ mod sm {
                         } else {
                             self.gather_security_line(line)?;
                         }
-                    },
+                    }
                 }
             }
 
@@ -148,8 +153,13 @@ mod sm {
             let fmv_m = m.get(1).unwrap();
 
             let fmv = crate::util::decimal::parse_large_decimal(fmv_m.as_str())
-            .map_err(|e| format!("Unable to parse FMV from \"{}\": {}",
-                fmv_m.as_str(), e.to_string()))?;
+                .map_err(|e| {
+                    format!(
+                        "Unable to parse FMV from \"{}\": {}",
+                        fmv_m.as_str(),
+                        e.to_string()
+                    )
+                })?;
 
             self.total_fmv = fmv;
             Ok(())
@@ -170,13 +180,22 @@ mod sm {
                 let alloc_m = m.name("alloc").unwrap();
                 let fmv_m = m.name("fmv").unwrap();
 
-                let allocation = Decimal::from_str_exact(
-                    alloc_m.as_str()).map_err(
-                        |e| format!("Unable to parse allocation from \"{}\": {}",
-                                    alloc_m.as_str(), e.to_string()))?;
+                let allocation =
+                    Decimal::from_str_exact(alloc_m.as_str()).map_err(|e| {
+                        format!(
+                            "Unable to parse allocation from \"{}\": {}",
+                            alloc_m.as_str(),
+                            e.to_string()
+                        )
+                    })?;
                 let fmv = crate::util::decimal::parse_large_decimal(fmv_m.as_str())
-                    .map_err(|e| format!("Unable to parse FMV from \"{}\": {}",
-                        fmv_m.as_str(), e.to_string()))?;
+                    .map_err(|e| {
+                        format!(
+                            "Unable to parse FMV from \"{}\": {}",
+                            fmv_m.as_str(),
+                            e.to_string()
+                        )
+                    })?;
 
                 Ok(Fmv {
                     security_desc,
@@ -184,14 +203,14 @@ mod sm {
                     fmv,
                 })
             } else {
-                Err(format!("Unable to parse allocation and FMV from \"{}\"",
-                            security_text))
+                Err(format!(
+                    "Unable to parse allocation and FMV from \"{}\"",
+                    security_text
+                ))
             }
         }
     }
-
 }
-
 
 /// In a page where we already know there is the allocation table, parses out
 /// each security and its respective allocation. Returns these and the total.
@@ -226,8 +245,7 @@ pub struct StatementFmvs {
 /// Usage:
 /// parse_statement_text(my_vec_of_string.iter())
 /// parse_statement_text(my_vec_of_rc_string.iter().cloned())
-pub fn parse_statement_text<'a, I, T>(pages: I)
--> Result<StatementFmvs, SError>
+pub fn parse_statement_text<'a, I, T>(pages: I) -> Result<StatementFmvs, SError>
 where
     I: Iterator<Item = T>,
     T: std::borrow::Borrow<String> + 'a,
@@ -235,23 +253,35 @@ where
     let mut month_date: Option<Date> = None;
 
     let current_month_re = RegexBuilder::new(
-        r"\bCurrent month:\s+(?P<month>\S+) (?P<day>\d+), (?P<year>\d+)")
-        .case_insensitive(true)
-        .build().unwrap();
+        r"\bCurrent month:\s+(?P<month>\S+) (?P<day>\d+), (?P<year>\d+)",
+    )
+    .case_insensitive(true)
+    .build()
+    .unwrap();
 
-    let fmv_page_marker = Regex::new(r"Securities\s+Owned\s+Combined\s+in\s+\(CAD\)")
-        .unwrap();
+    let fmv_page_marker =
+        Regex::new(r"Securities\s+Owned\s+Combined\s+in\s+\(CAD\)").unwrap();
 
     for page in pages {
         if month_date.is_none() {
             if let Some(m) = current_month_re.captures(page.borrow()) {
                 if let Ok(month) = parse_month(m.name("month").unwrap().as_str()) {
-                    let year = m.name("year").unwrap().as_str().parse::<i32>()
+                    let year = m
+                        .name("year")
+                        .unwrap()
+                        .as_str()
+                        .parse::<i32>()
                         .map_err(|e| e.to_string())?;
-                    let day = m.name("day").unwrap().as_str().parse::<u8>()
+                    let day = m
+                        .name("day")
+                        .unwrap()
+                        .as_str()
+                        .parse::<u8>()
                         .map_err(|e| e.to_string())?;
-                    month_date = Some(Date::from_calendar_date(year, month, day).
-                        map_err(|e| e.to_string())?);
+                    month_date = Some(
+                        Date::from_calendar_date(year, month, day)
+                            .map_err(|e| e.to_string())?,
+                    );
                 }
             }
         }
@@ -266,7 +296,7 @@ where
             month_date: some_month,
             fmvs,
             total,
-        })
+        });
     }
 
     Err("Did not find FMVs in statement".to_string())
@@ -284,7 +314,8 @@ fn sec_desc_abbrev(sec_desc: &str) -> String {
         m.get(1).unwrap().as_str().to_string()
     } else {
         let useable_part_re = Regex::new(r"^[a-zA-Z\d]+$").unwrap();
-        let parts: Vec<String> = sec_desc.split(" ")
+        let parts: Vec<String> = sec_desc
+            .split(" ")
             .map(|p| p.trim())
             .filter(|p| useable_part_re.is_match(p))
             .map(|p| p.to_string())
@@ -294,10 +325,13 @@ fn sec_desc_abbrev(sec_desc: &str) -> String {
         if joined_parts.len() <= 8 {
             joined_parts
         } else if parts.len() <= 8 {
-            parts.into_iter().map(|p| p.get(..1).unwrap().to_string())
-                .collect::<Vec<String>>().join("")
+            parts
+                .into_iter()
+                .map(|p| p.get(..1).unwrap().to_string())
+                .collect::<Vec<String>>()
+                .join("")
         } else {
-            joined_parts.get(.. joined_parts.len().min(8)).unwrap().to_string()
+            joined_parts.get(..joined_parts.len().min(8)).unwrap().to_string()
         }
     }
 }
@@ -308,8 +342,10 @@ fn abbrev_alt(sec_abbrev: &str, alt: u32) -> String {
     format!("{sec_abbrev}_{alt}")
 }
 
-fn parse_statement(file_path: &PathBuf, parallel_pages: bool)
- -> Result<StatementFmvs, SError> {
+fn parse_statement(
+    file_path: &PathBuf,
+    parallel_pages: bool,
+) -> Result<StatementFmvs, SError> {
     tracing::info!("Parsing {}...", file_path.to_string_lossy());
     let doc = lopdf::Document::load(&file_path).map_err(|e| {
         format!("Error loading {}: {}", file_path.to_string_lossy(), e)
@@ -318,16 +354,15 @@ fn parse_statement(file_path: &PathBuf, parallel_pages: bool)
     // room and also check 6 and 8 before falling back to the rest.
     let optimal_page_groups = vec![vec![1, 7], vec![6, 8]];
     let page_groups = pdf::LazyPageTextVec::safe_page_chunks_with_remainder(
-        &doc, &optimal_page_groups);
-    let mut lazy_pages = pdf::LazyPageTextVec::new(
-        std::sync::Arc::new(doc), parallel_pages);
+        &doc,
+        &optimal_page_groups,
+    );
+    let mut lazy_pages =
+        pdf::LazyPageTextVec::new(std::sync::Arc::new(doc), parallel_pages);
     let page_iter = lazy_pages.optimized_iter(page_groups);
 
-    let statement_fmvs = parse_statement_text(
-        page_iter.map(|(_, txt)| txt))
-        .map_err(|e| {
-            format!("Error in {}: {}", file_path.to_string_lossy(), e)
-        })?;
+    let statement_fmvs = parse_statement_text(page_iter.map(|(_, txt)| txt))
+        .map_err(|e| format!("Error in {}: {}", file_path.to_string_lossy(), e))?;
     Ok(statement_fmvs)
 }
 
@@ -366,8 +401,8 @@ fn render_table_for_statements(statements: &Vec<StatementFmvs>) -> RenderTable {
         }
     }
 
-    let mut sorted_sec_abbrevs: Vec<&String> = Vec::from_iter(
-        sec_abbrevs.iter().map(|(a, _)| a));
+    let mut sorted_sec_abbrevs: Vec<&String> =
+        Vec::from_iter(sec_abbrevs.iter().map(|(a, _)| a));
     sorted_sec_abbrevs.sort();
 
     for sec_ab in &sorted_sec_abbrevs {
@@ -378,12 +413,13 @@ fn render_table_for_statements(statements: &Vec<StatementFmvs>) -> RenderTable {
     let s = String::from;
 
     table.header.append(&mut vec![s("Month"), s("Total FMV (CAD)")]);
-    table.header.append(&mut sorted_sec_abbrevs.iter()
-                            .map(|s| (**s).clone()).collect());
+    table
+        .header
+        .append(&mut sorted_sec_abbrevs.iter().map(|s| (**s).clone()).collect());
 
     for st in statements {
         let sec_desc_to_fmv = HashMap::<&String, &Fmv>::from_iter(
-            st.fmvs.iter().map(|f| (&f.security_desc, f))
+            st.fmvs.iter().map(|f| (&f.security_desc, f)),
         );
         let mut row = vec![
             crate::util::date::to_pretty_string(&st.month_date),
@@ -421,16 +457,16 @@ struct Args {
 
 /// Parses statements in parallel. Pages are all parsed in an (optimized) sequence.
 /// (I don't know how to do nested tasks right now).
-async fn parse_statements_parallel(file_paths: &Vec<PathBuf>)
--> Result<Vec<StatementFmvs>, Vec<SError>> {
+async fn parse_statements_parallel(
+    file_paths: &Vec<PathBuf>,
+) -> Result<Vec<StatementFmvs>, Vec<SError>> {
     let start = std::time::Instant::now();
 
     let mut handles = Vec::with_capacity(file_paths.len());
     for file_path in file_paths {
         let fp_clone = file_path.clone();
-        let handle = async_std::task::spawn(async move {
-            parse_statement(&fp_clone, false)
-        });
+        let handle =
+            async_std::task::spawn(async move { parse_statement(&fp_clone, false) });
         handles.push(handle);
     }
 
@@ -443,26 +479,34 @@ async fn parse_statements_parallel(file_paths: &Vec<PathBuf>)
     let mut errors = Vec::new();
     for result in results {
         match result {
-            Ok(st) => { statements.push(st); },
-            Err(e) => { errors.push(e); },
+            Ok(st) => {
+                statements.push(st);
+            }
+            Err(e) => {
+                errors.push(e);
+            }
         }
     }
 
     tracing::debug!("parse_statements_async took {:?}", start.elapsed());
-    if errors.is_empty() { Ok(statements) } else { Err(errors) }
+    if errors.is_empty() {
+        Ok(statements)
+    } else {
+        Err(errors)
+    }
 }
 
 /// Parses statements, and loads pages asynchronously, but processes
 /// statements sequentially (I don't know how to do nested tasks right now).
-fn parse_statements_pages_parallel(file_paths: &Vec<PathBuf>)
--> Result<Vec<StatementFmvs>, Vec<SError>> {
+fn parse_statements_pages_parallel(
+    file_paths: &Vec<PathBuf>,
+) -> Result<Vec<StatementFmvs>, Vec<SError>> {
     let start = std::time::Instant::now();
 
     let mut statements = Vec::<StatementFmvs>::new();
     for file_path in file_paths {
-        let statement_fmvs = parse_statement(&file_path, true).map_err(|e| {
-            vec![e]
-        })?;
+        let statement_fmvs =
+            parse_statement(&file_path, true).map_err(|e| vec![e])?;
         statements.push(statement_fmvs);
     }
 
@@ -487,9 +531,8 @@ pub fn run() -> Result<(), ()> {
             async_std::task::block_on(parse_statements_parallel(&args.files))
         } else {
             parse_statements_pages_parallel(&args.files)
-        }.map_err(|e| {
-            eprintln!("{}", e.join("\n"))
-        })?;
+        }
+        .map_err(|e| eprintln!("{}", e.join("\n")))?;
 
     // Month is not Ord for some reason, so mock out a date for now.
     statements.sort_by_cached_key(|st| st.month_date);
@@ -498,12 +541,20 @@ pub fn run() -> Result<(), ()> {
 
     let write_res = if args.pretty {
         crate::app::outfmt::text::TextWriter::new(WriteHandle::stdout_write_handle())
-            .print_render_table(crate::app::outfmt::model::OutputType::Raw,
-                                "FMVs", &table)
+            .print_render_table(
+                crate::app::outfmt::model::OutputType::Raw,
+                "FMVs",
+                &table,
+            )
     } else {
-        crate::app::outfmt::csv::CsvWriter::new_to_writer(WriteHandle::stdout_write_handle())
-        .print_render_table(crate::app::outfmt::model::OutputType::Raw,
-                            "FMVs", &table)
+        crate::app::outfmt::csv::CsvWriter::new_to_writer(
+            WriteHandle::stdout_write_handle(),
+        )
+        .print_render_table(
+            crate::app::outfmt::model::OutputType::Raw,
+            "FMVs",
+            &table,
+        )
     };
 
     if let Err(e) = write_res {
@@ -522,8 +573,8 @@ mod tests {
 
     use crate::testlib::{assert_big_struct_eq, assert_vec_eq};
 
-    use super::{parse_fmvs_from_page, parse_statement_text, Fmv};
     use super::sm::FmvParseSm;
+    use super::{parse_fmvs_from_page, parse_statement_text, Fmv};
 
     fn s(st: &str) -> String {
         st.to_string()
@@ -532,21 +583,26 @@ mod tests {
     #[test]
     fn test_security_text_to_fmv() {
         // We can get some interestingly long names with GICs
-        assert_eq!(FmvParseSm::security_text_to_fmv(
-            " FOO BAR 5% 01/01/2024 (FOOBAR) 99   100.0 1,234.0").unwrap(),
-            Fmv{
+        assert_eq!(
+            FmvParseSm::security_text_to_fmv(
+                " FOO BAR 5% 01/01/2024 (FOOBAR) 99   100.0 1,234.0"
+            )
+            .unwrap(),
+            Fmv {
                 security_desc: s("FOO BAR 5% 01/01/2024 (FOOBAR) 99"),
                 allocation: dec!(100.00),
                 fmv: dec!(1234)
-            });
+            }
+        );
 
-        assert_eq!(FmvParseSm::security_text_to_fmv(
-            "   X   55.55 0").unwrap(),
-            Fmv{
+        assert_eq!(
+            FmvParseSm::security_text_to_fmv("   X   55.55 0").unwrap(),
+            Fmv {
                 security_desc: s("X"),
                 allocation: dec!(55.55),
                 fmv: dec!(0)
-            });
+            }
+        );
 
         // Various errors
 
@@ -566,14 +622,17 @@ mod tests {
 
     #[test]
     fn test_parse_fmvs_from_page_basic() {
-        let (fmvs, total) = parse_fmvs_from_page("
+        let (fmvs, total) = parse_fmvs_from_page(
+            "
             ALLOCATION (%)² MARKET VALUE ($)³
-            100.0 0.0")
-            .unwrap();
+            100.0 0.0",
+        )
+        .unwrap();
         assert_eq!(fmvs, vec![]);
         assert_eq!(total, dec!(0));
 
-        let (fmvs, total) = parse_fmvs_from_page("
+        let (fmvs, total) = parse_fmvs_from_page(
+            "
             ALLOCATION (%)² MARKET VALUE ($)³
 
             ■ BLABLA ETF (BLABLA) 80.0 80,000.0
@@ -587,22 +646,38 @@ mod tests {
             15.0 15,000.0
 
             100.0 100,000.01
-            ")
-            .unwrap();
-        assert_vec_eq(fmvs, vec![
-            Fmv { security_desc: s("BLABLA ETF (BLABLA)"),
-                  allocation: dec!(80), fmv: dec!(80000) },
-            Fmv { security_desc: s("SOME GIC 01/01/2024 4.00% 1Y DUE 01/01/2024  \
-                                    INT  4.000% (XXXXXX)"),
-                  allocation: dec!(5), fmv: dec!(5000.1) },
-            Fmv { security_desc: s("ANOTHER GIC 01/01/2025 5.00% 2Y CPD DUE \
+            ",
+        )
+        .unwrap();
+        assert_vec_eq(
+            fmvs,
+            vec![
+                Fmv {
+                    security_desc: s("BLABLA ETF (BLABLA)"),
+                    allocation: dec!(80),
+                    fmv: dec!(80000),
+                },
+                Fmv {
+                    security_desc: s(
+                        "SOME GIC 01/01/2024 4.00% 1Y DUE 01/01/2024  \
+                                    INT  4.000% (XXXXXX)",
+                    ),
+                    allocation: dec!(5),
+                    fmv: dec!(5000.1),
+                },
+                Fmv {
+                    security_desc: s("ANOTHER GIC 01/01/2025 5.00% 2Y CPD DUE \
                                     01/01/2025  INT  5.00% (YYYYYY)"),
-                  allocation: dec!(15), fmv: dec!(15000) },
-        ]);
+                    allocation: dec!(15),
+                    fmv: dec!(15000),
+                },
+            ],
+        );
         assert_eq!(total, dec!(100000.01));
 
         // Test a single security, which fakes out the 100% line.
-        let (fmvs, total) = parse_fmvs_from_page("
+        let (fmvs, total) = parse_fmvs_from_page(
+            "
             ALLOCATION (%)² MARKET VALUE ($)³
 
             ■ SOME GIC 01/01/2024
@@ -610,49 +685,64 @@ mod tests {
             100.0 99,999.99
 
             100.0 100,000.00
-            ")
-            .unwrap();
-        assert_vec_eq(fmvs, vec![
-            Fmv { security_desc: s("SOME GIC 01/01/2024 4.00% 1Y DUE 01/01/2024  \
+            ",
+        )
+        .unwrap();
+        assert_vec_eq(
+            fmvs,
+            vec![Fmv {
+                security_desc: s("SOME GIC 01/01/2024 4.00% 1Y DUE 01/01/2024  \
                                     INT  4.000% (XXXXXX)"),
-                  allocation: dec!(100), fmv: dec!(99999.99) },
-        ]);
+                allocation: dec!(100),
+                fmv: dec!(99999.99),
+            }],
+        );
         assert_eq!(total, dec!(100000.00));
     }
 
     #[test]
     fn test_parse_fmvs_from_page_errors() {
         // Nothing
-        let err = parse_fmvs_from_page("")
-        .unwrap_err();
+        let err = parse_fmvs_from_page("").unwrap_err();
         assert_eq!(err, "No header or allocation total line found");
 
         // No header
-        let err = parse_fmvs_from_page("
-        100.0 0.0")
+        let err = parse_fmvs_from_page(
+            "
+        100.0 0.0",
+        )
         .unwrap_err();
         assert_eq!(err, "No header or allocation total line found");
 
         // No footer or securities
-        let err = parse_fmvs_from_page("ALLOCATION (%) MARKET VALUE ($)")
-        .unwrap_err();
+        let err =
+            parse_fmvs_from_page("ALLOCATION (%) MARKET VALUE ($)").unwrap_err();
         assert_eq!(err, "No header or allocation total line found");
 
         // No footer
-        let err = parse_fmvs_from_page("
+        let err = parse_fmvs_from_page(
+            "
             ALLOCATION (%)² MARKET VALUE ($)³
 
-            ■ BLABLA ETF (BLABLA) 80.0 80,000.0").unwrap_err();
+            ■ BLABLA ETF (BLABLA) 80.0 80,000.0",
+        )
+        .unwrap_err();
         assert_eq!(err, "No header or allocation total line found");
 
         // Unterminated security / missing value(s)
-        let err = parse_fmvs_from_page("
+        let err = parse_fmvs_from_page(
+            "
             ALLOCATION (%)² MARKET VALUE ($)³
             ■ FOO ETF (FOO)
             ■ BAR ETF (BAR) 80.0 1,000
             100.0 50,000.0
-            ").unwrap_err();
-        assert_eq!(err, "Unable to parse allocation and FMV from \"FOO ETF (FOO)\"");
+            ",
+        )
+        .unwrap_err();
+        assert_eq!(
+            err,
+            "Unable to parse allocation and FMV from \"FOO ETF (FOO)\""
+        );
     }
 
     #[test]
@@ -670,43 +760,50 @@ mod tests {
         100.0 100,000.01
         ");
 
-        let statement = parse_statement_text(vec![
-            month_page.clone(),
-            fmv_page.clone()
-        ].iter() ).unwrap();
+        let statement =
+            parse_statement_text(vec![month_page.clone(), fmv_page.clone()].iter())
+                .unwrap();
 
         let exp_fmvs = super::StatementFmvs {
             month_date: time::Date::from_calendar_date(
-                2024, time::Month::February, 28).unwrap(),
-            fmvs: vec![
-                Fmv { security_desc: s("BLABLA ETF (BLABLA)"),
-                      allocation: dec!(80), fmv: dec!(80000) },
-            ],
+                2024,
+                time::Month::February,
+                28,
+            )
+            .unwrap(),
+            fmvs: vec![Fmv {
+                security_desc: s("BLABLA ETF (BLABLA)"),
+                allocation: dec!(80),
+                fmv: dec!(80000),
+            }],
             total: dec!(100000.01),
         };
 
         assert_big_struct_eq(&statement, &exp_fmvs);
 
         // Two FMV pages for some reason (second is ignored)
-        let statement = parse_statement_text(vec![
-            month_page.clone(),
-            fmv_page.clone(),
-            s("Securities Owned Combined in (CAD)
+        let statement = parse_statement_text(
+            vec![
+                month_page.clone(),
+                fmv_page.clone(),
+                s("Securities Owned Combined in (CAD)
             ALLOCATION (%) MARKET VALUE ($)
             ■ FOO ETF (FOO) 80.0 80,000.0
             100.0 100,000.01
             "),
-        ].iter()).unwrap();
+            ]
+            .iter(),
+        )
+        .unwrap();
 
         assert_big_struct_eq(&statement, &exp_fmvs);
 
         // Month page second, for whatever reason
         assert_eq!(
-            parse_statement_text(vec![
-                fmv_page.clone(),
-                month_page.clone(),
-            ].iter()).unwrap_err(),
-            s("Could not find month"));
+            parse_statement_text(vec![fmv_page.clone(), month_page.clone(),].iter())
+                .unwrap_err(),
+            s("Could not find month")
+        );
     }
 
     #[test]
@@ -714,9 +811,18 @@ mod tests {
         assert_eq!(super::sec_desc_abbrev("Bla bla bla (BXX12)"), "BXX12");
         assert_eq!(super::sec_desc_abbrev("Bla bla bla (BXX12) "), "BXX12");
         assert_eq!(super::sec_desc_abbrev("Bla bla bla"), "Bbb");
-        assert_eq!(super::sec_desc_abbrev("Bla bla bla (some paranthetical)"), "Bbb");
-        assert_eq!(super::sec_desc_abbrev("Bl Xi Z (some paranthetical)"), "BlXiZ");
-        assert_eq!(super::sec_desc_abbrev("Bla bla (some paranthetical)"), "Blabla");
+        assert_eq!(
+            super::sec_desc_abbrev("Bla bla bla (some paranthetical)"),
+            "Bbb"
+        );
+        assert_eq!(
+            super::sec_desc_abbrev("Bl Xi Z (some paranthetical)"),
+            "BlXiZ"
+        );
+        assert_eq!(
+            super::sec_desc_abbrev("Bla bla (some paranthetical)"),
+            "Blabla"
+        );
         assert_eq!(super::sec_desc_abbrev("Bla (some paranthetical)"), "Bla");
     }
 }

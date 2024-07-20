@@ -4,15 +4,18 @@ use acb::util::{basic::SError, date::parse_standard_date};
 use clap::Parser;
 use rust_xlsxwriter::{Format, Workbook};
 
-fn add_csv_file_as_sheet(wb: &mut Workbook, csv_fname: &str)-> Result<(), SError> {
+fn add_csv_file_as_sheet(wb: &mut Workbook, csv_fname: &str) -> Result<(), SError> {
     let csv_path = PathBuf::from(csv_fname);
 
-    let title = csv_path.file_name()
-        .map(|os_name| os_name.to_str()).unwrap_or(None)
+    let title = csv_path
+        .file_name()
+        .map(|os_name| os_name.to_str())
+        .unwrap_or(None)
         .map(|name| name.split(".").next().unwrap());
 
-    let mut csv_r =
-        csv::ReaderBuilder::new().has_headers(false).from_path(csv_fname)
+    let mut csv_r = csv::ReaderBuilder::new()
+        .has_headers(false)
+        .from_path(csv_fname)
         .map_err(|e| e.to_string())?;
 
     let sheet = wb.add_worksheet();
@@ -35,10 +38,14 @@ fn add_csv_file_as_sheet(wb: &mut Workbook, csv_fname: &str)-> Result<(), SError
 
             if let Ok(date) = parse_standard_date(cell_str) {
                 let date_data = rust_xlsxwriter::ExcelDateTime::from_ymd(
-                    date.year().try_into().unwrap(), date.month().into(), date.day()
-                ).unwrap();
-                sheet.write_with_format(row_i, col_i, &date_data, &date_format).map_err(
-                    |e| e.to_string())?;
+                    date.year().try_into().unwrap(),
+                    date.month().into(),
+                    date.day(),
+                )
+                .unwrap();
+                sheet
+                    .write_with_format(row_i, col_i, &date_data, &date_format)
+                    .map_err(|e| e.to_string())?;
             } else if let Ok(num) = cell_str.parse::<f64>() {
                 sheet.write(row_i, col_i, num).map_err(|e| e.to_string())?;
             } else {
