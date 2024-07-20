@@ -141,6 +141,20 @@ rm -r ~/.cargo/registry
 rm -r ~/.cargo/git
 ```
 
+## Deprecated Golang Implementation
+If you have used `acb` before 2024, you may notice that the toolchain has changed.
+Due to concerns about the stability and correctness guarantees that could be
+reasonably achieved in the old implementation
+(see [this issue](https://github.com/tsiemens/acb/issues/21)), I decided to
+rewrite the application in rust, which essentially solved all of those concerns.
+
+However, there are some potential differences besides the build and install process,
+notably that *Windows support* has the potential to be less stable than it
+used to be due to requiring more special treatment. If you have issues with the new implementation, the last version written in golang is available still at
+[this branch](https://github.com/tsiemens/acb/tree/golang), however it will
+be very unlikely to see any updates. I will try to fix any reported issues
+on Windows in the new version as they come up.
+
 ## Disclaimer
 I am not trained in tax law of any form. This tool is provided as is with no
 warrenty. Please double check results (enough information should be provided
