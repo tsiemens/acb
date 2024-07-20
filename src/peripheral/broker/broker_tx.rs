@@ -52,22 +52,26 @@ impl PartialOrd for BrokerTx {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
         let sdate_cmp = self.settlement_date.cmp(&other.settlement_date);
         match sdate_cmp {
-            std::cmp::Ordering::Less | std::cmp::Ordering::Greater =>
-                return Some(sdate_cmp),
+            std::cmp::Ordering::Less | std::cmp::Ordering::Greater => {
+                return Some(sdate_cmp)
+            }
             std::cmp::Ordering::Equal => (),
         }
-        let sdate_and_time_cmp = self.settlement_date_and_time.cmp(&other.settlement_date_and_time);
+        let sdate_and_time_cmp =
+            self.settlement_date_and_time.cmp(&other.settlement_date_and_time);
         match sdate_and_time_cmp {
-            std::cmp::Ordering::Less | std::cmp::Ordering::Greater =>
-                return Some(sdate_and_time_cmp),
+            std::cmp::Ordering::Less | std::cmp::Ordering::Greater => {
+                return Some(sdate_and_time_cmp)
+            }
             std::cmp::Ordering::Equal => (),
         }
         if let Some(st) = self.sort_tiebreak {
             if let Some(ost) = &other.sort_tiebreak {
                 let sort_tiebreak_cmp = st.cmp(ost);
                 match sort_tiebreak_cmp {
-                    std::cmp::Ordering::Less | std::cmp::Ordering::Greater =>
-                        return Some(sort_tiebreak_cmp),
+                    std::cmp::Ordering::Less | std::cmp::Ordering::Greater => {
+                        return Some(sort_tiebreak_cmp)
+                    }
                     std::cmp::Ordering::Equal => (),
                 }
             } else {

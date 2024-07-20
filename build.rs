@@ -6,9 +6,11 @@ use std::process::Command;
 /// Create a convenience wrapper for the python binary, that will run in the venv.
 /// Mostly for debugging.
 #[cfg(unix)]
-fn make_python_bin_wrapper(target_dir: &Path, venv_path: &Path, python_path: &Path)
--> Result<(), String> {
-
+fn make_python_bin_wrapper(
+    target_dir: &Path,
+    venv_path: &Path,
+    python_path: &Path,
+) -> Result<(), String> {
     let wrapper_path = Path::new(&target_dir).join("python");
     let python_wrapper_script = format!(
         r#"#!/usr/bin/env bash
@@ -22,13 +24,15 @@ exec {} "$@"
     fs::write(&wrapper_path, python_wrapper_script)
         .map_err(|e| format!("Error writing {:?}: {}", wrapper_path, e))?;
     let mut perms = fs::metadata(&wrapper_path)
-        .map_err(|e| format!("Error creating fs::metadata for {:?}: {}",
-                                wrapper_path, e))?.permissions();
+        .map_err(|e| {
+            format!("Error creating fs::metadata for {:?}: {}", wrapper_path, e)
+        })?
+        .permissions();
     use std::os::unix::fs::PermissionsExt;
     perms.set_mode(0o700);
-    fs::set_permissions(&wrapper_path, perms)
-        .map_err(|e| format!("Error setting permissions on {:?}: {}",
-                             wrapper_path, e))?;
+    fs::set_permissions(&wrapper_path, perms).map_err(|e| {
+        format!("Error setting permissions on {:?}: {}", wrapper_path, e)
+    })?;
     Ok(())
 }
 
@@ -55,11 +59,15 @@ fn install_python_venv() {
 
     // Get path to pip in the new virtualenv
     let (pip_path, python_path) = if cfg!(windows) {
-        (venv_path.join("Scripts").join("pip.exe"),
-         venv_path.join("Scripts").join("python.exe"))
+        (
+            venv_path.join("Scripts").join("pip.exe"),
+            venv_path.join("Scripts").join("python.exe"),
+        )
     } else {
-        (venv_path.join("bin").join("pip"),
-         venv_path.join("bin").join("python"))
+        (
+            venv_path.join("bin").join("pip"),
+            venv_path.join("bin").join("python"),
+        )
     };
 
     // Run pip install
@@ -73,10 +81,10 @@ fn install_python_venv() {
         .status()
         .expect("Failed to run pip install");
 
-
     if cfg!(unix) {
-        if let Err(e) = make_python_bin_wrapper(
-            &target_dir, &venv_path, &python_path) {
+        if let Err(e) =
+            make_python_bin_wrapper(&target_dir, &venv_path, &python_path)
+        {
             // This is not critical.
             println!("cargo::warning={}", e);
         }

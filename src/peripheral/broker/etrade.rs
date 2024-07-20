@@ -3,8 +3,11 @@ use std::path::Path;
 use rust_decimal::Decimal;
 use time::Date;
 
-use crate::{portfolio::TxAction, util::{basic::SError, date::StaticDateFormat, decimal::parse_large_decimal}};
 use super::BrokerTx;
+use crate::{
+    portfolio::TxAction,
+    util::{basic::SError, date::StaticDateFormat, decimal::parse_large_decimal},
+};
 
 use lazy_static::lazy_static;
 
@@ -24,7 +27,9 @@ struct Searcher {
 
 impl Searcher {
     pub fn new(pattern: &str) -> Self {
-        Searcher{ bldr: regex::RegexBuilder::new(pattern) }
+        Searcher {
+            bldr: regex::RegexBuilder::new(pattern),
+        }
     }
 
     /// dot_matches_new_line ('s' is the defacto flag name for this)
@@ -44,8 +49,10 @@ impl Searcher {
     pub fn get_from(&self, text: &str, group: usize) -> Result<String, SError> {
         let re = self.bldr.build().unwrap();
         match re.captures(text) {
-            Some(m) => m.get(group).map(|c| c.as_str().to_string()).ok_or(
-                format!("Could not get group {group} from {re}")),
+            Some(m) => m
+                .get(group)
+                .map(|c| c.as_str().to_string())
+                .ok_or(format!("Could not get group {group} from {re}")),
             None => Err(format!("Could not find {re}")),
         }
     }
@@ -66,9 +73,10 @@ impl Searcher {
     pub fn get1_opt_dec_from(&self, text: &str) -> Result<Option<Decimal>, SError> {
         match self.get1_opt_from(text) {
             Some(val_str) => {
-                let d_val = parse_large_decimal(&val_str).map_err(|e| e.to_string())?;
+                let d_val =
+                    parse_large_decimal(&val_str).map_err(|e| e.to_string())?;
                 Ok(Some(d_val))
-            },
+            }
             None => Ok(None),
         }
     }
@@ -97,9 +105,9 @@ struct CapturesHelper<'a> {
     pub m: regex::Captures<'a>,
 }
 
-impl <'a> CapturesHelper<'a> {
+impl<'a> CapturesHelper<'a> {
     pub fn new(m: regex::Captures<'a>) -> CapturesHelper<'a> {
-        Self{ m }
+        Self { m }
     }
 
     pub fn opt_group(&self, name: &str) -> Option<&str> {
@@ -109,11 +117,10 @@ impl <'a> CapturesHelper<'a> {
     pub fn opt_dec_group(&self, name: &str) -> Result<Option<Decimal>, SError> {
         match self.opt_group(name) {
             Some(grp_val) => {
-                parse_large_decimal(grp_val)
-                .map(|v| Some(v))
-                .map_err(|e| format!("Error parsing decimal from \"{}\": {}",
-                                     grp_val, e))
-            },
+                parse_large_decimal(grp_val).map(|v| Some(v)).map_err(|e| {
+                    format!("Error parsing decimal from \"{}\": {}", grp_val, e)
+                })
+            }
             None => Ok(None),
         }
     }
@@ -128,7 +135,8 @@ impl <'a> CapturesHelper<'a> {
 }
 
 fn get_filename(path: &Path) -> String {
-    path.file_name().map(|n| n.to_string_lossy().to_string())
+    path.file_name()
+        .map(|n| n.to_string_lossy().to_string())
         .unwrap_or_else(|| "<unnamed file>".to_string())
 }
 
@@ -136,20 +144,20 @@ fn get_filename(path: &Path) -> String {
 pub struct BenefitEntry {
     pub security: String,
 
-   pub acquire_tx_date: Date,
-   pub acquire_settle_date: Date,
-   pub acquire_share_price: Decimal,
-   pub acquire_shares: Decimal,
+    pub acquire_tx_date: Date,
+    pub acquire_settle_date: Date,
+    pub acquire_share_price: Decimal,
+    pub acquire_shares: Decimal,
 
-   pub sell_to_cover_tx_date: Option<Date>,
-   pub sell_to_cover_settle_date: Option<Date>,
-   pub sell_to_cover_price: Option<Decimal>,
-   pub sell_to_cover_shares: Option<Decimal>,
-   pub sell_to_cover_fee: Option<Decimal>,
+    pub sell_to_cover_tx_date: Option<Date>,
+    pub sell_to_cover_settle_date: Option<Date>,
+    pub sell_to_cover_price: Option<Decimal>,
+    pub sell_to_cover_shares: Option<Decimal>,
+    pub sell_to_cover_fee: Option<Decimal>,
 
-   pub plan_note: String,
-   pub sell_note: Option<String>,
-   pub filename: String,
+    pub plan_note: String,
+    pub sell_note: Option<String>,
+    pub filename: String,
 }
 
 pub struct SellToCoverData {
@@ -173,7 +181,7 @@ impl BenefitEntry {
             sell_to_cover_shares: Option<Decimal>,
             sell_to_cover_fee: Option<Decimal>,
         }
-        let stc_opts = StcOpts{
+        let stc_opts = StcOpts {
             sell_to_cover_tx_date: self.sell_to_cover_tx_date,
             sell_to_cover_settle_date: self.sell_to_cover_settle_date,
             sell_to_cover_price: self.sell_to_cover_price,
@@ -181,25 +189,27 @@ impl BenefitEntry {
             sell_to_cover_fee: self.sell_to_cover_fee,
         };
         if stc_opts == StcOpts::default() {
-            return Ok(None)
+            return Ok(None);
         }
 
         let err = || {
-            format!("Some, but not all, sell-to-cover fields were found for \
+            format!(
+                "Some, but not all, sell-to-cover fields were found for \
                     {} shares of {} aquired on {}. StC {:?}",
-                    self.acquire_shares, self.security, self.acquire_tx_date,
-                    stc_opts)
+                self.acquire_shares, self.security, self.acquire_tx_date, stc_opts
+            )
         };
 
-        Ok(Some(SellToCoverData{
+        Ok(Some(SellToCoverData {
             sell_to_cover_tx_date: stc_opts.sell_to_cover_tx_date.ok_or_else(err)?,
-            sell_to_cover_settle_date: stc_opts.sell_to_cover_settle_date.ok_or_else(err)?,
+            sell_to_cover_settle_date: stc_opts
+                .sell_to_cover_settle_date
+                .ok_or_else(err)?,
             sell_to_cover_price: stc_opts.sell_to_cover_price.ok_or_else(err)?,
             sell_to_cover_shares: stc_opts.sell_to_cover_shares.ok_or_else(err)?,
             sell_to_cover_fee: stc_opts.sell_to_cover_fee.ok_or_else(err)?,
         }))
     }
-
 }
 
 // Common to all benefit PDFs
@@ -212,12 +222,17 @@ struct BenefitCommonData {
     pub symbol: String,
 }
 
-fn parse_benefit_common_data(benefit_pdf_text: &str) -> Result<BenefitCommonData, SError> {
+fn parse_benefit_common_data(
+    benefit_pdf_text: &str,
+) -> Result<BenefitCommonData, SError> {
     let text = benefit_pdf_text;
     Ok(BenefitCommonData {
         employee_id: srch(r"Employee ID:\s*(\d+)").str1(text)?,
-        account_number: srch(r"Account (?:Number|Stock Plan \(\S+\) -)\s*(\d+)").str1(text)?,
-        symbol: srch(r"Company Name\s*\(Symbol\)*.*\(([A-Za-z\.]+)\)").s().str1(text)?,
+        account_number: srch(r"Account (?:Number|Stock Plan \(\S+\) -)\s*(\d+)")
+            .str1(text)?,
+        symbol: srch(r"Company Name\s*\(Symbol\)*.*\(([A-Za-z\.]+)\)")
+            .s()
+            .str1(text)?,
     })
 }
 
@@ -226,8 +241,8 @@ pub const ETRADE_DASH_DATE_FORMAT: StaticDateFormat =
 pub const ETRADE_SLASH_DATE_FORMAT: StaticDateFormat =
     time::macros::format_description!("[month]/[day]/[year]");
 lazy_static! {
-    static ref ETRADE_SHORT_SLASH_DATE_RE: regex::Regex = regex::Regex::new(
-        r"(\d+/\d+)/(\d+)").unwrap();
+    static ref ETRADE_SHORT_SLASH_DATE_RE: regex::Regex =
+        regex::Regex::new(r"(\d+/\d+)/(\d+)").unwrap();
 }
 
 /// This is required, because the default parse lib doesn't like two-digit years,
@@ -238,13 +253,19 @@ lazy_static! {
 fn parse_short_year_date(date_str: &str) -> Result<Date, SError> {
     match ETRADE_SHORT_SLASH_DATE_RE.captures(date_str) {
         Some(m) => {
-            let long_date = format!("{}/20{}",
-                m.get(1).unwrap().as_str(), m.get(2).unwrap().as_str());
+            let long_date = format!(
+                "{}/20{}",
+                m.get(1).unwrap().as_str(),
+                m.get(2).unwrap().as_str()
+            );
             Date::parse(&long_date, ETRADE_SLASH_DATE_FORMAT)
                 .map_err(|e| e.to_string())
-        },
-        None => Err(format!("Failed to parse date. {} did not match \
-                            {:?}", date_str, *ETRADE_SHORT_SLASH_DATE_RE)),
+        }
+        None => Err(format!(
+            "Failed to parse date. {} did not match \
+                            {:?}",
+            date_str, *ETRADE_SHORT_SLASH_DATE_RE
+        )),
     }
 }
 
@@ -277,23 +298,29 @@ fn parse_rsu_data(rsu_pdf_text: &str) -> Result<RsuData, SError> {
         common_benefit_data: parse_benefit_common_data(text)?,
         release_date: Date::parse(
             &srch(r"Release Date\s*(\d+-\d+-\d+)").str1(text)?,
-            ETRADE_DASH_DATE_FORMAT
-        ).map_err(|e| e.to_string())?,
+            ETRADE_DASH_DATE_FORMAT,
+        )
+        .map_err(|e| e.to_string())?,
         award_number: srch(r"Award Number\s*(R\d+)").str1(text)?,
         shares_released: srch(r"Shares Released\s*(\d+\.\d+)").dec1(text)?,
         shares_sold: srch(r"Shares Sold\s*\((\d+\.\d+)\)").dec1(text)?,
         shares_issued: srch(r"Shares Issued\s*(\d+\.\d+)").dec1(text)?,
         fmv_per_share: srch(r"Market Value Per Share\s*\$(\d+\.\d+)").dec1(text)?,
-        sale_price_per_share: srch(r"Sale Price Per Share\s*\$(\d+\.\d+)").dec1(text)?,
+        sale_price_per_share: srch(r"Sale Price Per Share\s*\$(\d+\.\d+)")
+            .dec1(text)?,
         market_value: srch(r"Market Value\s*\$([\d,]+\.\d+)").dec1(text)?,
         total_sale_price: srch(r"Total Sale Price\s*\$([\d,]+\.\d+)").dec1(text)?,
         total_tax: srch(r"Total Tax\s*\$([\d,]+\.\d+)").dec1(text)?,
         fee: srch(r"Fee\s*\(\$(\d+\.\d+)").dec1(text)?,
-        cash_leftover: srch(r"Total Due Participant\s*\$([\d,]+\.\d+)").dec1(text)?,
+        cash_leftover: srch(r"Total Due Participant\s*\$([\d,]+\.\d+)")
+            .dec1(text)?,
     })
 }
 
-fn parse_rsu_entry(rsu_pdf_text: &str, filepath: &Path) -> Result<BenefitEntry, SError> {
+fn parse_rsu_entry(
+    rsu_pdf_text: &str,
+    filepath: &Path,
+) -> Result<BenefitEntry, SError> {
     let rsu_data = parse_rsu_data(rsu_pdf_text)?;
 
     Ok(BenefitEntry {
@@ -344,10 +371,15 @@ struct EsoData {
 /// KEY: VAL_PAT VAL_PAT?
 /// NOTE: Why the second VAL_PAT is here is not really clear right now, as the
 ///       value is never included in our output.
-fn search_for_rows(key: &str, val_pat: &str, text: &str) -> Result<Vec<String>, SError> {
+fn search_for_rows(
+    key: &str,
+    val_pat: &str,
+    text: &str,
+) -> Result<Vec<String>, SError> {
     let main_re = regex::Regex::new(&format!(
-        r"{key}(?:\s+(?P<rowvalue1>{val_pat})(?:\s+(?P<rowvalue2>{val_pat}))?)"))
-        .unwrap();
+        r"{key}(?:\s+(?P<rowvalue1>{val_pat})(?:\s+(?P<rowvalue2>{val_pat}))?)"
+    ))
+    .unwrap();
 
     let mut vals = Vec::<String>::new();
     for m in main_re.captures_iter(text) {
@@ -360,15 +392,19 @@ fn search_for_rows(key: &str, val_pat: &str, text: &str) -> Result<Vec<String>, 
     }
 }
 
-fn search_for_dec_rows(key: &str, dollar_prefix: bool, text: &str)
--> Result<Vec<Decimal>, SError> {
+fn search_for_dec_rows(
+    key: &str,
+    dollar_prefix: bool,
+    text: &str,
+) -> Result<Vec<Decimal>, SError> {
     let prefix = if dollar_prefix { r"\$" } else { "" };
     let strs = search_for_rows(key, &format!(r"{prefix}([\d,\.]+)"), text)?;
     let mut decs = Vec::<Decimal>::with_capacity(strs.len());
     for s in strs {
         let sanitized_s = s.replace("$", "");
-        decs.push(parse_large_decimal(&sanitized_s).map_err(|e| format!(
-            "Decimal error in \"{sanitized_s}\" on \"{key}\" row: {e}"))?);
+        decs.push(parse_large_decimal(&sanitized_s).map_err(|e| {
+            format!("Decimal error in \"{sanitized_s}\" on \"{key}\" row: {e}")
+        })?);
     }
     Ok(decs)
 }
@@ -376,33 +412,48 @@ fn search_for_dec_rows(key: &str, dollar_prefix: bool, text: &str)
 fn parse_eso_data(eso_pdf_text: &str) -> Result<EsoData, SError> {
     let text = eso_pdf_text;
 
-    let body_m_res = regex::RegexBuilder::new(r"^(.*)(Exercise Details.*Exercise Date).*$")
-        .dot_matches_new_line(true).build().unwrap().captures(text);
+    let body_m_res =
+        regex::RegexBuilder::new(r"^(.*)(Exercise Details.*Exercise Date).*$")
+            .dot_matches_new_line(true)
+            .build()
+            .unwrap()
+            .captures(text);
     let (header, body) = if let Some(body_m) = body_m_res {
-        (body_m.get(1).unwrap().as_str(), body_m.get(2).unwrap().as_str())
+        (
+            body_m.get(1).unwrap().as_str(),
+            body_m.get(2).unwrap().as_str(),
+        )
     } else {
         return Err("Unable to parse exercise details".to_string());
     };
 
-    let grant_indicies: Vec<String> =
-        regex::Regex::new(r"Grant (\d+)").unwrap().find_iter(body)
-            .map(|m| m.as_str().to_string()).collect();
+    let grant_indicies: Vec<String> = regex::Regex::new(r"Grant (\d+)")
+        .unwrap()
+        .find_iter(body)
+        .map(|m| m.as_str().to_string())
+        .collect();
     tracing::debug!("parse_eso_data grants: {:?}", grant_indicies);
 
     let grant_numbers: Vec<u64> = search_for_rows("Grant Number", r"\d+", body)?
-        .into_iter().map(|s| s.parse::<u64>().unwrap_or_default()).collect();
-    let grant_exercise_fmvs = search_for_dec_rows("Exercise Market Value", true, body)?;
-    let grant_shares_exercised = search_for_dec_rows("Shares Exercised", false, body)?;
+        .into_iter()
+        .map(|s| s.parse::<u64>().unwrap_or_default())
+        .collect();
+    let grant_exercise_fmvs =
+        search_for_dec_rows("Exercise Market Value", true, body)?;
+    let grant_shares_exercised =
+        search_for_dec_rows("Shares Exercised", false, body)?;
     let grant_sale_prices = search_for_dec_rows("Sale Price", true, body)?;
     let grant_fees = search_for_dec_rows("Comission/Fee", true, body)?;
 
     let mut grants = Vec::with_capacity(grant_indicies.len());
-    for (((((_, num), fmv), shares), s_price), fee) in grant_indicies.iter()
-                .zip(grant_numbers)
-                .zip(grant_exercise_fmvs)
-                .zip(grant_shares_exercised)
-                .zip(grant_sale_prices)
-                .zip(grant_fees) {
+    for (((((_, num), fmv), shares), s_price), fee) in grant_indicies
+        .iter()
+        .zip(grant_numbers)
+        .zip(grant_exercise_fmvs)
+        .zip(grant_shares_exercised)
+        .zip(grant_sale_prices)
+        .zip(grant_fees)
+    {
         grants.push(EsoGrantData {
             grant_number: num,
             exercise_fmv: fmv,
@@ -417,8 +468,9 @@ fn parse_eso_data(eso_pdf_text: &str) -> Result<EsoData, SError> {
         exercise_type: srch(r"Exercise Type:\s+(.*)\s+Registration").str1(text)?,
         exercise_date: Date::parse(
             &srch(r"Exercise Date:\s+(\d+/\d+/\d+)").str1(text)?,
-            ETRADE_SLASH_DATE_FORMAT
-        ).map_err(|e| e.to_string())?,
+            ETRADE_SLASH_DATE_FORMAT,
+        )
+        .map_err(|e| e.to_string())?,
         shares_sold: srch(r"Shares Sold\s+([\d,\.]+)").dec1(header)?,
         grants: grants,
     })
@@ -429,21 +481,27 @@ fn parse_eso_data(eso_pdf_text: &str) -> Result<EsoData, SError> {
 /// a separate benefit entry.
 /// Due to how some attributes are consolidated (sold shares, for example),
 /// some parts are added into just the last BenefitEntry.
-fn parse_eso_entries(eso_pdf_text: &str, filepath: &Path)
-    -> Result<Vec<BenefitEntry>, SError> {
+fn parse_eso_entries(
+    eso_pdf_text: &str,
+    filepath: &Path,
+) -> Result<Vec<BenefitEntry>, SError> {
     let eso_data = parse_eso_data(eso_pdf_text)?;
 
     let mut entries = Vec::with_capacity(eso_data.grants.len());
-    let last_grant = eso_data.grants.last().ok_or_else(
-        || format!("No exercised grants found in {filepath:?}"))?;
+    let last_grant = eso_data
+        .grants
+        .last()
+        .ok_or_else(|| format!("No exercised grants found in {filepath:?}"))?;
 
     // Decimal doesn't implement Sum, so we have to manually accumulate it.
     let fee_sum = eso_data.grants.iter().fold(Decimal::ZERO, |acc, g| acc + g.fee);
 
     for (i, grant) in eso_data.grants.iter().enumerate() {
         if grant.sale_price != last_grant.sale_price {
-            return Err(format!("Non-equal ESO sale prices {} and {}",
-                grant.sale_price, last_grant.sale_price));
+            return Err(format!(
+                "Non-equal ESO sale prices {} and {}",
+                grant.sale_price, last_grant.sale_price
+            ));
         }
 
         let is_last = i == eso_data.grants.len() - 1;
@@ -453,16 +511,27 @@ fn parse_eso_entries(eso_pdf_text: &str, filepath: &Path)
             acquire_settle_date: eso_data.exercise_date,
             acquire_share_price: grant.exercise_fmv,
             acquire_shares: grant.shares_exercised,
-            sell_to_cover_tx_date:
-                if is_last { Some(eso_data.exercise_date) } else { None },
-            sell_to_cover_settle_date:
-                if is_last { Some(eso_data.exercise_date) } else { None },
-            sell_to_cover_price:
-                if is_last { Some(grant.sale_price) } else { None },
-            sell_to_cover_shares:
-                if is_last { Some(eso_data.shares_sold) } else { None },
-            sell_to_cover_fee:
-                if is_last { Some(fee_sum) } else { None },
+            sell_to_cover_tx_date: if is_last {
+                Some(eso_data.exercise_date)
+            } else {
+                None
+            },
+            sell_to_cover_settle_date: if is_last {
+                Some(eso_data.exercise_date)
+            } else {
+                None
+            },
+            sell_to_cover_price: if is_last {
+                Some(grant.sale_price)
+            } else {
+                None
+            },
+            sell_to_cover_shares: if is_last {
+                Some(eso_data.shares_sold)
+            } else {
+                None
+            },
+            sell_to_cover_fee: if is_last { Some(fee_sum) } else { None },
             plan_note: format!("Option Grant {}", grant.grant_number),
             sell_note: Some(eso_data.exercise_type.clone()),
             filename: get_filename(filepath),
@@ -496,7 +565,6 @@ struct EsppData {
     pub fee: Option<Decimal>,
     #[allow(dead_code)]
     pub cash_leftover: Option<Decimal>,
-
 }
 
 fn parse_espp_data(espp_pdf_text: &str) -> Result<EsppData, SError> {
@@ -506,35 +574,42 @@ fn parse_espp_data(espp_pdf_text: &str) -> Result<EsppData, SError> {
         common_benefit_data: parse_benefit_common_data(text)?,
         purchase_date: Date::parse(
             &srch(r"Purchase Date\s*(\d+-\d+-\d+)").str1(text)?,
-            ETRADE_DASH_DATE_FORMAT
-        ).map_err(|e| e.to_string())?,
+            ETRADE_DASH_DATE_FORMAT,
+        )
+        .map_err(|e| e.to_string())?,
         shares_purchased: srch(r"Shares Purchased\s*(\d+\.\d+)").dec1(text)?,
-        fmv_per_share: srch(r"Purchase Value per Share\s*\$(\d+\.\d+)").dec1(text)?,
-        purchase_price_per_share:
-            srch(r"Purchase Price per Share\s*\([^\)]*\)\s*\$(\d+\.\d+)")
-            .s().dec1(text)?,
+        fmv_per_share: srch(r"Purchase Value per Share\s*\$(\d+\.\d+)")
+            .dec1(text)?,
+        purchase_price_per_share: srch(
+            r"Purchase Price per Share\s*\([^\)]*\)\s*\$(\d+\.\d+)",
+        )
+        .s()
+        .dec1(text)?,
         total_price: srch(r"Total Price\s*\(\$([\d,]+\.\d+)\)").dec1(text)?,
         total_value: srch(r"Total Value\s*\$([\d,]+\.\d+)").dec1(text)?,
         taxable_gain: srch(r"Taxable Gain\s*\$([\d,]+\.\d+)").dec1(text)?,
         market_value_at_grant: srch(r"Market Value\s*\$([\d,]+\.\d+)").dec1(text)?,
 
-        total_tax:
-            srch(r"Total Taxes Collected at purchase\s\(\$([\d,]+\.\d+)\)")
+        total_tax: srch(r"Total Taxes Collected at purchase\s\(\$([\d,]+\.\d+)\)")
             .opt_dec1(text)?,
-        shares_sold: srch(r"Shares Sold to Cover Taxes\s*(\d+\.\d+)").opt_dec1(text)?,
-        sale_price_per_share:
-            srch(r"Sale Price for Shares Sold to Cover Taxes\s*\$(\d+\.\d+)")
+        shares_sold: srch(r"Shares Sold to Cover Taxes\s*(\d+\.\d+)")
             .opt_dec1(text)?,
-        total_sale_price:
-            srch(r"Value Of Shares Sold\s\$([\d,]+\.\d+)").opt_dec1(text)?,
+        sale_price_per_share: srch(
+            r"Sale Price for Shares Sold to Cover Taxes\s*\$(\d+\.\d+)",
+        )
+        .opt_dec1(text)?,
+        total_sale_price: srch(r"Value Of Shares Sold\s\$([\d,]+\.\d+)")
+            .opt_dec1(text)?,
         fee: srch(r"Fees\s*\(\$(\d+\.\d+)").opt_dec1(text)?,
-        cash_leftover:
-            srch(r"Amount in Excess of Tax Due\s\$(\d+\.\d+)").opt_dec1(text)?,
+        cash_leftover: srch(r"Amount in Excess of Tax Due\s\$(\d+\.\d+)")
+            .opt_dec1(text)?,
     })
 }
 
-fn parse_espp_entry(espp_pdf_text: &str, filepath: &Path)
--> Result<BenefitEntry, SError> {
+fn parse_espp_entry(
+    espp_pdf_text: &str,
+    filepath: &Path,
+) -> Result<BenefitEntry, SError> {
     let espp_data = parse_espp_data(espp_pdf_text)?;
 
     Ok(BenefitEntry {
@@ -563,8 +638,10 @@ fn parse_espp_entry(espp_pdf_text: &str, filepath: &Path)
 
 /// Trade confirmation form before Morgan Stanley aquired ETRADE
 /// (mid 2023 and before)
-fn parse_pre_ms_2023_trade_confirmations(pdf_text: &str, filepath: &Path)
--> Result<Vec<BrokerTx>, SError> {
+fn parse_pre_ms_2023_trade_confirmations(
+    pdf_text: &str,
+    filepath: &Path,
+) -> Result<Vec<BrokerTx>, SError> {
     let account_number = srch(r"Account\s+Number:\s*(\S+)\s").str1(pdf_text)?;
 
     let trade_pat = regex::Regex::new(concat!(
@@ -582,19 +659,19 @@ fn parse_pre_ms_2023_trade_confirmations(pdf_text: &str, filepath: &Path)
 
         txs.push(BrokerTx {
             security: h.group("sym").to_string(),
-            trade_date: parse_short_year_date(
-                h.group("txdate")).map_err(
-                    |e| format!("Date parse error in {}: {}", h.group("txdate"), e))?,
-            settlement_date: parse_short_year_date(
-                h.group("sdate")).map_err(
-                    |e| format!("Date parse error in {}: {}", h.group("sdate"), e))?,
+            trade_date: parse_short_year_date(h.group("txdate")).map_err(|e| {
+                format!("Date parse error in {}: {}", h.group("txdate"), e)
+            })?,
+            settlement_date: parse_short_year_date(h.group("sdate")).map_err(
+                |e| format!("Date parse error in {}: {}", h.group("sdate"), e),
+            )?,
             trade_date_and_time: h.group("txdate").to_string(),
             settlement_date_and_time: h.group("sdate").to_string(),
             action: TxAction::try_from(h.group("act"))?,
             amount_per_share: h.dec_group("price")?,
             num_shares: h.dec_group("nshares")?,
-            commission: h.opt_dec_group("commission")?.unwrap_or(Decimal::ZERO) +
-                h.opt_dec_group("fee")?.unwrap_or(Decimal::ZERO),
+            commission: h.opt_dec_group("commission")?.unwrap_or(Decimal::ZERO)
+                + h.opt_dec_group("fee")?.unwrap_or(Decimal::ZERO),
             currency: crate::portfolio::Currency::usd(),
             memo: String::new(),
             exchange_rate: None,
@@ -613,9 +690,10 @@ fn parse_pre_ms_2023_trade_confirmations(pdf_text: &str, filepath: &Path)
 ///
 /// Note that these PDFs have to be parsed by pypdf. This is handled by the
 /// automatic parsing in get_pages_text_from_path though.
-fn parse_post_ms_2023_trade_confirmation(pdf_text: &str, filepath: &Path)
--> Result<BrokerTx, SError> {
-
+fn parse_post_ms_2023_trade_confirmation(
+    pdf_text: &str,
+    filepath: &Path,
+) -> Result<BrokerTx, SError> {
     let account_number = srch(r"Account\s+Number:\s*(\S+)\s").str1(pdf_text)?;
 
     let trade_pat = regex::Regex::new(concat!(
@@ -633,19 +711,21 @@ fn parse_post_ms_2023_trade_confirmation(pdf_text: &str, filepath: &Path)
 
         Ok(BrokerTx {
             security: h.group("sym").to_string(),
-            trade_date: Date::parse(
-                h.group("txdate"), ETRADE_SLASH_DATE_FORMAT).map_err(
-                    |e| format!("Date parse error in {}: {}", h.group("txdate"), e))?,
-            settlement_date: Date::parse(
-                h.group("sdate"), ETRADE_SLASH_DATE_FORMAT).map_err(
-                    |e| format!("Date parse error in {}: {}", h.group("sdate"), e))?,
+            trade_date: Date::parse(h.group("txdate"), ETRADE_SLASH_DATE_FORMAT)
+                .map_err(|e| {
+                    format!("Date parse error in {}: {}", h.group("txdate"), e)
+                })?,
+            settlement_date: Date::parse(h.group("sdate"), ETRADE_SLASH_DATE_FORMAT)
+                .map_err(|e| {
+                    format!("Date parse error in {}: {}", h.group("sdate"), e)
+                })?,
             trade_date_and_time: h.group("txdate").to_string(),
             settlement_date_and_time: h.group("sdate").to_string(),
             action: TxAction::try_from(h.group("act"))?,
             amount_per_share: h.dec_group("price")?,
             num_shares: h.dec_group("nshares")?,
-            commission: h.opt_dec_group("commission")?.unwrap_or(Decimal::ZERO) +
-                h.opt_dec_group("fee")?.unwrap_or(Decimal::ZERO),
+            commission: h.opt_dec_group("commission")?.unwrap_or(Decimal::ZERO)
+                + h.opt_dec_group("fee")?.unwrap_or(Decimal::ZERO),
             currency: crate::portfolio::Currency::usd(),
             memo: String::new(),
             exchange_rate: None,
@@ -656,8 +736,10 @@ fn parse_post_ms_2023_trade_confirmation(pdf_text: &str, filepath: &Path)
             filename: Some(get_filename(filepath)),
         })
     } else {
-        Err("No transaction found in Morgan Stanley/Etrade trade confirmation slip"
-            .to_string())
+        Err(
+            "No transaction found in Morgan Stanley/Etrade trade confirmation slip"
+                .to_string(),
+        )
     }
 }
 
@@ -667,37 +749,44 @@ pub enum EtradePdfContent {
 }
 
 lazy_static! {
-    static ref RSU_PATTERN: regex::Regex = regex::Regex::new(
-        r"STOCK\s+PLAN\s+RELEASE\s+CONFIRMATION").unwrap();
-    static ref ESO_PATTERN: regex::Regex = regex::Regex::new(
-        r"STOCK\s+PLAN\s+EXERCISE\s+CONFIRMATION").unwrap();
-    static ref ESPP_PATTERN: regex::Regex = regex::Regex::new(
-        r"Plan\s*(2014|ESP2)").unwrap();
-    static ref PRE_MS_2023_TRADE_CONF_PATTERN: regex::Regex = regex::Regex::new(
-        r"TRADE\s*CONFIRMATION").unwrap();
-    static ref POST_MS_2023_TRADE_CONF_PATTERN: regex::Regex = regex::Regex::new(
-        r"This\s+transaction\s+is\s+confirmed").unwrap();
+    static ref RSU_PATTERN: regex::Regex =
+        regex::Regex::new(r"STOCK\s+PLAN\s+RELEASE\s+CONFIRMATION").unwrap();
+    static ref ESO_PATTERN: regex::Regex =
+        regex::Regex::new(r"STOCK\s+PLAN\s+EXERCISE\s+CONFIRMATION").unwrap();
+    static ref ESPP_PATTERN: regex::Regex =
+        regex::Regex::new(r"Plan\s*(2014|ESP2)").unwrap();
+    static ref PRE_MS_2023_TRADE_CONF_PATTERN: regex::Regex =
+        regex::Regex::new(r"TRADE\s*CONFIRMATION").unwrap();
+    static ref POST_MS_2023_TRADE_CONF_PATTERN: regex::Regex =
+        regex::Regex::new(r"This\s+transaction\s+is\s+confirmed").unwrap();
 }
 
-pub fn parse_pdf_text(etrade_pdf_text: &str, filepath: &Path)
--> Result<EtradePdfContent, SError> {
-
+pub fn parse_pdf_text(
+    etrade_pdf_text: &str,
+    filepath: &Path,
+) -> Result<EtradePdfContent, SError> {
     if RSU_PATTERN.is_match(etrade_pdf_text) {
         tracing::trace!("parse_pdf_text: {filepath:?} is RSU");
-        Ok(EtradePdfContent::BenefitConfirmation(
-            vec![parse_rsu_entry(etrade_pdf_text, filepath)?]))
+        Ok(EtradePdfContent::BenefitConfirmation(vec![
+            parse_rsu_entry(etrade_pdf_text, filepath)?,
+        ]))
     } else if ESO_PATTERN.is_match(etrade_pdf_text) {
-        Ok(EtradePdfContent::BenefitConfirmation(
-            parse_eso_entries(etrade_pdf_text, filepath)?))
+        Ok(EtradePdfContent::BenefitConfirmation(parse_eso_entries(
+            etrade_pdf_text,
+            filepath,
+        )?))
     } else if ESPP_PATTERN.is_match(etrade_pdf_text) {
-        Ok(EtradePdfContent::BenefitConfirmation(
-            vec![parse_espp_entry(etrade_pdf_text, filepath)?]))
+        Ok(EtradePdfContent::BenefitConfirmation(vec![
+            parse_espp_entry(etrade_pdf_text, filepath)?,
+        ]))
     } else if PRE_MS_2023_TRADE_CONF_PATTERN.is_match(etrade_pdf_text) {
         Ok(EtradePdfContent::TradeConfirmation(
-            parse_pre_ms_2023_trade_confirmations(etrade_pdf_text, filepath)?))
+            parse_pre_ms_2023_trade_confirmations(etrade_pdf_text, filepath)?,
+        ))
     } else if POST_MS_2023_TRADE_CONF_PATTERN.is_match(etrade_pdf_text) {
-        Ok(EtradePdfContent::TradeConfirmation(
-            vec![parse_post_ms_2023_trade_confirmation(etrade_pdf_text, filepath)?]))
+        Ok(EtradePdfContent::TradeConfirmation(vec![
+            parse_post_ms_2023_trade_confirmation(etrade_pdf_text, filepath)?,
+        ]))
     } else {
         Err("Cannot categorize layout of PDF".to_string())
     }
@@ -709,9 +798,19 @@ pub fn parse_pdf_text(etrade_pdf_text: &str, filepath: &Path)
 mod tests {
     use rust_decimal_macros::dec;
 
-    use crate::{peripheral::broker::BrokerTx, portfolio::TxAction, testlib::{assert_big_struct_eq, assert_vec_eq, assert_vecr_eq}, util::date::parse_standard_date};
+    use crate::{
+        peripheral::broker::BrokerTx,
+        portfolio::TxAction,
+        testlib::{assert_big_struct_eq, assert_vec_eq, assert_vecr_eq},
+        util::date::parse_standard_date,
+    };
 
-    use super::{new_account, parse_eso_data, parse_eso_entries, parse_espp_entry, parse_post_ms_2023_trade_confirmation, parse_pre_ms_2023_trade_confirmations, parse_rsu_entry, BenefitCommonData, BenefitEntry, EsoData, EsoGrantData};
+    use super::{
+        new_account, parse_eso_data, parse_eso_entries, parse_espp_entry,
+        parse_post_ms_2023_trade_confirmation,
+        parse_pre_ms_2023_trade_confirmations, parse_rsu_entry, BenefitCommonData,
+        BenefitEntry, EsoData, EsoGrantData,
+    };
 
     fn s(_str: &str) -> String {
         _str.to_string()
@@ -771,23 +870,29 @@ mod tests {
             ";
 
         let rsu_entry = parse_rsu_entry(
-            pdf_text, &std::path::PathBuf::from("foo/bar/myrsu.pdf")).unwrap();
+            pdf_text,
+            &std::path::PathBuf::from("foo/bar/myrsu.pdf"),
+        )
+        .unwrap();
 
-        assert_big_struct_eq(rsu_entry, BenefitEntry {
-            security: "FOO".to_string(),
-            acquire_tx_date: date("2023-10-20"),
-            acquire_settle_date: date("2023-10-20"),
-            acquire_share_price: dec!(215.35),
-            acquire_shares: dec!(123),
-            sell_to_cover_tx_date: None,
-            sell_to_cover_settle_date: None,
-            sell_to_cover_price: Some(dec!(213.7733)),
-            sell_to_cover_shares: Some(dec!(67)),
-            sell_to_cover_fee: Some(dec!(4.13)),
-            plan_note: s("RSU R98765"),
-            sell_note: None,
-            filename: s("myrsu.pdf"),
-        })
+        assert_big_struct_eq(
+            rsu_entry,
+            BenefitEntry {
+                security: "FOO".to_string(),
+                acquire_tx_date: date("2023-10-20"),
+                acquire_settle_date: date("2023-10-20"),
+                acquire_share_price: dec!(215.35),
+                acquire_shares: dec!(123),
+                sell_to_cover_tx_date: None,
+                sell_to_cover_settle_date: None,
+                sell_to_cover_price: Some(dec!(213.7733)),
+                sell_to_cover_shares: Some(dec!(67)),
+                sell_to_cover_fee: Some(dec!(4.13)),
+                plan_note: s("RSU R98765"),
+                sell_note: None,
+                filename: s("myrsu.pdf"),
+            },
+        )
     }
 
     // lopdf-based output
@@ -828,7 +933,8 @@ mod tests {
     #[test]
     fn test_parse_eso_data() {
         let eso_data = parse_eso_data(SAMPLE_ESO).unwrap();
-        assert_big_struct_eq(eso_data,
+        assert_big_struct_eq(
+            eso_data,
             EsoData {
                 common_benefit_data: BenefitCommonData {
                     employee_id: s("1111"),
@@ -854,7 +960,8 @@ mod tests {
                         fee: dec!(11.00),
                     },
                 ],
-            });
+            },
+        );
     }
 
     #[test]
@@ -864,40 +971,45 @@ mod tests {
             SAMPLE_ESO.replace("Sale Price $2,001.00", "Sale Price $1,001.00");
 
         let eso_entries = parse_eso_entries(
-            &fixed_eso_data, &std::path::PathBuf::from("foo/bar/myeso.pdf")).unwrap();
-        assert_vec_eq(eso_entries, vec![
-            BenefitEntry {
-                security: s("FOO"),
-                acquire_tx_date: date("2024-10-20"),
-                acquire_settle_date: date("2024-10-20"),
-                acquire_share_price: dec!(1000.00),
-                acquire_shares: dec!(100),
-                sell_to_cover_tx_date: None,
-                sell_to_cover_settle_date: None,
-                sell_to_cover_price: None,
-                sell_to_cover_shares: None,
-                sell_to_cover_fee: None,
-                plan_note: s("Option Grant 1234"),
-                sell_note: Some(s("Same-Day Sale")),
-                filename: s("myeso.pdf"),
-            },
-            BenefitEntry {
-                security: s("FOO"),
-                acquire_tx_date: date("2024-10-20"),
-                acquire_settle_date: date("2024-10-20"),
-                acquire_share_price: dec!(2000.00),
-                acquire_shares: dec!(200),
-                sell_to_cover_tx_date: Some(date("2024-10-20")),
-                sell_to_cover_settle_date: Some(date("2024-10-20")),
-                sell_to_cover_price: Some(dec!(1001.00)),
-                sell_to_cover_shares: Some(dec!(1002)),
-                sell_to_cover_fee: Some(dec!(21.00)),
-                plan_note: s("Option Grant 1235"),
-                sell_note: Some(s("Same-Day Sale")),
-                filename: s("myeso.pdf"),
-            }
-        ]);
-
+            &fixed_eso_data,
+            &std::path::PathBuf::from("foo/bar/myeso.pdf"),
+        )
+        .unwrap();
+        assert_vec_eq(
+            eso_entries,
+            vec![
+                BenefitEntry {
+                    security: s("FOO"),
+                    acquire_tx_date: date("2024-10-20"),
+                    acquire_settle_date: date("2024-10-20"),
+                    acquire_share_price: dec!(1000.00),
+                    acquire_shares: dec!(100),
+                    sell_to_cover_tx_date: None,
+                    sell_to_cover_settle_date: None,
+                    sell_to_cover_price: None,
+                    sell_to_cover_shares: None,
+                    sell_to_cover_fee: None,
+                    plan_note: s("Option Grant 1234"),
+                    sell_note: Some(s("Same-Day Sale")),
+                    filename: s("myeso.pdf"),
+                },
+                BenefitEntry {
+                    security: s("FOO"),
+                    acquire_tx_date: date("2024-10-20"),
+                    acquire_settle_date: date("2024-10-20"),
+                    acquire_share_price: dec!(2000.00),
+                    acquire_shares: dec!(200),
+                    sell_to_cover_tx_date: Some(date("2024-10-20")),
+                    sell_to_cover_settle_date: Some(date("2024-10-20")),
+                    sell_to_cover_price: Some(dec!(1001.00)),
+                    sell_to_cover_shares: Some(dec!(1002)),
+                    sell_to_cover_fee: Some(dec!(21.00)),
+                    plan_note: s("Option Grant 1235"),
+                    sell_note: Some(s("Same-Day Sale")),
+                    filename: s("myeso.pdf"),
+                },
+            ],
+        );
     }
 
     #[test]
@@ -963,23 +1075,29 @@ mod tests {
         ";
 
         let espp_entry = parse_espp_entry(
-            pdf_text, &std::path::PathBuf::from("foo/bar/myespp.pdf")).unwrap();
+            pdf_text,
+            &std::path::PathBuf::from("foo/bar/myespp.pdf"),
+        )
+        .unwrap();
 
-        assert_big_struct_eq(espp_entry, BenefitEntry {
-            security: "FOO".to_string(),
-            acquire_tx_date: date("2023-10-20"),
-            acquire_settle_date: date("2023-10-20"),
-            acquire_share_price: dec!(215.35),
-            acquire_shares: dec!(123),
-            sell_to_cover_tx_date: None,
-            sell_to_cover_settle_date: None,
-            sell_to_cover_price: Some(dec!(213.7733)),
-            sell_to_cover_shares: Some(dec!(67)),
-            sell_to_cover_fee: Some(dec!(4.13)),
-            plan_note: s("ESPP"),
-            sell_note: None,
-            filename: s("myespp.pdf"),
-        });
+        assert_big_struct_eq(
+            espp_entry,
+            BenefitEntry {
+                security: "FOO".to_string(),
+                acquire_tx_date: date("2023-10-20"),
+                acquire_settle_date: date("2023-10-20"),
+                acquire_share_price: dec!(215.35),
+                acquire_shares: dec!(123),
+                sell_to_cover_tx_date: None,
+                sell_to_cover_settle_date: None,
+                sell_to_cover_price: Some(dec!(213.7733)),
+                sell_to_cover_shares: Some(dec!(67)),
+                sell_to_cover_fee: Some(dec!(4.13)),
+                plan_note: s("ESPP"),
+                sell_note: None,
+                filename: s("myespp.pdf"),
+            },
+        );
 
         // Test no sell-to-cover
         // lopdf-based output
@@ -1019,24 +1137,29 @@ mod tests {
         ";
 
         let espp_entry = parse_espp_entry(
-            pdf_text, &std::path::PathBuf::from("foo/bar/myespp.pdf")).unwrap();
+            pdf_text,
+            &std::path::PathBuf::from("foo/bar/myespp.pdf"),
+        )
+        .unwrap();
 
-        assert_big_struct_eq(espp_entry, BenefitEntry {
-            security: "FOO".to_string(),
-            acquire_tx_date: date("2023-10-20"),
-            acquire_settle_date: date("2023-10-20"),
-            acquire_share_price: dec!(215.35),
-            acquire_shares: dec!(123),
-            sell_to_cover_tx_date: None,
-            sell_to_cover_settle_date: None,
-            sell_to_cover_price: None,
-            sell_to_cover_shares: None,
-            sell_to_cover_fee: None,
-            plan_note: s("ESPP"),
-            sell_note: None,
-            filename: s("myespp.pdf"),
-        });
-
+        assert_big_struct_eq(
+            espp_entry,
+            BenefitEntry {
+                security: "FOO".to_string(),
+                acquire_tx_date: date("2023-10-20"),
+                acquire_settle_date: date("2023-10-20"),
+                acquire_share_price: dec!(215.35),
+                acquire_shares: dec!(123),
+                sell_to_cover_tx_date: None,
+                sell_to_cover_settle_date: None,
+                sell_to_cover_price: None,
+                sell_to_cover_shares: None,
+                sell_to_cover_fee: None,
+                plan_note: s("ESPP"),
+                sell_note: None,
+                filename: s("myespp.pdf"),
+            },
+        );
     }
 
     #[test]
@@ -1179,13 +1302,18 @@ mod tests {
             },
         ];
 
-
-        let txs = parse_pre_ms_2023_trade_confirmations(pdf_text,
-            &std::path::PathBuf::from("foo/bar/tconf.pdf")).unwrap();
+        let txs = parse_pre_ms_2023_trade_confirmations(
+            pdf_text,
+            &std::path::PathBuf::from("foo/bar/tconf.pdf"),
+        )
+        .unwrap();
         assert_vecr_eq(&txs, &exp_txs);
 
-        let py_txs = parse_pre_ms_2023_trade_confirmations(pypdf_text,
-            &std::path::PathBuf::from("foo/bar/tconf.pdf")).unwrap();
+        let py_txs = parse_pre_ms_2023_trade_confirmations(
+            pypdf_text,
+            &std::path::PathBuf::from("foo/bar/tconf.pdf"),
+        )
+        .unwrap();
         assert_vecr_eq(&py_txs, &exp_txs);
     }
 
@@ -1216,29 +1344,33 @@ mod tests {
             Morgan Stanley Smith Barney LLC acted as agent.
             ";
 
-            let tx = parse_post_ms_2023_trade_confirmation(pdf_text,
-                &std::path::PathBuf::from("foo/bar/tconf.pdf")).unwrap();
+        let tx = parse_post_ms_2023_trade_confirmation(
+            pdf_text,
+            &std::path::PathBuf::from("foo/bar/tconf.pdf"),
+        )
+        .unwrap();
 
-            assert_big_struct_eq(tx,
-                BrokerTx {
-                    security: s("FOO"),
-                    trade_date: date("2023-11-01"),
-                    settlement_date: date("2023-11-03"),
-                    trade_date_and_time: s("11/01/2023"),
-                    settlement_date_and_time: s("11/03/2023"),
-                    action: TxAction::Sell,
-                    amount_per_share: dec!(200.01),
-                    num_shares: dec!(123),
-                    commission: dec!(4.12),
-                    currency: crate::portfolio::Currency::usd(),
-                    memo: s(""),
-                    exchange_rate: None,
-                    affiliate: crate::portfolio::Affiliate::default(),
-                    row_num: 1,
-                    account: new_account(s("123-XXX123-123")),
-                    sort_tiebreak: None,
-                    filename: Some(s("tconf.pdf")),
-                },
-            );
+        assert_big_struct_eq(
+            tx,
+            BrokerTx {
+                security: s("FOO"),
+                trade_date: date("2023-11-01"),
+                settlement_date: date("2023-11-03"),
+                trade_date_and_time: s("11/01/2023"),
+                settlement_date_and_time: s("11/03/2023"),
+                action: TxAction::Sell,
+                amount_per_share: dec!(200.01),
+                num_shares: dec!(123),
+                commission: dec!(4.12),
+                currency: crate::portfolio::Currency::usd(),
+                memo: s(""),
+                exchange_rate: None,
+                affiliate: crate::portfolio::Affiliate::default(),
+                row_num: 1,
+                account: new_account(s("123-XXX123-123")),
+                sort_tiebreak: None,
+                filename: Some(s("tconf.pdf")),
+            },
+        );
     }
 }

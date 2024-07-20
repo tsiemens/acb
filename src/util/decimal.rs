@@ -1,7 +1,7 @@
 use std::{fmt::Display, marker::PhantomData, ops::Deref};
 
-use rust_decimal::Decimal;
 use lazy_static::lazy_static;
+use rust_decimal::Decimal;
 
 pub fn min(ds: &[Decimal]) -> Decimal {
     let mut m = ds[0];
@@ -43,8 +43,8 @@ pub fn dollar_precision_str(d: &Decimal) -> String {
 pub fn to_string_min_precision(d: &Decimal, min_precision: usize) -> String {
     let strep = d.to_string();
     lazy_static! {
-        static ref DECIMAL_RE: regex::Regex = regex::Regex::new(
-        r"^(-?\d+)(\.((0+)|(\d*[1-9])0*))?$").unwrap();
+        static ref DECIMAL_RE: regex::Regex =
+            regex::Regex::new(r"^(-?\d+)(\.((0+)|(\d*[1-9])0*))?$").unwrap();
     }
 
     let m = DECIMAL_RE.captures(&strep).unwrap();
@@ -323,7 +323,8 @@ mod tests {
     use rust_decimal_macros::dec;
 
     use crate::util::decimal::{
-        dollar_precision_str, is_negative, is_positive, to_string_min_precision, ConstrainedDecimal
+        dollar_precision_str, is_negative, is_positive, to_string_min_precision,
+        ConstrainedDecimal,
     };
 
     use super::{constraint, DecConstraint};
@@ -367,8 +368,10 @@ mod tests {
 
     #[test]
     fn test_parse_large_decimal() {
-        assert_eq!(super::parse_large_decimal("1,000,000.0").unwrap(),
-                   dec!(1000000));
+        assert_eq!(
+            super::parse_large_decimal("1,000,000.0").unwrap(),
+            dec!(1000000)
+        );
     }
 
     #[test]

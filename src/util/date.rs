@@ -159,6 +159,6 @@ mod tests {
         assert_eq!(
             to_pretty_string(&parse_standard_date("2024-03-01").unwrap()),
             "March 1, 2024"
-            );
+        );
     }
 }

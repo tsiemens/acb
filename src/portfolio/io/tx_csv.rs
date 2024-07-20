@@ -264,7 +264,6 @@ pub struct PlainCsvTable {
 }
 
 pub fn txs_to_csv_table(txs: &Vec<CsvTx>) -> PlainCsvTable {
-
     let all_headers = CsvCol::export_order_non_deprecated_cols();
     let optional_headers = HashSet::<&'static str>::from([
         CsvCol::TX_FX,
@@ -295,7 +294,8 @@ pub fn txs_to_csv_table(txs: &Vec<CsvTx>) -> PlainCsvTable {
             }
         }
     }
-    let headers: Vec<&'static str> = all_headers.iter()
+    let headers: Vec<&'static str> = all_headers
+        .iter()
         .filter(|h| {
             !optional_headers.contains(*h) || optional_cols_in_use.contains(*h)
         })
@@ -320,17 +320,18 @@ pub fn txs_to_csv_table(txs: &Vec<CsvTx>) -> PlainCsvTable {
                 CsvCol::ACTION => {
                     tx.action.map(|v| v.to_string()).unwrap_or_else(empty)
                 }
-                CsvCol::SHARES => {
-                    tx.shares.map(|v| to_string_min_precision(&v, 0)).unwrap_or_else(empty)
-                }
-                CsvCol::AMOUNT_PER_SHARE => {
-                    tx.amount_per_share.map(|v| to_string_min_precision(&v, 2))
-                    .unwrap_or_else(empty)
-                }
-                CsvCol::COMMISSION => {
-                    tx.commission.map(|v| to_string_min_precision(&v, 2))
-                    .unwrap_or_else(empty)
-                }
+                CsvCol::SHARES => tx
+                    .shares
+                    .map(|v| to_string_min_precision(&v, 0))
+                    .unwrap_or_else(empty),
+                CsvCol::AMOUNT_PER_SHARE => tx
+                    .amount_per_share
+                    .map(|v| to_string_min_precision(&v, 2))
+                    .unwrap_or_else(empty),
+                CsvCol::COMMISSION => tx
+                    .commission
+                    .map(|v| to_string_min_precision(&v, 2))
+                    .unwrap_or_else(empty),
                 CsvCol::TX_CURR => tx
                     .tx_currency
                     .clone()

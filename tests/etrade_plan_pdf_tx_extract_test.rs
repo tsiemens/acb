@@ -2,7 +2,10 @@ mod common;
 
 use std::{fs, io::Read, path::Path};
 
-use acb::{peripheral::etrade_plan_pdf_tx_extract_impl::{run_with_args, Args}, util::rw::WriteHandle};
+use acb::{
+    peripheral::etrade_plan_pdf_tx_extract_impl::{run_with_args, Args},
+    util::rw::WriteHandle,
+};
 
 use common::run_test;
 
@@ -18,7 +21,8 @@ fn run_and_get_output(args: Args) -> (Result<(), ()>, String, String) {
 }
 
 fn do_test_scenario(scenario_variant_dir: &Path) {
-    let files: Vec<std::path::PathBuf> = fs::read_dir(scenario_variant_dir).unwrap()
+    let files: Vec<std::path::PathBuf> = fs::read_dir(scenario_variant_dir)
+        .unwrap()
         .filter(|rd| rd.is_ok())
         .map(|rd| rd.unwrap().path())
         .filter(|p| p.display().to_string().ends_with(".txt"))
@@ -37,11 +41,15 @@ fn do_test_scenario(scenario_variant_dir: &Path) {
     assert_ne!(out, "");
 
     let mut exp_out = String::new();
-    fs::File::open(scenario_variant_dir.join("../expected_output.csv")).unwrap()
-        .read_to_string(&mut exp_out).unwrap();
+    fs::File::open(scenario_variant_dir.join("../expected_output.csv"))
+        .unwrap()
+        .read_to_string(&mut exp_out)
+        .unwrap();
 
-    acb::testlib::assert_vec_eq(out.split("\n").collect(),
-                                exp_out.split("\n").collect());
+    acb::testlib::assert_vec_eq(
+        out.split("\n").collect(),
+        exp_out.split("\n").collect(),
+    );
 }
 
 #[test]

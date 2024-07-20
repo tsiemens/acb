@@ -52,7 +52,7 @@ struct Args {
     /// try to find a reader which is compatible with the provided PDF.
     #[arg(short = 'r', long = "reader", value_name = "PDF_READER",
           default_value_t=ReaderArg::Auto)]
-    pub reader: ReaderArg
+    pub reader: ReaderArg,
 }
 
 /// page_num should be one-based
@@ -82,9 +82,11 @@ fn main() -> Result<(), ()> {
         if args.parsable_page_markers {
             print!("{}", pdf::parseable_page_marker(page_num));
         } else if args.show_page_numbers {
-            println!("{}{}",
+            println!(
+                "{}{}",
                 if i == 0 { "" } else { "\n" },
-                page_marker_line(page_num));
+                page_marker_line(page_num)
+            );
         }
         if args.parsable_page_markers {
             print!("{}", page);

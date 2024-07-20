@@ -41,7 +41,8 @@ fn read_xl_file(path: &Path, sheet_name: Option<&str>) -> Result<Range, SError> 
         if sheet_names.len() > 1 {
             return Err(format!(
                 "Workbook has more than one one sheet: {sheet_names:?}. \
-                Sheet name must be specified"))
+                Sheet name must be specified"
+            ));
         }
         sheet_names.get(0).ok_or_else(|| "Workbook has no sheets".to_string())?
     };
@@ -49,19 +50,24 @@ fn read_xl_file(path: &Path, sheet_name: Option<&str>) -> Result<Range, SError> 
     workbook.worksheet_range(sheet).map_err(|e| format!("{e}"))
 }
 
-fn filter_and_verify_tx_accounts(account_filter: &Option<Regex>, txs: Vec<BrokerTx>)
- -> Result<Vec<BrokerTx>, SError> {
+fn filter_and_verify_tx_accounts(
+    account_filter: &Option<Regex>,
+    txs: Vec<BrokerTx>,
+) -> Result<Vec<BrokerTx>, SError> {
     if let Some(filt) = account_filter {
-        Ok(txs.into_iter().filter(
-            |tx| filt.is_match(&tx.account.account_str()))
+        Ok(txs
+            .into_iter()
+            .filter(|tx| filt.is_match(&tx.account.account_str()))
             .collect())
     } else {
-        let accounts: HashSet<&Account> = HashSet::from_iter(
-            txs.iter().map(|tx| &tx.account)
-        );
+        let accounts: HashSet<&Account> =
+            HashSet::from_iter(txs.iter().map(|tx| &tx.account));
         if accounts.len() > 1 {
-            let accounts_str = accounts.iter().map(|ac| ac.account_str())
-                .collect::<Vec<String>>().join(", ");
+            let accounts_str = accounts
+                .iter()
+                .map(|ac| ac.account_str())
+                .collect::<Vec<String>>()
+                .join(", ");
             Err(format!(
                 "No account was specified, and found transactions for \
                 multiple accounts ({accounts_str}). \
@@ -141,23 +147,30 @@ pub fn run() -> Result<(), ()> {
     run_with_args(
         args,
         WriteHandle::stdout_write_handle(),
-        WriteHandle::stderr_write_handle())
+        WriteHandle::stderr_write_handle(),
+    )
 }
 
-pub fn run_with_args(args: Args, out_w: WriteHandle, mut err_w: WriteHandle)
--> Result<(), ()>  {
-    let rg = match read_xl_file(&args.export_file,
-                                args.sheet.as_ref().map(|v| v.as_str())) {
+pub fn run_with_args(
+    args: Args,
+    out_w: WriteHandle,
+    mut err_w: WriteHandle,
+) -> Result<(), ()> {
+    let rg = match read_xl_file(
+        &args.export_file,
+        args.sheet.as_ref().map(|v| v.as_str()),
+    ) {
         Ok(rg) => rg,
         Err(e) => {
             write_errln!(err_w, "{e}");
             return Err(());
-        },
+        }
     };
 
     let tx_res = match args.broker {
-        BrokerArg::Questrade => questrade::sheet_to_txs(
-            &rg, Some(&args.export_file)),
+        BrokerArg::Questrade => {
+            questrade::sheet_to_txs(&rg, Some(&args.export_file))
+        }
     };
 
     let (mut txs, errors) = match tx_res {
@@ -173,7 +186,7 @@ pub fn run_with_args(args: Args, out_w: WriteHandle, mut err_w: WriteHandle)
                 }
                 return Err(());
             }
-        },
+        }
     };
 
     txs = match filter_and_verify_tx_accounts(&args.account, txs) {
@@ -181,7 +194,7 @@ pub fn run_with_args(args: Args, out_w: WriteHandle, mut err_w: WriteHandle)
         Err(e) => {
             write_errln!(err_w, "{e}");
             return Err(());
-        },
+        }
     };
 
     if let Some(pattern) = args.security {
@@ -202,8 +215,8 @@ pub fn run_with_args(args: Args, out_w: WriteHandle, mut err_w: WriteHandle)
     }
 
     // Convert to CsvTx (at least. Maybe even to Tx and back too)
-    let csv_txs: Vec<crate::portfolio::CsvTx> = txs.into_iter().map(|t| t.into())
-        .collect();
+    let csv_txs: Vec<crate::portfolio::CsvTx> =
+        txs.into_iter().map(|t| t.into()).collect();
 
     let mut printer: Box<dyn AcbWriter> = if args.pretty {
         Box::new(TextWriter::new(out_w))
@@ -216,11 +229,15 @@ pub fn run_with_args(args: Args, out_w: WriteHandle, mut err_w: WriteHandle)
         format!("{}_txs", args.export_file.display())
     };
     let csv_table = crate::portfolio::io::tx_csv::txs_to_csv_table(&csv_txs);
-    printer.print_render_table(
-        crate::app::outfmt::model::OutputType::Raw,
-        &table_name,
-        &crate::portfolio::render::RenderTable::from(csv_table))
-    .map_err(|e| { write_errln!(err_w, "{e}"); })?;
+    printer
+        .print_render_table(
+            crate::app::outfmt::model::OutputType::Raw,
+            &table_name,
+            &crate::portfolio::render::RenderTable::from(csv_table),
+        )
+        .map_err(|e| {
+            write_errln!(err_w, "{e}");
+        })?;
 
     if let Some(es) = errors {
         let _ = write!(err_w, "Errors:");

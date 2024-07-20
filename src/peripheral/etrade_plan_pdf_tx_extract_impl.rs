@@ -6,24 +6,23 @@ use clap::Parser;
 use itertools::Itertools;
 use rust_decimal::Decimal;
 
+use super::broker::{etrade::BenefitEntry, BrokerTx};
 use crate::app::outfmt::csv::CsvWriter;
 use crate::app::outfmt::model::{AcbWriter, OutputType};
 use crate::app::outfmt::text::TextWriter;
+use crate::peripheral::broker::etrade;
 use crate::portfolio::render::RenderTable;
 use crate::portfolio::{CsvTx, Currency, TxAction};
 use crate::util::rw::WriteHandle;
 use crate::write_errln;
 use crate::{peripheral::pdf, util::basic::SError};
-use crate::peripheral::broker::etrade;
-use super::broker::{etrade::BenefitEntry, BrokerTx};
 
 struct PdfData {
     pub benefits: Vec<BenefitEntry>,
     pub trade_confs: Vec<BrokerTx>,
 }
 
-fn parse_pdfs(files: &Vec<PathBuf>, debug: bool)
--> Result<PdfData, SError> {
+fn parse_pdfs(files: &Vec<PathBuf>, debug: bool) -> Result<PdfData, SError> {
     let mut benefits: Vec<BenefitEntry> = Vec::new();
     let mut trade_confs: Vec<BrokerTx> = Vec::new();
 
@@ -38,8 +37,9 @@ fn parse_pdfs(files: &Vec<PathBuf>, debug: bool)
             eprintln!("Parsing {fpath:?}");
         }
 
-        let pdf_text = if fpath.extension().unwrap_or_default()
-                            .to_string_lossy() == "txt" {
+        let pdf_text = if fpath.extension().unwrap_or_default().to_string_lossy()
+            == "txt"
+        {
             // This is mostly for testing. We can just read the pre-parsed pdf text
             tracing::trace!("Getting raw text from {:?}", fpath);
             let mut buf = String::new();
@@ -62,7 +62,7 @@ fn parse_pdfs(files: &Vec<PathBuf>, debug: bool)
                     eprintln!("{bs:#?}");
                 }
                 benefits.append(&mut bs);
-            },
+            }
             etrade::EtradePdfContent::TradeConfirmation(mut txs) => {
                 if debug {
                     for tx in &txs {
@@ -70,15 +70,22 @@ fn parse_pdfs(files: &Vec<PathBuf>, debug: bool)
                     }
                 }
                 trade_confs.append(&mut txs);
-            },
+            }
         }
     }
 
-    Ok(PdfData{benefits, trade_confs})
+    Ok(PdfData {
+        benefits,
+        trade_confs,
+    })
 }
 
-fn dump_extracted_data(pdf_data: &PdfData, pretty: bool,
-                       mut out_w: WriteHandle, mut err_w: WriteHandle) {
+fn dump_extracted_data(
+    pdf_data: &PdfData,
+    pretty: bool,
+    mut out_w: WriteHandle,
+    mut err_w: WriteHandle,
+) {
     let mut printer: Box<dyn AcbWriter> = if pretty {
         Box::new(TextWriter::new(out_w.clone()))
     } else {
@@ -86,15 +93,28 @@ fn dump_extracted_data(pdf_data: &PdfData, pretty: bool,
     };
 
     if pdf_data.benefits.is_empty() {
-         write_errln!(err_w, "WARN: No benefits entries");
+        write_errln!(err_w, "WARN: No benefits entries");
     }
     let mut rt = RenderTable::default();
-    rt.header.extend(vec![
-        "security", "acquire_tx_date", "acquire_settle_date",
-        "acquire_share_price", "acquire_shares",
-        "sell_to_cover_tx_date", "sell_to_cover_settle_date",
-        "sell_to_cover_price", "sell_to_cover_shares", "sell_to_cover_fee",
-        "plan_note", "sell_note", "filename"].into_iter().map(String::from));
+    rt.header.extend(
+        vec![
+            "security",
+            "acquire_tx_date",
+            "acquire_settle_date",
+            "acquire_share_price",
+            "acquire_shares",
+            "sell_to_cover_tx_date",
+            "sell_to_cover_settle_date",
+            "sell_to_cover_price",
+            "sell_to_cover_shares",
+            "sell_to_cover_fee",
+            "plan_note",
+            "sell_note",
+            "filename",
+        ]
+        .into_iter()
+        .map(String::from),
+    );
 
     for b in &pdf_data.benefits {
         rt.rows.push(vec![
@@ -103,13 +123,11 @@ fn dump_extracted_data(pdf_data: &PdfData, pretty: bool,
             b.acquire_settle_date.to_string(),
             b.acquire_share_price.to_string(),
             b.acquire_shares.to_string(),
-
             format!("{:?}", b.sell_to_cover_tx_date),
             format!("{:?}", b.sell_to_cover_settle_date),
             format!("{:?}", b.sell_to_cover_price),
             format!("{:?}", b.sell_to_cover_shares),
             format!("{:?}", b.sell_to_cover_fee),
-
             b.plan_note.clone(),
             format!("{:?}", b.sell_note),
             b.filename.clone(),
@@ -119,15 +137,31 @@ fn dump_extracted_data(pdf_data: &PdfData, pretty: bool,
 
     let _ = writeln!(out_w, "");
     if pdf_data.trade_confs.is_empty() {
-         write_errln!(err_w, "WARN: No trades entries");
+        write_errln!(err_w, "WARN: No trades entries");
     }
 
     let mut rt = RenderTable::default();
-    rt.header.extend(vec![
-        "security", "trade_date", "settlement_date", "action", "amount_per_share",
-        "num_shares", "commission", "currency", "memo", "exchange_rate", "affiliate",
-        "row_num", "account", "sort_tiebreak", "filename"
-        ].into_iter().map(String::from));
+    rt.header.extend(
+        vec![
+            "security",
+            "trade_date",
+            "settlement_date",
+            "action",
+            "amount_per_share",
+            "num_shares",
+            "commission",
+            "currency",
+            "memo",
+            "exchange_rate",
+            "affiliate",
+            "row_num",
+            "account",
+            "sort_tiebreak",
+            "filename",
+        ]
+        .into_iter()
+        .map(String::from),
+    );
 
     for t in &pdf_data.trade_confs {
         rt.rows.push(vec![
@@ -142,11 +176,9 @@ fn dump_extracted_data(pdf_data: &PdfData, pretty: bool,
             t.memo.clone(),
             format!("{:?}", t.exchange_rate),
             t.affiliate.name().to_string(),
-
             t.row_num.to_string(),
             t.account.memo_str(),
             format!("{:?}", t.sort_tiebreak),
-
             format!("{:?}", t.filename),
         ]);
     }
@@ -156,8 +188,9 @@ fn dump_extracted_data(pdf_data: &PdfData, pretty: bool,
 
 /// Constructs/extracts CsvTxs from the BenefitsAndTrades, and emits a sorted result.
 /// Errors if sell-to-cover data is incomplete.
-fn txs_from_data(trade_data: &BenefitsAndTrades)
--> Result<Vec<crate::portfolio::CsvTx>, SError> {
+fn txs_from_data(
+    trade_data: &BenefitsAndTrades,
+) -> Result<Vec<crate::portfolio::CsvTx>, SError> {
     let mut csv_txs = Vec::new();
 
     for (i, b) in trade_data.benefits.iter().enumerate() {
@@ -182,8 +215,8 @@ fn txs_from_data(trade_data: &BenefitsAndTrades)
         csv_txs.push(buy_tx);
 
         if let Some(sell_to_cover) = b.sell_to_cover_data()? {
-            let sell_note = b.sell_note.as_ref()
-                .map(|n| n.as_str()).unwrap_or("sell-to-cover");
+            let sell_note =
+                b.sell_note.as_ref().map(|n| n.as_str()).unwrap_or("sell-to-cover");
             let sell_tx = CsvTx {
                 security: Some(b.security.clone()),
                 trade_date: Some(sell_to_cover.sell_to_cover_tx_date),
@@ -210,10 +243,18 @@ fn txs_from_data(trade_data: &BenefitsAndTrades)
     let read_index_base = csv_txs.len();
     for (i, trade) in trade_data.other_trades.iter().enumerate() {
         let mut tx: CsvTx = trade.clone().into();
-        tx.memo = Some(match tx.memo {
-            Some(memo) => if memo.is_empty() { memo } else { memo + " " },
-            None => String::new(),
-        } + "(manual trade)");
+        tx.memo = Some(
+            match tx.memo {
+                Some(memo) => {
+                    if memo.is_empty() {
+                        memo
+                    } else {
+                        memo + " "
+                    }
+                }
+                None => String::new(),
+            } + "(manual trade)",
+        );
         tx.read_index = (read_index_base + i).try_into().unwrap();
         csv_txs.push(tx);
     }
@@ -221,12 +262,13 @@ fn txs_from_data(trade_data: &BenefitsAndTrades)
     csv_txs.sort();
 
     Ok(csv_txs)
-
 }
 
-fn render_txs_from_data(trade_data: &BenefitsAndTrades, pretty: bool,
-                        out_w: WriteHandle)
- -> Result<(), SError> {
+fn render_txs_from_data(
+    trade_data: &BenefitsAndTrades,
+    pretty: bool,
+    out_w: WriteHandle,
+) -> Result<(), SError> {
     let txs = txs_from_data(trade_data)?;
 
     let mut printer: Box<dyn AcbWriter> = if pretty {
@@ -239,7 +281,8 @@ fn render_txs_from_data(trade_data: &BenefitsAndTrades, pretty: bool,
     printer.print_render_table(
         crate::app::outfmt::model::OutputType::Raw,
         &table_name,
-        &crate::portfolio::render::RenderTable::from(csv_table))
+        &crate::portfolio::render::RenderTable::from(csv_table),
+    )
 }
 
 /// Searches through trade_confs and finds a set of trades which fully correspond
@@ -247,26 +290,33 @@ fn render_txs_from_data(trade_data: &BenefitsAndTrades, pretty: bool,
 ///
 /// trade_confs should be pre-filtered to only contain trades within a reasonable
 /// date range of benefit.
-fn find_sell_to_cover_trade_set<'a>(benefit: &BenefitEntry,
-                                    trade_confs: &Vec<&'a BrokerTx>)
--> Result<Vec<&'a BrokerTx>, SError> {
+fn find_sell_to_cover_trade_set<'a>(
+    benefit: &BenefitEntry,
+    trade_confs: &Vec<&'a BrokerTx>,
+) -> Result<Vec<&'a BrokerTx>, SError> {
     let sell_to_cover_shares = benefit.sell_to_cover_shares.unwrap();
 
-    let benefit_err_desc = || { format!(
-        "{}: {} {}", benefit.filename, benefit.plan_note, benefit.acquire_tx_date) };
+    let benefit_err_desc = || {
+        format!(
+            "{}: {} {}",
+            benefit.filename, benefit.plan_note, benefit.acquire_tx_date
+        )
+    };
 
     // Step 1: run through combinations of trades, and find some combo where
     // the security of all matches and the number of shares matches.
     // Error out if multiple combinations satisfy this condition.
     let mut matching_trades_o: Option<Vec<&BrokerTx>> = None;
-    for n in (1 ..= trade_confs.len()).rev() {
+    for n in (1..=trade_confs.len()).rev() {
         tracing::trace!("find_sell_to_cover_trade_set combos len {n}");
 
         // (combinations from itertools crate, here)
         for trades in trade_confs.iter().combinations(n) {
-            if ! trades.iter().all(|t| t.security == benefit.security) {
-                tracing::trace!("find_sell_to_cover_trade_set skipping set with not \
-                                all securities matched");
+            if !trades.iter().all(|t| t.security == benefit.security) {
+                tracing::trace!(
+                    "find_sell_to_cover_trade_set skipping set with not \
+                                all securities matched"
+                );
                 continue;
             }
             let n_shares: Decimal = trades.iter().map(|t| t.num_shares).sum();
@@ -275,18 +325,24 @@ fn find_sell_to_cover_trade_set<'a>(benefit: &BenefitEntry,
                     // We already found a candidate set. We may run into the same
                     // combination again in a different arrangement, or a different
                     // set, in which case we won't be able to pick between the two.
-                    if HashSet::<&&BrokerTx>::from_iter(matching_trades.iter()) !=
-                       HashSet::<&&BrokerTx>::from_iter(trades.iter().map(|t| *t)) {
-                        return Err(format!("Multiple trade combinations \
+                    if HashSet::<&&BrokerTx>::from_iter(matching_trades.iter())
+                        != HashSet::<&&BrokerTx>::from_iter(
+                            trades.iter().map(|t| *t),
+                        )
+                    {
+                        return Err(format!(
+                            "Multiple trade combinations \
                                             could potentially constitute the \
                                             sell-to-cover for {}",
-                                            benefit_err_desc()));
+                            benefit_err_desc()
+                        ));
                     }
                     // If these are basically equivalent sets of trades, just skip.
                     // This is most likely to happen when multiple sells get split
                     // into X and 1.
                     tracing::trace!(
-                        "find_sell_to_cover_trade_set equivalent candidates found");
+                        "find_sell_to_cover_trade_set equivalent candidates found"
+                    );
                 } else {
                     tracing::trace!("find_sell_to_cover_trade_set candidates found");
                     matching_trades_o =
@@ -297,15 +353,19 @@ fn find_sell_to_cover_trade_set<'a>(benefit: &BenefitEntry,
     }
 
     if let Some(matching_trades) = matching_trades_o {
-        tracing::debug!("Found matching trade confirmations for benefit:\n{:#?}",
-                        benefit);
+        tracing::debug!(
+            "Found matching trade confirmations for benefit:\n{:#?}",
+            benefit
+        );
         for t in &matching_trades {
             tracing::debug!("  {t:#?}");
         }
         Ok(matching_trades)
     } else {
-        Err(format!("Found no trades matching the sell-to-cover for {}",
-                    benefit_err_desc()))
+        Err(format!(
+            "Found no trades matching the sell-to-cover for {}",
+            benefit_err_desc()
+        ))
     }
 }
 
@@ -326,8 +386,7 @@ struct AmendBenefitsRes {
 /// Entries in trade_confs are "consumed" when this match occurs.
 /// A new BenefitsAndTrades is returned.
 /// Consumes the pdf_data, as it moves much of its contents into the output.
-fn amend_benefit_sales(pdf_data: PdfData)
--> Result<AmendBenefitsRes, Vec<SError>> {
+fn amend_benefit_sales(pdf_data: PdfData) -> Result<AmendBenefitsRes, Vec<SError>> {
     let trade_confs = pdf_data.trade_confs;
     let mut benefits = pdf_data.benefits;
     let mut leftover_trade_confs = trade_confs.clone();
@@ -341,13 +400,14 @@ fn amend_benefit_sales(pdf_data: PdfData)
 
         // Find the sale(s) which could constitute this sell-to-cover
         // We'll take any sell that is between the benefit data and 5 days after.
-        let latest_day = benefit.acquire_tx_date.saturating_add(
-            time::Duration::days(5));
+        let latest_day =
+            benefit.acquire_tx_date.saturating_add(time::Duration::days(5));
         let mut candidate_trades = Vec::new();
         for trade in &leftover_trade_confs {
-            if trade.action == TxAction::Sell &&
-                benefit.acquire_tx_date <= trade.trade_date &&
-                trade.trade_date <= latest_day {
+            if trade.action == TxAction::Sell
+                && benefit.acquire_tx_date <= trade.trade_date
+                && trade.trade_date <= latest_day
+            {
                 candidate_trades.push(trade);
             }
         }
@@ -357,14 +417,19 @@ fn amend_benefit_sales(pdf_data: PdfData)
                 // Ament the benefit dates
                 let t0 = matched_trades[0];
                 for t in &matched_trades {
-                    if t0.trade_date != t.trade_date ||
-                        t0.settlement_date != t.settlement_date {
-                        let mut warn = format!(
-                            "sell-to-cover trades have varrying dates:");
+                    if t0.trade_date != t.trade_date
+                        || t0.settlement_date != t.settlement_date
+                    {
+                        let mut warn =
+                            format!("sell-to-cover trades have varrying dates:");
                         for t_ in &matched_trades {
-                            warn += &format!("\n  TD: {}, SD: {}, shares of {}: {}",
-                                t_.trade_date, t_.settlement_date,
-                                t_.security, t_.num_shares);
+                            warn += &format!(
+                                "\n  TD: {}, SD: {}, shares of {}: {}",
+                                t_.trade_date,
+                                t_.settlement_date,
+                                t_.security,
+                                t_.num_shares
+                            );
                         }
                         warnings.push(warn);
                     }
@@ -375,8 +440,8 @@ fn amend_benefit_sales(pdf_data: PdfData)
                 // Remove matches from leftover trades
                 let mut indexes = Vec::<usize>::with_capacity(matched_trades.len());
                 for t in matched_trades {
-                    let index = leftover_trade_confs.iter()
-                        .position(|t_| t_ == t).unwrap();
+                    let index =
+                        leftover_trade_confs.iter().position(|t_| t_ == t).unwrap();
                     indexes.push(index);
                 }
                 // Sort reversed
@@ -384,14 +449,20 @@ fn amend_benefit_sales(pdf_data: PdfData)
                 for i in indexes.iter().rev() {
                     leftover_trade_confs.remove(*i);
                 }
-            },
+            }
             Err(e) => errors.push(e),
         }
     }
 
     if errors.is_empty() {
-        let bat = BenefitsAndTrades{ benefits, other_trades: leftover_trade_confs };
-        Ok(AmendBenefitsRes{ benefits_and_trades: bat, warnings })
+        let bat = BenefitsAndTrades {
+            benefits,
+            other_trades: leftover_trade_confs,
+        };
+        Ok(AmendBenefitsRes {
+            benefits_and_trades: bat,
+            warnings,
+        })
     } else {
         Err(errors)
     }
@@ -443,14 +514,19 @@ pub fn run() -> Result<(), ()> {
     run_with_args(
         args,
         WriteHandle::stdout_write_handle(),
-        WriteHandle::stderr_write_handle())
+        WriteHandle::stderr_write_handle(),
+    )
 }
 
-pub fn run_with_args(mut args: Args, out_w: WriteHandle, mut err_w: WriteHandle)
--> Result<(), ()>  {
+pub fn run_with_args(
+    mut args: Args,
+    out_w: WriteHandle,
+    mut err_w: WriteHandle,
+) -> Result<(), ()> {
     if args.debug {
         crate::tracing::enable_trace_env(
-            "acb::peripheral::etrade_plan_pdf_tx_extract_impl=debug");
+            "acb::peripheral::etrade_plan_pdf_tx_extract_impl=debug",
+        );
     }
     crate::tracing::setup_tracing();
 
@@ -473,13 +549,13 @@ pub fn run_with_args(mut args: Args, out_w: WriteHandle, mut err_w: WriteHandle)
                 write_errln!(err_w, "Warning: {w}");
             }
             r.benefits_and_trades
-        },
+        }
         Err(errs) => {
             for err in errs {
                 write_errln!(err_w, "Error: {err}");
             }
             return Err(());
-        },
+        }
     };
 
     if args.debug {
@@ -509,11 +585,12 @@ mod tests {
 
     use crate::peripheral::broker::{etrade::BenefitEntry, BrokerTx};
     use crate::peripheral::etrade_plan_pdf_tx_extract_impl::{
-        amend_benefit_sales, PdfData};
+        amend_benefit_sales, PdfData,
+    };
     use crate::portfolio::testlib::MAGIC_DEFAULT_DATE;
     use crate::portfolio::{CsvTx, Currency, TxAction};
-    use crate::util::date::pub_testlib::doy_date;
     use crate::testlib::{assert_re, assert_vec_eq};
+    use crate::util::date::pub_testlib::doy_date;
 
     use super::find_sell_to_cover_trade_set;
 
@@ -548,8 +625,11 @@ mod tests {
 
     impl TBen {
         pub fn x(self) -> BenefitEntry {
-            let tdate = if self.tdate == *MAGIC_DEFAULT_DATE { dt(10) }
-                        else { self.tdate };
+            let tdate = if self.tdate == *MAGIC_DEFAULT_DATE {
+                dt(10)
+            } else {
+                self.tdate
+            };
             let sdate = tdate.saturating_add(time::Duration::days(2));
             let has_stc = self.n_stc.is_some();
             BenefitEntry {
@@ -560,13 +640,18 @@ mod tests {
                 acquire_shares: Decimal::from(self.n_sh),
                 // Pre-amend states for stc.
                 sell_to_cover_tx_date: self.stc_tdate,
-                sell_to_cover_settle_date: self.stc_tdate
+                sell_to_cover_settle_date: self
+                    .stc_tdate
                     .map(|d| d.saturating_add(time::Duration::days(2))),
                 sell_to_cover_price: if has_stc { Some(dec!(100)) } else { None },
                 sell_to_cover_shares: self.n_stc.map(|s| Decimal::from(s)),
                 sell_to_cover_fee: if has_stc { Some(dec!(5.99)) } else { None },
                 plan_note: "XXXX Vest".to_string(),
-                sell_note: if has_stc { Some("XXX STC".to_string()) } else { None },
+                sell_note: if has_stc {
+                    Some("XXX STC".to_string())
+                } else {
+                    None
+                },
                 filename: "a_file.pdf".to_string(),
             }
         }
@@ -593,8 +678,11 @@ mod tests {
 
     impl TTx {
         pub fn x(self) -> BrokerTx {
-            let tdate = if self.tdate == *MAGIC_DEFAULT_DATE { dt(10) }
-                        else { self.tdate };
+            let tdate = if self.tdate == *MAGIC_DEFAULT_DATE {
+                dt(10)
+            } else {
+                self.tdate
+            };
             let sdate = tdate.saturating_add(time::Duration::days(2));
 
             BrokerTx {
@@ -612,7 +700,9 @@ mod tests {
                 exchange_rate: None,
                 affiliate: crate::portfolio::Affiliate::default(),
                 row_num: 100 + self.n_sh,
-                account: crate::peripheral::broker::etrade::new_account("x".to_string()),
+                account: crate::peripheral::broker::etrade::new_account(
+                    "x".to_string(),
+                ),
                 sort_tiebreak: None,
                 filename: Some("conf.pdf".to_string()),
             }
@@ -664,13 +754,15 @@ mod tests {
     }
 
     fn assert_sorted_vec_eq<T>(mut left: Vec<T>, mut right: Vec<T>)
-        where  T: PartialEq + Ord + std::fmt::Debug,
+    where
+        T: PartialEq + Ord + std::fmt::Debug,
     {
         left.sort();
         right.sort();
         assert_vec_eq(left, right);
     }
 
+    #[rustfmt::skip]
     #[test]
     fn test_find_sell_to_cover_trade_set() {
         if std::env::var("VERBOSE").is_ok() {
@@ -732,6 +824,7 @@ mod tests {
             sell-to-cover for a_file.pdf: XXXX Vest 2024-01-11");
     }
 
+    #[rustfmt::skip]
     #[test]
     fn test_amend_benefit_sales() {
         // Cases:
@@ -846,6 +939,7 @@ mod tests {
         assert_eq!(amended_benefits[0].sell_to_cover_tx_date, Some(dt(21)));
     }
 
+    #[rustfmt::skip]
     #[test]
     fn test_txs_from_data() {
 
