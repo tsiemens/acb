@@ -15,6 +15,7 @@ impl CsvCol {
     pub const COMMISSION_CURR: &'static str = "commission currency";
     pub const COMMISSION_FX: &'static str = "commission exchange rate";
     pub const SUPERFICIAL_LOSS: &'static str = "superficial loss";
+    pub const SPLIT_RATIO: &'static str = "split ratio";
     pub const AFFILIATE: &'static str = "affiliate";
     pub const MEMO: &'static str = "memo";
 
@@ -33,12 +34,13 @@ impl CsvCol {
             CsvCol::COMMISSION_CURR,
             CsvCol::COMMISSION_FX,
             CsvCol::SUPERFICIAL_LOSS,
+            CsvCol::SPLIT_RATIO,
             CsvCol::AFFILIATE,
             CsvCol::MEMO,
         ]);
     }
 
-    pub fn export_order_non_deprecated_cols() -> [&'static str; 14] {
+    pub fn export_order_non_deprecated_cols() -> [&'static str; 15] {
         [
             CsvCol::SECURITY,
             CsvCol::TRADE_DATE,
@@ -52,6 +54,7 @@ impl CsvCol {
             CsvCol::COMMISSION_CURR,
             CsvCol::COMMISSION_FX,
             CsvCol::SUPERFICIAL_LOSS,
+            CsvCol::SPLIT_RATIO,
             CsvCol::AFFILIATE,
             CsvCol::MEMO,
         ]

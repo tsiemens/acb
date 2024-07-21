@@ -6,7 +6,7 @@ use std::str::FromStr;
 use rust_decimal::Decimal;
 
 use crate::portfolio::csv_common::CsvCol;
-use crate::portfolio::{Affiliate, CsvTx, Currency, SFLInput, TxAction};
+use crate::portfolio::{Affiliate, CsvTx, Currency, SFLInput, SplitRatio, TxAction};
 use crate::util::decimal::{to_string_min_precision, LessEqualZeroDecimal};
 use crate::util::rw::{DescribedReader, WriteHandle};
 use crate::write_errln;
@@ -19,6 +19,7 @@ fn parse_csv_action(value: &str) -> Result<TxAction, Error> {
         "sell" => Ok(TxAction::Sell),
         "roc" => Ok(TxAction::Roc),
         "sfla" => Ok(TxAction::Sfla),
+        "split" => Ok(TxAction::Split),
         _ => Err(format!("Invalid action '{value}'")),
     }
 }
@@ -153,6 +154,10 @@ fn csvtx_from_csv_values(
             Some(s) => Some(parse_csv_superficial_loss(&s)?),
             None => None,
         },
+        stock_split_ratio: match values.remove(CsvCol::SPLIT_RATIO) {
+            Some(s) => Some(SplitRatio::parse(&s)?),
+            None => None,
+        },
         read_index: read_index,
     })
 }
@@ -270,6 +275,7 @@ pub fn txs_to_csv_table(txs: &Vec<CsvTx>) -> PlainCsvTable {
         CsvCol::COMMISSION_CURR,
         CsvCol::COMMISSION_FX,
         CsvCol::SUPERFICIAL_LOSS,
+        CsvCol::SPLIT_RATIO,
         CsvCol::AFFILIATE,
     ]);
 
@@ -287,6 +293,9 @@ pub fn txs_to_csv_table(txs: &Vec<CsvTx>) -> PlainCsvTable {
         }
         if tx.specified_superficial_loss.is_some() {
             optional_cols_in_use.insert(CsvCol::SUPERFICIAL_LOSS);
+        }
+        if tx.stock_split_ratio.is_some() {
+            optional_cols_in_use.insert(CsvCol::SPLIT_RATIO);
         }
         if let Some(af) = &tx.affiliate {
             if *af != Affiliate::default() {
@@ -361,6 +370,11 @@ pub fn txs_to_csv_table(txs: &Vec<CsvTx>) -> PlainCsvTable {
                         )
                     })
                     .unwrap_or_else(empty),
+                CsvCol::SPLIT_RATIO => tx
+                    .stock_split_ratio
+                    .as_ref()
+                    .map(|v| v.to_string())
+                    .unwrap_or_else(empty),
                 CsvCol::AFFILIATE => tx
                     .affiliate
                     .as_ref()
@@ -419,6 +433,7 @@ pub mod testlib {
         pub c_cur: &'static str,       // COMMISSION_CURR
         pub c_fx: &'static str,        // COMMISSION_FX
         pub sfl: &'static str,         // SUPERFICIAL_LOSS
+        pub split: &'static str,       // SPLIT_RATIO
         pub af: &'static str,          // AFFILIATE
         pub m: &'static str,           // MEMO
     }
@@ -439,6 +454,7 @@ pub mod testlib {
                 CsvCol::COMMISSION_CURR => self.c_cur,
                 CsvCol::COMMISSION_FX => self.c_fx,
                 CsvCol::SUPERFICIAL_LOSS => self.sfl,
+                CsvCol::SPLIT_RATIO => self.split,
                 CsvCol::AFFILIATE => self.af,
                 CsvCol::MEMO => self.m,
                 _ => panic!("Invalid col {}", col),
@@ -580,7 +596,7 @@ mod tests {
     use crate::{
         portfolio::{
             io::tx_csv::{testlib::TestTxCsvRow, TxCsvParseOptions},
-            Affiliate, CsvTx, Currency, SFLInput,
+            Affiliate, CsvTx, Currency, SFLInput, SplitRatio,
         },
         testlib::{assert_vec_eq, assert_vecr_eq},
         util::{
@@ -705,7 +721,7 @@ mod tests {
                 Row{sec:" Foo ",td:"2020-11-11",sd:"2020-11-13",legacy_date:"",
                     a:"Buy",sh:"123.1",aps:"10.1",
                     com: "20.1", cur: "USD", fx: "1.3",c_cur: "usd", c_fx: "1.31",
-                    sfl: "-1.2!", af: "(R)", m:"A memo",
+                    sfl: "-1.2!", split: "2-for-1", af: "(R)", m:"A memo",
                 },
                 Row::default(),
                 // Empty sec after trimming
@@ -741,6 +757,7 @@ mod tests {
                     dec!(-1.2),
                     true,
                 )),
+                stock_split_ratio: Some(SplitRatio::parse("2-for-1").unwrap()),
                 read_index: 0,
             },
             CsvTx {
@@ -809,6 +826,12 @@ mod tests {
             ..Default::default()
         });
         assert_eq!(err, "Error on row 2 of foo0.csv: Invalid superficial loss 1: Was positive value");
+
+        let err = parse_fatal_row(Row {
+            split: "1:1",
+            ..Default::default()
+        });
+        assert_eq!(err, "Error on row 2 of foo0.csv: \"1:1\" does not match N-for-M split format");
     }
 
     #[test]
@@ -816,14 +839,16 @@ mod tests {
         let mut d_reader =
         CsvFileBuilder::with_custom_header_line(
             "security,trade date,settlement date,action,shares,amount/share,commission,currency,\
-			exchange rate,commission currency,commission exchange rate,superficial loss,affiliate,memo\n"
+			exchange rate,commission currency,commission exchange rate,\
+            superficial loss,split ratio,affiliate,memo\n"
         )
             .single_csv_reader_raw(&vec![
-                "FOO,2016-01-03,2016-01-05,Sell,5,1.6,0,CAD,,CAD,,,Default,a memo",
-			    "BAR,2016-01-03,2016-01-06,Buy,7,1.7,1,USD,1.11,USD,1.11,,Default,a memo 2",
-			    "AA,2016-01-04,2016-01-07,Sell,1,1.7,1,USD,1.11,USD,1.11,-1.2,Default,M3",
-			    "BB,2016-01-05,2016-01-08,Sell,2,1.7,1,USD,1.11,USD,1.11,-1.3!,Default (R),M4",
-			    "CC,2016-01-08,2016-01-10,SfLA,2,1.3,0,CAD,,CAD,,,B,M5",
+                "FOO,2016-01-03,2016-01-05,Sell,5,1.6,0,CAD,,CAD,,,,Default,a memo",
+			    "BAR,2016-01-03,2016-01-06,Buy,7,1.7,1,USD,1.11,USD,1.11,,,Default,a memo 2",
+			    "AA,2016-01-04,2016-01-07,Sell,1,1.7,1,USD,1.11,USD,1.11,-1.2,,Default,M3",
+			    "BB,2016-01-05,2016-01-08,Sell,2,1.7,1,USD,1.11,USD,1.11,-1.3!,,Default (R),M4",
+			    "CC,2016-01-08,2016-01-10,SfLA,2,1.3,0,CAD,,CAD,,,,B,M5",
+			    "FOO,2016-01-09,2016-01-09,Split,,1.3,,,,,,,2-for-1,Default,M6",
             ]);
         let parsed_txs = parse_tx_csv(
             &mut d_reader,
@@ -840,12 +865,14 @@ mod tests {
             str_writer.as_str().split("\n").map(|s| s.to_string()).collect::<Vec<String>>(),
             "security,trade date,settlement date,action,shares,amount/share,commission,\
                 currency,exchange rate,commission currency,commission exchange rate,\
-                superficial loss,affiliate,memo\n\
-            FOO,2016-01-03,2016-01-05,Sell,5,1.60,0.00,CAD,,CAD,,,Default,a memo\n\
-            BAR,2016-01-03,2016-01-06,Buy,7,1.70,1.00,USD,1.11,USD,1.11,,Default,a memo 2\n\
-            AA,2016-01-04,2016-01-07,Sell,1,1.70,1.00,USD,1.11,USD,1.11,-1.20,Default,M3\n\
-            BB,2016-01-05,2016-01-08,Sell,2,1.70,1.00,USD,1.11,USD,1.11,-1.30!,Default (R),M4\n\
-            CC,2016-01-08,2016-01-10,SfLA,2,1.30,0.00,CAD,,CAD,,,B,M5\n"
+                superficial loss,split ratio,affiliate,memo\n\
+            FOO,2016-01-03,2016-01-05,Sell,5,1.60,0.00,CAD,,CAD,,,,Default,a memo\n\
+            BAR,2016-01-03,2016-01-06,Buy,7,1.70,1.00,USD,1.11,USD,1.11,,,Default,a memo 2\n\
+            AA,2016-01-04,2016-01-07,Sell,1,1.70,1.00,USD,1.11,USD,1.11,-1.20,,Default,M3\n\
+            BB,2016-01-05,2016-01-08,Sell,2,1.70,1.00,USD,1.11,USD,1.11,-1.30!,,Default (R),M4\n\
+            CC,2016-01-08,2016-01-10,SfLA,2,1.30,0.00,CAD,,CAD,,,,B,M5\n\
+			FOO,2016-01-09,2016-01-09,Split,,1.30,,,,,,,2-for-1,Default,M6\n\
+            "
                 .split("\n").map(|s| s.to_string()).collect::<Vec<String>>());
     }
 }

@@ -16,8 +16,9 @@ pub type Security = String;
 pub enum TxAction {
     Buy,
     Sell,
-    Roc,  // Return of capital
-    Sfla, // Superficial loss ACB adjustment
+    Roc,   // Return of capital
+    Sfla,  // Superficial loss ACB adjustment
+    Split, // Stock split/reverse-split
 }
 
 impl TxAction {
@@ -27,6 +28,7 @@ impl TxAction {
             TxAction::Sell => "Sell",
             TxAction::Roc => "RoC",
             TxAction::Sfla => "SfLA",
+            TxAction::Split => "Split",
         }
     }
 }
@@ -40,6 +42,7 @@ impl TryFrom<&str> for TxAction {
             "sell" | "sold" => Ok(TxAction::Sell),
             "roc" => Ok(TxAction::Roc),
             "sfla" => Ok(TxAction::Sfla),
+            "split" => Ok(TxAction::Split),
             _ => Err(format!("Unable to parse action from '{value}'")),
         }
     }
@@ -62,6 +65,66 @@ impl SFLInput {
         SFLInput {
             superficial_loss: LessEqualZeroDecimal::try_from(v).unwrap(),
             force: force,
+        }
+    }
+}
+
+/// Ratio for a stock split. Can be a split or reverse split.
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct SplitRatio {
+    pub pre_split: PosDecimal,
+    pub post_split: PosDecimal,
+}
+
+impl SplitRatio {
+    /// Supports this fairly standard format: N-for-M or Post-for-Pre
+    /// This makes the direction of the split very clear.
+    /// Technically can support non-integer ratios.
+    pub fn parse(str_repr: &str) -> Result<Self, crate::util::basic::SError> {
+        let m = regex::RegexBuilder::new(r"^\s*([\d\.]+)-for-([\d\.]+)\s*$")
+            .case_insensitive(true)
+            .build()
+            .unwrap()
+            .captures(str_repr);
+        if let Some(caps) = m {
+            let post_str = caps.get(1).unwrap().as_str();
+            let post = PosDecimal::try_from(
+                Decimal::from_str_exact(post_str).map_err(|e| e.to_string())?,
+            )?;
+            let pre_str = caps.get(2).unwrap().as_str();
+            let pre = PosDecimal::try_from(
+                Decimal::from_str_exact(pre_str).map_err(|e| e.to_string())?,
+            )?;
+
+            Ok(SplitRatio {
+                pre_split: pre,
+                post_split: post,
+            })
+        } else {
+            Err(format!(
+                "\"{}\" does not match N-for-M split format",
+                str_repr
+            ))
+        }
+    }
+
+    pub fn is_reverse_split(&self) -> bool {
+        *self.pre_split > *self.post_split
+    }
+}
+
+impl Display for SplitRatio {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if let Some(precision) = f.precision() {
+            write!(
+                f,
+                "{:.2$}-for-{:.2$}",
+                self.post_split, self.pre_split, precision
+            )
+        } else if self.post_split.is_integer() && self.pre_split.is_integer() {
+            write!(f, "{:.0}-for-{:.0}", self.post_split, self.pre_split)
+        } else {
+            write!(f, "{}-for-{}", self.post_split, self.pre_split)
         }
     }
 }
@@ -98,6 +161,8 @@ pub struct CsvTx {
     // displayed value
     pub specified_superficial_loss: Option<SFLInput>,
 
+    pub stock_split_ratio: Option<SplitRatio>,
+
     // The absolute order in which the Tx was read from file or entered.
     // Used as a tiebreak in sorting.
     pub read_index: u32,
@@ -120,6 +185,7 @@ impl Default for CsvTx {
             memo: None,
             affiliate: None,
             specified_superficial_loss: None,
+            stock_split_ratio: None,
             read_index: 0,
         }
     }
@@ -476,6 +542,9 @@ impl TryFrom<CsvTx> for Tx {
                         })?,
                 })
             }
+            TxAction::Split => {
+                todo!()
+            }
         };
 
         let not_found_err =
@@ -581,6 +650,8 @@ impl Ord for Tx {
     }
 }
 
+// MARK: testlib
+
 #[cfg(test)]
 pub mod testlib {
     use lazy_static::lazy_static;
@@ -595,7 +666,7 @@ pub mod testlib {
         },
     };
 
-    use super::{CsvTx, SFLInput, Tx, TxAction};
+    use super::{CsvTx, SFLInput, SplitRatio, Tx, TxAction};
 
     // This isn't terribly rust-esque, but it makes tests a bit more brief
     // than using Option everywhere within the tests.
@@ -643,6 +714,7 @@ pub mod testlib {
         pub af: Affiliate,
         pub af_name: &'static str,
         pub sfl: Option<SFLInput>,
+        pub split: Option<SplitRatio>,
 
         pub read_index: u32,
     }
@@ -742,6 +814,7 @@ pub mod testlib {
                 },
                 affiliate: Some(affiliate),
                 specified_superficial_loss: self.sfl.clone(),
+                stock_split_ratio: self.split.clone(),
                 read_index: self.read_index,
             };
             Tx::try_from(csv_tx).unwrap()
@@ -776,6 +849,7 @@ pub mod testlib {
                 af: Affiliate::default(),
                 af_name: MAGIC_DEFAULT_AF_NAME,
                 sfl: None,
+                split: None,
 
                 read_index: 0,
             }
@@ -800,7 +874,9 @@ mod tests {
     use crate::util::decimal::{GreaterEqualZeroDecimal, PosDecimal};
     use crate::{testlib::assert_vec_eq, util::date::parse_standard_date};
 
-    use super::{BuyTxSpecifics, CsvTx, RocTxSpecifics, SFLInput, Tx, TxAction};
+    use super::{
+        BuyTxSpecifics, CsvTx, RocTxSpecifics, SFLInput, SplitRatio, Tx, TxAction,
+    };
 
     pub const DEFAULT_SECURITY: &str = "FOO";
 
@@ -822,6 +898,74 @@ mod tests {
 
     fn gez(d: Decimal) -> GreaterEqualZeroDecimal {
         GreaterEqualZeroDecimal::try_from(d).unwrap()
+    }
+
+    #[test]
+    fn test_split_ratio() {
+        // typical ratio
+        let r = SplitRatio::parse("2-for-1").unwrap();
+        assert_eq!(
+            r,
+            SplitRatio {
+                pre_split: pdec!(1),
+                post_split: pdec!(2)
+            }
+        );
+        assert_eq!(r.to_string(), "2-for-1");
+        assert!(!r.is_reverse_split());
+
+        // Padding/whitespace removal
+        assert_eq!(r, SplitRatio::parse(" 2-for-1 ").unwrap());
+
+        // Reverse split with decimals
+        let r = SplitRatio::parse("1.5-for-2.5").unwrap();
+        assert_eq!(
+            r,
+            SplitRatio {
+                pre_split: pdec!(2.5),
+                post_split: pdec!(1.5)
+            }
+        );
+        assert!(r.is_reverse_split());
+
+        // 1:1 (edge case. No one will do this)
+        assert!(!SplitRatio::parse("1-for-1").unwrap().is_reverse_split());
+
+        // Format precision
+        assert_eq!(
+            format!(
+                "{:.2}",
+                SplitRatio {
+                    pre_split: pdec!(1),
+                    post_split: pdec!(2)
+                }
+            ),
+            "2.00-for-1.00"
+        );
+        assert_eq!(
+            format!(
+                "{}",
+                SplitRatio {
+                    pre_split: pdec!(1.0),
+                    post_split: pdec!(2.0)
+                }
+            ),
+            "2-for-1"
+        );
+        assert_eq!(
+            format!(
+                "{}",
+                SplitRatio {
+                    pre_split: pdec!(1.1),
+                    post_split: pdec!(2.1)
+                }
+            ),
+            "2.1-for-1.1"
+        );
+
+        // Errors
+        SplitRatio::parse("2:1").unwrap_err();
+        SplitRatio::parse("-1-for-2").unwrap_err();
     }
 
     #[test]
@@ -881,6 +1025,8 @@ mod tests {
                 dec!(-2.5),
                 false,
             )),
+            // Ignored for anything but split
+            stock_split_ratio: Some(SplitRatio::parse("2-for-1").unwrap()),
             read_index: 5,
         }
     }

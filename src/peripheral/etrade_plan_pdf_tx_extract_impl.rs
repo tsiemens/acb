@@ -209,6 +209,7 @@ fn txs_from_data(
             memo: Some(b.plan_note.clone()),
             affiliate: None,
             specified_superficial_loss: None,
+            stock_split_ratio: None,
             read_index: (i * 2).try_into().unwrap(),
         };
 
@@ -232,6 +233,7 @@ fn txs_from_data(
                 memo: Some(format!("{} {}", b.plan_note, sell_note)),
                 affiliate: None,
                 specified_superficial_loss: None,
+                stock_split_ratio: None,
                 read_index: ((i * 2) + 1).try_into().unwrap(),
             };
 
@@ -977,6 +979,7 @@ mod tests {
                 memo: Some("XXXX Vest".to_string()),
                 affiliate: None,
                 specified_superficial_loss: None,
+                stock_split_ratio: None,
                 read_index: 2,
             },
             // Extra sell
@@ -995,6 +998,7 @@ mod tests {
                 memo: Some("test trade conf (manual trade)".to_string()),
                 affiliate: Some(crate::portfolio::Affiliate::default()),
                 specified_superficial_loss: None,
+                stock_split_ratio: None,
                 read_index: 3,
             },
             // Extra buy
@@ -1013,6 +1017,7 @@ mod tests {
                 memo: Some("test trade conf (manual trade)".to_string()),
                 affiliate: Some(crate::portfolio::Affiliate::default()),
                 specified_superficial_loss: None,
+                stock_split_ratio: None,
                 read_index: 4 },
             // Vest with StC
             CsvTx {
@@ -1030,6 +1035,7 @@ mod tests {
                 memo: Some("XXXX Vest".to_string()),
                 affiliate: None,
                 specified_superficial_loss: None,
+                stock_split_ratio: None,
                 read_index: 0,
             },
             // Stc
@@ -1048,6 +1054,7 @@ mod tests {
                 memo: Some("XXXX Vest XXX STC".to_string()),
                 affiliate: None,
                 specified_superficial_loss: None,
+                stock_split_ratio: None,
                 read_index: 1,
             },
         ]);

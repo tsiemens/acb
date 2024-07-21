@@ -111,6 +111,7 @@ impl Into<crate::portfolio::CsvTx> for BrokerTx {
             memo: Some(self.memo),
             affiliate: Some(self.affiliate),
             specified_superficial_loss: None,
+            stock_split_ratio: None,
             read_index: self.row_num,
         }
     }
