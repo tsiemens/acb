@@ -5,6 +5,7 @@ mod fx_tracker;
 
 // Individual brokers
 pub mod etrade;
+#[cfg(feature = "xlsx_read")]
 pub mod questrade;
 
 pub struct SheetToTxsErr {

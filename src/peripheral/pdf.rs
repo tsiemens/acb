@@ -45,27 +45,6 @@ pub fn filter_pdf_pages(
     (total_pages, pages_remaining)
 }
 
-struct StringHolder {
-    strings: Vec<Option<String>>,
-}
-
-struct StringHolderIter<'a> {
-    string_holder: &'a StringHolder,
-    i: usize,
-}
-
-impl<'a> Iterator for StringHolderIter<'a> {
-    type Item = (usize, &'a String);
-    fn next(&mut self) -> Option<Self::Item> {
-        if self.i >= self.string_holder.strings.len() {
-            None
-        } else {
-            self.i += 1;
-            Some((1, &self.string_holder.strings[self.i - 1].as_ref().unwrap()))
-        }
-    }
-}
-
 pub struct LazyPageTextVec {
     doc: Arc<Document>,
     load_async_blocking: bool,
