@@ -97,7 +97,13 @@ pub struct Args {
 }
 
 pub fn command_main() -> Result<(), ExitCode> {
+    crate::tracing::setup_tracing();
+
     let args = Args::parse();
+
+    if args.verbose {
+        crate::log::set_verbose(true);
+    }
 
     let mut err_printer = WriteHandle::stderr_write_handle();
 

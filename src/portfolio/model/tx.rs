@@ -70,10 +70,17 @@ impl SFLInput {
 }
 
 /// Ratio for a stock split. Can be a split or reverse split.
+///
+/// If reverse_integer_only is true (false if parsed string has any decimal
+/// precision) then a reverse split will enforce that there is no remainder stock
+/// after the split. eg. If we have 5 shares, and do a 1-for-2 split, a failure will
+/// occur unless we add a predecing sale of 1 share, or specify as a 1.0-for-2.0,
+/// in which case, we'll be left with 2.5 shares.
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct SplitRatio {
     pub pre_split: PosDecimal,
     pub post_split: PosDecimal,
+    pub reverse_integer_only: bool,
 }
 
 impl SplitRatio {
@@ -96,10 +103,19 @@ impl SplitRatio {
                 Decimal::from_str_exact(pre_str).map_err(|e| e.to_string())?,
             )?;
 
-            Ok(SplitRatio {
+            let decimal_re = regex::Regex::new(r"\.\d").unwrap();
+            let reverse_integer_only =
+                !decimal_re.is_match(post_str) && !decimal_re.is_match(pre_str);
+
+            let mut ratio = SplitRatio {
                 pre_split: pre,
                 post_split: post,
-            })
+                reverse_integer_only: reverse_integer_only,
+            };
+            if !ratio.is_reverse_split() {
+                ratio.reverse_integer_only = false;
+            }
+            Ok(ratio)
         } else {
             Err(format!(
                 "\"{}\" does not match N-for-M split format",
@@ -110,6 +126,10 @@ impl SplitRatio {
 
     pub fn is_reverse_split(&self) -> bool {
         *self.pre_split > *self.post_split
+    }
+
+    pub fn pre_to_post_factor(&self) -> PosDecimal {
+        self.post_split / self.pre_split
     }
 }
 
@@ -122,7 +142,13 @@ impl Display for SplitRatio {
                 self.post_split, self.pre_split, precision
             )
         } else if self.post_split.is_integer() && self.pre_split.is_integer() {
-            write!(f, "{:.0}-for-{:.0}", self.post_split, self.pre_split)
+            if self.is_reverse_split() && !self.reverse_integer_only {
+                // Write out with precision, so that re-parsing will set
+                // reverse_integer_only to false again.
+                write!(f, "{:.1}-for-{:.1}", self.post_split, self.pre_split)
+            } else {
+                write!(f, "{:.0}-for-{:.0}", self.post_split, self.pre_split)
+            }
         } else {
             write!(f, "{}-for-{}", self.post_split, self.pre_split)
         }
@@ -311,11 +337,17 @@ impl SflaTxSpecifics {
 }
 
 #[derive(Clone, PartialEq, Eq, Debug)]
+pub struct SplitTxSpecifics {
+    pub ratio: SplitRatio,
+}
+
+#[derive(Clone, PartialEq, Eq, Debug)]
 pub enum TxActionSpecifics {
     Buy(BuyTxSpecifics),
     Sell(SellTxSpecifics),
     Roc(RocTxSpecifics),
     Sfla(SflaTxSpecifics),
+    Split(SplitTxSpecifics),
 }
 
 impl TxActionSpecifics {
@@ -325,6 +357,7 @@ impl TxActionSpecifics {
             TxActionSpecifics::Sell(_) => TxAction::Sell,
             TxActionSpecifics::Roc(_) => TxAction::Roc,
             TxActionSpecifics::Sfla(_) => TxAction::Sfla,
+            TxActionSpecifics::Split(_) => TxAction::Split,
         }
     }
 }
@@ -542,9 +575,11 @@ impl TryFrom<CsvTx> for Tx {
                         })?,
                 })
             }
-            TxAction::Split => {
-                todo!()
-            }
+            TxAction::Split => TxActionSpecifics::Split(SplitTxSpecifics {
+                ratio: csv_tx
+                    .stock_split_ratio
+                    .ok_or(format!("Split \"{}\" not found", CsvCol::SPLIT_RATIO))?,
+            }),
         };
 
         let not_found_err =
@@ -628,6 +663,10 @@ fn populate_csvtx_fields_from_action_specifics(
             tx.action = Some(TxAction::Sfla);
             tx.shares = Some(*s.shares_affected);
             tx.amount_per_share = Some(*s.amount_per_share);
+        }
+        TxActionSpecifics::Split(s) => {
+            tx.action = Some(TxAction::Split);
+            tx.stock_split_ratio = Some(s.ratio.clone());
         }
     }
 }
@@ -908,7 +947,8 @@ mod tests {
             r,
             SplitRatio {
                 pre_split: pdec!(1),
-                post_split: pdec!(2)
+                post_split: pdec!(2),
+                reverse_integer_only: false,
             }
         );
         assert_eq!(r.to_string(), "2-for-1");
@@ -917,13 +957,48 @@ mod tests {
         // Padding/whitespace removal
         assert_eq!(r, SplitRatio::parse(" 2-for-1 ").unwrap());
 
+        // Reverse split without decimals
+        let r = SplitRatio::parse("1-for-2").unwrap();
+        assert_eq!(
+            r,
+            SplitRatio {
+                pre_split: pdec!(2),
+                post_split: pdec!(1),
+                reverse_integer_only: true,
+            }
+        );
+        assert!(r.is_reverse_split());
+
         // Reverse split with decimals
+        let r = SplitRatio::parse("1.0-for-2").unwrap();
+        assert_eq!(
+            r,
+            SplitRatio {
+                pre_split: pdec!(2),
+                post_split: pdec!(1),
+                reverse_integer_only: false,
+            }
+        );
+        assert!(r.is_reverse_split());
+
+        let r = SplitRatio::parse("1-for-2.0").unwrap();
+        assert_eq!(
+            r,
+            SplitRatio {
+                pre_split: pdec!(2),
+                post_split: pdec!(1),
+                reverse_integer_only: false,
+            }
+        );
+        assert!(r.is_reverse_split());
+
         let r = SplitRatio::parse("1.5-for-2.5").unwrap();
         assert_eq!(
             r,
             SplitRatio {
                 pre_split: pdec!(2.5),
-                post_split: pdec!(1.5)
+                post_split: pdec!(1.5),
+                reverse_integer_only: false,
             }
         );
         assert!(r.is_reverse_split());
@@ -933,34 +1008,24 @@ mod tests {
 
         // Format precision
         assert_eq!(
-            format!(
-                "{:.2}",
-                SplitRatio {
-                    pre_split: pdec!(1),
-                    post_split: pdec!(2)
-                }
-            ),
+            format!("{:.2}", SplitRatio::parse("2-for-1").unwrap()),
             "2.00-for-1.00"
         );
         assert_eq!(
-            format!(
-                "{}",
-                SplitRatio {
-                    pre_split: pdec!(1.0),
-                    post_split: pdec!(2.0)
-                }
-            ),
+            format!("{}", SplitRatio::parse("2.0-for-1.0").unwrap()),
             "2-for-1"
         );
+        // Reverse split with decimal support must preserve this in re-render
+        // (such that re-parsing it gives the same result).
         assert_eq!(
-            format!(
-                "{}",
-                SplitRatio {
-                    pre_split: pdec!(1.1),
-                    post_split: pdec!(2.1)
-                }
-            ),
-            "2.1-for-1.1"
+            format!("{}", SplitRatio::parse("1.00-for-2.00").unwrap()),
+            "1.0-for-2.0"
+        );
+        // Non-integers will render in their default precision (which will be
+        // as they were parsed).
+        assert_eq!(
+            format!("{}", SplitRatio::parse("2.1000-for-1.1000").unwrap()),
+            "2.1000-for-1.1000"
         );
 
         // Errors

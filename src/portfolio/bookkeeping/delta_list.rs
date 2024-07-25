@@ -358,6 +358,45 @@ fn delta_for_tx(
                 ));
             }
         }
+        crate::portfolio::TxActionSpecifics::Split(split_specs) => {
+            new_share_balance = pre_tx_status.share_balance
+                * split_specs.ratio.pre_to_post_factor().into();
+            let share_diff = *new_share_balance - *pre_tx_status.share_balance;
+            // This erroring would be strange in practice. Only if the share balance
+            // was already broken.
+            new_all_affiliates_share_balance = GreaterEqualZeroDecimal::try_from(
+                *new_all_affiliates_share_balance + share_diff,
+            )
+            .map_err(|_| {
+                format!(
+                    "Stock split on {} caused all-affiliate share \
+                                      balance to become negative",
+                    tx.trade_date
+                )
+            })?;
+
+            // In a reverse split, the user is usually required to add a Sell Tx just
+            // before the split, if shares are non-fractional, which is most of the
+            // time.
+            if split_specs.ratio.is_reverse_split()
+                && split_specs.ratio.reverse_integer_only
+                && !new_share_balance.is_integer()
+            {
+                return Err(format!(
+                    "Reverse stock split of {} on {} results in non-integer share \
+                    balance of {}. Resolve by either adding a sale of the odd-lot \
+                    shares (immediately preceding the split), or specify the split \
+                    ratio with decimal precision (i.e. \"{:.1}\" to enable \
+                    fractional shares",
+                    tx.security, tx.trade_date, new_share_balance, split_specs.ratio
+                ));
+            }
+
+            // TODO If we wanted, we could add to txs_to_inject with any missing
+            // affiliates which also hold this share. That may be a bit excessive
+            // for something that happens so infequently though. Perhaps a warning
+            // though?
+        }
     }
 
     let new_status = PortfolioSecurityStatus {
@@ -489,6 +528,7 @@ mod tests {
     use crate::portfolio::Currency;
     use crate::portfolio::PortfolioSecurityStatus;
     use crate::portfolio::SFLInput;
+    use crate::portfolio::SplitRatio;
     use crate::portfolio::Tx;
     use crate::portfolio::TxAction as A;
     use crate::portfolio::TxActionSpecifics;
@@ -1817,6 +1857,134 @@ mod tests {
                 total_acb: None, ..def()}, gain: None, ..def()}, // Buy in (R)
             TDt{post_st: TPSS{shares: gez!(9), all_shares: gez!(24),
                 total_acb: sgez!(9.5), ..def()}, ..def()}, // Buy in B
+        ]);
+    }
+
+    #[test]
+    #[rustfmt::skip]
+    fn test_stock_splits() {
+        let split = |s| { Some(SplitRatio::parse(s).unwrap()) };
+
+        // Case: Typical split
+        let txs = vec![
+            TTx{t_day: 1, act: A::Buy, shares: gez!(10), price: gez!(1.0),
+                af_name: "", ..def()}.x(),
+            TTx{t_day: 2, act: A::Split, split: split("2-for-1"),
+                af_name: "", ..def()}.x(),
+            TTx{t_day: 3, act: A::Sell, shares: gez!(20), price: gez!(0.5),
+                af_name: "", ..def()}.x(),
+        ];
+        let deltas = txs_to_delta_list_no_err(txs);
+        validate_deltas(deltas, vec![
+            TDt{post_st: TPSS{shares: gez!(10), all_shares: gez!(10),
+                total_acb: sgez!(10.0), ..def()}, ..def()}, // Buy in Default
+            TDt{post_st: TPSS{shares: gez!(20), all_shares: gez!(20),
+                total_acb: sgez!(10.0), ..def()}, gain: None, ..def()}, // Split
+            TDt{post_st: TPSS{shares: gez!(0), all_shares: gez!(0),
+                total_acb: sgez!(0.0), ..def()},  gain: sdec!(0),
+                ..def()}, // Sell all, with a gain of zero
+        ]);
+
+        // Case: Decimal-enabled split
+        let txs = vec![
+            TTx{t_day: 1, act: A::Buy, shares: gez!(11), price: gez!(1.0),
+                af_name: "", ..def()}.x(),
+            TTx{t_day: 2, act: A::Split, split: split("2.5-for-1"),
+                af_name: "", ..def()}.x(),
+            TTx{t_day: 3, act: A::Sell, shares: gez!(27.5), price: gez!(1.0),
+                af_name: "", ..def()}.x(),
+        ];
+        let deltas = txs_to_delta_list_no_err(txs);
+        validate_deltas(deltas, vec![
+            TDt{post_st: TPSS{shares: gez!(11), all_shares: gez!(11),
+                total_acb: sgez!(11.0), ..def()}, ..def()}, // Buy in Default
+            TDt{post_st: TPSS{shares: gez!(27.5), all_shares: gez!(27.5),
+                total_acb: sgez!(11.0), ..def()}, gain: None, ..def()}, // Split
+            TDt{post_st: TPSS{shares: gez!(0), all_shares: gez!(0),
+                total_acb: sgez!(0.0), ..def()},  gain: sdec!(16.5),
+                ..def()}, // Sell all, with a gain of zero
+        ]);
+
+        // Case: Reverse split
+        let txs = vec![
+            TTx{t_day: 1, act: A::Buy, shares: gez!(11), price: gez!(1.0),
+                af_name: "", ..def()}.x(),
+            TTx{t_day: 2, act: A::Sell, shares: gez!(1), price: gez!(1.5),
+                af_name: "", ..def()}.x(), // Sell odd-lot
+            TTx{t_day: 2, act: A::Split, split: split("1-for-2"),
+                af_name: "", ..def()}.x(),
+            TTx{t_day: 3, act: A::Sell, shares: gez!(5), price: gez!(3.0),
+                af_name: "", ..def()}.x(),
+        ];
+        let deltas = txs_to_delta_list_no_err(txs);
+        validate_deltas(deltas, vec![
+            TDt{post_st: TPSS{shares: gez!(11), all_shares: gez!(11),
+                total_acb: sgez!(11.0), ..def()}, ..def()}, // Buy in Default
+            TDt{post_st: TPSS{shares: gez!(10), all_shares: gez!(10),
+                total_acb: sgez!(10.0), ..def()},
+                gain: sdec!(0.5), ..def()}, // Sell odd-lot
+            TDt{post_st: TPSS{shares: gez!(5), all_shares: gez!(5),
+                total_acb: sgez!(10.0), ..def()}, gain: None, ..def()}, // R-Split
+            TDt{post_st: TPSS{shares: gez!(0), all_shares: gez!(0),
+                total_acb: sgez!(0.0), ..def()},  gain: sdec!(5),
+                ..def()}, // Sell all, with a gain of zero
+        ]);
+
+        // Case: Reverse split non-exact (error)
+        let txs = vec![
+            TTx{t_day: 1, act: A::Buy, shares: gez!(11), price: gez!(1.0),
+                af_name: "", ..def()}.x(),
+            TTx{t_day: 2, act: A::Split, split: split("1-for-2"),
+                af_name: "", ..def()}.x(),
+        ];
+        txs_to_delta_list_with_err(txs);
+
+        // Case: Reverse split non-exact with decimal override
+        let txs = vec![
+            TTx{t_day: 1, act: A::Buy, shares: gez!(11), price: gez!(1.0),
+                af_name: "", ..def()}.x(),
+            TTx{t_day: 2, act: A::Split, split: split("1.0-for-2"),
+                af_name: "", ..def()}.x(),
+        ];
+        let deltas = txs_to_delta_list_no_err(txs);
+        validate_deltas(deltas, vec![
+            TDt{post_st: TPSS{shares: gez!(11), all_shares: gez!(11),
+                total_acb: sgez!(11.0), ..def()}, ..def()}, // Buy in Default
+            TDt{post_st: TPSS{shares: gez!(5.5), all_shares: gez!(5.5),
+                total_acb: sgez!(11.0), ..def()}, gain: None, ..def()}, // R-Split
+        ]);
+
+        // Case: Split in multiple affiliates.
+        // Currently, splits are per-affiliate (this is just an implementation
+        // simplification. We would expect a split entry for each affil)
+        let txs = vec![
+            TTx{t_day: 1, act: A::Buy, shares: gez!(10), price: gez!(1.0),
+                af_name: "", ..def()}.x(),
+            TTx{t_day: 1, act: A::Buy, shares: gez!(100), price: gez!(1.0),
+                af_name: "(R)", ..def()}.x(),
+            TTx{t_day: 1, act: A::Buy, shares: gez!(1000), price: gez!(1.0),
+                af_name: "B", ..def()}.x(),
+            TTx{t_day: 2, act: A::Split, split: split("2-for-1"),
+                af_name: "", ..def()}.x(),
+            TTx{t_day: 2, act: A::Split, split: split("2-for-1"),
+                af_name: "(R)", ..def()}.x(),
+            TTx{t_day: 2, act: A::Split, split: split("2-for-1"),
+                af_name: "B", ..def()}.x(),
+        ];
+        let deltas = txs_to_delta_list_no_err(txs);
+        validate_deltas(deltas, vec![
+            TDt{post_st: TPSS{shares: gez!(10), all_shares: gez!(10),
+                total_acb: sgez!(10.0), ..def()}, ..def()}, // Buy in Default
+            TDt{post_st: TPSS{shares: gez!(100), all_shares: gez!(110),
+                total_acb: None, ..def()}, ..def()}, // Buy in (R)
+            TDt{post_st: TPSS{shares: gez!(1000), all_shares: gez!(1110),
+                total_acb: sgez!(1000.0), ..def()}, ..def()}, // Buy in B
+            TDt{post_st: TPSS{shares: gez!(20), all_shares: gez!(1120),
+                total_acb: sgez!(10.0), ..def()}, gain: None, ..def()}, // Split Dflt
+            TDt{post_st: TPSS{shares: gez!(200), all_shares: gez!(1220),
+                total_acb: None, ..def()}, gain: None, ..def()}, // Split (R)
+            TDt{post_st: TPSS{shares: gez!(2000), all_shares: gez!(2220),
+                total_acb: sgez!(1000.0), ..def()}, gain: None, ..def()}, // Split B
         ]);
     }
 }

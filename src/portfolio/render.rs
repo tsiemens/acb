@@ -238,69 +238,8 @@ pub fn render_tx_table_model(
             _ => {}
         }
 
-        let buy_sell_specs = match &tx.action_specifics {
-            super::TxActionSpecifics::Sell(specs) => {
-                Some(specs.common_buy_sell_attrs())
-            }
-            super::TxActionSpecifics::Buy(specs) => {
-                Some(specs.common_buy_sell_attrs())
-            }
-            _ => None,
-        };
-
-        let mut amount = String::new();
-        let mut shares: Decimal = Decimal::ZERO;
-        let mut amount_per_share_str = String::new();
-        let mut acb_of_sale: Option<String> = None;
-        let mut commission: Option<String> = None;
-        let mut capital_gains: Option<String> = None;
-        let mut new_share_balance = String::new();
-
-        if let Some(buy_sell_specs) = buy_sell_specs {
-            amount = ph.curr_with_fx_str(
-                *buy_sell_specs.shares * *buy_sell_specs.amount_per_share,
-                &buy_sell_specs.tx_currency_and_rate,
-            );
-            shares = *buy_sell_specs.shares;
-            amount_per_share_str = ph.curr_with_fx_str(
-                *buy_sell_specs.amount_per_share,
-                &buy_sell_specs.tx_currency_and_rate,
-            );
-            if tx.action() == super::TxAction::Sell {
-                acb_of_sale = if is_positive(&*d.pre_status.share_balance) {
-                    match d.pre_status.total_acb {
-                        Some(pre_total_acb) => {
-                            let pre_acb_per_share =
-                                *pre_total_acb / *d.pre_status.share_balance;
-                            Some(ph.dollar_str(
-                                pre_acb_per_share * *buy_sell_specs.shares,
-                            ))
-                        }
-                        None => None,
-                    }
-                } else {
-                    None
-                };
-
-                if let Some(cap_gain) = d.capital_gain {
-                    capital_gains = Some(format!(
-                        "{}{}",
-                        ph.plus_minus_dollar(cap_gain, false),
-                        superficial_loss_asterix
-                    ));
-                }
-            }
-
-            commission = if buy_sell_specs.commission.is_zero() {
-                None
-            } else {
-                Some(ph.curr_with_fx_str(
-                    *buy_sell_specs.commission,
-                    buy_sell_specs.commission_currency_and_rate(),
-                ))
-            };
-
-            new_share_balance = if d.post_status.share_balance
+        let changing_new_share_balance_str = || {
+            if d.post_status.share_balance
                 == d.post_status.all_affiliate_share_balance
             {
                 d.post_status.share_balance.to_string()
@@ -311,29 +250,105 @@ pub fn render_tx_table_model(
                     d.post_status.all_affiliate_share_balance
                 )
             }
-        } else if let super::TxActionSpecifics::Roc(roc_specs) = &tx.action_specifics
-        {
-            shares = *d.pre_status.share_balance;
-            amount = ph.curr_with_fx_str(
-                shares * *roc_specs.amount_per_held_share,
-                &roc_specs.tx_currency_and_rate,
-            );
-            amount_per_share_str = ph.curr_with_fx_str(
-                *roc_specs.amount_per_held_share,
-                &roc_specs.tx_currency_and_rate,
-            );
-        } else if let super::TxActionSpecifics::Sfla(sfla_specs) =
-            &tx.action_specifics
-        {
-            amount = ph.curr_with_fx_str(
-                *sfla_specs.shares_affected * *sfla_specs.amount_per_share,
-                &CurrencyAndExchangeRate::default(),
-            );
-            shares = *sfla_specs.shares_affected;
-            amount_per_share_str = ph.curr_with_fx_str(
-                *sfla_specs.amount_per_share,
-                &CurrencyAndExchangeRate::default(),
-            );
+        };
+
+        let mut amount = String::new();
+        let shares: Decimal;
+        let mut amount_per_share_str = String::new();
+        let mut acb_of_sale: Option<String> = None;
+        let mut commission: Option<String> = None;
+        let mut capital_gains: Option<String> = None;
+        let mut new_share_balance = String::new();
+
+        match &tx.action_specifics {
+            super::TxActionSpecifics::Buy(_) | super::TxActionSpecifics::Sell(_) => {
+                let buy_sell_specs = match &tx.action_specifics {
+                    super::TxActionSpecifics::Sell(specs) => {
+                        specs.common_buy_sell_attrs()
+                    }
+                    super::TxActionSpecifics::Buy(specs) => {
+                        specs.common_buy_sell_attrs()
+                    }
+                    _ => panic!(),
+                };
+
+                amount = ph.curr_with_fx_str(
+                    *buy_sell_specs.shares * *buy_sell_specs.amount_per_share,
+                    &buy_sell_specs.tx_currency_and_rate,
+                );
+                shares = *buy_sell_specs.shares;
+                amount_per_share_str = ph.curr_with_fx_str(
+                    *buy_sell_specs.amount_per_share,
+                    &buy_sell_specs.tx_currency_and_rate,
+                );
+                if tx.action() == super::TxAction::Sell {
+                    acb_of_sale = if is_positive(&*d.pre_status.share_balance) {
+                        match d.pre_status.total_acb {
+                            Some(pre_total_acb) => {
+                                let pre_acb_per_share =
+                                    *pre_total_acb / *d.pre_status.share_balance;
+                                Some(ph.dollar_str(
+                                    pre_acb_per_share * *buy_sell_specs.shares,
+                                ))
+                            }
+                            None => None,
+                        }
+                    } else {
+                        None
+                    };
+
+                    if let Some(cap_gain) = d.capital_gain {
+                        capital_gains = Some(format!(
+                            "{}{}",
+                            ph.plus_minus_dollar(cap_gain, false),
+                            superficial_loss_asterix
+                        ));
+                    }
+                }
+
+                commission = if buy_sell_specs.commission.is_zero() {
+                    None
+                } else {
+                    Some(ph.curr_with_fx_str(
+                        *buy_sell_specs.commission,
+                        buy_sell_specs.commission_currency_and_rate(),
+                    ))
+                };
+
+                new_share_balance = changing_new_share_balance_str();
+            }
+            super::TxActionSpecifics::Roc(roc_specs) => {
+                shares = *d.pre_status.share_balance;
+                amount = ph.curr_with_fx_str(
+                    shares * *roc_specs.amount_per_held_share,
+                    &roc_specs.tx_currency_and_rate,
+                );
+                amount_per_share_str = ph.curr_with_fx_str(
+                    *roc_specs.amount_per_held_share,
+                    &roc_specs.tx_currency_and_rate,
+                );
+            }
+            super::TxActionSpecifics::Sfla(sfla_specs) => {
+                amount = ph.curr_with_fx_str(
+                    *sfla_specs.shares_affected * *sfla_specs.amount_per_share,
+                    &CurrencyAndExchangeRate::default(),
+                );
+                shares = *sfla_specs.shares_affected;
+                amount_per_share_str = ph.curr_with_fx_str(
+                    *sfla_specs.amount_per_share,
+                    &CurrencyAndExchangeRate::default(),
+                );
+            }
+            super::TxActionSpecifics::Split(split_specs) => {
+                // Show the change in shares in the shares column, and the
+                // mult factor along the new balance.
+                shares = *d.post_status.share_balance - *d.pre_status.share_balance;
+                new_share_balance = format!(
+                    "{} (x{})",
+                    changing_new_share_balance_str(),
+                    split_specs.ratio.pre_to_post_factor()
+                );
+            }
         }
 
         let acb_per_share: Option<String> =

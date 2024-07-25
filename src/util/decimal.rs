@@ -218,6 +218,14 @@ impl std::ops::Mul for ConstrainedDecimal<Pos> {
     }
 }
 
+impl std::ops::Div for ConstrainedDecimal<Pos> {
+    type Output = PosDecimal;
+
+    fn div(self, rhs: Self) -> Self::Output {
+        PosDecimal::try_from(*self / *rhs).unwrap()
+    }
+}
+
 impl ConstrainedDecimal<Pos> {
     pub fn one() -> Self {
         PosDecimal::try_from(rust_decimal_macros::dec!(1)).unwrap()
