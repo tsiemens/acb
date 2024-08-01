@@ -1,5 +1,8 @@
 # ACB
 
+[![badges](https://github.com/tsiemens/acb/workflows/Rust/badge.svg)](https://github.com/tsiemens/acb/actions)
+[![license](https://img.shields.io/badge/License-MIT-purple.svg)](LICENSE)
+
 A CLI tool for calculating adjusted cost basis (ACB) and capital gains.
 This is primarily designed for Canadians filing tax returns, who have stocks, RSUs, ESPPs, etc.
 
