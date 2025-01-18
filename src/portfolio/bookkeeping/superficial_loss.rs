@@ -17,13 +17,18 @@ use super::AffiliatePortfolioSecurityStatuses;
 
 type Error = String;
 
+// SplAdj : Split adjusted - Share counts may (and must) be adjusted to be in terms
+//                           of the same split "period" as the sell action in
+//                           question.
 #[derive(PartialEq, Clone, Debug)]
 struct SuperficialLossInfo {
     pub _first_date_in_period: Date,
     pub _last_date_in_period: Date,
-    pub all_aff_shares_at_end_of_period: PosDecimal,
-    // This is not net, only total bought
-    pub total_aquired_in_period: PosDecimal,
+    // Split adjusted to the time of the sale.
+    pub all_aff_spladj_shares_at_end_of_period: PosDecimal,
+    // This is not net, only total bought. They are split-adjusted to the time of
+    // the sfl sale.
+    pub total_aquired_spladj_shares_in_period: PosDecimal,
     pub buying_affiliates: HashSet<Affiliate>,
     // eop -> end of period.
     // 'Active' may include sells, so is a superset of buying_affiliates.
@@ -32,17 +37,17 @@ struct SuperficialLossInfo {
     // we end up inserting only-sellers simply because we don't know they
     // won't buy at some point, while we're populating.
     // We just don't bother filtering them out at the end.
-    pub active_affiliate_shares_at_eop: HashMap<Affiliate, GreaterEqualZeroDecimal>,
+    pub active_affiliate_spladj_shares_at_eop: HashMap<Affiliate, GreaterEqualZeroDecimal>,
 }
 
 impl SuperficialLossInfo {
     // Note: it is possible for this to legally return zero, since you could
     // have only shares remaining in non-buying affiliates.
-    pub fn buying_affiliate_shares_at_eop_total(&self) -> GreaterEqualZeroDecimal {
+    pub fn buying_affiliate_split_adjusted_shares_at_eop_total(&self) -> GreaterEqualZeroDecimal {
         let zero = GreaterEqualZeroDecimal::zero();
         let mut total = GreaterEqualZeroDecimal::zero();
         for af in &self.buying_affiliates {
-            total += *self.active_affiliate_shares_at_eop.get(af).unwrap_or(&zero);
+            total += *self.active_affiliate_spladj_shares_at_eop.get(af).unwrap_or(&zero);
         }
         total
     }
@@ -125,16 +130,20 @@ fn get_superficial_loss_info(
             }
         };
 
-    let mut all_aff_shares_at_end_of_period =
+    // This will need to be per affiliate until stock split TXs are global
+    let mut af_split_adjustments = HashMap::<&Affiliate, PosDecimal>::new();
+
+    let mut all_aff_spladj_shares_at_end_of_period =
         all_affiliates_share_balance_after_sell;
-    let mut total_aquired_in_period = GreaterEqualZeroDecimal::zero();
+    let mut total_aquired_spladj_shares_in_period = GreaterEqualZeroDecimal::zero();
+
     let mut buying_affiliates = HashSet::new();
-    let mut active_affiliate_shares_at_eop =
+    let mut active_affiliate_spladj_shares_at_eop =
         HashMap::<Affiliate, GreaterEqualZeroDecimal>::new();
 
     let sell_affiliate_share_balance_before_sell =
         default_post_sale_share_balance(&tx.affiliate);
-    active_affiliate_shares_at_eop.insert(
+    active_affiliate_spladj_shares_at_eop.insert(
         tx.affiliate.clone(),
         GreaterEqualZeroDecimal::try_from(*sell_affiliate_share_balance_before_sell - *sell_shares)
             .map_err(|_| format!(
@@ -172,31 +181,39 @@ fn get_superficial_loss_info(
             break;
         }
         let after_tx_affil = &after_tx.affiliate;
+        let split_adjustment: PosDecimal = af_split_adjustments.get(after_tx_affil)
+            .map(|v| *v).unwrap_or(PosDecimal::one());
 
         // Within the 30 day window after
         match &after_tx.action_specifics {
             TxActionSpecifics::Buy(buy) => {
                 let after_tx_buy_shares = GreaterEqualZeroDecimal::from(buy.shares);
-                all_aff_shares_at_end_of_period += after_tx_buy_shares;
-                let old_shares_eop = active_affiliate_shares_at_eop
+                let after_tx_buy_spladj_shares =
+                    after_tx_buy_shares * split_adjustment.into();
+
+                all_aff_spladj_shares_at_end_of_period +=
+                    after_tx_buy_spladj_shares;
+                let old_shares_eop = active_affiliate_spladj_shares_at_eop
                     .get(after_tx_affil)
                     .map(|d| *d)
                     .unwrap_or_else(|| {
                         default_post_sale_share_balance(after_tx_affil)
                     });
-                active_affiliate_shares_at_eop.insert(
+                active_affiliate_spladj_shares_at_eop.insert(
                     after_tx_affil.clone(),
-                    old_shares_eop + after_tx_buy_shares,
+                    old_shares_eop + after_tx_buy_spladj_shares,
                 );
-                total_aquired_in_period += after_tx_buy_shares;
+                total_aquired_spladj_shares_in_period += after_tx_buy_spladj_shares;
                 buying_affiliates.insert(after_tx_affil.clone());
             }
             TxActionSpecifics::Sell(sell) => {
                 let after_tx_sell_shares =
                     GreaterEqualZeroDecimal::from(sell.shares);
+                let after_tx_spladj_sell_shares =
+                    after_tx_sell_shares * split_adjustment.into();
 
-                all_aff_shares_at_end_of_period = GreaterEqualZeroDecimal::try_from(
-                    *all_aff_shares_at_end_of_period - *after_tx_sell_shares
+                all_aff_spladj_shares_at_end_of_period = GreaterEqualZeroDecimal::try_from(
+                    *all_aff_spladj_shares_at_end_of_period - *after_tx_spladj_sell_shares
                 ).map_err(|_| {
                     // The caller may not have gone through those transactions to validate them
                     // yet, so we shouldn't panic here.
@@ -204,32 +221,42 @@ fn get_superficial_loss_info(
                             after_tx.trade_date)
                 })?;
 
-                let old_shares_eop = active_affiliate_shares_at_eop
+                let old_shares_eop = active_affiliate_spladj_shares_at_eop
                     .get(after_tx_affil)
                     .map(|d| *d)
                     .unwrap_or_else(|| {
                         default_post_sale_share_balance(after_tx_affil)
                     });
-                active_affiliate_shares_at_eop.insert(after_tx_affil.clone(),
-                    GreaterEqualZeroDecimal::try_from(*old_shares_eop - *after_tx_sell_shares)
+                active_affiliate_spladj_shares_at_eop.insert(after_tx_affil.clone(),
+                    GreaterEqualZeroDecimal::try_from(*old_shares_eop - *after_tx_spladj_sell_shares)
                         .map_err(|_|
                             format!("Share count for affiliate {} went below zero in 30-day period after sale (on {})",
                             after_tx_affil.name(), after_tx.trade_date))?
                 );
             }
-            _ => (), // ignored
+            TxActionSpecifics::Split(split) => {
+                // Adjustment goes backwards in time for txs after the sale.
+                let new_split_adjustment =
+                    split_adjustment / split.ratio.pre_to_post_factor();
+                af_split_adjustments.insert(after_tx_affil, new_split_adjustment);
+            }
+            // These don't change the share quantity, so they can be ignored
+            TxActionSpecifics::Roc(_) |
+            TxActionSpecifics::Sfla(_) => (),
         }
     }
 
     // Convert end-of-period shares to PosDecimal, or declare non-superficial
     // and return.
-    let all_aff_shares_at_end_of_period =
-        if let Ok(v) = PosDecimal::try_from(*all_aff_shares_at_end_of_period) {
+    let all_aff_spladj_shares_at_end_of_period =
+        if let Ok(v) = PosDecimal::try_from(*all_aff_spladj_shares_at_end_of_period) {
             v
         } else {
-            // all_aff_shares_at_end_of_period was zero
+            // all_aff_spladj_shares_at_end_of_period was zero
             return Ok(MaybeSuperficialLossInfo::NotSuperficial());
         };
+
+    let mut af_split_adjustments = HashMap::<&Affiliate, PosDecimal>::new();
 
     // Start just before the sell tx and work backwards
     for i in (0..idx).rev() {
@@ -238,35 +265,49 @@ fn get_superficial_loss_info(
             break;
         }
         let before_tx_affil = &before_tx.affiliate;
+
+        let split_adjustment: PosDecimal = af_split_adjustments.get(before_tx_affil)
+            .map(|v| *v).unwrap_or(PosDecimal::one());
+
         // Within the 30 day window before
         match &before_tx.action_specifics {
             TxActionSpecifics::Buy(buy) => {
-                total_aquired_in_period += GreaterEqualZeroDecimal::from(buy.shares);
+                let spladj_shares = buy.shares * split_adjustment;
+                total_aquired_spladj_shares_in_period += GreaterEqualZeroDecimal::from(spladj_shares);
                 buying_affiliates.insert(before_tx_affil.clone());
 
-                if !active_affiliate_shares_at_eop.contains_key(before_tx_affil) {
+                if !active_affiliate_spladj_shares_at_eop.contains_key(before_tx_affil) {
                     // This affiliate only bought before the superficial loss tx,
                     // so just populate them with their current status.
-                    active_affiliate_shares_at_eop.insert(
+                    active_affiliate_spladj_shares_at_eop.insert(
                         before_tx_affil.clone(),
                         default_post_sale_share_balance(before_tx_affil),
                     );
                 }
             }
-            _ => (), // ignored
+            TxActionSpecifics::Split(split) => {
+                // Adjustment goes forwards in time for txs before the sale.
+                let new_split_adjustment =
+                    split_adjustment * split.ratio.pre_to_post_factor();
+                af_split_adjustments.insert(before_tx_affil, new_split_adjustment);
+            },
+            // ignored
+            TxActionSpecifics::Sell(_) |
+            TxActionSpecifics::Roc(_) |
+            TxActionSpecifics::Sfla(_) => (),
         }
     }
 
-    let x = if let Ok(bought_shares_in_period) =
-        PosDecimal::try_from(*total_aquired_in_period)
+    let x = if let Ok(bought_spladj_shares_in_period) =
+        PosDecimal::try_from(*total_aquired_spladj_shares_in_period)
     {
         MaybeSuperficialLossInfo::Superficial(SuperficialLossInfo {
             _first_date_in_period: first_bad_buy_date,
             _last_date_in_period: last_bad_buy_date,
-            all_aff_shares_at_end_of_period: all_aff_shares_at_end_of_period,
-            total_aquired_in_period: bought_shares_in_period,
+            all_aff_spladj_shares_at_end_of_period,
+            total_aquired_spladj_shares_in_period: bought_spladj_shares_in_period,
             buying_affiliates: buying_affiliates,
-            active_affiliate_shares_at_eop: active_affiliate_shares_at_eop,
+            active_affiliate_spladj_shares_at_eop,
         })
     } else {
         MaybeSuperficialLossInfo::NotSuperficial()
@@ -312,8 +353,8 @@ fn calc_superficial_loss_ratio(
 
             let numerator = crate::util::decimal::constrained_min(&[
                 sell_shares,
-                sli.total_aquired_in_period,
-                sli.all_aff_shares_at_end_of_period,
+                sli.total_aquired_spladj_shares_in_period,
+                sli.all_aff_spladj_shares_at_end_of_period,
             ]);
             let ratio = PosDecimalRatio {
                 numerator: numerator,
@@ -325,23 +366,23 @@ fn calc_superficial_loss_ratio(
 
             // Affiliate to percentage of the SFL adjustment is attributed to it.
             let mut affiliate_adjustment_portions = HashMap::new();
-            let buying_affils_share_eop_total =
-                sli.buying_affiliate_shares_at_eop_total();
+            let buying_affils_spladj_share_eop_total =
+                sli.buying_affiliate_split_adjusted_shares_at_eop_total();
             // Add in ACB adjustments for the buying affiliates, if any of them have
             // shares remaining.
             // If none have shares remaining, then we are in the case where we set
             // fewer_remaining_shares_than_sfl_shares below, and it will be reported
             // as a warning. Note that that case can still occur even if we do have
             // some shares remaining on the buyers.
-            if let Ok(pos_buying_affils_share_eop_total) =
-                PosDecimal::try_from(*buying_affils_share_eop_total)
+            if let Ok(positive_buying_affils_share_eop_total) =
+                PosDecimal::try_from(*buying_affils_spladj_share_eop_total)
             {
                 for af in &sli.buying_affiliates {
-                    let af_share_balance_at_eop =
-                        sli.active_affiliate_shares_at_eop.get(af).unwrap();
+                    let af_spladj_share_balance_at_eop =
+                        sli.active_affiliate_spladj_shares_at_eop.get(af).unwrap();
                     let af_portion = GezDecimalRatio {
-                        numerator: af_share_balance_at_eop.clone(),
-                        denominator: pos_buying_affils_share_eop_total,
+                        numerator: af_spladj_share_balance_at_eop.clone(),
+                        denominator: positive_buying_affils_share_eop_total,
                     };
                     affiliate_adjustment_portions.insert(af.clone(), af_portion);
                 }
@@ -352,7 +393,7 @@ fn calc_superficial_loss_ratio(
                 sfl_ratio: ratio,
                 acb_adjust_affiliate_ratios: affiliate_adjustment_portions,
                 fewer_remaining_shares_than_sfl_shares:
-                    *buying_affils_share_eop_total < *affected_sfl_shares,
+                    *buying_affils_spladj_share_eop_total < *affected_sfl_shares,
             }))
         }
         MaybeSuperficialLossInfo::NotSuperficial() => Ok(None),
@@ -383,7 +424,7 @@ mod tests {
     use crate::portfolio::{
         bookkeeping::AffiliatePortfolioSecurityStatuses, Affiliate,
     };
-    use crate::portfolio::{SFLInput, TxAction as A};
+    use crate::portfolio::{SFLInput, SplitRatio, TxAction as A};
     use crate::testlib::assert_big_struct_eq;
     use crate::util::decimal::{
         GreaterEqualZeroDecimal, LessEqualZeroDecimal, PosDecimal,
@@ -549,10 +590,10 @@ mod tests {
             // Account for settlement date offset of 2 days
             _first_date_in_period: mk_date(31+2-30),
             _last_date_in_period: mk_date(31+2+30),
-            all_aff_shares_at_end_of_period: pdec!(8),
-            total_aquired_in_period: pdec!(78),
+            all_aff_spladj_shares_at_end_of_period: pdec!(8),
+            total_aquired_spladj_shares_in_period: pdec!(78),
             buying_affiliates: HashSet::from([default_af()]),
-            active_affiliate_shares_at_eop: HashMap::from([
+            active_affiliate_spladj_shares_at_eop: HashMap::from([
                 (default_af(), gez!(5)),
                 (af_br(), gez!(3)),
             ]),
@@ -584,10 +625,10 @@ mod tests {
             // Account for settlement date offset of 2 days
             _first_date_in_period: mk_date(1+2-30),
             _last_date_in_period: mk_date(1+2+30),
-            all_aff_shares_at_end_of_period: pdec!(90),
-            total_aquired_in_period: pdec!(82),
+            all_aff_spladj_shares_at_end_of_period: pdec!(90),
+            total_aquired_spladj_shares_in_period: pdec!(82),
             buying_affiliates: HashSet::from([default_af(), af_c()]),
-            active_affiliate_shares_at_eop: HashMap::from([
+            active_affiliate_spladj_shares_at_eop: HashMap::from([
                 (default_af(), gez!(82)),
                 (af_br(), gez!(3)),
                 (af_c(), gez!(5)),
@@ -633,10 +674,10 @@ mod tests {
             // Account for settlement date offset of 2 days
             _first_date_in_period: mk_date(40+2-30),
             _last_date_in_period: mk_date(40+2+30),
-            all_aff_shares_at_end_of_period: pdec!(87),
-            total_aquired_in_period: pdec!(78),
+            all_aff_spladj_shares_at_end_of_period: pdec!(87),
+            total_aquired_spladj_shares_in_period: pdec!(78),
             buying_affiliates: HashSet::from([default_af(), af_br()]),
-            active_affiliate_shares_at_eop: HashMap::from([
+            active_affiliate_spladj_shares_at_eop: HashMap::from([
                 (default_af(), gez!(82)),
                 (af_br(), gez!(3)),
                 (af_c(), gez!(2)),
@@ -677,10 +718,10 @@ mod tests {
             // Account for settlement date offset of 2 days
             _first_date_in_period: mk_date(11+2-30),
             _last_date_in_period: mk_date(11+2+30),
-            all_aff_shares_at_end_of_period: pdec!(1),
-            total_aquired_in_period: pdec!(10),
+            all_aff_spladj_shares_at_end_of_period: pdec!(1),
+            total_aquired_spladj_shares_in_period: pdec!(10),
             buying_affiliates: HashSet::from([af_b()]),
-            active_affiliate_shares_at_eop: HashMap::from([
+            active_affiliate_spladj_shares_at_eop: HashMap::from([
                 (af_b(), gez!(0)),
             ]),
         };
@@ -707,10 +748,10 @@ mod tests {
             // Account for settlement date offset of 2 days
             _first_date_in_period: mk_date(10+2-30),
             _last_date_in_period: mk_date(10+2+30),
-            all_aff_shares_at_end_of_period: pdec!(5),
-            total_aquired_in_period: pdec!(15),
+            all_aff_spladj_shares_at_end_of_period: pdec!(5),
+            total_aquired_spladj_shares_in_period: pdec!(15),
             buying_affiliates: HashSet::from([default_af()]),
-            active_affiliate_shares_at_eop: HashMap::from([
+            active_affiliate_spladj_shares_at_eop: HashMap::from([
                 (default_af(), gez!(5)),
             ]),
         };
@@ -862,10 +903,10 @@ mod tests {
         let sli = SuperficialLossInfo {
             _first_date_in_period: mk_date(0),
             _last_date_in_period: mk_date(0),
-            all_aff_shares_at_end_of_period: pdec!(5),
-            total_aquired_in_period: pdec!(7),
+            all_aff_spladj_shares_at_end_of_period: pdec!(5),
+            total_aquired_spladj_shares_in_period: pdec!(7),
             buying_affiliates: HashSet::from([default_af()]),
-            active_affiliate_shares_at_eop: HashMap::from([
+            active_affiliate_spladj_shares_at_eop: HashMap::from([
                 (default_af(), gez!(6)),
             ]),
         };
@@ -915,8 +956,8 @@ mod tests {
             af: default_af(), ..TTx::d()}.x();
 
         let mut sli = sli;
-        sli.all_aff_shares_at_end_of_period = pdec!(3);
-        sli.total_aquired_in_period = pdec!(4);
+        sli.all_aff_spladj_shares_at_end_of_period = pdec!(3);
+        sli.total_aquired_spladj_shares_in_period = pdec!(4);
 
         let res = calc_superficial_loss_ratio(
             &sell_tx, MaybeSuperficialLossInfo::Superficial(sli.clone())).unwrap();
@@ -965,10 +1006,10 @@ mod tests {
         let mut sli = SuperficialLossInfo {
             _first_date_in_period: mk_date(0),
             _last_date_in_period: mk_date(0),
-            all_aff_shares_at_end_of_period: pdec!(5),
-            total_aquired_in_period: pdec!(7),
+            all_aff_spladj_shares_at_end_of_period: pdec!(5),
+            total_aquired_spladj_shares_in_period: pdec!(7),
             buying_affiliates: HashSet::from([default_af()]),
-            active_affiliate_shares_at_eop: HashMap::from([
+            active_affiliate_spladj_shares_at_eop: HashMap::from([
                 (default_af(), gez!(6)),
                 (af_b(), gez!(10)),
             ]),
@@ -994,7 +1035,7 @@ mod tests {
         // Distributed ratios, including zero
 
         sli.buying_affiliates = HashSet::from([default_af(), af_b(), af_c()]);
-        sli.active_affiliate_shares_at_eop = HashMap::from([
+        sli.active_affiliate_spladj_shares_at_eop = HashMap::from([
             (default_af(), gez!(6)),
             (af_b(), gez!(10)),
             (af_c(), gez!(0)),
@@ -1021,7 +1062,7 @@ mod tests {
 
         // Lower than sold shares, which is 3
         sli.buying_affiliates = HashSet::from([default_af()]);
-        sli.active_affiliate_shares_at_eop = HashMap::from([
+        sli.active_affiliate_spladj_shares_at_eop = HashMap::from([
             (default_af(), gez!(2)),
         ]);
 
@@ -1044,7 +1085,7 @@ mod tests {
         // Zero denominator (all remaining shares are in non-active or sell-only AF)
 
         sli.buying_affiliates = HashSet::from([default_af()]);
-        sli.active_affiliate_shares_at_eop = HashMap::from([
+        sli.active_affiliate_spladj_shares_at_eop = HashMap::from([
             (default_af(), gez!(0)),
         ]);
 
@@ -1072,10 +1113,10 @@ mod tests {
         let sli = SuperficialLossInfo {
             _first_date_in_period: mk_date(0),
             _last_date_in_period: mk_date(0),
-            all_aff_shares_at_end_of_period: pdec!(5),
-            total_aquired_in_period: pdec!(7),
+            all_aff_spladj_shares_at_end_of_period: pdec!(5),
+            total_aquired_spladj_shares_in_period: pdec!(7),
             buying_affiliates: HashSet::from([]),
-            active_affiliate_shares_at_eop: HashMap::from([
+            active_affiliate_spladj_shares_at_eop: HashMap::from([
                 (Affiliate::default(), gez!(6)),
             ]),
         };
@@ -1084,5 +1125,257 @@ mod tests {
         // marked as superficial.
         let _ = calc_superficial_loss_ratio(
             &sell_tx, MaybeSuperficialLossInfo::Superficial(sli));
+    }
+
+    #[test]
+    #[rustfmt::skip]
+    fn test_calc_superficial_loss_ratio_with_stock_splits() {
+        let default_af = || Affiliate::default();
+        let af_r = || Affiliate::default_registered();
+        let ratio = |strep| Some(SplitRatio::parse(strep).unwrap());
+
+        // Case: Split before SFL with preceding buys and sell
+
+        // 100*2 + (71*2) - (5*2) + 1 - 5 = 328
+        let statuses = create_test_status(&[(default_af(), gez!(328))]);
+
+        let txs = vec![
+            // Share quantity of buys before are ignored
+            TTx{t_day: 0, act: A::Buy, shares: gez!(100), price: gez!(1), ..TTx::d()}.x(),
+            // First in period
+            TTx{t_day: 1, act: A::Buy, shares: gez!(71), price: gez!(1), ..TTx::d()}.x(),
+            TTx{t_day: 1, act: A::Sell, shares: gez!(5), price: gez!(1), ..TTx::d()}.x(),
+            TTx{t_day: 3, act: A::Split, split: ratio("2-for-1"), ..TTx::d()}.x(),
+            TTx{t_day: 4, act: A::Buy, shares: gez!(1), price: gez!(1), ..TTx::d()}.x(),
+            TTx{t_day: 5, act: A::Sell, shares: gez!(5), price: gez!(1), ..TTx::d()}.x(),
+            // SFL candidate
+            TTx{t_day: 31, act: A::Sell, shares: gez!(7), price: gez!(10000), ..TTx::d()}.x(),
+        ];
+
+        let minfo = get_superficial_loss_info(6, &txs, &statuses).unwrap();
+        let info = minfo.info().unwrap();
+        let expected = SuperficialLossInfo {
+            // Account for settlement date offset of 2 days
+            _first_date_in_period: mk_date(31+2-30),
+            _last_date_in_period: mk_date(31+2+30),
+            // 100*2 + (71*2) - (5*2) + 1 - 5 - 7 = 321
+            all_aff_spladj_shares_at_end_of_period: pdec!(321),
+            // (71*2) + 1 = 143
+            total_aquired_spladj_shares_in_period: pdec!(143),
+            buying_affiliates: HashSet::from([default_af()]),
+            active_affiliate_spladj_shares_at_eop: HashMap::from([
+                (default_af(), gez!(321)),
+            ]),
+        };
+        assert_big_struct_eq(info, &expected);
+
+        // Case: Split before SFL where preceding sale would go below zero otherwise
+
+        // 100*2 - 160 = 40
+        let statuses = create_test_status(&[(default_af(), gez!(40))]);
+
+        let txs = vec![
+            // First in period
+            TTx{t_day: 1, act: A::Buy, shares: gez!(100), price: gez!(1), ..TTx::d()}.x(),
+            TTx{t_day: 2, act: A::Split, split: ratio("2-for-1"), ..TTx::d()}.x(),
+            TTx{t_day: 3, act: A::Sell, shares: gez!(160), price: gez!(1), ..TTx::d()}.x(),
+            // SFL candidate
+            TTx{t_day: 31, act: A::Sell, shares: gez!(5), price: gez!(10000), ..TTx::d()}.x(),
+        ];
+
+        let minfo = get_superficial_loss_info(3, &txs, &statuses).unwrap();
+        let info = minfo.info().unwrap();
+        let expected = SuperficialLossInfo {
+            _first_date_in_period: mk_date(31+2-30),
+            _last_date_in_period: mk_date(31+2+30),
+            // 100*2 - 160 - 5 = 35
+            all_aff_spladj_shares_at_end_of_period: pdec!(35),
+            total_aquired_spladj_shares_in_period: pdec!(200),
+            buying_affiliates: HashSet::from([default_af()]),
+            active_affiliate_spladj_shares_at_eop: HashMap::from([
+                (default_af(), gez!(35)),
+            ]),
+        };
+        assert_big_struct_eq(info, &expected);
+
+        // Case: Split before SFL where preceding buy would put total below zero
+        // otherwise
+        // (10 + 100) / 2 = 55
+        let statuses = create_test_status(&[(default_af(), gez!(55))]);
+
+        let txs = vec![
+            // First in period
+            TTx{t_day: 1, act: A::Buy, shares: gez!(10), price: gez!(1), ..TTx::d()}.x(),
+            TTx{t_day: 2, act: A::Buy, shares: gez!(100), price: gez!(1), ..TTx::d()}.x(),
+            TTx{t_day: 3, act: A::Split, split: ratio("1-for-2"), ..TTx::d()}.x(),
+            // SFL candidate
+            TTx{t_day: 31, act: A::Sell, shares: gez!(5), price: gez!(10000), ..TTx::d()}.x(),
+        ];
+
+        let minfo = get_superficial_loss_info(3, &txs, &statuses).unwrap();
+        let info = minfo.info().unwrap();
+        let expected = SuperficialLossInfo {
+            _first_date_in_period: mk_date(31+2-30),
+            _last_date_in_period: mk_date(31+2+30),
+            // (10 + 100) / 2 - 5 = 50
+            all_aff_spladj_shares_at_end_of_period: pdec!(50),
+            total_aquired_spladj_shares_in_period: pdec!(55),
+            buying_affiliates: HashSet::from([default_af()]),
+            active_affiliate_spladj_shares_at_eop: HashMap::from([
+                (default_af(), gez!(50)),
+            ]),
+        };
+        assert_big_struct_eq(info, &expected);
+
+        // Case: Split after SFL with followup buys
+        let statuses = create_test_status(&[(default_af(), gez!(100))]);
+
+        let txs = vec![
+            // Share quantity of buys before are ignored
+            TTx{t_day: 0, act: A::Buy, shares: gez!(100), price: gez!(1), ..TTx::d()}.x(),
+            // First in period
+            // SFL candidate
+            TTx{t_day: 31, act: A::Sell, shares: gez!(5), price: gez!(10000), ..TTx::d()}.x(),
+
+            TTx{t_day: 32, act: A::Buy, shares: gez!(10), price: gez!(1), ..TTx::d()}.x(),
+            TTx{t_day: 33, act: A::Sell, shares: gez!(5), price: gez!(1), ..TTx::d()}.x(),
+            TTx{t_day: 34, act: A::Split, split: ratio("2-for-1"), ..TTx::d()}.x(),
+            TTx{t_day: 35, act: A::Buy, shares: gez!(15), price: gez!(1), ..TTx::d()}.x(),
+            TTx{t_day: 36, act: A::Sell, shares: gez!(2), price: gez!(1), ..TTx::d()}.x(),
+        ];
+
+        let minfo = get_superficial_loss_info(1, &txs, &statuses).unwrap();
+        let info = minfo.info().unwrap();
+        let expected = SuperficialLossInfo {
+            _first_date_in_period: mk_date(31+2-30),
+            _last_date_in_period: mk_date(31+2+30),
+            // 100 - 5 + 10 - 5 + (15 - 2)/2 = 106.5
+            all_aff_spladj_shares_at_end_of_period: pdec!(106.5),
+            // 10 + (15)/2 = 17.5
+            total_aquired_spladj_shares_in_period: pdec!(17.5),
+            buying_affiliates: HashSet::from([default_af()]),
+            active_affiliate_spladj_shares_at_eop: HashMap::from([
+                (default_af(), gez!(106.5)),
+            ]),
+        };
+        assert_big_struct_eq(info, &expected);
+
+        // Case: Splits only (not superficial)
+
+        // 100 * 2 / 5 = 40
+        let statuses = create_test_status(&[(default_af(), gez!(40))]);
+
+        let txs = vec![
+            // Share quantity of buys before are ignored
+            TTx{t_day: 0, act: A::Buy, shares: gez!(100), price: gez!(1), ..TTx::d()}.x(),
+            // First in period
+            TTx{t_day: 3, act: A::Split, split: ratio("2-for-1"), ..TTx::d()}.x(),
+            TTx{t_day: 4, act: A::Split, split: ratio("1-for-5"), ..TTx::d()}.x(),
+            // SFL candidate
+            TTx{t_day: 31, act: A::Sell, shares: gez!(7), price: gez!(10000), ..TTx::d()}.x(),
+
+            TTx{t_day: 32, act: A::Split, split: ratio("3-for-1"), ..TTx::d()}.x(),
+            TTx{t_day: 32, act: A::Split, split: ratio("1-for-2"), ..TTx::d()}.x(),
+        ];
+        let minfo = get_superficial_loss_info(3, &txs, &statuses).unwrap();
+        assert!(! minfo.is_superficial());
+
+        // Case: Split chaos before and after
+        // 10 - 4 + 1/2*( 20 - 5 + 3*(40) ) = 73.5
+        let statuses = create_test_status(&[(default_af(), gez!(73.5))]);
+
+        let txs = vec![
+            // First in period
+            TTx{t_day: 1, act: A::Buy, shares: gez!(40), price: gez!(1), ..TTx::d()}.x(),
+            TTx{t_day: 2, act: A::Split, split: ratio("3-for-1"), ..TTx::d()}.x(),
+            TTx{t_day: 3, act: A::Buy, shares: gez!(20), price: gez!(1), ..TTx::d()}.x(),
+            TTx{t_day: 4, act: A::Sell, shares: gez!(5), price: gez!(1), ..TTx::d()}.x(),
+            TTx{t_day: 5, act: A::Split, split: ratio("1-for-2"), ..TTx::d()}.x(),
+            TTx{t_day: 6, act: A::Buy, shares: gez!(10), price: gez!(1), ..TTx::d()}.x(),
+            TTx{t_day: 7, act: A::Sell, shares: gez!(4), price: gez!(1), ..TTx::d()}.x(),
+            // SFL candidate
+            TTx{t_day: 31, act: A::Sell, shares: gez!(6), price: gez!(10000), ..TTx::d()}.x(),
+
+            TTx{t_day: 40, act: A::Buy, shares: gez!(30), price: gez!(1), ..TTx::d()}.x(),
+            TTx{t_day: 41, act: A::Sell, shares: gez!(9), price: gez!(1), ..TTx::d()}.x(),
+            TTx{t_day: 42, act: A::Split, split: ratio("3-for-1"), ..TTx::d()}.x(),
+            TTx{t_day: 43, act: A::Buy, shares: gez!(15), price: gez!(1), ..TTx::d()}.x(),
+            TTx{t_day: 44, act: A::Sell, shares: gez!(11), price: gez!(1), ..TTx::d()}.x(),
+            TTx{t_day: 45, act: A::Split, split: ratio("1-for-2"), ..TTx::d()}.x(),
+            TTx{t_day: 46, act: A::Buy, shares: gez!(50), price: gez!(1), ..TTx::d()}.x(),
+            TTx{t_day: 47, act: A::Sell, shares: gez!(5), price: gez!(1), ..TTx::d()}.x(),
+        ];
+
+        let minfo = get_superficial_loss_info(7, &txs, &statuses).unwrap();
+        let info = minfo.info().unwrap();
+        let expected = SuperficialLossInfo {
+            _first_date_in_period: mk_date(31+2-30),
+            _last_date_in_period: mk_date(31+2+30),
+            // 73.5 - 6 + 30 - 9 + 1/3*( 15 - 11 + 2*(50 - 5)) = 119.83333
+            all_aff_spladj_shares_at_end_of_period: pdec!(119.83333333333333333333333333),
+            // 40, 20, 10, 30, 15, 50
+            // (40*3/2) + (20/2) + (10) + (30) + (15/3) + (50/3*2) = 148.333333333
+            total_aquired_spladj_shares_in_period: pdec!(148.33333333333333333333333333),
+            buying_affiliates: HashSet::from([default_af()]),
+            active_affiliate_spladj_shares_at_eop: HashMap::from([
+                (default_af(), gez!(119.83333333333333333333333333)),
+            ]),
+        };
+        assert_big_struct_eq(info, &expected);
+
+        // Case: Multi-affiliate splits (or absense of splits)
+
+        // For now, the user needs to specify the split in all affiliates holding
+        // the asset, so forgetting this will result in weird results
+        // (demonstrated below)
+
+        let statuses = create_test_status(&[
+            // (39*3) = 117
+            (default_af(), gez!(117)),
+            (af_r(), gez!(28)),
+        ]);
+
+        let txs = vec![
+            // First in period
+            TTx{t_day: 1, act: A::Buy, shares: gez!(40), price: gez!(1), ..TTx::d()}.x(),
+            TTx{t_day: 1, act: A::Sell, shares: gez!(1), price: gez!(1), ..TTx::d()}.x(),
+            TTx{t_day: 2, act: A::Buy, shares: gez!(30), price: gez!(1),
+                af: af_r(), ..TTx::d()}.x(),
+            TTx{t_day: 2, act: A::Sell, shares: gez!(2), price: gez!(1),
+                af: af_r(), ..TTx::d()}.x(),
+            // Split only in default
+            TTx{t_day: 3, act: A::Split, split: ratio("3-for-1"), ..TTx::d()}.x(),
+
+            // SFL candidate
+            TTx{t_day: 31, act: A::Sell, shares: gez!(6), price: gez!(10000), ..TTx::d()}.x(),
+
+            // Split only in (R)
+            TTx{t_day: 42, act: A::Split, split: ratio("2-for-1"), af: af_r(), ..TTx::d()}.x(),
+            TTx{t_day: 43, act: A::Buy, shares: gez!(50), price: gez!(1), ..TTx::d()}.x(),
+            TTx{t_day: 44, act: A::Sell, shares: gez!(4), price: gez!(1), ..TTx::d()}.x(),
+            TTx{t_day: 45, act: A::Buy, shares: gez!(60), price: gez!(1),
+                af: af_r(), ..TTx::d()}.x(),
+            TTx{t_day: 46, act: A::Sell, shares: gez!(6), price: gez!(1),
+                af: af_r(), ..TTx::d()}.x(),
+        ];
+
+        let minfo = get_superficial_loss_info(5, &txs, &statuses).unwrap();
+        let info = minfo.info().unwrap();
+        let expected = SuperficialLossInfo {
+            _first_date_in_period: mk_date(31+2-30),
+            _last_date_in_period: mk_date(31+2+30),
+            // 117 + 28 - 6 + (50-4) + (60-6)/2 = 212
+            all_aff_spladj_shares_at_end_of_period: pdec!(212),
+            // (40*3) + (30) + (50) + (60/2) = 230
+            total_aquired_spladj_shares_in_period: pdec!(230),
+            buying_affiliates: HashSet::from([default_af(), af_r()]),
+            active_affiliate_spladj_shares_at_eop: HashMap::from([
+                // 117 - 6 + 50 - 4
+                (default_af(), gez!(157)),
+                // 28 + (60-6)/2
+                (af_r(), gez!(55)),
+            ]),
+        };
+        assert_big_struct_eq(info, &expected);
     }
 }
