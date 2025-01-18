@@ -1,5 +1,5 @@
 security,trade date,settlement date,action,shares,amount/share,commission,currency,memo
 FOO,2022-02-15,2022-02-15,Buy,57,100.50,0.00,USD,ESPP
-FOO,2022-02-16,2022-02-18,Sell,15,15.00,20.22,USD,ESPP sell-to-cover
+FOO,2022-02-16,2022-02-18,Sell,15,101.00,20.22,USD,ESPP sell-to-cover
 FOO,2022-02-22,2022-02-22,Buy,50,100.50,0.00,USD,RSU R12353
-FOO,2022-02-24,2022-02-28,Sell,13,13.00,21.30,USD,RSU R12353 sell-to-cover
+FOO,2022-02-24,2022-02-28,Sell,13,108.8489,21.30,USD,RSU R12353 sell-to-cover
