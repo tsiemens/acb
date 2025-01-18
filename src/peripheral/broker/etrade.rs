@@ -700,7 +700,7 @@ fn parse_post_ms_2023_trade_confirmation(
         r"Trade\s+Date\s+Settlement\s+Date\s+Quantity\s+Price\s+Settlement\s+Amount\s+",
         r"(?P<txdate>\d+/\d+/\d+)\s+(?P<sdate>\d+/\d+/\d+)\s+(?P<nshares>\d+)\s+",
         r"(?P<price>\d+\.\d+)\s+",
-        r"Transaction\s+Type:\s*(?P<act>\S+)\s*",
+        r"Transaction\s+Type:\s*(?P<act>\S.*\S)\s*",
         r"Description.*\n.*ISIN:\s*(?P<sym>\S+)",
         r"([\s\S]*Commission\s+\$(?P<commission>\d+\.\d+))?",
         r"([\s\S]*Transaction\s+Fee\s+\$(?P<fee>\d+\.\d+))?")
@@ -1333,7 +1333,7 @@ mod tests {
             This transaction is confirmed in accordance with the information provided on the Conditions and Disclosures page.
             Trade Date Settlement Date Quantity Price Settlement Amount
             11/01/2023 11/03/2023 123 200.01
-            Transaction Type: Sold
+            Transaction Type: Sold Short
             Description: FOOSYSTEMS INC
             Symbol / CUSIP / ISIN: FOO / 123456789 / US0123456789Principal $24,601.23
             Commission $3.91

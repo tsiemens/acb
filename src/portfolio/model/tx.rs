@@ -37,13 +37,27 @@ impl TryFrom<&str> for TxAction {
     type Error = String;
 
     fn try_from(value: &str) -> Result<Self, Self::Error> {
-        match value.trim().to_lowercase().as_str() {
-            "buy" | "bought" => Ok(TxAction::Buy),
-            "sell" | "sold" => Ok(TxAction::Sell),
-            "roc" => Ok(TxAction::Roc),
-            "sfla" => Ok(TxAction::Sfla),
-            "split" => Ok(TxAction::Split),
-            _ => Err(format!("Unable to parse action from '{value}'")),
+        let re_ci_match = |s| -> bool {
+            regex::RegexBuilder::new(s).case_insensitive(true).build().unwrap()
+                .is_match(value)
+        };
+
+        // Finds the word within the value, since in some cases (namely, Etrade
+        // will sometimes mark sales as "Sold Short") there are extra words included
+        // in the action description. It doesn't really make a difference for us
+        // though (at least not yet).
+        if re_ci_match(r"\b(buy|bought)\b") {
+            Ok(TxAction::Buy)
+        } else if re_ci_match(r"\b(sell|sold)\b") {
+            Ok(TxAction::Sell)
+        } else if re_ci_match(r"\b(roc)\b") {
+            Ok(TxAction::Roc)
+        } else if re_ci_match(r"\b(sfla)\b") {
+            Ok(TxAction::Sfla)
+        } else if re_ci_match(r"\b(split)\b") {
+            Ok(TxAction::Split)
+        } else {
+            Err(format!("Unable to parse action from '{value}'"))
         }
     }
 }
