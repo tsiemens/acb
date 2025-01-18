@@ -36,7 +36,8 @@ pub fn sheet_to_txs(
 
     // Also, None
     let ignored_actions: HashSet<&'static str> = HashSet::from_iter(
-        vec!["BRW", "TFI", "TF6", "MGR", "DEP", "NAC", "CON", ""].into_iter(),
+        vec!["BRW", "TFI", "TF6", "MGR", "DEP", "NAC", "CON",
+             "INT", "EFT", "RDM", ""].into_iter(),
     );
     let allowed_actions: HashSet<&'static str> = HashSet::from_iter(
         vec!["BUY", "SELL", "DIS", "LIQ", "FXT", "DIV"].into_iter(),
@@ -110,6 +111,20 @@ pub fn sheet_to_txs(
                 Affiliate::default()
             };
 
+            if action_str == "FXT" {
+                let fxt_row = FxtRow {
+                    row_num,
+                    currency: Currency::new(reader.get_str("Currency")?.as_str()),
+                    affiliate,
+                    trade_date,
+                    trade_date_and_time: trade_date_str_full.clone(),
+                    amount: reader.get_dec("Net Amount")?,
+                    account,
+                };
+                fx_tracker.add_fxt_row(fxt_row)?;
+                return Ok(());
+            }
+
             let pre_alias_symbol = reader.get_str("Symbol")?;
             if pre_alias_symbol.is_empty() {
                 return Err(SheetParseError::new(
@@ -133,19 +148,6 @@ pub fn sheet_to_txs(
                     )?;
                     fx_tracker.add_income_fx_tx(div_tx);
                 }
-                return Ok(());
-            }
-            if action_str == "FXT" {
-                let fxt_row = FxtRow {
-                    row_num,
-                    currency: Currency::new(reader.get_str("Currency")?.as_str()),
-                    affiliate,
-                    trade_date,
-                    trade_date_and_time: trade_date_str_full.clone(),
-                    amount: reader.get_dec("Net Amount")?,
-                    account,
-                };
-                fx_tracker.add_fxt_row(fxt_row)?;
                 return Ok(());
             }
 
