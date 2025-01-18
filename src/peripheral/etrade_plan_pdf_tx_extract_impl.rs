@@ -1,4 +1,3 @@
-use std::collections::HashSet;
 use std::io::{Read, Write};
 use std::path::PathBuf;
 
@@ -307,8 +306,7 @@ fn find_sell_to_cover_trade_set<'a>(
 
     // Step 1: run through combinations of trades, and find some combo where
     // the security of all matches and the number of shares matches.
-    // Error out if multiple combinations satisfy this condition.
-    let mut matching_trades_o: Option<Vec<&BrokerTx>> = None;
+    let mut all_matching_trades: Vec<Vec<&BrokerTx>> = Vec::new();
     for n in (1..=trade_confs.len()).rev() {
         tracing::trace!("find_sell_to_cover_trade_set combos len {n}");
 
@@ -323,38 +321,14 @@ fn find_sell_to_cover_trade_set<'a>(
             }
             let n_shares: Decimal = trades.iter().map(|t| t.num_shares).sum();
             if n_shares == sell_to_cover_shares {
-                if let Some(matching_trades) = &matching_trades_o {
-                    // We already found a candidate set. We may run into the same
-                    // combination again in a different arrangement, or a different
-                    // set, in which case we won't be able to pick between the two.
-                    if HashSet::<&&BrokerTx>::from_iter(matching_trades.iter())
-                        != HashSet::<&&BrokerTx>::from_iter(
-                            trades.iter().map(|t| *t),
-                        )
-                    {
-                        return Err(format!(
-                            "Multiple trade combinations \
-                                            could potentially constitute the \
-                                            sell-to-cover for {}",
-                            benefit_err_desc()
-                        ));
-                    }
-                    // If these are basically equivalent sets of trades, just skip.
-                    // This is most likely to happen when multiple sells get split
-                    // into X and 1.
-                    tracing::trace!(
-                        "find_sell_to_cover_trade_set equivalent candidates found"
-                    );
-                } else {
-                    tracing::trace!("find_sell_to_cover_trade_set candidates found");
-                    matching_trades_o =
-                        Some(trades.into_iter().map(|t| *t).collect());
-                }
+                all_matching_trades.push(trades.into_iter().map(|t| *t).collect());
             }
         }
     }
 
-    if let Some(matching_trades) = matching_trades_o {
+    // Step 2: Select best trade combo set.
+    if all_matching_trades.len() == 1 {
+        let matching_trades = all_matching_trades.into_iter().next().unwrap();
         tracing::debug!(
             "Found matching trade confirmations for benefit:\n{:#?}",
             benefit
@@ -363,6 +337,82 @@ fn find_sell_to_cover_trade_set<'a>(
             tracing::debug!("  {t:#?}");
         }
         Ok(matching_trades)
+    } else if all_matching_trades.len() > 1 {
+        tracing::trace!(
+            "find_sell_to_cover_trade_set {} candidates found",
+            all_matching_trades.len()
+        );
+        // Try to chose best trade combination match.
+        // If we have two trade combos, compute the average sale price, and compute
+        // which more closely approximates the price-per-share in the benefit entry.
+        // If that's None, then we just fail for now.
+        struct TradesCombination<'a> {
+            trades: Vec<&'a BrokerTx>,
+            average_price: Decimal,
+            // This will be used to sort
+            abs_difference_from_benefit_price: Decimal,
+        }
+
+        let mut trade_combos: Vec<TradesCombination> = all_matching_trades
+            .into_iter()
+            .map(|trades| {
+                let total_val: Decimal =
+                    trades.iter().map(|t| t.amount_per_share * t.num_shares).sum();
+                let total_shares: Decimal =
+                    trades.iter().map(|t| t.num_shares).sum();
+                let avg_price = total_val / total_shares;
+                let diff = match benefit.sell_to_cover_price {
+                    Some(p) => (p - avg_price).abs(),
+                    None => Decimal::MAX,
+                };
+
+                TradesCombination {
+                    trades,
+                    average_price: avg_price,
+                    abs_difference_from_benefit_price: diff,
+                }
+            })
+            .collect();
+
+        // We want the closest to the benefit price first.
+        trade_combos.sort_by(|a, b| {
+            a.abs_difference_from_benefit_price
+                .cmp(&b.abs_difference_from_benefit_price)
+        });
+
+        let combos_str = trade_combos
+            .iter()
+            .map(|trades| {
+                trades
+                    .trades
+                    .iter()
+                    .map(|t| format!("x {} @ {}", t.num_shares, t.amount_per_share))
+                    .join(", ")
+                    + format!(" (avg price {:.4})", trades.average_price).as_str()
+            })
+            .join("\n  ");
+        tracing::debug!(
+            "Average reported sale price: {:?}\n  {}",
+            benefit.sell_to_cover_price,
+            combos_str
+        );
+
+        // Pick the first (best) combo, provided it was actually quantafiably good.
+        // If there was no sell-to-cover price, then we don't have a very good guess.
+        let selected_combo_ref = &trade_combos[0];
+        if selected_combo_ref.abs_difference_from_benefit_price != Decimal::MAX {
+            Ok(trade_combos.into_iter().next().unwrap().trades)
+        } else {
+            Err(format!(
+                "Unable to decide between multiple trade combinations \
+                                could potentially constitute the \
+                                sell-to-cover for {}:\n \
+                                Average reported sale price: {:?}\n  {}",
+                benefit_err_desc(),
+                benefit.sell_to_cover_price,
+                combos_str
+            ))
+        }
     } else {
         Err(format!(
             "Found no trades matching the sell-to-cover for {}",
@@ -711,7 +761,10 @@ mod tests {
         }
     }
 
-    fn benefit_n_shares(n_shares: u32) -> BenefitEntry {
+    fn benefit_n_shares_stc_price(
+        n_shares: u32,
+        stc_price: Option<Decimal>,
+    ) -> BenefitEntry {
         BenefitEntry {
             security: foo(),
             acquire_tx_date: dt(10),
@@ -720,7 +773,7 @@ mod tests {
             acquire_shares: dec!(100),
             sell_to_cover_tx_date: Some(dt(10)),
             sell_to_cover_settle_date: Some(dt(12)),
-            sell_to_cover_price: Some(dec!(100)),
+            sell_to_cover_price: stc_price,
             sell_to_cover_shares: Some(Decimal::from(n_shares)),
             sell_to_cover_fee: Some(dec!(0)),
             plan_note: "XXXX Vest".to_string(),
@@ -729,7 +782,11 @@ mod tests {
         }
     }
 
-    fn tx_n_shares(n_shares: u32) -> BrokerTx {
+    fn benefit_n_shares(n_shares: u32) -> BenefitEntry {
+        benefit_n_shares_stc_price(n_shares, Some(dec!(100)))
+    }
+
+    fn tx_n_shares_price(n_shares: u32, price: Decimal) -> BrokerTx {
         BrokerTx {
             security: foo(),
             trade_date: dt(10),
@@ -737,7 +794,7 @@ mod tests {
             trade_date_and_time: "2024-01-10".to_string(),
             settlement_date_and_time: "2024-01-12".to_string(),
             action: TxAction::Sell,
-            amount_per_share: dec!(1),
+            amount_per_share: price,
             num_shares: Decimal::from(n_shares),
             commission: dec!(0),
             currency: Currency::usd(),
@@ -749,6 +806,10 @@ mod tests {
             sort_tiebreak: None,
             filename: Some("conf.pdf".to_string()),
         }
+    }
+
+    fn tx_n_shares(n_shares: u32) -> BrokerTx {
+        tx_n_shares_price(n_shares, dec!(1))
     }
 
     fn dflt<T: Default>() -> T {
@@ -816,14 +877,52 @@ mod tests {
             "Found no trades matching the sell-to-cover for a_file.pdf: \
             XXXX Vest 2024-01-11");
 
-        // Unreconcilable case (conflicts)
-        let trades = vec![tx_n_shares(5), tx_n_shares(1),
-                          tx_n_shares(4), tx_n_shares(2)];
+        // Resolve multiple possible sell-to-cover combos (by closest avg price).
+        let trades = vec![tx_n_shares_price(5, dec!(400)),
+                          tx_n_shares_price(1, dec!(100)),
+                          tx_n_shares_price(4, dec!(101)),
+                          tx_n_shares_price(2, dec!(99))];
+        let matching_trades = find_sell_to_cover_trade_set(
+            &benefit_n_shares_stc_price(6, Some(dec!(100))),
+            &trades.iter().collect()).unwrap();
+        assert_sorted_vec_eq(vec![&trades[2], &trades[3]], matching_trades);
+
+        // Resolve multiple by absolute value difference
+        let trades = vec![tx_n_shares_price(6, dec!(101)),
+                          tx_n_shares_price(6, dec!(50))];
+        let matching_trades = find_sell_to_cover_trade_set(
+            &benefit_n_shares_stc_price(6, Some(dec!(100))),
+            &trades.iter().collect()).unwrap();
+        assert_sorted_vec_eq(vec![&trades[0]], matching_trades);
+
+        let trades = vec![tx_n_shares_price(6, dec!(150)),
+                          tx_n_shares_price(6, dec!(99))];
+        let matching_trades = find_sell_to_cover_trade_set(
+            &benefit_n_shares_stc_price(6, Some(dec!(100))),
+            &trades.iter().collect()).unwrap();
+        assert_sorted_vec_eq(vec![&trades[1]], matching_trades);
+
+        // Resolved multiples again, but where there is a preferrable combo that
+        // is multiple sells, over a single sell of the exact number of shares, due
+        // to price proximity.
+        let trades = vec![tx_n_shares_price(5, dec!(400)),
+                          tx_n_shares_price(1, dec!(99)),
+                          tx_n_shares_price(4, dec!(101))];
+        let matching_trades = find_sell_to_cover_trade_set(
+            &benefit_n_shares_stc_price(5, Some(dec!(100))),
+            &trades.iter().collect()).unwrap();
+        assert_sorted_vec_eq(vec![&trades[1], &trades[2]], matching_trades);
+
+        // Unreconcilable case (no aggregate sell-to-cover price).
+        // Realistically, this case should be impossible to hit, but we cover it
+        // just because the Benefit struct supports Option of the price.
         let err = find_sell_to_cover_trade_set(
-            &benefit_n_shares(6), &trades.iter().collect()).unwrap_err();
-        assert_eq!(err,
-            "Multiple trade combinations could potentially constitute the \
-            sell-to-cover for a_file.pdf: XXXX Vest 2024-01-11");
+            &benefit_n_shares_stc_price(5, None),
+            &trades.iter().collect()).unwrap_err();
+        assert_re(
+            "Unable to decide between multiple trade combinations could potentially \
+            constitute the sell-to-cover for a_file.pdf: XXXX Vest 2024-01-11",
+            &err);
     }
 
     #[rustfmt::skip]
@@ -920,7 +1019,7 @@ mod tests {
         let errs = amend_benefit_sales(PdfData{benefits: benefits, trade_confs})
             .unwrap_err();
         assert_eq!(errs.len(), 1);
-        assert_re("Multiple trade combinations could potentially", &errs[0]);
+        assert_re("Found no trades matching", &errs[0]);
 
         // Case: Ignore buys
         let benefits = vec![
