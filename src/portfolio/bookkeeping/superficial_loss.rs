@@ -37,17 +37,21 @@ struct SuperficialLossInfo {
     // we end up inserting only-sellers simply because we don't know they
     // won't buy at some point, while we're populating.
     // We just don't bother filtering them out at the end.
-    pub active_affiliate_spladj_shares_at_eop: HashMap<Affiliate, GreaterEqualZeroDecimal>,
+    pub active_affiliate_spladj_shares_at_eop:
+        HashMap<Affiliate, GreaterEqualZeroDecimal>,
 }
 
 impl SuperficialLossInfo {
     // Note: it is possible for this to legally return zero, since you could
     // have only shares remaining in non-buying affiliates.
-    pub fn buying_affiliate_split_adjusted_shares_at_eop_total(&self) -> GreaterEqualZeroDecimal {
+    pub fn buying_affiliate_split_adjusted_shares_at_eop_total(
+        &self,
+    ) -> GreaterEqualZeroDecimal {
         let zero = GreaterEqualZeroDecimal::zero();
         let mut total = GreaterEqualZeroDecimal::zero();
         for af in &self.buying_affiliates {
-            total += *self.active_affiliate_spladj_shares_at_eop.get(af).unwrap_or(&zero);
+            total +=
+                *self.active_affiliate_spladj_shares_at_eop.get(af).unwrap_or(&zero);
         }
         total
     }
@@ -181,8 +185,10 @@ fn get_superficial_loss_info(
             break;
         }
         let after_tx_affil = &after_tx.affiliate;
-        let split_adjustment: PosDecimal = af_split_adjustments.get(after_tx_affil)
-            .map(|v| *v).unwrap_or(PosDecimal::one());
+        let split_adjustment: PosDecimal = af_split_adjustments
+            .get(after_tx_affil)
+            .map(|v| *v)
+            .unwrap_or(PosDecimal::one());
 
         // Within the 30 day window after
         match &after_tx.action_specifics {
@@ -191,8 +197,7 @@ fn get_superficial_loss_info(
                 let after_tx_buy_spladj_shares =
                     after_tx_buy_shares * split_adjustment.into();
 
-                all_aff_spladj_shares_at_end_of_period +=
-                    after_tx_buy_spladj_shares;
+                all_aff_spladj_shares_at_end_of_period += after_tx_buy_spladj_shares;
                 let old_shares_eop = active_affiliate_spladj_shares_at_eop
                     .get(after_tx_affil)
                     .map(|d| *d)
@@ -241,20 +246,20 @@ fn get_superficial_loss_info(
                 af_split_adjustments.insert(after_tx_affil, new_split_adjustment);
             }
             // These don't change the share quantity, so they can be ignored
-            TxActionSpecifics::Roc(_) |
-            TxActionSpecifics::Sfla(_) => (),
+            TxActionSpecifics::Roc(_) | TxActionSpecifics::Sfla(_) => (),
         }
     }
 
     // Convert end-of-period shares to PosDecimal, or declare non-superficial
     // and return.
-    let all_aff_spladj_shares_at_end_of_period =
-        if let Ok(v) = PosDecimal::try_from(*all_aff_spladj_shares_at_end_of_period) {
-            v
-        } else {
-            // all_aff_spladj_shares_at_end_of_period was zero
-            return Ok(MaybeSuperficialLossInfo::NotSuperficial());
-        };
+    let all_aff_spladj_shares_at_end_of_period = if let Ok(v) =
+        PosDecimal::try_from(*all_aff_spladj_shares_at_end_of_period)
+    {
+        v
+    } else {
+        // all_aff_spladj_shares_at_end_of_period was zero
+        return Ok(MaybeSuperficialLossInfo::NotSuperficial());
+    };
 
     let mut af_split_adjustments = HashMap::<&Affiliate, PosDecimal>::new();
 
@@ -266,17 +271,22 @@ fn get_superficial_loss_info(
         }
         let before_tx_affil = &before_tx.affiliate;
 
-        let split_adjustment: PosDecimal = af_split_adjustments.get(before_tx_affil)
-            .map(|v| *v).unwrap_or(PosDecimal::one());
+        let split_adjustment: PosDecimal = af_split_adjustments
+            .get(before_tx_affil)
+            .map(|v| *v)
+            .unwrap_or(PosDecimal::one());
 
         // Within the 30 day window before
         match &before_tx.action_specifics {
             TxActionSpecifics::Buy(buy) => {
                 let spladj_shares = buy.shares * split_adjustment;
-                total_aquired_spladj_shares_in_period += GreaterEqualZeroDecimal::from(spladj_shares);
+                total_aquired_spladj_shares_in_period +=
+                    GreaterEqualZeroDecimal::from(spladj_shares);
                 buying_affiliates.insert(before_tx_affil.clone());
 
-                if !active_affiliate_spladj_shares_at_eop.contains_key(before_tx_affil) {
+                if !active_affiliate_spladj_shares_at_eop
+                    .contains_key(before_tx_affil)
+                {
                     // This affiliate only bought before the superficial loss tx,
                     // so just populate them with their current status.
                     active_affiliate_spladj_shares_at_eop.insert(
@@ -290,11 +300,11 @@ fn get_superficial_loss_info(
                 let new_split_adjustment =
                     split_adjustment * split.ratio.pre_to_post_factor();
                 af_split_adjustments.insert(before_tx_affil, new_split_adjustment);
-            },
+            }
             // ignored
-            TxActionSpecifics::Sell(_) |
-            TxActionSpecifics::Roc(_) |
-            TxActionSpecifics::Sfla(_) => (),
+            TxActionSpecifics::Sell(_)
+            | TxActionSpecifics::Roc(_)
+            | TxActionSpecifics::Sfla(_) => (),
         }
     }
 

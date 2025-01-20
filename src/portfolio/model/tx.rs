@@ -38,7 +38,10 @@ impl TryFrom<&str> for TxAction {
 
     fn try_from(value: &str) -> Result<Self, Self::Error> {
         let re_ci_match = |s| -> bool {
-            regex::RegexBuilder::new(s).case_insensitive(true).build().unwrap()
+            regex::RegexBuilder::new(s)
+                .case_insensitive(true)
+                .build()
+                .unwrap()
                 .is_match(value)
         };
 

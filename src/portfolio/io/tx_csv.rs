@@ -157,7 +157,7 @@ fn csvtx_from_csv_values(
                 } else {
                     Some(Affiliate::from_strep(&s))
                 }
-            },
+            }
             None => None,
         },
         specified_superficial_loss: match values.remove(CsvCol::SUPERFICIAL_LOSS) {

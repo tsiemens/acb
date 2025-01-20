@@ -56,7 +56,9 @@ fn has_non_global_surrounding_splits(txs: &[Tx], idx: usize) -> bool {
 /// behaviour because the "default" affiliate for splits is __global__ now,
 /// and so it would result in a double split for those non-default affiliates,
 /// which we do not want.
-pub fn replace_global_security_splits(sorted_security_txs: &mut Vec<Tx>) -> Result<(), SError> {
+pub fn replace_global_security_splits(
+    sorted_security_txs: &mut Vec<Tx>,
+) -> Result<(), SError> {
     // First find all global splits and validate them
     let mut split_indices = Vec::new();
 
@@ -112,7 +114,10 @@ pub fn replace_global_security_splits(sorted_security_txs: &mut Vec<Tx>) -> Resu
 
 #[cfg(test)]
 mod tests {
-    use crate::{portfolio::{testlib::TTx, SplitRatio}, testlib::assert_vec_eq};
+    use crate::{
+        portfolio::{testlib::TTx, SplitRatio},
+        testlib::assert_vec_eq,
+    };
 
     use super::*;
     use std::collections::HashMap;
@@ -121,13 +126,12 @@ mod tests {
 
     // Helper function to create a test transaction
     fn create_tx(
-        date: i32,  // Days since epoch for simplicity
+        date: i32, // Days since epoch for simplicity
         action_type: TxAction,
         affiliate: Affiliate,
         read_index: u32,
     ) -> Tx {
-
-        let mut ttx = TTx{
+        let mut ttx = TTx {
             t_day: date,
             act: action_type,
             shares: gez!(1),
@@ -142,14 +146,27 @@ mod tests {
         ttx.x()
     }
 
-    fn assert_tx(actual: &Tx, action: TxAction, affiliate: &Affiliate, read_index: u32) {
+    fn assert_tx(
+        actual: &Tx,
+        action: TxAction,
+        affiliate: &Affiliate,
+        read_index: u32,
+    ) {
         assert_eq!(actual.action(), action);
         assert_eq!(&actual.affiliate, affiliate);
         assert_eq!(actual.read_index, read_index);
     }
 
-    fn assert_affiliates_at_indices(txs: &Vec<Tx>, indices: Vec<usize>, affiliates: Vec<Affiliate>) {
-        assert_eq!(indices.len(), affiliates.len(), "Number of indices must match number of affiliates");
+    fn assert_affiliates_at_indices(
+        txs: &Vec<Tx>,
+        indices: Vec<usize>,
+        affiliates: Vec<Affiliate>,
+    ) {
+        assert_eq!(
+            indices.len(),
+            affiliates.len(),
+            "Number of indices must match number of affiliates"
+        );
 
         // Verify indices are in bounds
         for idx in &indices {
@@ -157,9 +174,8 @@ mod tests {
         }
 
         // Get the actual affiliates at the given indices
-        let actual_affiliates: Vec<_> = indices.iter()
-            .map(|&idx| txs[idx].affiliate.clone())
-            .collect();
+        let actual_affiliates: Vec<_> =
+            indices.iter().map(|&idx| txs[idx].affiliate.clone()).collect();
 
         // Count occurrences of each affiliate in both vectors
         let mut expected_counts: HashMap<&Affiliate, usize> = HashMap::new();
@@ -186,9 +202,7 @@ mod tests {
 
     #[test]
     fn test_single_global_split_no_affiliates() {
-        let mut txs = vec![
-            create_tx(1, TxAction::Split, Affiliate::global(), 1),
-        ];
+        let mut txs = vec![create_tx(1, TxAction::Split, Affiliate::global(), 1)];
 
         replace_global_security_splits(&mut txs).unwrap();
 
@@ -227,7 +241,10 @@ mod tests {
 
         assert_eq!(txs.len(), 4);
         assert_affiliates_at_indices(
-            &txs, vec![1, 2], vec![affiliate1.clone(), affiliate2.clone()]);
+            &txs,
+            vec![1, 2],
+            vec![affiliate1.clone(), affiliate2.clone()],
+        );
         assert_eq!(txs[1].read_index, 2);
         assert_eq!(txs[2].read_index, 2);
     }
@@ -262,11 +279,17 @@ mod tests {
 
         assert_eq!(txs.len(), 6);
         assert_affiliates_at_indices(
-            &txs, vec![0, 1], vec![affiliate1.clone(), affiliate2.clone()]);
+            &txs,
+            vec![0, 1],
+            vec![affiliate1.clone(), affiliate2.clone()],
+        );
         assert_eq!(txs[0].read_index, 1);
         assert_eq!(txs[1].read_index, 1);
         assert_affiliates_at_indices(
-            &txs, vec![2, 3], vec![affiliate1.clone(), affiliate2.clone()]);
+            &txs,
+            vec![2, 3],
+            vec![affiliate1.clone(), affiliate2.clone()],
+        );
         assert_eq!(txs[2].read_index, 2);
         assert_eq!(txs[3].read_index, 2);
     }
@@ -362,9 +385,15 @@ mod tests {
 
         assert_eq!(txs.len(), 6);
         assert_affiliates_at_indices(
-            &txs, vec![0, 1], vec![affiliate1.clone(), affiliate2.clone()]);
+            &txs,
+            vec![0, 1],
+            vec![affiliate1.clone(), affiliate2.clone()],
+        );
         assert_affiliates_at_indices(
-                &txs, vec![4, 5], vec![affiliate1.clone(), affiliate2.clone()]);
+            &txs,
+            vec![4, 5],
+            vec![affiliate1.clone(), affiliate2.clone()],
+        );
         assert_eq!(txs[0].action(), TxAction::Split);
         assert_eq!(txs[1].action(), TxAction::Split);
         assert_eq!(txs[2].action(), TxAction::Buy);

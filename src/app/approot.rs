@@ -665,11 +665,18 @@ mod tests {
         let render_table = get_and_check_foo_table(&render_res.security_tables);
         assert_eq!(render_table.rows.len(), 8);
         assert_eq!(Vec::<String>::new(), render_table.errors);
-        let row_actions = render_table.rows.iter().map(|row| row[3].clone()).collect();
-        assert_vec_eq(row_actions, vec!["Buy", "Buy",
-                                        "Split", "Split", "Split", // duped split
-                                        "Split", "Split", // individual splits
-                                        "Buy",
-                                        ].iter().map(|s| String::from(*s)).collect());
+        let row_actions =
+            render_table.rows.iter().map(|row| row[3].clone()).collect();
+        assert_vec_eq(
+            row_actions,
+            vec![
+                "Buy", "Buy", "Split", "Split", "Split", // duped split
+                "Split", "Split", // individual splits
+                "Buy",
+            ]
+            .iter()
+            .map(|s| String::from(*s))
+            .collect(),
+        );
     }
 }

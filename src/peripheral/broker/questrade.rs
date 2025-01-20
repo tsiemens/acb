@@ -36,8 +36,10 @@ pub fn sheet_to_txs(
 
     // Also, None
     let ignored_actions: HashSet<&'static str> = HashSet::from_iter(
-        vec!["BRW", "TFI", "TF6", "MGR", "DEP", "NAC", "CON",
-             "INT", "EFT", "RDM", ""].into_iter(),
+        vec![
+            "BRW", "TFI", "TF6", "MGR", "DEP", "NAC", "CON", "INT", "EFT", "RDM", "",
+        ]
+        .into_iter(),
     );
     let allowed_actions: HashSet<&'static str> = HashSet::from_iter(
         vec!["BUY", "SELL", "DIS", "LIQ", "FXT", "DIV"].into_iter(),

@@ -28,7 +28,12 @@ pub fn find_all_non_global_affiliates(txs: &Vec<Tx>) -> HashSet<Affiliate> {
 mod tests {
     use std::collections::HashSet;
 
-    use crate::{gezdec, portfolio::{find_all_non_global_affiliates, testlib::TTx, Affiliate, TxAction}};
+    use crate::{
+        gezdec,
+        portfolio::{
+            find_all_non_global_affiliates, testlib::TTx, Affiliate, TxAction,
+        },
+    };
 
     #[test]
     #[rustfmt::skip]
