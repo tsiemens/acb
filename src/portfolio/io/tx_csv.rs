@@ -147,7 +147,17 @@ fn csvtx_from_csv_values(
             None => None,
         },
         affiliate: match values.remove(CsvCol::AFFILIATE) {
-            Some(s) => Some(Affiliate::from_strep(&s)),
+            Some(s) => {
+                if s.trim().is_empty() {
+                    // It is important to set affiliate as None here, because
+                    // we want to be able to differentiate between implicit and
+                    // explicit Default (since the affiliate won't always be
+                    // the "default" one, depending on the action type).
+                    None
+                } else {
+                    Some(Affiliate::from_strep(&s))
+                }
+            },
             None => None,
         },
         specified_superficial_loss: match values.remove(CsvCol::SUPERFICIAL_LOSS) {
@@ -724,8 +734,8 @@ mod tests {
                     sfl: "-1.2!", split: "2-for-1", af: "(R)", m:"A memo",
                 },
                 Row::default(),
-                // Empty sec after trimming
-                Row{sec:"   ", ..Default::default()},
+                // Empty sec and af after trimming
+                Row{sec:"   ", af: " ", ..Default::default()},
                 // Other action casing
                 Row{a:"SFLA", ..Default::default()},
                 Row{a:"sfla", ..Default::default()},

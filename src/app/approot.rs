@@ -91,7 +91,9 @@ pub async fn run_acb_app_to_delta_models(
 
     let mut delta_results = HashMap::<Security, DeltaListResult>::new();
 
-    for (sec, sec_txs) in txs_by_sec {
+    for (sec, mut sec_txs) in txs_by_sec {
+        crate::portfolio::splits::replace_global_security_splits(&mut sec_txs)?;
+
         let sec_init_status =
             all_init_status.get(&sec).map(|o| std::rc::Rc::new(o.clone()));
 
@@ -465,7 +467,7 @@ mod tests {
     use async_std::task::block_on;
 
     use crate::portfolio::io::tx_csv::testlib::TestTxCsvRow as Row;
-    use crate::testlib::assert_re;
+    use crate::testlib::{assert_re, assert_vec_eq};
     use crate::{
         app::outfmt::{model::AcbWriter, text::TextWriter},
         fx::io::{InMemoryRatesCache, JsonRemoteRateLoader, RateLoader},
@@ -622,5 +624,52 @@ mod tests {
     fn test_fractional_shares() {
         do_test_fractional_shares(false);
         do_test_fractional_shares(true);
+    }
+
+    #[test]
+    fn test_global_stock_split() {
+        #[rustfmt::skip]
+        let readers =
+            CsvFileBuilder::with_all_modern_headers()
+            .split_csv_rows(&vec![6], &vec![
+                Row{sec: "FOO", td: "2016-01-03", sd: "2016-01-05",
+                    a: "Buy", sh: "1", aps: "1.6", cur: "CAD", ..Row::default()},
+                Row{sec: "FOO", td: "2016-01-03", sd: "2016-01-05",
+                    a: "Buy", sh: "2", aps: "1.6", cur: "CAD", af: "(R)", ..Row::default()},
+
+                // Global split
+                Row{sec: "FOO", td: "2016-01-10", sd: "2016-01-10",
+                    a: "Split", split: "2-for-1",  af: "", ..Row::default()},
+
+                // Per AF splits (a couple days apart for... the sake of argument)
+                Row{sec: "FOO", td: "2017-01-04", sd: "2017-01-04",
+                    a: "Split", split: "2-for-1",  af: "Default", ..Row::default()},
+                Row{sec: "FOO", td: "2018-01-06", sd: "2018-01-06",
+                    a: "Split", split: "2-for-1",  af: "(R)", ..Row::default()},
+
+                Row{sec: "FOO", td: "2018-02-01", sd: "2018-02-03",
+                    a: "Buy", sh: "2", aps: "1.6", cur: "CAD", af: "spouse", ..Row::default()},
+            ]);
+
+        let render_res = block_on(run_acb_app_to_render_model(
+            readers,
+            HashMap::new(),
+            &TxCsvParseOptions::default(),
+            false,
+            false,
+            make_empty_test_rate_loader(),
+            WriteHandle::empty_write_handle(),
+        ))
+        .unwrap();
+
+        let render_table = get_and_check_foo_table(&render_res.security_tables);
+        assert_eq!(render_table.rows.len(), 8);
+        assert_eq!(Vec::<String>::new(), render_table.errors);
+        let row_actions = render_table.rows.iter().map(|row| row[3].clone()).collect();
+        assert_vec_eq(row_actions, vec!["Buy", "Buy",
+                                        "Split", "Split", "Split", // duped split
+                                        "Split", "Split", // individual splits
+                                        "Buy",
+                                        ].iter().map(|s| String::from(*s)).collect());
     }
 }

@@ -12,6 +12,8 @@ struct AffiliateData {
     registered: bool,
 }
 
+const GLOBAL_AF_ID: &str = "__global__";
+
 lazy_static! {
     static ref REGISTERED_RE: Regex = Regex::new(r"\([rR]\)").unwrap();
     static ref EXTRA_SPACE_RE: Regex = Regex::new(r"  +").unwrap();
@@ -63,6 +65,10 @@ impl Affiliate {
         Affiliate::from_strep("(R)")
     }
 
+    pub fn global() -> Affiliate {
+        Affiliate::from_strep(GLOBAL_AF_ID)
+    }
+
     pub fn id(&self) -> &str {
         self.0.id.as_str()
     }
@@ -74,6 +80,12 @@ impl Affiliate {
     }
     pub fn is_default(&self) -> bool {
         self.id().starts_with("default")
+    }
+
+    // Special transactions (such as splits) may specify the global affiliate,
+    // which indicates it applies across all affiliates.
+    pub fn is_global(&self) -> bool {
+        self.id() == GLOBAL_AF_ID
     }
 }
 
@@ -161,6 +173,11 @@ mod tests {
         verify(" My     Spouse ", "my spouse", "My Spouse", false);
         verify(" My  (r)   Spouse ", "my spouse (R)", "My Spouse (R)", true);
 
+        // This is reserved.
+        verify(" __global__ ", "__global__", "__global__", false);
+        // This is not reserved.
+        verify(" Global ", "global", "Global", false);
+
         assert!(new("").is_default());
         assert!(new("").is_default());
         assert!(new("Default").is_default());
@@ -168,6 +185,10 @@ mod tests {
         assert!(new("(R)XXX").is_default() == false);
         assert!(new("XXX").is_default() == false);
         assert!(new("Def(r)ault").is_default() == false);
+
+        assert!(new("__global__").is_global() == true);
+        assert!(Affiliate::global().is_global() == true);
+        assert!(new("Global").is_global() == false);
     }
 
     #[test]

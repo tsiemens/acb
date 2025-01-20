@@ -599,6 +599,8 @@ impl TryFrom<CsvTx> for Tx {
         let not_found_err =
             |col_name| -> String { format!("\"{col_name}\" not found") };
 
+        let is_split = act_specs.action() == TxAction::Split;
+
         let tx = Tx {
             security: csv_tx
                 .security
@@ -611,7 +613,10 @@ impl TryFrom<CsvTx> for Tx {
                 .ok_or_else(|| not_found_err(CsvCol::SETTLEMENT_DATE))?,
             action_specifics: act_specs,
             memo: csv_tx.memo.unwrap_or_else(|| String::new()),
-            affiliate: csv_tx.affiliate.unwrap_or_else(|| Affiliate::default()),
+            affiliate: csv_tx.affiliate.unwrap_or_else(||
+                // Unless otherwise specified, splits apply to all affiliates
+                if is_split { Affiliate::global() } else { Affiliate::default() }
+            ),
             read_index: csv_tx.read_index,
         };
         if tx.security.is_empty() {
