@@ -1302,7 +1302,7 @@ mod tests {
         buy_csvtx.action = None;
 
         let err = Tx::try_from(buy_csvtx).unwrap_err();
-        assert_eq!(err, "\"action\" not specified");
+        assert_eq!(err, "\"action\" not specified. security: Some(\"FOO\"), trade date: Some(2022-10-20)");
 
         // - currency but no exchange rate (and inverse)
         let mut buy_csvtx = barebones_valid_sample_csvtx(TxAction::Buy);
