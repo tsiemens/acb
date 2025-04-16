@@ -413,18 +413,33 @@ function setTabActive(labelStr) {
    }
 }
 
-function setAcbErrorText(err) {
-   const errorsElem = document.getElementById("acb-errors");
-   errorsElem.innerText = err;
+/**
+ @param {Object} params - Parameters for the error box
+ @param {string} params.title - Title of the error box
+ @param {string} params.descPre - First description part
+ @param {string} params.errorText - Quoted/mono error text
+ @param {string} params.descPost - Second description part following the error
+*/
+function showErrorBox(params) {
+   const titleElement = document.getElementById('error-box-title');
+   titleElement.textContent = params.title ? params.title : "Error";
+
+   const descElement = document.getElementById('error-desc-pre');
+   descElement.textContent = params.descPre ? params.descPre : "";
+
+   const errorMessageElement = document.getElementById('error-message');
+   errorMessageElement.textContent = params.errorText ? params.errorText : "";
+
+   const postElement = document.getElementById('error-desc-post');
+   postElement.textContent = params.descPost ? params.descPost : "";
+   postElement.style.display = params.descPost ? 'block' : 'none';
+
+   document.querySelector('.error-container').style.display = 'block';
 }
 
-function addAcbErrorText(err) {
-   const errorsElem = document.getElementById("acb-errors");
-   if (errorsElem.innerText) {
-      errorsElem.innerText += '\n' + err;
-   } else {
-      errorsElem.innerText = err;
-   }
+// Close the error box
+function closeErrorBox() {
+   document.querySelector('.error-container').style.display = 'none';
 }
 
 async function asyncRunAcb(filenames, contents) {
@@ -443,8 +458,12 @@ async function asyncRunAcb(filenames, contents) {
       populateTables(result.modelOutput);
    } catch (err) {
       console.log("asyncRunAcb caught error: ", err);
-      addAcbErrorText("An unexpected error was encountered while processing ACB "+
-                      "output. Try clearing your cache.");
+      showErrorBox({
+         title: "Processing Error",
+         descPre: "An error occurred while processing ACB. Please review the error details below:",
+         errorText: err,
+         descPost: "If this seems unexpected, try clearing your cache."
+      });
    }
 }
 
@@ -458,16 +477,16 @@ function readCsv(file, loadQueue) {
     return;
   }
 
-  const reader = new FileReader();
-  reader.addEventListener('loadend', (event) => {
-     console.log('FileReader loadend:', event.target.result);
+   const reader = new FileReader();
+   reader.addEventListener('loadend', (event) => {
+      console.log('FileReader loaded:', event.target.result);
 
-     if (!event.target.result) {
-        let errText = "Error reading " + file.name + ": "
-        if (event.target.error) {
-           errText += event.target.error;
-        }
-        addAcbErrorText(errText);
+      if (!event.target.result) {
+         showErrorBox({
+            title: "Read Error",
+            descPre: "Error reading " + file.name,
+            errorText: event.target.error,
+        });
         return;
      }
 
@@ -504,7 +523,7 @@ function loadAllFileInfoAndRun(files) {
       return;
    }
 
-   setAcbErrorText("");
+   closeErrorBox();
 
    // Takes a list of File
    let fileNames = [];

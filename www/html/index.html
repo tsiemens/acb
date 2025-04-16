@@ -94,7 +94,26 @@
          <div id="initial-symbol-state-inputs">
          </div> <!-- end page-centered-column -->
          <p id="init-secs-errors" class="errors-par page-centered-column"></p>
-         <p id="acb-errors" class="errors-par page-centered-column"></p>
+
+         <div class="error-container-outer">
+         <div class="error-container" style="display: none;">
+            <div class="error-header">
+                <span class="error-icon">⚠️</span>
+                <span id="error-box-title">Processing Error</span>
+            </div>
+            <div class="error-content">
+                <p id="error-desc-pre">Sample desc</p>
+                <div class="error-message" id="error-message">
+                    Sample error message
+                </div>
+                <p id="error-desc-post">Sample note</p>
+            </div>
+            <!-- <div class="error-footer">
+                <button id="error_close_button" class="close-button">Close</button>
+            </div> -->
+        </div>
+        </div>
+
          <div id="acb-output-tabs" class="tab-row page-centered-column">
             <div class="tab-label" data-tab-label="table">Table</div>
             <span class="tab-separator"></span>
