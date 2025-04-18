@@ -525,8 +525,9 @@ mod tests {
             .split_csv_rows(&csv_splits, &vec![
                 Row{sec: "FOO", td: "2016-01-03", sd: "2016-01-05",
                     a: "Buy", sh: "20", aps: "1.5", cur: "CAD", ..Row::default()},
+                // Secondary check: displayed gain on this should round up.
                 Row{sec: "FOO", td: "2016-01-03", sd: "2016-01-05",
-                    a: "Sell", sh: "5", aps: "1.6", cur: "CAD", ..Row::default()},
+                    a: "Sell", sh: "5", aps: "1.599", cur: "CAD", ..Row::default()},
                 Row{sec: "FOO", td: "2016-01-03", sd: "2016-01-05",
                     a: "Buy", sh: "5", aps: "1.7", cur: "CAD", ..Row::default()},
             ]);

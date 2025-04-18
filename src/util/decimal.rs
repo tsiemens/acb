@@ -33,7 +33,10 @@ pub fn parse_large_decimal(s: &str) -> Result<Decimal, rust_decimal::Error> {
 }
 
 pub fn dollar_precision_str(d: &Decimal) -> String {
-    format!("{:.2}", d)
+    // Round to 2 decimal places, and format as a string.
+    let rounded = d.round_dp_with_strategy(2,
+        rust_decimal::RoundingStrategy::MidpointAwayFromZero);
+    format!("{:.2}", rounded)
 }
 
 /// Formats the decimal as a String, and ensures that it is rendered
@@ -427,6 +430,10 @@ mod tests {
     fn test_dollar_precision_str() {
         assert_eq!(dollar_precision_str(&dec!(1000)), "1000.00");
         assert_eq!(dollar_precision_str(&dec!(1.123456)), "1.12");
+        assert_eq!(dollar_precision_str(&dec!(1.124999)), "1.12");
+        assert_eq!(dollar_precision_str(&dec!(1.129)), "1.13");
+        assert_eq!(dollar_precision_str(&dec!(1.125001)), "1.13");
+        assert_eq!(dollar_precision_str(&dec!(1.125000)), "1.13");
     }
 
     #[test]
