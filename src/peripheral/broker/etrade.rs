@@ -369,8 +369,6 @@ struct EsoData {
 
 /// Attempts to look for all rows within text that are of the format:
 /// KEY: VAL_PAT VAL_PAT?
-/// NOTE: Why the second VAL_PAT is here is not really clear right now, as the
-///       value is never included in our output.
 fn search_for_rows(
     key: &str,
     val_pat: &str,
@@ -384,6 +382,9 @@ fn search_for_rows(
     let mut vals = Vec::<String>::new();
     for m in main_re.captures_iter(text) {
         vals.push(m.name("rowvalue1").unwrap().as_str().to_string());
+        if let Some(v2) = m.name("rowvalue2") {
+            vals.push(v2.as_str().to_string());
+        }
     }
     if vals.is_empty() {
         Err(format!("Could not find {main_re:?}"))
@@ -412,12 +413,14 @@ fn search_for_dec_rows(
 fn parse_eso_data(eso_pdf_text: &str) -> Result<EsoData, SError> {
     let text = eso_pdf_text;
 
-    let body_m_res =
-        regex::RegexBuilder::new(r"^(.*)(Exercise Details.*Exercise Date).*$")
-            .dot_matches_new_line(true)
-            .build()
-            .unwrap()
-            .captures(text);
+    const BODY_START: &str = "Exercise Details";
+    const BODY_END: &str = "Exercise Date|EMPLOYEE STOCK PLAN EXERCISE CONFIRMATION";
+    let body_pat = &format!(r"^(.*)({BODY_START}.*(?:{BODY_END})).*$");
+    let body_m_res = regex::RegexBuilder::new(body_pat)
+        .dot_matches_new_line(true)
+        .build()
+        .unwrap()
+        .captures(text);
     let (header, body) = if let Some(body_m) = body_m_res {
         (
             body_m.get(1).unwrap().as_str(),
@@ -897,38 +900,48 @@ mod tests {
 
     // lopdf-based output
     const SAMPLE_ESO: &str = "
-        Account Number 11223344
-        Tax Payment Method Sell-to-cover
-        Company Name (Symbol) Foo Inc.
-        (FOO)
-
-        Exercise Type: Same-Day Sale Registration
-
-        Shares Sold 1,002
-
-        Exercise Details
-
-        Grant 1
-        Grant Number 1234
-        Exercise Market Value $1,000.00
-        Shares Exercised 100
-        Sale Price $1,001.00
-        Comission/Fee $10.00
-
-        Grant 2
-        Grant Number 1235
-        Exercise Market Value $2,000.00
-        Shares Exercised 200
-        Sale Price $2,001.00
-        Comission/Fee $11.00
-
-        Exercise Date:  10/20/2024
-
-        Provided by Foo Inc.
-        John Doe
-        Employee ID: 1111
-        STOCK PLAN EXERCISE CONFIRMATION
-        ";
+        Order Number 12345678
+        Account Stock Plan (FOO) -0112
+        Order Type Same-Day Sale
+        Company Name (Symbol) FOO COMPANY,
+        INC.(FOO)
+        Shares Exercised 1002
+        Shares Sold 1002
+        Price Type Market
+        Limit Price N/A
+        Term Good for Day
+         Gross Proceeds $12,345.67
+        Total Price ($1,234.56)
+        Commission ($4.95)
+        Sec Fee ($0.11)
+        Broker Assist Fee ($0.00)
+        Disbursement Fee ($0.00)
+        Taxes Withheld ($2,345.67)
+        Net Proceeds $23,456.78
+        
+         Exercise Details
+        
+        Exercise Date: 10/20/2024 Exercise Type: Same-Day Sale Registration:
+        Grant 1 Grant 2
+        Grant Date 1/1/2012 2/2/2013
+        Grant Number 1234 1235
+        Grant Type Nonqual Nonqual
+        Grant Price $3.33 $4.44
+        Sale Price $1,001.00 $2,001.00
+        Exercise Market Value $1,000.00 $2,000.00
+        Shares Exercised 100 200
+        Shares Sold 31 91
+        Total Gain $7,234.12 $10,101.11
+        Taxable Gain $7,234.12 $10,101.11
+        Gross Proceeds $9,876.54 $15,000.23
+        Total Price $1,234.00 $123.32
+        Comission/Fee $10.00 $11.00
+        EMPLOYEE STOCK PLAN EXERCISE CONFIRMATION
+        NO BODY
+        1234 MAIN ST
+        HALIFAX, NS B3D 8
+         Employee ID: 1111
+";
 
     #[test]
     fn test_parse_eso_data() {
@@ -938,7 +951,7 @@ mod tests {
             EsoData {
                 common_benefit_data: BenefitCommonData {
                     employee_id: s("1111"),
-                    account_number: s("11223344"),
+                    account_number: s("0112"),
                     symbol: s("FOO"),
                 },
                 exercise_type: s("Same-Day Sale"),
@@ -967,8 +980,10 @@ mod tests {
     #[test]
     fn test_parse_eso_entries() {
         // Sale prices must all be equal
-        let fixed_eso_data =
-            SAMPLE_ESO.replace("Sale Price $2,001.00", "Sale Price $1,001.00");
+        let fixed_eso_data = SAMPLE_ESO.replace(
+            "Sale Price $1,001.00 $2,001.00",
+            "Sale Price $1,001.00 $1,001.00",
+        );
 
         let eso_entries = parse_eso_entries(
             &fixed_eso_data,
