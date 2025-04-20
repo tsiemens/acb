@@ -36,7 +36,7 @@ fn do_test_scenario(scenario_variant_dir: &Path) {
         debug: false,
     };
     let (res, out, err) = run_and_get_output(args);
-    assert!(res.is_ok());
+    assert!(res.is_ok(), "res={:?} output={}, err={}", res, out, err);
     assert_eq!(err, "");
     assert_ne!(out, "");
 
@@ -54,6 +54,7 @@ fn do_test_scenario(scenario_variant_dir: &Path) {
 
 #[test]
 fn test_etrade_scenarios() {
+    common::test_init_tracing();
     let potential_variants = vec!["dfltpdf", "lopdf", "pypdf"];
 
     for sdr in fs::read_dir(Path::new("./tests/data/etrade_scenarios")).unwrap() {

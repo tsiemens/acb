@@ -84,3 +84,11 @@ where
         }
     }
 }
+
+#[allow(dead_code)]
+pub fn test_init_tracing() {
+    let _ = tracing_subscriber::fmt()
+        .with_max_level(tracing::Level::DEBUG)
+        .with_test_writer() // ensures output shows in `cargo test`
+        .try_init(); // only initializes once, no panic on multiple
+}
