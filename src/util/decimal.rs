@@ -34,8 +34,10 @@ pub fn parse_large_decimal(s: &str) -> Result<Decimal, rust_decimal::Error> {
 
 pub fn dollar_precision_str(d: &Decimal) -> String {
     // Round to 2 decimal places, and format as a string.
-    let rounded = d.round_dp_with_strategy(2,
-        rust_decimal::RoundingStrategy::MidpointAwayFromZero);
+    let rounded = d.round_dp_with_strategy(
+        2,
+        rust_decimal::RoundingStrategy::MidpointAwayFromZero,
+    );
     format!("{:.2}", rounded)
 }
 

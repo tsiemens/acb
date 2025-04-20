@@ -502,9 +502,10 @@ impl TryFrom<CsvTx> for Tx {
 
     fn try_from(csv_tx: CsvTx) -> Result<Self, Self::Error> {
         if csv_tx.action.is_none() {
-            return Err(
-                format!("\"action\" not specified. security: {:?}, trade date: {:?}",
-                    csv_tx.security, csv_tx.trade_date));
+            return Err(format!(
+                "\"action\" not specified. security: {:?}, trade date: {:?}",
+                csv_tx.security, csv_tx.trade_date
+            ));
         }
 
         let act_specs = match csv_tx.action.unwrap() {
