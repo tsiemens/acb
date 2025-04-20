@@ -20,3 +20,5 @@ jobs:
       run: make all-notest
     - name: Run tests
       run: cargo test --verbose
+    - name: Check formatting
+      run: make check-rustfmt
