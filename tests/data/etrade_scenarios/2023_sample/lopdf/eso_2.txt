@@ -1,0 +1,58 @@
+
+
+ Order Summary
+
+Order Number 11111111
+Account Stock Plan (FOOX) -2222
+Order Type Same-Day Sale
+Company Name (Symbol) FOO INCORPORATED,
+INC.(FOOX)
+Shares Exercised 10000
+Shares Sold 10000
+Price Type Market
+Limit Price N/A
+Term Good for DayGross Proceeds $10,000.33
+Total Price ($500.30)
+Commission ($1.23)
+Sec Fee ($0.10)
+Broker Assist Fee ($0.00)
+Disbursement Fee ($0.00)
+Taxes Withheld ($55.79)
+Net Proceeds $20,000.00
+
+ Exercise Details
+
+Exercise Date: 12/12/2023 Exercise Type: Same-Day Sale Registration:
+ Grant 1
+Grant Date 02/02/1914
+Grant Number 9000
+Grant Type Nonqual
+Grant Price $10.20
+Sale Price $20.30
+Exercise Market Value $30.40
+Shares Exercised 10000
+Shares Sold 10000
+Total Gain $200.30
+Taxable Gain $200.30
+Gross Proceeds $100,000.33
+Total Price $500.30
+Comission/Fee $3.30
+Taxes Withheld $55.79 (Tax Rate / Taxable Gain)
+    Canada-NS $55.79 (3.1%  / $200.30)
+Net Proceeds $8,500.00
+
+EMPLOYEE STOCK PLAN EXERCISE CONFIRMATION
+NO BODY
+1234 MAIN ST
+HALIFAX NS H0H 0
+ Employee ID: 1
+
+All of this information was provided to E*TRADE Securities LLC, a subsidiary of Morgan Stanley, ("E*TRADE") by your company. E*TRADE does not guarantee the
+accuracy or completeness of the information provided by your company.
+
+All of the data shown on this statement is based on your company's records. The company reserves the right to make corrections to this data. All awards shown on this
+statement are subject to the terms of the grants of such awards and of the plan under which the grants were made.
+
+04/20/2024 16:20:00 PM ET Page 1 of
+
+1

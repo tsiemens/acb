@@ -1,0 +1,26 @@
+Morgan Stanley Smith Barney LLC. Member SIPC. The transaction(s) may have been executed with Morgan Stanley & Co. LLC, an
+affiliate, which may receive compensation for any such services. E*TRADE is a business of Morgan Stanley.
+1 of 2Your Account Number: 000-XXX222-333
+Account Type - Cash
+NO BODY
+1234 MAIN ST
+HALIFAX NS H0H 0H0 CANADA
+E*TRADE from Morgan Stanley
+P.O. BOX 484
+JERSEY CITY, NJ 07303-0484
+(800)-387-2331
+This transaction is confirmed in accordance with the information provided on the Conditions and Disclosures page.
+Trade Date Settlement Date Quantity Price Settlement Amount
+12/12/2023 12/14/2023 10000 12.33
+Transaction Type: Sold
+Description: FOO INCORPORATED INC
+Symbol / CUSIP / ISIN: FOOX / 000011111 / US0000111114Principal $100,000.33
+Commission $1.23
+Supplemental
+Transaction Fee $0.10
+Net Amount $20,000.00
+Unsolicited trade
+Morgan Stanley Smith Barney LLC acted as agent.
+
+2 of 2
+

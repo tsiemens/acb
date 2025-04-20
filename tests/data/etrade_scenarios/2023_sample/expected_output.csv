@@ -1,0 +1,6 @@
+security,trade date,settlement date,action,shares,amount/share,commission,currency,memo
+FOOX,2023-02-07,2023-02-07,Buy,100,17.01,0.00,USD,Option Grant 8888
+FOOX,2023-02-07,2023-02-07,Buy,50,17.01,0.00,USD,Option Grant 9999
+FOOX,2023-02-07,2023-02-09,Sell,150,15.01,21.21,USD,Option Grant 9999 Same-Day Sale
+FOOX,2023-12-12,2023-12-12,Buy,10000,30.40,0.00,USD,Option Grant 9000
+FOOX,2023-12-12,2023-12-14,Sell,10000,20.30,3.30,USD,Option Grant 9000 Same-Day Sale

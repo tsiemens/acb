@@ -1,0 +1,48 @@
+ Order Summary
+Order Number 11111111
+Account Stock Plan (FOOX) -2222
+Order Type Same-Day Sale
+Company Name (Symbol) FOO COMPANY,
+INC.(FOOX)
+Shares Exercised 150
+Shares Sold 150
+Price Type Market
+Limit Price N/A
+Term Good for DayGross Proceeds $20,202.20
+Total Price ($1,234.00)
+Commission ($10.22)
+Sec Fee ($1.82)
+Broker Assist Fee ($0.00)
+Disbursement Fee ($0.00)
+Taxes Withheld ($1,000.00)
+Net Proceeds $10,110.12
+ Exercise Details
+Exercise Date: 02/07/2023 Exercise Type: Same-Day Sale Registration:
+ Grant 1 Grant 2
+Grant Date 01/01/2001 02/02/2002
+Grant Number 8888 9999
+Grant Type Nonqual Nonqual
+Grant Price $1.00 $2.00
+Sale Price $15.01 $15.01
+Exercise Market Value $17.01 $17.01
+Shares Exercised 100 50
+Shares Sold 100 50
+Total Gain $2,000.30 $33,000.00
+Taxable Gain $2,000.30 $33,000.00
+Gross Proceeds $1,234.00 $1,234.00
+Total Price $2,323.12 $3,300.11
+Comission/Fee $10.10 $11.11
+Taxes Withheld $1,020.30 (Tax Rate / Taxable Gain) $2,030.40 (Tax Rate / Taxable Gain)
+    Canada-NS $1,020.30 (5.5%  / $2,000.30) $2,030.40 (5.5%  / $33,000.00)
+Net Proceeds $2,040.50 $22,333.44EMPLOYEE STOCK PLAN EXERCISE CONFIRMATION
+NO BODY
+1234 MAIN ST
+HALIFAX, NS H0H 0Employee ID: 9000
+All of this information was provided to E*TRADE Securities LLC, a subsidiary of Morgan Stanley, ("E*TRADE") by your company. E*TRADE does not guarantee the
+accuracy or completeness of the information provided by your company.
+All of the data shown on this statement is based on your company's records. The company reserves the right to make corrections to this data. All awards shown on this
+statement are subject to the terms of the grants of such awards and of the plan under which the grants were made.
+04/20/2024 03:58:29 PM ET Page 1 of
+1
+
+
