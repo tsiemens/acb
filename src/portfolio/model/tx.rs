@@ -182,7 +182,9 @@ pub struct CsvTx {
     pub settlement_date: Option<Date>,
     pub action: Option<TxAction>,
     pub shares: Option<Decimal>,
+    // total_amount and amount_per_share are mutally exclusive
     pub amount_per_share: Option<Decimal>,
+    pub total_amount: Option<Decimal>,
     pub commission: Option<Decimal>,
 
     pub tx_currency: Option<Currency>,
@@ -220,6 +222,7 @@ impl Default for CsvTx {
             action: None,
             shares: None,
             amount_per_share: None,
+            total_amount: None,
             commission: None,
             tx_currency: None,
             tx_curr_to_local_exchange_rate: None,
@@ -255,6 +258,40 @@ impl Ord for CsvTx {
 impl From<Tx> for CsvTx {
     fn from(value: Tx) -> Self {
         value.to_csvtx()
+    }
+}
+
+impl CsvTx {
+    pub fn get_sane_opt_amount_per_share(&self) -> Result<Option<Decimal>, String> {
+        if self.amount_per_share.is_none() && self.total_amount.is_none() {
+            return Ok(None);
+        }
+        if self.amount_per_share.is_some() && self.total_amount.is_some() {
+            return Err(format!(
+                "Both '{}' and '{}' were specified. Only one may be specified",
+                CsvCol::AMOUNT_PER_SHARE, CsvCol::TOTAL_AMOUNT));
+        }
+        let amount_per_share = if let Some(amount) = self.amount_per_share {
+            amount
+        } else {
+            // total_amount is set, so we can calculate the amount per share
+            let shares = self.shares.ok_or(format!(
+                "Unable to compute amount per share. '{}' specified, but '{}' not found",
+                CsvCol::TOTAL_AMOUNT, CsvCol::SHARES))?;
+            if shares == Decimal::ZERO {
+                return Err(format!(
+                    "Unable to compute amount per share. '{}' specified, but '{}' is zero",
+                    CsvCol::TOTAL_AMOUNT, CsvCol::SHARES));
+            }
+            self.total_amount.unwrap() / shares
+        };
+        Ok(Some(amount_per_share))
+    }
+
+    pub fn get_sane_amount_per_share(&self) -> Result<Decimal, String> {
+        self.get_sane_opt_amount_per_share()?.ok_or(
+            format!("'{}' or '{}' not found",
+                CsvCol::AMOUNT_PER_SHARE, CsvCol::TOTAL_AMOUNT))
     }
 }
 
@@ -463,8 +500,7 @@ fn buy_or_sell_common_attrs_from_csv_tx(
     buy_or_sell: &str,
 ) -> Result<CommonBuySellAttrs, String> {
     let shares = csv_tx.shares.ok_or("\"shares\" not found")?;
-    let amount_per_share =
-        csv_tx.amount_per_share.ok_or("\"amount/share\" not found")?;
+    let amount_per_share = csv_tx.get_sane_amount_per_share()?;
     let commission = csv_tx.commission.unwrap_or(Decimal::ZERO);
 
     let curr_and_rate = get_valid_exchange_rate(
@@ -768,6 +804,7 @@ pub mod testlib {
 
         pub shares: GreaterEqualZeroDecimal,
         pub price: GreaterEqualZeroDecimal,
+        pub t_amt: GreaterEqualZeroDecimal, // Total Amount
         pub comm: GreaterEqualZeroDecimal,
         pub curr: Currency,
         pub fx_rate: GreaterEqualZeroDecimal,
@@ -861,6 +898,11 @@ pub mod testlib {
                 } else {
                     None
                 },
+                total_amount: if self.t_amt != *MAGIC_DEFAULT_GEZ {
+                    Some(*self.t_amt)
+                } else {
+                    None
+                },
                 commission: if self.comm != *MAGIC_DEFAULT_GEZ {
                     Some(*self.comm)
                 } else {
@@ -903,6 +945,7 @@ pub mod testlib {
 
                 shares: *MAGIC_DEFAULT_GEZ,
                 price: *MAGIC_DEFAULT_GEZ,
+                t_amt: *MAGIC_DEFAULT_GEZ,
                 comm: *MAGIC_DEFAULT_GEZ,
                 curr: MAGIC_DEFAULT_CURRENCY.clone(),
                 fx_rate: *MAGIC_DEFAULT_GEZ,
@@ -1058,6 +1101,46 @@ mod tests {
     }
 
     #[test]
+    fn test_get_sane_opt_amount_per_share() {
+        let e = |s: &str| Err(s.to_string());
+        let d = |dec: Decimal| Ok(Some(dec));
+        let di = |i: i32| Ok(Some(Decimal::from(i)));
+
+        let params: Vec<(Option<i32>, Option<i32>, Option<i32>,
+                         Result<Option<Decimal>, String>)> = vec![
+            // Shares,  per share, total,      result
+            (  None,    None,      None,       Ok(None)  ),
+            (  None,    None,      Some(10),   e("Unable to compute amount per share. 'total amount' specified, but 'shares' not found")  ),
+            (  None,    Some(2),   None,       di(2) ),
+            (  None,    Some(2),   Some(10),   e("Both 'amount/share' and 'total amount' were specified. Only one may be specified")  ),
+
+            (  Some(2), None,      None,       Ok(None)  ),
+            (  Some(2), None,      Some(10),   di(5)  ),
+            (  Some(3), None,      Some(10),   d(dec!(3.3333333333333333333333333333))  ),
+            (  Some(2), None,      Some(0),    di(0)  ),
+            (  Some(0), None,      Some(10),   e("Unable to compute amount per share. 'total amount' specified, but 'shares' is zero")  ),
+            (  Some(2), Some(5),   None,       di(5)  ),
+            (  Some(2), Some(5),   Some(10),   e("Both 'amount/share' and 'total amount' were specified. Only one may be specified")  ),
+        ];
+
+        let mut errs = vec![];
+        for (shares, aps, total, exp_result) in params {
+            let mut tx = CsvTx::default();
+            tx.shares = shares.map(Decimal::from);
+            tx.amount_per_share = aps.map(Decimal::from);
+            tx.total_amount = total.map(Decimal::from);
+
+            let result = tx.get_sane_opt_amount_per_share();
+            if tx.get_sane_opt_amount_per_share() != exp_result {
+                errs.push(
+                    format!("shares: {:?}, aps: {:?}, total: {:?} -> {:?}. Was not {:?}",
+                            shares, aps, total, result, exp_result));
+            }
+        }
+        assert_eq!(errs.len(), 0, "Errors: {:#?}", errs);
+    }
+
+    #[test]
     fn test_tx_order() {
         let doy_date = |day| date::pub_testlib::doy_date(2024, day);
         let sdoy_date = |day| Some(doy_date(day));
@@ -1094,14 +1177,15 @@ mod tests {
         assert_vec_eq(txs, exp_txs);
     }
 
-    fn fully_populated_csvtx(action: TxAction) -> CsvTx {
+    fn fully_populated_csvtx(action: TxAction, use_total: bool) -> CsvTx {
         CsvTx {
             security: Some("FOO".to_string()),
             trade_date: Some(parse_standard_date("2022-10-20").unwrap()),
             settlement_date: Some(parse_standard_date("2022-10-21").unwrap()),
             action: Some(action),
             shares: Some(dec!(123.1)),
-            amount_per_share: Some(dec!(10.1)),
+            amount_per_share: if use_total { None } else { Some(dec!(10.1)) },
+            total_amount: if use_total { Some(dec!(10.1)*dec!(123.1)) } else { None },
             commission: Some(dec!(1.01)),
             tx_currency: Some(Currency::usd()),
             tx_curr_to_local_exchange_rate: Some(dec!(1.21)),
@@ -1133,17 +1217,18 @@ mod tests {
         }
     }
 
-    #[test]
-    fn test_csvtx_to_tx_full() {
+    fn do_test_csvtx_to_tx_full(use_total_amount: bool) {
         // Fully explicit buy
-        let buy_csvtx = fully_populated_csvtx(TxAction::Buy);
-        let sell_csvtx = fully_populated_csvtx(TxAction::Sell);
-        let mut sfla_csvtx = fully_populated_csvtx(TxAction::Sfla);
+        let buy_csvtx = fully_populated_csvtx(TxAction::Buy, use_total_amount);
+        let sell_csvtx = fully_populated_csvtx(TxAction::Sell, use_total_amount);
+        // TODO add total_amount support for SFLA
+        let mut sfla_csvtx = fully_populated_csvtx(TxAction::Sfla, false);
         sfla_csvtx.tx_curr_to_local_exchange_rate = None;
         sfla_csvtx.tx_currency = None;
         let sfla_csvtx = sfla_csvtx;
 
-        let mut roc_csvtx = fully_populated_csvtx(TxAction::Roc);
+        // TODO add total_amount support for ROC
+        let mut roc_csvtx = fully_populated_csvtx(TxAction::Roc, false);
         roc_csvtx.shares = None;
         let roc_csvtx = roc_csvtx;
 
@@ -1153,7 +1238,7 @@ mod tests {
             settlement_date: buy_csvtx.settlement_date.clone().unwrap(),
             action_specifics: super::TxActionSpecifics::Buy(BuyTxSpecifics {
                 shares: pos(buy_csvtx.shares.unwrap()),
-                amount_per_share: gez(buy_csvtx.amount_per_share.unwrap()),
+                amount_per_share: gez(dec!(10.1)),
                 commission: gez(buy_csvtx.commission.unwrap()),
                 tx_currency_and_rate: CurrencyAndExchangeRate::rq_new(
                     buy_csvtx.tx_currency.clone().unwrap(),
@@ -1178,7 +1263,7 @@ mod tests {
         exp_sell_tx.action_specifics =
             super::TxActionSpecifics::Sell(SellTxSpecifics {
                 shares: pos(sell_csvtx.shares.unwrap()),
-                amount_per_share: gez(sell_csvtx.amount_per_share.unwrap()),
+                amount_per_share: gez(dec!(10.1)),
                 commission: gez(sell_csvtx.commission.unwrap()),
                 tx_currency_and_rate: CurrencyAndExchangeRate::rq_new(
                     sell_csvtx.tx_currency.clone().unwrap(),
@@ -1221,6 +1306,16 @@ mod tests {
         let tx = Tx::try_from(roc_csvtx).unwrap();
         assert_big_struct_eq(&tx, &exp_roc_tx);
         assert_big_struct_eq(Tx::try_from(tx.to_csvtx()).unwrap(), tx);
+    }
+
+    #[test]
+    fn test_csvtx_to_tx_full_amt_per_share() {
+        do_test_csvtx_to_tx_full(false);
+    }
+
+    #[test]
+    fn test_csvtx_to_tx_full_total_amt() {
+        do_test_csvtx_to_tx_full(true);
     }
 
     #[test]
@@ -1295,6 +1390,13 @@ mod tests {
 
         let err = Tx::try_from(buy_csvtx).unwrap_err();
         assert_eq!(err, "\"trade date\" not found");
+
+        // Both total amount and amount/share
+        let mut buy_csvtx = barebones_valid_sample_csvtx(TxAction::Buy);
+        buy_csvtx.total_amount = Some(dec!(5.0));
+
+        let err = Tx::try_from(buy_csvtx).unwrap_err();
+        assert_eq!(err, "Both 'amount/share' and 'total amount' were specified. Only one may be specified");
 
         // Interesting Cases:
         // - no action (because it is the only attr we call unwrap() on.
