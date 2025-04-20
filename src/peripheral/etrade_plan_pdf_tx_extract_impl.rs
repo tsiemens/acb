@@ -79,6 +79,10 @@ fn parse_pdfs(files: &Vec<PathBuf>, debug: bool) -> Result<PdfData, SError> {
     })
 }
 
+fn display_opt<T: std::fmt::Display>(val: &Option<T>) -> String {
+    val.as_ref().map_or("".to_string(), |v| v.to_string())
+}
+
 fn dump_extracted_data(
     pdf_data: &PdfData,
     pretty: bool,
@@ -122,13 +126,13 @@ fn dump_extracted_data(
             b.acquire_settle_date.to_string(),
             b.acquire_share_price.to_string(),
             b.acquire_shares.to_string(),
-            format!("{:?}", b.sell_to_cover_tx_date),
-            format!("{:?}", b.sell_to_cover_settle_date),
-            format!("{:?}", b.sell_to_cover_price),
-            format!("{:?}", b.sell_to_cover_shares),
-            format!("{:?}", b.sell_to_cover_fee),
+            display_opt(&b.sell_to_cover_tx_date),
+            display_opt(&b.sell_to_cover_settle_date),
+            display_opt(&b.sell_to_cover_price),
+            display_opt(&b.sell_to_cover_shares),
+            display_opt(&b.sell_to_cover_fee),
             b.plan_note.clone(),
-            format!("{:?}", b.sell_note),
+            display_opt(&b.sell_note),
             b.filename.clone(),
         ]);
     }
@@ -173,12 +177,12 @@ fn dump_extracted_data(
             t.commission.to_string(),
             t.currency.to_string(),
             t.memo.clone(),
-            format!("{:?}", t.exchange_rate),
+            display_opt(&t.exchange_rate),
             t.affiliate.name().to_string(),
             t.row_num.to_string(),
             t.account.memo_str(),
-            format!("{:?}", t.sort_tiebreak),
-            format!("{:?}", t.filename),
+            display_opt(&t.sort_tiebreak),
+            display_opt(&t.filename),
         ]);
     }
 
