@@ -9,6 +9,7 @@ impl CsvCol {
     pub const ACTION: &'static str = "action";
     pub const SHARES: &'static str = "shares";
     pub const AMOUNT_PER_SHARE: &'static str = "amount/share";
+    pub const TOTAL_AMOUNT: &'static str = "total amount";
     pub const COMMISSION: &'static str = "commission";
     pub const TX_CURR: &'static str = "currency";
     pub const TX_FX: &'static str = "exchange rate";
@@ -28,6 +29,7 @@ impl CsvCol {
             CsvCol::ACTION,
             CsvCol::SHARES,
             CsvCol::AMOUNT_PER_SHARE,
+            CsvCol::TOTAL_AMOUNT,
             CsvCol::COMMISSION,
             CsvCol::TX_CURR,
             CsvCol::TX_FX,
@@ -40,7 +42,7 @@ impl CsvCol {
         ]);
     }
 
-    pub fn export_order_non_deprecated_cols() -> [&'static str; 15] {
+    pub fn export_order_non_deprecated_cols() -> [&'static str; 16] {
         [
             CsvCol::SECURITY,
             CsvCol::TRADE_DATE,
@@ -48,6 +50,7 @@ impl CsvCol {
             CsvCol::ACTION,
             CsvCol::SHARES,
             CsvCol::AMOUNT_PER_SHARE,
+            CsvCol::TOTAL_AMOUNT,
             CsvCol::COMMISSION,
             CsvCol::TX_CURR,
             CsvCol::TX_FX,

@@ -103,6 +103,7 @@ impl Into<crate::portfolio::CsvTx> for BrokerTx {
             action: Some(self.action),
             shares: Some(self.num_shares),
             amount_per_share: Some(self.amount_per_share),
+            total_amount: None,
             commission: Some(self.commission),
             tx_currency: Some(self.currency),
             tx_curr_to_local_exchange_rate: self.exchange_rate,

@@ -120,6 +120,10 @@ fn csvtx_from_csv_values(
             Some(s) => Some(parse_decimal(&s, CsvCol::AMOUNT_PER_SHARE)?),
             None => None,
         },
+        total_amount: match values.remove(CsvCol::TOTAL_AMOUNT) {
+            Some(s) => Some(parse_decimal(&s, CsvCol::TOTAL_AMOUNT)?),
+            None => None,
+        },
         commission: match values.remove(CsvCol::COMMISSION) {
             Some(s) => Some(parse_decimal(&s, CsvCol::COMMISSION)?),
             None => None,
@@ -281,6 +285,7 @@ pub struct PlainCsvTable {
 pub fn txs_to_csv_table(txs: &Vec<CsvTx>) -> PlainCsvTable {
     let all_headers = CsvCol::export_order_non_deprecated_cols();
     let optional_headers = HashSet::<&'static str>::from([
+        CsvCol::TOTAL_AMOUNT,
         CsvCol::TX_FX,
         CsvCol::COMMISSION_CURR,
         CsvCol::COMMISSION_FX,
@@ -292,6 +297,9 @@ pub fn txs_to_csv_table(txs: &Vec<CsvTx>) -> PlainCsvTable {
     // We can avoid outputting some columns if they are entirely empty
     let mut optional_cols_in_use = HashSet::<&'static str>::new();
     for tx in txs {
+        if tx.total_amount.is_some() {
+            optional_cols_in_use.insert(CsvCol::TOTAL_AMOUNT);
+        }
         if tx.tx_curr_to_local_exchange_rate.is_some() {
             optional_cols_in_use.insert(CsvCol::TX_FX);
         }
@@ -345,6 +353,10 @@ pub fn txs_to_csv_table(txs: &Vec<CsvTx>) -> PlainCsvTable {
                     .unwrap_or_else(empty),
                 CsvCol::AMOUNT_PER_SHARE => tx
                     .amount_per_share
+                    .map(|v| to_string_min_precision(&v, 2))
+                    .unwrap_or_else(empty),
+                CsvCol::TOTAL_AMOUNT => tx
+                    .total_amount
                     .map(|v| to_string_min_precision(&v, 2))
                     .unwrap_or_else(empty),
                 CsvCol::COMMISSION => tx
@@ -437,6 +449,7 @@ pub mod testlib {
         pub a: &'static str,           // ACTION
         pub sh: &'static str,          // SHARES
         pub aps: &'static str,         // AMOUNT_PER_SHARE
+        pub ta: &'static str,          // TOTAL_AMOUNT
         pub com: &'static str,         // COMMISSION
         pub cur: &'static str,         // TX_CURR
         pub fx: &'static str,          // TX_FX
@@ -458,6 +471,7 @@ pub mod testlib {
                 CsvCol::ACTION => self.a,
                 CsvCol::SHARES => self.sh,
                 CsvCol::AMOUNT_PER_SHARE => self.aps,
+                CsvCol::TOTAL_AMOUNT => self.ta,
                 CsvCol::COMMISSION => self.com,
                 CsvCol::TX_CURR => self.cur,
                 CsvCol::TX_FX => self.fx,
@@ -729,7 +743,7 @@ mod tests {
         let mut d_reader = CsvFileBuilder::with_all_modern_headers()
             .single_csv_reader(&vec![
                 Row{sec:" Foo ",td:"2020-11-11",sd:"2020-11-13",legacy_date:"",
-                    a:"Buy",sh:"123.1",aps:"10.1",
+                    a:"Buy", sh:"123.1", aps:"10.1", ta: "200000.1",
                     com: "20.1", cur: "USD", fx: "1.3",c_cur: "usd", c_fx: "1.31",
                     sfl: "-1.2!", split: "2-for-1", af: "(R)", m:"A memo",
                 },
@@ -756,6 +770,7 @@ mod tests {
                 action: Some(crate::portfolio::TxAction::Buy),
                 shares: Some(dec!(123.1)),
                 amount_per_share: Some(dec!(10.1)),
+                total_amount: Some(dec!(200000.1)),
                 commission: Some(dec!(20.1)),
                 tx_currency: Some(Currency::usd()),
                 tx_curr_to_local_exchange_rate: Some(dec!(1.3)),
