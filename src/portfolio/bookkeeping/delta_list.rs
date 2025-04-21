@@ -158,15 +158,15 @@ fn get_delta_superficial_loss_info(
                     security: tx.security.clone(),
                     trade_date: tx.trade_date,
                     settlement_date: tx.settlement_date,
-                    action_specifics: TxActionSpecifics::Sfla(SflaTxSpecifics {
-                        // TODO this should be af_ratio_posdecimal.numerator,
+                    action_specifics: TxActionSpecifics::Sfla(SflaTxSpecifics::from_total(
+                        // NOTE: if we want this to show per share, shares should be
+                        // af_ratio_posdecimal.numerator,
                         // and amount_per_share should be just divided by the
                         // denominator instead of mult with the decimal.
-                        shares_affected: PosDecimal::one(),
-                        amount_per_share: NegDecimal::neg_1()
+                        NegDecimal::neg_1()
                             * calculated_sfl_amount
                             * af_ratio_posdecimal,
-                    }),
+                    )),
                     memo: format!(
                         "Automatic SfL ACB adjustment. {:.2}% ({}) of SfL, which \
                         was {} of sale shares.",
@@ -1162,7 +1162,7 @@ mod tests {
                 curr: usd(), fx_rate: gez!(1.2), sfl: cadsfl(lez!(-0.7), true),
                 ..def()}.x(),
             // ACB adjust is partial, as if splitting some to another affiliate.
-            TTx{t_day: 50, act: A::Sfla, shares: gez!(5), price: gez!(0.02),
+            TTx{t_day: 50, act: A::Sfla, t_amt: gez!(0.1),
                 curr: cad(), fx_rate: gez!(1.0), ..def()}.x(),
         ];
         let deltas = txs_to_delta_list_no_err(txs.clone());
@@ -1174,7 +1174,7 @@ mod tests {
             }, // sell for $1 USD, capital loss $-5 USD before SFL deduction,
                // sfl 0.7 CAD
             TDt{post_st: TPSS{shares: gez!(5), total_acb: sgez!(7.3), ..def()},
-                ..def()},   // sfl ACB adjust 0.02 * 5
+                ..def()},   // sfl ACB adjust 0.1
         ]);
 
         // Un-force the override, and check that we emit an error
