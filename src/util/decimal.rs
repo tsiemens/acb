@@ -73,6 +73,14 @@ pub mod constraint {
     use super::{is_negative, is_positive, DecConstraint};
 
     #[derive(PartialEq, Eq, Clone, Copy, Debug)]
+    pub struct Any(());
+    impl DecConstraint for Any {
+        fn is_ok(_: &Decimal) -> bool {
+            true
+        }
+    }
+
+    #[derive(PartialEq, Eq, Clone, Copy, Debug)]
     pub struct Neg(());
     impl DecConstraint for Neg {
         fn is_ok(d: &Decimal) -> bool {
@@ -133,6 +141,13 @@ impl<CONSTRAINT: DecConstraint> TryFrom<Decimal> for ConstrainedDecimal<CONSTRAI
                 std::any::type_name::<CONSTRAINT>()
             ))
         }
+    }
+}
+
+impl ConstrainedDecimal<constraint::Any> {
+    // Explicitly named to avoid colliding with TryFrom
+    pub fn from_dec(value: Decimal) -> Self {
+        ConstrainedDecimal::<constraint::Any>::try_from(value).unwrap()
     }
 }
 
@@ -293,6 +308,7 @@ pub fn constrained_min<CONSTRAINT: DecConstraint>(
 }
 
 // Convenience aliases
+pub type AnyDecimal = ConstrainedDecimal<constraint::Any>;
 pub type NegDecimal = ConstrainedDecimal<constraint::Neg>;
 pub type LessEqualZeroDecimal = ConstrainedDecimal<constraint::LessEqualZero>;
 pub type GreaterEqualZeroDecimal = ConstrainedDecimal<constraint::GreaterEqualZero>;

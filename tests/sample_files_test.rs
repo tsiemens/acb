@@ -3,23 +3,26 @@ mod common;
 use std::{collections::HashMap, path::Path};
 
 use acb::{
-    app::run_acb_app_to_render_model,
-    fx::io::{CsvRatesCache, JsonRemoteRateLoader, RateLoader},
-    portfolio::io::tx_csv::TxCsvParseOptions,
-    util::{
+    app::{outfmt::text::TextWriter, run_acb_app_to_writer}, fx::io::{CsvRatesCache, JsonRemoteRateLoader, RateLoader}, portfolio::io::tx_csv::TxCsvParseOptions, testlib::assert_vec_eq, util::{
         date::parse_standard_date,
         http::standalone::StandaloneAppRequester,
         rw::{DescribedReader, WriteHandle},
-    },
+    }
 };
 use common::NonAutoCreatingTestDir;
 
-fn validate_sample_csv_file(csv_path: &Path, cache_dir: &Path, render_costs: bool) {
+fn validate_sample_csv_file(
+    csv_path: &Path, cache_dir: &Path, render_costs: bool,
+    expected_text_path: Option<&Path>) {
     let reader = DescribedReader::from_file_path(csv_path.into());
 
-    let err_stream = WriteHandle::empty_write_handle();
+    let (err_stream, err_buff) = WriteHandle::string_buff_write_handle();
 
-    async_std::task::block_on(run_acb_app_to_render_model(
+    let (write_handle, buff) = WriteHandle::string_buff_write_handle();
+    let mut writer = TextWriter::new(write_handle);
+
+    let res = async_std::task::block_on(run_acb_app_to_writer(
+        &mut writer,
         vec![reader],
         HashMap::new(),
         &TxCsvParseOptions::default(),
@@ -37,8 +40,23 @@ fn validate_sample_csv_file(csv_path: &Path, cache_dir: &Path, render_costs: boo
             err_stream.clone(),
         ),
         err_stream.clone(),
-    ))
-    .unwrap();
+    ));
+
+    assert_eq!(err_buff.borrow().as_str().to_string(), "");
+    res.unwrap();
+
+    if let Some(expected_text_path) = expected_text_path {
+        let buff_ref = buff.borrow();
+        let text = buff_ref.as_str().to_string();
+
+        let expected_text = std::fs::read_to_string(expected_text_path)
+            .unwrap_or_else(|_| panic!("Failed to read expected text file: {:?}",
+                expected_text_path));
+
+        assert_vec_eq(
+            text.split("\n").collect(),
+            expected_text.split("\n").collect());
+    }
 }
 
 fn do_test_sample_csv_file_validity(render_costs: bool) {
@@ -52,11 +70,13 @@ fn do_test_sample_csv_file_validity(render_costs: bool) {
         Path::new("./tests/data/test_combined.csv"),
         &dir.path,
         render_costs,
+        if !render_costs { Some(Path::new("./tests/data/test_combined_text.txt")) } else { None },
     );
     validate_sample_csv_file(
         Path::new("./www/html/sample_txs.csv"),
         &dir.path,
         render_costs,
+        None,
     );
 }
 

@@ -547,8 +547,7 @@ mod tests {
         TTx {
             s_date: dt,
             act: crate::portfolio::TxAction::Sfla,
-            shares: gez!(1),
-            price: amount,
+            t_amt: amount,
             memo: matchable_memo("Automatic SfL ACB adjustment.*"),
             ..TTx::default()
         }

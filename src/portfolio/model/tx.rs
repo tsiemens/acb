@@ -172,6 +172,65 @@ impl Display for SplitRatio {
     }
 }
 
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub enum TotalOrAmountPerShare<T> {
+    Total(T),
+    AmountPerShare(T),
+}
+
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct SharesAndAmount<T> {
+    pub shares: T,
+    pub amount_per_share: T,
+}
+
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub enum TotalAmount<T> {
+    ExplicitTotal(T),
+    TotalByShare(SharesAndAmount<T>),
+}
+
+impl <T> TotalAmount<T> {
+    pub fn from_per_share(
+        shares: T,
+        amount_per_share: T,
+    ) -> Self {
+        TotalAmount::TotalByShare(SharesAndAmount {
+            shares,
+            amount_per_share,
+        })
+    }
+
+    pub fn from_total(total: T) -> Self {
+        TotalAmount::ExplicitTotal(total)
+    }
+}
+
+impl TotalAmount<Decimal> {
+    pub fn total_amount(&self) -> Decimal {
+        match self {
+            Self::ExplicitTotal(total) => *total,
+            Self::TotalByShare(shares_and_amount) => {
+                shares_and_amount.shares * shares_and_amount.amount_per_share
+            }
+        }
+    }
+}
+
+impl TotalAmount<PosDecimal> {
+    pub fn total_amount(&self) -> PosDecimal {
+        match self {
+            Self::ExplicitTotal(total) => *total,
+            Self::TotalByShare(shares_and_amount) => {
+                // Just unwrap here, since positive * positive is always positive.
+                PosDecimal::try_from(*shares_and_amount.shares
+                    * (*shares_and_amount.amount_per_share))
+                    .unwrap()
+            }
+        }
+    }
+}
+
 // This Transaction type is flat, and designed to absorb input from a uniform
 // CSV/table input. It is fairly unconstrained, and as such, should be converted
 // to the Tx type for processing.
@@ -262,7 +321,7 @@ impl From<Tx> for CsvTx {
 }
 
 impl CsvTx {
-    pub fn get_sane_opt_amount_per_share(&self) -> Result<Option<Decimal>, String> {
+    pub fn get_opt_sane_total_or_amount_per_share(&self) -> Result<Option<TotalOrAmountPerShare<Decimal>>, String> {
         if self.amount_per_share.is_none() && self.total_amount.is_none() {
             return Ok(None);
         }
@@ -271,21 +330,67 @@ impl CsvTx {
                 "Both '{}' and '{}' were specified. Only one may be specified",
                 CsvCol::AMOUNT_PER_SHARE, CsvCol::TOTAL_AMOUNT));
         }
-        let amount_per_share = if let Some(amount) = self.amount_per_share {
-            amount
+        let total_or_amount = if let Some(total) = self.total_amount {
+            TotalOrAmountPerShare::Total(total)
         } else {
-            // total_amount is set, so we can calculate the amount per share
-            let shares = self.shares.ok_or(format!(
-                "Unable to compute amount per share. '{}' specified, but '{}' not found",
-                CsvCol::TOTAL_AMOUNT, CsvCol::SHARES))?;
-            if shares == Decimal::ZERO {
-                return Err(format!(
-                    "Unable to compute amount per share. '{}' specified, but '{}' is zero",
-                    CsvCol::TOTAL_AMOUNT, CsvCol::SHARES));
-            }
-            self.total_amount.unwrap() / shares
+            TotalOrAmountPerShare::AmountPerShare(self.amount_per_share.unwrap())
         };
-        Ok(Some(amount_per_share))
+        Ok(Some(total_or_amount))
+    }
+
+    pub fn get_sane_total_or_amount_per_share(&self) -> Result<TotalOrAmountPerShare<Decimal>, String> {
+        self.get_opt_sane_total_or_amount_per_share()?.ok_or(
+            format!("'{}' or '{}' not found",
+                CsvCol::AMOUNT_PER_SHARE, CsvCol::TOTAL_AMOUNT))
+    }
+
+    pub fn get_sane_opt_total_amount(&self) -> Result<Option<TotalAmount<Decimal>>, String> {
+        let total_or_amount = self.get_opt_sane_total_or_amount_per_share()?;
+        let total: TotalAmount<Decimal> =
+            match total_or_amount {
+                Some(TotalOrAmountPerShare::Total(total)) => {
+                    TotalAmount::ExplicitTotal(total)
+                }
+                Some(TotalOrAmountPerShare::AmountPerShare(amount_per_share)) => {
+                    let shares = self.shares.ok_or(format!(
+                        "Unable to compute total amount. '{}' specified, but '{}' not found",
+                        CsvCol::AMOUNT_PER_SHARE, CsvCol::SHARES))?;
+                    TotalAmount::from_per_share(shares, amount_per_share)
+                }
+                None => return Ok(None),
+            };
+
+        Ok(Some(total))
+    }
+
+    pub fn get_sane_total_amount(&self) -> Result<TotalAmount<Decimal>, String> {
+        self.get_sane_opt_total_amount()?.ok_or(
+            format!("'{}' or '{}' not found",
+                CsvCol::AMOUNT_PER_SHARE, CsvCol::TOTAL_AMOUNT))
+    }
+
+    pub fn get_sane_opt_amount_per_share(&self) -> Result<Option<Decimal>, String> {
+        let amount = self.get_opt_sane_total_or_amount_per_share()?;
+        let amount_per_share: Option<Decimal> =
+            match amount {
+                Some(TotalOrAmountPerShare::Total(total)) => {
+                    let shares = self.shares.ok_or(format!(
+                        "Unable to compute amount per share. '{}' specified, but '{}' not found",
+                        CsvCol::TOTAL_AMOUNT, CsvCol::SHARES))?;
+                    if shares == Decimal::ZERO {
+                        return Err(format!(
+                            "Unable to compute amount per share. '{}' specified, but '{}' is zero",
+                            CsvCol::TOTAL_AMOUNT, CsvCol::SHARES));
+                    }
+                    Some(total / shares)
+                }
+                Some(TotalOrAmountPerShare::AmountPerShare(amount_per_share)) => {
+                    Some(amount_per_share)
+                }
+                None => None,
+            };
+
+        Ok(amount_per_share)
     }
 
     pub fn get_sane_amount_per_share(&self) -> Result<Decimal, String> {
@@ -375,18 +480,58 @@ pub struct RocTxSpecifics {
     pub tx_currency_and_rate: CurrencyAndExchangeRate,
 }
 
+type TotalPosAmount = TotalAmount<PosDecimal>;
+
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct SflaTxSpecifics {
-    pub shares_affected: PosDecimal,
-    pub amount_per_share: PosDecimal,
-    // There is no currency here, because this is _always_ in CAD.
+    _total_amount: TotalPosAmount,
 }
 
 impl SflaTxSpecifics {
+    pub fn from_per_share(
+        shares: PosDecimal,
+        amount_per_share: PosDecimal,
+    ) -> Self {
+        SflaTxSpecifics {
+            _total_amount: TotalPosAmount::from_per_share(shares, amount_per_share),
+        }
+    }
+
+    pub fn from_total(
+        total: PosDecimal,
+    ) -> Self {
+        SflaTxSpecifics {
+            _total_amount: TotalPosAmount::from_total(total),
+        }
+    }
+
     pub fn total_amount(&self) -> PosDecimal {
-        // Just unwrap here, since positive * positive is always positive.
-        PosDecimal::try_from(*self.shares_affected * (*self.amount_per_share))
-            .unwrap()
+        self._total_amount.total_amount()
+    }
+
+    pub fn explicit_total_amount(&self) -> Option<PosDecimal> {
+        match &self._total_amount {
+            TotalPosAmount::ExplicitTotal(total) => Some(*total),
+            TotalPosAmount::TotalByShare(_) => None,
+        }
+    }
+
+    pub fn shares_affected(&self) -> Option<PosDecimal> {
+        match &self._total_amount {
+            TotalPosAmount::TotalByShare(shares_and_amount) => {
+                Some(shares_and_amount.shares)
+            }
+            TotalPosAmount::ExplicitTotal(_) => None,
+        }
+    }
+
+    pub fn amount_per_share(&self) -> Option<PosDecimal> {
+        match &self._total_amount {
+            TotalPosAmount::TotalByShare(shares_and_amount) => {
+                Some(shares_and_amount.amount_per_share)
+            }
+            TotalPosAmount::ExplicitTotal(_) => None,
+        }
     }
 }
 
@@ -592,13 +737,8 @@ impl TryFrom<CsvTx> for Tx {
                 })
             }
             TxAction::Sfla => {
-                let amount_per_share = csv_tx.amount_per_share.ok_or(format!(
-                    "SfLA \"{}\" not found",
-                    CsvCol::AMOUNT_PER_SHARE
-                ))?;
-                let shares = csv_tx
-                    .shares
-                    .ok_or(format!("SfLA \"{}\" not found", CsvCol::SHARES))?;
+                let amount: TotalAmount<Decimal> = csv_tx.get_sane_total_amount()
+                    .map_err(|e| format!("SfLA {e}"))?;
 
                 // Verify that this is either CAD or not specified
                 let maybe_curr_and_rate = get_valid_exchange_rate(
@@ -613,23 +753,39 @@ impl TryFrom<CsvTx> for Tx {
                     }
                 }
 
-                TxActionSpecifics::Sfla(SflaTxSpecifics {
-                    shares_affected: PosDecimal::try_from(shares).map_err(|_| {
-                        format!(
-                            "SfLA {} must be positive (found {})",
-                            CsvCol::SHARES,
-                            shares
-                        )
-                    })?,
-                    amount_per_share: PosDecimal::try_from(amount_per_share)
-                        .map_err(|_| {
-                            format!(
-                                "SfLA {} must be positive (found {})",
-                                CsvCol::AMOUNT_PER_SHARE,
-                                amount_per_share
-                            )
-                        })?,
-                })
+                let sfla_specs = match amount {
+                    TotalAmount::ExplicitTotal(total) =>
+                        SflaTxSpecifics::from_total(
+                            PosDecimal::try_from(total)
+                                .map_err(|_| {
+                                    format!(
+                                        "SfLA {} must be positive (found {})",
+                                        CsvCol::TOTAL_AMOUNT,
+                                        total
+                                    )
+                                })?,
+                        ),
+                    TotalAmount::TotalByShare(shares_and_amount) =>
+                        SflaTxSpecifics::from_per_share(
+                            PosDecimal::try_from(shares_and_amount.shares).map_err(|_| {
+                                format!(
+                                    "SfLA {} must be positive (found {})",
+                                    CsvCol::SHARES,
+                                    shares_and_amount.shares
+                                )
+                            })?,
+                            PosDecimal::try_from(shares_and_amount.amount_per_share)
+                                .map_err(|_| {
+                                    format!(
+                                        "SfLA {} must be positive (found {})",
+                                        CsvCol::AMOUNT_PER_SHARE,
+                                        shares_and_amount.amount_per_share
+                                    )
+                                })?,
+                        ),
+                };
+
+                TxActionSpecifics::Sfla(sfla_specs)
             }
             TxAction::Split => TxActionSpecifics::Split(SplitTxSpecifics {
                 ratio: csv_tx
@@ -722,8 +878,9 @@ fn populate_csvtx_fields_from_action_specifics(
         }
         TxActionSpecifics::Sfla(s) => {
             tx.action = Some(TxAction::Sfla);
-            tx.shares = Some(*s.shares_affected);
-            tx.amount_per_share = Some(*s.amount_per_share);
+            tx.shares = s.shares_affected().map(|s| *s);
+            tx.amount_per_share = s.amount_per_share().map(|s| *s);
+            tx.total_amount = s.explicit_total_amount().map(|s| *s);
         }
         TxActionSpecifics::Split(s) => {
             tx.action = Some(TxAction::Split);
@@ -1222,11 +1379,13 @@ mod tests {
         // Fully explicit buy
         let buy_csvtx = fully_populated_csvtx(TxAction::Buy, use_total_amount);
         let sell_csvtx = fully_populated_csvtx(TxAction::Sell, use_total_amount);
-        // TODO add total_amount support for SFLA
-        let mut sfla_csvtx = fully_populated_csvtx(TxAction::Sfla, false);
+        let mut sfla_csvtx = fully_populated_csvtx(TxAction::Sfla, use_total_amount);
         sfla_csvtx.tx_curr_to_local_exchange_rate = None;
         sfla_csvtx.tx_currency = None;
-        let sfla_csvtx = sfla_csvtx;
+        if use_total_amount {
+            sfla_csvtx.shares = None;
+        }
+        let sfla_csvtx = sfla_csvtx; // finalize
 
         // TODO add total_amount support for ROC
         let mut roc_csvtx = fully_populated_csvtx(TxAction::Roc, false);
@@ -1284,11 +1443,16 @@ mod tests {
         assert_big_struct_eq(Tx::try_from(tx.to_csvtx()).unwrap(), tx);
 
         let mut exp_sfla_tx = exp_buy_tx.clone();
-        exp_sfla_tx.action_specifics =
-            super::TxActionSpecifics::Sfla(SflaTxSpecifics {
-                shares_affected: pos(sfla_csvtx.shares.unwrap()),
-                amount_per_share: pos(sfla_csvtx.amount_per_share.unwrap()),
-            });
+        exp_sfla_tx.action_specifics = if use_total_amount {
+            super::TxActionSpecifics::Sfla(SflaTxSpecifics::from_total(
+                pos(sfla_csvtx.total_amount.unwrap()),
+            ))
+        } else {
+            super::TxActionSpecifics::Sfla(SflaTxSpecifics::from_per_share(
+                pos(sfla_csvtx.shares.unwrap()),
+                pos(sfla_csvtx.amount_per_share.unwrap()),
+            ))
+        };
 
         let tx = Tx::try_from(sfla_csvtx).unwrap();
         assert_big_struct_eq(&tx, &exp_sfla_tx);

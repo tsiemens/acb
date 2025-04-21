@@ -108,6 +108,17 @@ impl PrintHelper {
         }
     }
 
+    pub fn opt_curr_with_fx_str(
+        &self,
+        opt_val: Option<Decimal>,
+        fx: &CurrencyAndExchangeRate,
+    ) -> String {
+        match opt_val {
+            Some(val) => self.curr_with_fx_str(val, fx),
+            None => self.str_for_none().to_string(),
+        }
+    }
+
     pub fn plus_minus_dollar(&self, val: Decimal, show_plus: bool) -> String {
         self.plus_minus_opt_dollar(Some(val), show_plus)
     }
@@ -228,7 +239,7 @@ pub fn render_tx_table_model(
                         " *\n(SfL {}{}; {}{})",
                         ph.plus_minus_dollar(*sfl.superficial_loss, false),
                         if specified_sfl_is_forced { "!" } else { "" },
-                        sfl.ratio,
+                        sfl.ratio.round_dp(2),
                         extra_sfl_note_str
                     );
                     saw_superficial_loss = true;
@@ -253,7 +264,7 @@ pub fn render_tx_table_model(
         };
 
         let mut amount = String::new();
-        let shares: Decimal;
+        let shares: Option<Decimal>;
         let mut amount_per_share_str = String::new();
         let mut acb_of_sale: Option<String> = None;
         let mut commission: Option<String> = None;
@@ -276,7 +287,7 @@ pub fn render_tx_table_model(
                     *buy_sell_specs.shares * *buy_sell_specs.amount_per_share,
                     &buy_sell_specs.tx_currency_and_rate,
                 );
-                shares = *buy_sell_specs.shares;
+                shares = Some(*buy_sell_specs.shares);
                 amount_per_share_str = ph.curr_with_fx_str(
                     *buy_sell_specs.amount_per_share,
                     &buy_sell_specs.tx_currency_and_rate,
@@ -318,9 +329,9 @@ pub fn render_tx_table_model(
                 new_share_balance = changing_new_share_balance_str();
             }
             super::TxActionSpecifics::Roc(roc_specs) => {
-                shares = *d.pre_status.share_balance;
+                shares = Some(*d.pre_status.share_balance);
                 amount = ph.curr_with_fx_str(
-                    shares * *roc_specs.amount_per_held_share,
+                    shares.unwrap() * *roc_specs.amount_per_held_share,
                     &roc_specs.tx_currency_and_rate,
                 );
                 amount_per_share_str = ph.curr_with_fx_str(
@@ -330,19 +341,19 @@ pub fn render_tx_table_model(
             }
             super::TxActionSpecifics::Sfla(sfla_specs) => {
                 amount = ph.curr_with_fx_str(
-                    *sfla_specs.shares_affected * *sfla_specs.amount_per_share,
+                    *sfla_specs.total_amount(),
                     &CurrencyAndExchangeRate::default(),
                 );
-                shares = *sfla_specs.shares_affected;
-                amount_per_share_str = ph.curr_with_fx_str(
-                    *sfla_specs.amount_per_share,
+                shares = sfla_specs.shares_affected().map(|s| *s);
+                amount_per_share_str = ph.opt_curr_with_fx_str(
+                    sfla_specs.amount_per_share().map(|s| *s),
                     &CurrencyAndExchangeRate::default(),
                 );
             }
             super::TxActionSpecifics::Split(split_specs) => {
                 // Show the change in shares in the shares column, and the
                 // mult factor along the new balance.
-                shares = *d.post_status.share_balance - *d.pre_status.share_balance;
+                shares = Some(*d.post_status.share_balance - *d.pre_status.share_balance);
                 new_share_balance = format!(
                     "{} (x{})",
                     changing_new_share_balance_str(),
@@ -368,7 +379,7 @@ pub fn render_tx_table_model(
             tx.settlement_date.to_string(),
             tx.action().pretty_str().to_string(),
             amount,
-            shares.to_string(),
+            shares.map_or(s("-"), |s| s.to_string()),
             amount_per_share_str,
             acb_of_sale.unwrap_or(s("-")),
             commission.unwrap_or(s("-")),
