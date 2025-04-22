@@ -302,18 +302,16 @@ fn parse_rsu_data(rsu_pdf_text: &str) -> Result<RsuData, SError> {
         )
         .map_err(|e| e.to_string())?,
         award_number: srch(r"Award Number\s*(R\d+)").str1(text)?,
-        shares_released: srch(r"Shares Released\s*(\d+\.\d+)").dec1(text)?,
-        shares_sold: srch(r"Shares Sold\s*\((\d+\.\d+)\)").dec1(text)?,
-        shares_issued: srch(r"Shares Issued\s*(\d+\.\d+)").dec1(text)?,
-        fmv_per_share: srch(r"Market Value Per Share\s*\$(\d+\.\d+)").dec1(text)?,
-        sale_price_per_share: srch(r"Sale Price Per Share\s*\$(\d+\.\d+)")
-            .dec1(text)?,
-        market_value: srch(r"Market Value\s*\$([\d,]+\.\d+)").dec1(text)?,
-        total_sale_price: srch(r"Total Sale Price\s*\$([\d,]+\.\d+)").dec1(text)?,
-        total_tax: srch(r"Total Tax\s*\$([\d,]+\.\d+)").dec1(text)?,
-        fee: srch(r"Fee\s*\(\$(\d+\.\d+)").dec1(text)?,
-        cash_leftover: srch(r"Total Due Participant\s*\$([\d,]+\.\d+)")
-            .dec1(text)?,
+        shares_released: extract_numeric("Shares Released", false, text)?,
+        shares_sold: extract_numeric("Shares Sold", true, text)?,
+        shares_issued: extract_numeric("Shares Issued", false, text)?,
+        fmv_per_share: extract_currency("Market Value Per Share", false, text)?,
+        sale_price_per_share: extract_currency("Sale Price Per Share", false, text)?,
+        market_value: extract_currency("Market Value", false, text)?,
+        total_sale_price: extract_currency("Total Sale Price", false, text)?,
+        total_tax: extract_currency("Total Tax", false, text)?,
+        fee: extract_currency("Fee", true, text)?,
+        cash_leftover: extract_currency("Total Due Participant", false, text)?,
     })
 }
 
@@ -393,21 +391,60 @@ fn search_for_rows(
     }
 }
 
+fn build_value_pattern(dollar_prefix: bool, parens: bool) -> String {
+    let prefix = if dollar_prefix { r"\$" } else { "" };
+    let p_beg = if parens { r"\(" } else { "" };
+    let p_end = if parens { r"\)" } else { "" };
+    return format!(r"{p_beg}{prefix}([\d,\.]+){p_end}");
+}
+
+fn remove_symbols(s: &str) -> String {
+    s.chars().filter(|c| *c != '$' && *c != '(' && *c != ')').collect()
+}
+
 fn search_for_dec_rows(
     key: &str,
     dollar_prefix: bool,
+    parens: bool,
     text: &str,
 ) -> Result<Vec<Decimal>, SError> {
-    let prefix = if dollar_prefix { r"\$" } else { "" };
-    let strs = search_for_rows(key, &format!(r"{prefix}([\d,\.]+)"), text)?;
+    let pattern = &build_value_pattern(dollar_prefix, parens);
+    let strs = search_for_rows(key, pattern, text)?;
     let mut decs = Vec::<Decimal>::with_capacity(strs.len());
     for s in strs {
-        let sanitized_s = s.replace("$", "");
+        let sanitized_s = remove_symbols(&s);
         decs.push(parse_large_decimal(&sanitized_s).map_err(|e| {
             format!("Decimal error in \"{sanitized_s}\" on \"{key}\" row: {e}")
         })?);
     }
     Ok(decs)
+}
+
+fn extract_dec_common(
+    key: &str,
+    dollar_prefix: bool,
+    parens: bool,
+    text: &str,
+) -> Result<Decimal, SError> {
+    let rows = search_for_dec_rows(key, dollar_prefix, parens, text)
+        .map_err(|e| format!("Could not find \"{key}\" decimal value: {e}"))?;
+
+    if rows.len() != 1 {
+        return Err(format!(
+            "Only expected a single \"{key}\" value, but found: {:?}",
+            rows
+        ));
+    }
+
+    return Ok(rows[0]);
+}
+
+fn extract_numeric(key: &str, parens: bool, text: &str) -> Result<Decimal, SError> {
+    return extract_dec_common(key, false, parens, text);
+}
+
+fn extract_currency(key: &str, parens: bool, text: &str) -> Result<Decimal, SError> {
+    return extract_dec_common(key, true, parens, text);
 }
 
 fn parse_eso_data(eso_pdf_text: &str) -> Result<EsoData, SError> {
@@ -442,11 +479,11 @@ fn parse_eso_data(eso_pdf_text: &str) -> Result<EsoData, SError> {
         .map(|s| s.parse::<u64>().unwrap_or_default())
         .collect();
     let grant_exercise_fmvs =
-        search_for_dec_rows("Exercise Market Value", true, body)?;
+        search_for_dec_rows("Exercise Market Value", true, false, body)?;
     let grant_shares_exercised =
-        search_for_dec_rows("Shares Exercised", false, body)?;
-    let grant_sale_prices = search_for_dec_rows("Sale Price", true, body)?;
-    let grant_fees = search_for_dec_rows("Comission/Fee", true, body)?;
+        search_for_dec_rows("Shares Exercised", false, false, body)?;
+    let grant_sale_prices = search_for_dec_rows("Sale Price", true, false, body)?;
+    let grant_fees = search_for_dec_rows("Comission/Fee", true, false, body)?;
 
     let mut grants = Vec::with_capacity(grant_indicies.len());
     for (((((_, num), fmv), shares), s_price), fee) in grant_indicies
@@ -474,7 +511,7 @@ fn parse_eso_data(eso_pdf_text: &str) -> Result<EsoData, SError> {
             ETRADE_SLASH_DATE_FORMAT,
         )
         .map_err(|e| e.to_string())?,
-        shares_sold: srch(r"Shares Sold\s+([\d,\.]+)").dec1(header)?,
+        shares_sold: extract_numeric("Shares Sold", false, header)?,
         grants: grants,
     })
 }
@@ -837,7 +874,7 @@ mod tests {
             Award Type RSU
             Plan 2014
             Release Date 10-20-2023
-            Shares Released 123.0000
+            Shares Released 1,234.0000
             Market Value Per Share $215.350000
             Award Price Per Share $0.000000
             Sale Price Per Share $213.773300
@@ -885,7 +922,7 @@ mod tests {
                 acquire_tx_date: date("2023-10-20"),
                 acquire_settle_date: date("2023-10-20"),
                 acquire_share_price: dec!(215.35),
-                acquire_shares: dec!(123),
+                acquire_shares: dec!(1234),
                 sell_to_cover_tx_date: None,
                 sell_to_cover_settle_date: None,
                 sell_to_cover_price: Some(dec!(213.7733)),
