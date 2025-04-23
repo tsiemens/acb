@@ -10,4 +10,6 @@ FOO,2018-02-06,2018-02-08,Sell,2,,1.99,USD,1.2,,-1.4168653701191,,"Sell (explici
 FOO,2018-02-06,2018-02-08,SFLA,1,,1.4168653701191,,,,,,Manual SFLA specified in total amount
 FOO,2018-02-06,2018-02-08,Sell,2,,1.99,USD,1.2,,-1.775,,"Sell (explicit superficial loss), specified in total amount (2)"
 FOO,2018-02-06,2018-02-08,SFLA,1,1.775,,,,,,,Manual SFLA specified in per-share amount
+FOO,2018-02-20,2018-02-20,RoC,,0.1,,USD,,,,,
+FOO,2018-02-21,2018-02-21,RoC,,,0.4,USD,,,,,
 FOO,2018-12-31,2018-12-31,Split,,,,,,,,4-for-1,4:1 split
