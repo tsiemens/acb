@@ -263,7 +263,7 @@ pub fn render_tx_table_model(
             }
         };
 
-        let mut amount = String::new();
+        let mut amount_str = String::new();
         let shares: Option<Decimal>;
         let mut amount_per_share_str = String::new();
         let mut acb_of_sale: Option<String> = None;
@@ -283,7 +283,7 @@ pub fn render_tx_table_model(
                     _ => panic!(),
                 };
 
-                amount = ph.curr_with_fx_str(
+                amount_str = ph.curr_with_fx_str(
                     *buy_sell_specs.shares * *buy_sell_specs.amount_per_share,
                     &buy_sell_specs.tx_currency_and_rate,
                 );
@@ -330,17 +330,31 @@ pub fn render_tx_table_model(
             }
             super::TxActionSpecifics::Roc(roc_specs) => {
                 shares = Some(*d.pre_status.share_balance);
-                amount = ph.curr_with_fx_str(
-                    shares.unwrap() * *roc_specs.amount_per_held_share,
-                    &roc_specs.tx_currency_and_rate,
-                );
-                amount_per_share_str = ph.curr_with_fx_str(
-                    *roc_specs.amount_per_held_share,
-                    &roc_specs.tx_currency_and_rate,
-                );
+                match &roc_specs.amount {
+                    super::TotalOrAmountPerShare::Total(total) => {
+                        amount_str = ph.curr_with_fx_str(
+                            **total,
+                            &roc_specs.tx_currency_and_rate,
+                        );
+                        amount_per_share_str = ph.curr_with_fx_str(
+                            **total / shares.unwrap(),
+                            &roc_specs.tx_currency_and_rate,
+                        );
+                    },
+                    super::TotalOrAmountPerShare::AmountPerShare(aps) => {
+                        amount_str = ph.curr_with_fx_str(
+                            shares.unwrap() * **aps,
+                            &roc_specs.tx_currency_and_rate,
+                        );
+                        amount_per_share_str = ph.curr_with_fx_str(
+                            **aps,
+                            &roc_specs.tx_currency_and_rate,
+                        );
+                    },
+                }
             }
             super::TxActionSpecifics::Sfla(sfla_specs) => {
-                amount = ph.curr_with_fx_str(
+                amount_str = ph.curr_with_fx_str(
                     *sfla_specs.total_amount(),
                     &CurrencyAndExchangeRate::default(),
                 );
@@ -378,7 +392,7 @@ pub fn render_tx_table_model(
             tx.trade_date.to_string(),
             tx.settlement_date.to_string(),
             tx.action().pretty_str().to_string(),
-            amount,
+            amount_str,
             shares.map_or(s("-"), |s| s.to_string()),
             amount_per_share_str,
             acb_of_sale.unwrap_or(s("-")),

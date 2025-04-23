@@ -52,7 +52,7 @@ fn get_delta(td: Td) -> TxDelta {
             settlement_date: td.settle_date(),
             // This is meaningless here. Just the simplest to populate
             action_specifics: TxActionSpecifics::Roc(RocTxSpecifics {
-                amount_per_held_share: gezdec!(0),
+                amount: acb::portfolio::TotalOrAmountPerShare::Total(gezdec!(0)),
                 tx_currency_and_rate: CurrencyAndExchangeRate::default(),
             }),
             memo: String::new(),

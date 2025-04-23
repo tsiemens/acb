@@ -322,9 +322,15 @@ fn delta_for_tx(
         crate::portfolio::TxActionSpecifics::Roc(roc_specs) => {
             if let Some(old_acb) = pre_tx_status.total_acb {
                 assert!(!tx.affiliate.registered());
-                let acb_reduction = roc_specs.amount_per_held_share
-                    * pre_tx_status.share_balance
-                    * roc_specs.tx_currency_and_rate.exchange_rate.into();
+                let acb_reduction = match &roc_specs.amount {
+                    crate::portfolio::TotalOrAmountPerShare::Total(total) =>
+                        *total
+                        * roc_specs.tx_currency_and_rate.exchange_rate.into(),
+                    crate::portfolio::TotalOrAmountPerShare::AmountPerShare(aps) =>
+                        *aps * pre_tx_status.share_balance
+                        * roc_specs.tx_currency_and_rate.exchange_rate.into(),
+                };
+
                 new_acb_total = Some(
                     GreaterEqualZeroDecimal::try_from(*old_acb - *acb_reduction)
                         .map_err(|_| {
@@ -1217,6 +1223,11 @@ mod tests {
         let tx = TTx{t_day: 0, act: A::Roc, price: gez!(13.0), ..def()}.x();
         delta_for_tx_has_err(tx, &sptf);
 
+        // Same for total amount
+        let sptf = TPSS{shares: gez!(2), total_acb: sgez!(20.0), ..def()}.x();
+        let tx = TTx{t_day: 0, act: A::Roc, t_amt: gez!(21.0), ..def()}.x();
+        delta_for_tx_has_err(tx, &sptf);
+
         // Test that RoC cannot occur on registered affiliates,
         // since they have no ACB
         let sptf = TPSS{shares: gez!(5), total_acb: None, ..def()}.x();
@@ -1239,6 +1250,14 @@ mod tests {
             TDt{post_st: TPSS{shares: gez!(2), all_shares: gez!(8),
                 total_acb: sgez!(18.0), ..def()}, ..def()});
 
+        // Same test with total amount instead
+        let tx = TTx{t_day: 0, act: A::Roc, t_amt: gez!(2.0), ..def()}.x();
+
+        let delta = delta_for_tx_ok(tx, &sptf);
+        validate_delta(delta,
+            TDt{post_st: TPSS{shares: gez!(2), all_shares: gez!(8),
+                total_acb: sgez!(18.0), ..def()}, ..def()});
+
         // Test RoC with exchange
         let sptf = TPSS{shares: gez!(2), total_acb: sgez!(20.0), ..def()}.x();
         let tx = TTx{t_day: 0, act: A::Roc, price: gez!(1.0), curr: usd(),
@@ -1248,6 +1267,16 @@ mod tests {
         validate_delta(delta,
             TDt{post_st: TPSS{shares: gez!(2), total_acb: sgez!(16.0), ..def()},
                 ..def()});
+
+        // Same test with total amount instead
+        let tx = TTx{t_day: 0, act: A::Roc, t_amt: gez!(2.0), curr: usd(),
+            fx_rate: gez!(2.0), ..def()}.x();
+
+        let delta = delta_for_tx_ok(tx, &sptf);
+        validate_delta(delta,
+            TDt{post_st: TPSS{shares: gez!(2), total_acb: sgez!(16.0), ..def()},
+                ..def()});
+
     }
 
     #[test]

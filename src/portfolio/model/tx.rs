@@ -476,8 +476,26 @@ impl SellTxSpecifics {
 
 #[derive(Clone, PartialEq, Eq, Debug)]
 pub struct RocTxSpecifics {
-    pub amount_per_held_share: GreaterEqualZeroDecimal,
+    pub amount: TotalOrAmountPerShare<GreaterEqualZeroDecimal>,
     pub tx_currency_and_rate: CurrencyAndExchangeRate,
+}
+
+impl RocTxSpecifics {
+    pub fn amount_per_held_share(&self) -> Option<GreaterEqualZeroDecimal> {
+        match &self.amount {
+            TotalOrAmountPerShare::Total(_) => None,
+            TotalOrAmountPerShare::AmountPerShare(amount_per_share) => {
+                Some(*amount_per_share)
+            }
+        }
+    }
+
+    pub fn total_amount(&self) -> Option<GreaterEqualZeroDecimal> {
+        match &self.amount {
+            TotalOrAmountPerShare::Total(total) => Some(*total),
+            TotalOrAmountPerShare::AmountPerShare(_) => None,
+        }
+    }
 }
 
 type TotalPosAmount = TotalAmount<PosDecimal>;
@@ -678,6 +696,34 @@ fn buy_or_sell_common_attrs_from_csv_tx(
     Ok(specifics)
 }
 
+fn total_or_amount_per_share_to_gez(
+    amount: TotalOrAmountPerShare<Decimal>,
+    action_name: &str,
+) -> Result<TotalOrAmountPerShare<GreaterEqualZeroDecimal>, String> {
+    match amount {
+        TotalOrAmountPerShare::Total(total) => {
+            let gez = GreaterEqualZeroDecimal::try_from(total)
+                .map_err(|_| {
+                    format!(
+                        "{action_name} \"{}\" must not be negative. Found {}",
+                        CsvCol::TOTAL_AMOUNT, total
+                    )
+                })?;
+            Ok(TotalOrAmountPerShare::Total(gez))
+        }
+        TotalOrAmountPerShare::AmountPerShare(amount_per_share) => {
+            let gez = GreaterEqualZeroDecimal::try_from(amount_per_share)
+                .map_err(|_| {
+                    format!(
+                        "{action_name} \"{}\" must not be negative. Found {}",
+                        CsvCol::AMOUNT_PER_SHARE, amount_per_share
+                    )
+                })?;
+            Ok(TotalOrAmountPerShare::AmountPerShare(gez))
+        }
+    }
+}
+
 impl TryFrom<CsvTx> for Tx {
     type Error = String;
 
@@ -704,18 +750,9 @@ impl TryFrom<CsvTx> for Tx {
                 TxActionSpecifics::Sell(specs)
             }
             TxAction::Roc => {
-                let amount_per_share = csv_tx.amount_per_share.ok_or(format!(
-                    "RoC \"{}\" not found",
-                    CsvCol::AMOUNT_PER_SHARE
-                ))?;
-
-                let amount = GreaterEqualZeroDecimal::try_from(amount_per_share)
-                    .map_err(|_| {
-                        format!(
-                            "RoC amount per share must not be negative. Found {}",
-                            amount_per_share
-                        )
-                    })?;
+                let amount_dec = csv_tx.get_sane_total_or_amount_per_share()
+                    .map_err(|e| format!("RoC {e}"))?;
+                let amount = total_or_amount_per_share_to_gez(amount_dec, "RoC")?;
 
                 if let Some(shares) = csv_tx.shares {
                     // This will be confusing if we allow this to be specified.
@@ -732,7 +769,7 @@ impl TryFrom<CsvTx> for Tx {
                 .unwrap_or_else(|| CurrencyAndExchangeRate::default());
 
                 TxActionSpecifics::Roc(RocTxSpecifics {
-                    amount_per_held_share: amount,
+                    amount: amount,
                     tx_currency_and_rate: curr_and_rate,
                 })
             }
@@ -867,7 +904,8 @@ fn populate_csvtx_fields_from_action_specifics(
         }
         TxActionSpecifics::Roc(s) => {
             tx.action = Some(TxAction::Roc);
-            tx.amount_per_share = Some(*s.amount_per_held_share);
+            tx.amount_per_share = s.amount_per_held_share().map(|v| *v);
+            tx.total_amount = s.total_amount().map(|v| *v);
             tx.tx_currency = Some(s.tx_currency_and_rate.currency.clone());
             tx.tx_curr_to_local_exchange_rate =
                 if s.tx_currency_and_rate.is_default() {
@@ -1139,7 +1177,7 @@ mod tests {
     use crate::{testlib::assert_vec_eq, util::date::parse_standard_date};
 
     use super::{
-        BuyTxSpecifics, CsvTx, RocTxSpecifics, SFLInput, SplitRatio, Tx, TxAction,
+        BuyTxSpecifics, CsvTx, RocTxSpecifics, SFLInput, SplitRatio, TotalOrAmountPerShare, Tx, TxAction
     };
 
     pub const DEFAULT_SECURITY: &str = "FOO";
@@ -1387,8 +1425,7 @@ mod tests {
         }
         let sfla_csvtx = sfla_csvtx; // finalize
 
-        // TODO add total_amount support for ROC
-        let mut roc_csvtx = fully_populated_csvtx(TxAction::Roc, false);
+        let mut roc_csvtx = fully_populated_csvtx(TxAction::Roc, use_total_amount);
         roc_csvtx.shares = None;
         let roc_csvtx = roc_csvtx;
 
@@ -1461,7 +1498,13 @@ mod tests {
         let mut exp_roc_tx = exp_buy_tx.clone();
         exp_roc_tx.action_specifics =
             super::TxActionSpecifics::Roc(RocTxSpecifics {
-                amount_per_held_share: gez(roc_csvtx.amount_per_share.unwrap()),
+                amount: if roc_csvtx.amount_per_share.is_some() {
+                    TotalOrAmountPerShare::AmountPerShare(
+                        gez(roc_csvtx.amount_per_share.unwrap()))
+                } else {
+                    TotalOrAmountPerShare::Total(
+                        gez(roc_csvtx.total_amount.unwrap()))
+                },
                 tx_currency_and_rate: CurrencyAndExchangeRate::rq_new(
                     roc_csvtx.tx_currency.clone().unwrap(),
                     pos(roc_csvtx.tx_curr_to_local_exchange_rate.unwrap()),
