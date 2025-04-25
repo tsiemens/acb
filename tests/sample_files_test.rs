@@ -3,17 +3,24 @@ mod common;
 use std::{collections::HashMap, path::Path};
 
 use acb::{
-    app::{outfmt::text::TextWriter, run_acb_app_to_writer}, fx::io::{CsvRatesCache, JsonRemoteRateLoader, RateLoader}, portfolio::io::tx_csv::TxCsvParseOptions, testlib::assert_vec_eq, util::{
+    app::{outfmt::text::TextWriter, run_acb_app_to_writer},
+    fx::io::{CsvRatesCache, JsonRemoteRateLoader, RateLoader},
+    portfolio::io::tx_csv::TxCsvParseOptions,
+    testlib::assert_vec_eq,
+    util::{
         date::parse_standard_date,
         http::standalone::StandaloneAppRequester,
         rw::{DescribedReader, WriteHandle},
-    }
+    },
 };
 use common::NonAutoCreatingTestDir;
 
 fn validate_sample_csv_file(
-    csv_path: &Path, cache_dir: &Path, render_costs: bool,
-    expected_text_path: Option<&Path>) {
+    csv_path: &Path,
+    cache_dir: &Path,
+    render_costs: bool,
+    expected_text_path: Option<&Path>,
+) {
     let reader = DescribedReader::from_file_path(csv_path.into());
 
     let (err_stream, err_buff) = WriteHandle::string_buff_write_handle();
@@ -50,12 +57,17 @@ fn validate_sample_csv_file(
         let text = buff_ref.as_str().to_string();
 
         let expected_text = std::fs::read_to_string(expected_text_path)
-            .unwrap_or_else(|_| panic!("Failed to read expected text file: {:?}",
-                expected_text_path));
+            .unwrap_or_else(|_| {
+                panic!(
+                    "Failed to read expected text file: {:?}",
+                    expected_text_path
+                )
+            });
 
         assert_vec_eq(
             text.split("\n").collect(),
-            expected_text.split("\n").collect());
+            expected_text.split("\n").collect(),
+        );
     }
 }
 
@@ -70,7 +82,11 @@ fn do_test_sample_csv_file_validity(render_costs: bool) {
         Path::new("./tests/data/test_combined.csv"),
         &dir.path,
         render_costs,
-        if !render_costs { Some(Path::new("./tests/data/test_combined_text.txt")) } else { None },
+        if !render_costs {
+            Some(Path::new("./tests/data/test_combined_text.txt"))
+        } else {
+            None
+        },
     );
     validate_sample_csv_file(
         Path::new("./www/html/sample_txs.csv"),

@@ -340,7 +340,7 @@ pub fn render_tx_table_model(
                             **total / shares.unwrap(),
                             &roc_specs.tx_currency_and_rate,
                         );
-                    },
+                    }
                     super::TotalOrAmountPerShare::AmountPerShare(aps) => {
                         amount_str = ph.curr_with_fx_str(
                             shares.unwrap() * **aps,
@@ -350,7 +350,7 @@ pub fn render_tx_table_model(
                             **aps,
                             &roc_specs.tx_currency_and_rate,
                         );
-                    },
+                    }
                 }
             }
             super::TxActionSpecifics::Sfla(sfla_specs) => {
@@ -367,7 +367,8 @@ pub fn render_tx_table_model(
             super::TxActionSpecifics::Split(split_specs) => {
                 // Show the change in shares in the shares column, and the
                 // mult factor along the new balance.
-                shares = Some(*d.post_status.share_balance - *d.pre_status.share_balance);
+                shares =
+                    Some(*d.post_status.share_balance - *d.pre_status.share_balance);
                 new_share_balance = format!(
                     "{} (x{})",
                     changing_new_share_balance_str(),

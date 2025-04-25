@@ -3,7 +3,7 @@ use std::fmt::Display;
 use rust_decimal::Decimal;
 
 use super::decimal::{
-    constraint::self, ConstrainedDecimal, DecConstraint, GreaterEqualZeroDecimal,
+    constraint, ConstrainedDecimal, DecConstraint, GreaterEqualZeroDecimal,
     PosDecimal,
 };
 
@@ -24,11 +24,13 @@ impl<CONSTRAINT: DecConstraint + Clone + Copy> ConstrainedDecimalRatio<CONSTRAIN
         // conflict with PosDecimal or NegDecimal.
         ConstrainedDecimalRatio::<constraint::Any> {
             numerator: super::decimal::AnyDecimal::from_dec(
-                self.numerator.round_dp_with_strategy(dp, strat)),
+                self.numerator.round_dp_with_strategy(dp, strat),
+            ),
             // This will not round if too close to zero.
             denominator: PosDecimal::try_from(
-                self.denominator.round_dp_with_strategy(dp, strat))
-                .unwrap_or(self.denominator),
+                self.denominator.round_dp_with_strategy(dp, strat),
+            )
+            .unwrap_or(self.denominator),
         }
     }
 }

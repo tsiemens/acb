@@ -158,15 +158,17 @@ fn get_delta_superficial_loss_info(
                     security: tx.security.clone(),
                     trade_date: tx.trade_date,
                     settlement_date: tx.settlement_date,
-                    action_specifics: TxActionSpecifics::Sfla(SflaTxSpecifics::from_total(
-                        // NOTE: if we want this to show per share, shares should be
-                        // af_ratio_posdecimal.numerator,
-                        // and amount_per_share should be just divided by the
-                        // denominator instead of mult with the decimal.
-                        NegDecimal::neg_1()
-                            * calculated_sfl_amount
-                            * af_ratio_posdecimal,
-                    )),
+                    action_specifics: TxActionSpecifics::Sfla(
+                        SflaTxSpecifics::from_total(
+                            // NOTE: if we want this to show per share, shares should be
+                            // af_ratio_posdecimal.numerator,
+                            // and amount_per_share should be just divided by the
+                            // denominator instead of mult with the decimal.
+                            NegDecimal::neg_1()
+                                * calculated_sfl_amount
+                                * af_ratio_posdecimal,
+                        ),
+                    ),
                     memo: format!(
                         "Automatic SfL ACB adjustment. {:.2}% ({}) of SfL, which \
                         was {} of sale shares.",
@@ -323,12 +325,13 @@ fn delta_for_tx(
             if let Some(old_acb) = pre_tx_status.total_acb {
                 assert!(!tx.affiliate.registered());
                 let acb_reduction = match &roc_specs.amount {
-                    crate::portfolio::TotalOrAmountPerShare::Total(total) =>
-                        *total
-                        * roc_specs.tx_currency_and_rate.exchange_rate.into(),
-                    crate::portfolio::TotalOrAmountPerShare::AmountPerShare(aps) =>
+                    crate::portfolio::TotalOrAmountPerShare::Total(total) => {
+                        *total * roc_specs.tx_currency_and_rate.exchange_rate.into()
+                    }
+                    crate::portfolio::TotalOrAmountPerShare::AmountPerShare(aps) => {
                         *aps * pre_tx_status.share_balance
-                        * roc_specs.tx_currency_and_rate.exchange_rate.into(),
+                            * roc_specs.tx_currency_and_rate.exchange_rate.into()
+                    }
                 };
 
                 new_acb_total = Some(
