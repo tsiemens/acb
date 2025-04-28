@@ -16,9 +16,12 @@ pub type Security = String;
 pub enum TxAction {
     Buy,
     Sell,
-    Roc,   // Return of capital
-    Sfla,  // Superficial loss ACB adjustment
-    Split, // Stock split/reverse-split
+    Roc,      // Return of capital (Decreases ACB)
+    RiCGDist, // Reinvested Capital Gains Distribution (increases ACB, adds cap gain)
+    RiDiv,    // Reinvested Dividend (increases ACB)
+    CGDiv,    // Capital Gains Dividend (simply for tracking/adding capital gain)
+    Sfla,     // Superficial loss ACB adjustment
+    Split,    // Stock split/reverse-split
 }
 
 impl TxAction {
@@ -27,7 +30,24 @@ impl TxAction {
             TxAction::Buy => "Buy",
             TxAction::Sell => "Sell",
             TxAction::Roc => "RoC",
+            TxAction::RiCGDist => "RiCGDist",
+            TxAction::RiDiv => "RiDiv",
+            TxAction::CGDiv => "CGDiv",
             TxAction::Sfla => "SfLA",
+            TxAction::Split => "Split",
+        }
+    }
+
+    // Medium length pretty strings. A bit more human readable.
+    pub fn med_pretty_str(&self) -> &str {
+        match self {
+            TxAction::Buy => "Buy",
+            TxAction::Sell => "Sell",
+            TxAction::Roc => "RoC", // TODO consider making this longer. Ret. of Cap. ?
+            TxAction::RiCGDist => "Reinv. Cap. Gains Dist.",
+            TxAction::RiDiv => "Reinv. Div.",
+            TxAction::CGDiv => "Cap. Gains Div.",
+            TxAction::Sfla => "SfLA", // TODO consider making this longer. Sprfcl. Loss Adj. ?
             TxAction::Split => "Split",
         }
     }
@@ -486,12 +506,12 @@ impl SellTxSpecifics {
 }
 
 #[derive(Clone, PartialEq, Eq, Debug)]
-pub struct RocTxSpecifics {
+pub struct DistTxSpecifics {
     pub amount: TotalOrAmountPerShare<GreaterEqualZeroDecimal>,
     pub tx_currency_and_rate: CurrencyAndExchangeRate,
 }
 
-impl RocTxSpecifics {
+impl DistTxSpecifics {
     pub fn amount_per_held_share(&self) -> Option<GreaterEqualZeroDecimal> {
         match &self.amount {
             TotalOrAmountPerShare::Total(_) => None,
@@ -568,7 +588,10 @@ pub struct SplitTxSpecifics {
 pub enum TxActionSpecifics {
     Buy(BuyTxSpecifics),
     Sell(SellTxSpecifics),
-    Roc(RocTxSpecifics),
+    Roc(DistTxSpecifics),
+    RiCGDist(DistTxSpecifics),
+    RiDiv(DistTxSpecifics),
+    CGDiv(DistTxSpecifics),
     Sfla(SflaTxSpecifics),
     Split(SplitTxSpecifics),
 }
@@ -579,6 +602,9 @@ impl TxActionSpecifics {
             TxActionSpecifics::Buy(_) => TxAction::Buy,
             TxActionSpecifics::Sell(_) => TxAction::Sell,
             TxActionSpecifics::Roc(_) => TxAction::Roc,
+            TxActionSpecifics::RiCGDist(_) => TxAction::RiCGDist,
+            TxActionSpecifics::RiDiv(_) => TxAction::RiDiv,
+            TxActionSpecifics::CGDiv(_) => TxAction::CGDiv,
             TxActionSpecifics::Sfla(_) => TxAction::Sfla,
             TxActionSpecifics::Split(_) => TxAction::Split,
         }
@@ -743,6 +769,33 @@ impl TryFrom<CsvTx> for Tx {
             ));
         }
 
+        let parse_dist = |action: TxAction| -> Result<DistTxSpecifics, String> {
+            let dist_name = action.med_pretty_str();
+            let amount_dec = csv_tx
+                .get_sane_total_or_amount_per_share()
+                .map_err(|e| format!("{} {e}", dist_name))?;
+            let amount = total_or_amount_per_share_to_gez(amount_dec, dist_name)?;
+
+            if let Some(shares) = csv_tx.shares {
+                // This will be confusing if we allow this to be specified.
+                return Err(format!("{} should not specify shares (found {}). This amount is automatic \
+                    (the current share balance)", dist_name, shares));
+            }
+
+            let curr_and_rate = get_valid_exchange_rate(
+                CsvCol::TX_CURR,
+                &csv_tx.tx_currency,
+                CsvCol::TX_FX,
+                &csv_tx.tx_curr_to_local_exchange_rate,
+            )?
+            .unwrap_or_else(|| CurrencyAndExchangeRate::default());
+
+            Ok(DistTxSpecifics {
+                amount: amount,
+                tx_currency_and_rate: curr_and_rate,
+            })
+        };
+
         let act_specs = match csv_tx.action.unwrap() {
             TxAction::Buy => {
                 let specs = BuyTxSpecifics::from_common_buy_sell_attrs(
@@ -757,30 +810,15 @@ impl TryFrom<CsvTx> for Tx {
                 );
                 TxActionSpecifics::Sell(specs)
             }
-            TxAction::Roc => {
-                let amount_dec = csv_tx
-                    .get_sane_total_or_amount_per_share()
-                    .map_err(|e| format!("RoC {e}"))?;
-                let amount = total_or_amount_per_share_to_gez(amount_dec, "RoC")?;
-
-                if let Some(shares) = csv_tx.shares {
-                    // This will be confusing if we allow this to be specified.
-                    return Err(format!("RoC should not specify shares (found {}). This amount is automatic \
-                        (the current share balance)", shares));
-                }
-
-                let curr_and_rate = get_valid_exchange_rate(
-                    CsvCol::TX_CURR,
-                    &csv_tx.tx_currency,
-                    CsvCol::TX_FX,
-                    &csv_tx.tx_curr_to_local_exchange_rate,
-                )?
-                .unwrap_or_else(|| CurrencyAndExchangeRate::default());
-
-                TxActionSpecifics::Roc(RocTxSpecifics {
-                    amount: amount,
-                    tx_currency_and_rate: curr_and_rate,
-                })
+            TxAction::Roc => TxActionSpecifics::Roc(parse_dist(TxAction::Roc)?),
+            TxAction::RiCGDist => {
+                TxActionSpecifics::RiCGDist(parse_dist(TxAction::RiCGDist)?)
+            }
+            TxAction::RiDiv => {
+                TxActionSpecifics::RiDiv(parse_dist(TxAction::RiDiv)?)
+            }
+            TxAction::CGDiv => {
+                TxActionSpecifics::CGDiv(parse_dist(TxAction::CGDiv)?)
             }
             TxAction::Sfla => {
                 let amount: TotalAmount<Decimal> = csv_tx
@@ -915,8 +953,11 @@ fn populate_csvtx_fields_from_action_specifics(
             populate_buy_sell_common_attrs(tx, s.common_buy_sell_attrs());
             tx.specified_superficial_loss = s.specified_superficial_loss.clone();
         }
-        TxActionSpecifics::Roc(s) => {
-            tx.action = Some(TxAction::Roc);
+        TxActionSpecifics::Roc(s)
+        | TxActionSpecifics::RiCGDist(s)
+        | TxActionSpecifics::RiDiv(s)
+        | TxActionSpecifics::CGDiv(s) => {
+            tx.action = Some(specs.action());
             tx.amount_per_share = s.amount_per_held_share().map(|v| *v);
             tx.total_amount = s.total_amount().map(|v| *v);
             tx.tx_currency = Some(s.tx_currency_and_rate.currency.clone());
@@ -1190,8 +1231,8 @@ mod tests {
     use crate::{testlib::assert_vec_eq, util::date::parse_standard_date};
 
     use super::{
-        BuyTxSpecifics, CsvTx, RocTxSpecifics, SFLInput, SplitRatio,
-        TotalOrAmountPerShare, Tx, TxAction,
+        BuyTxSpecifics, CsvTx, SFLInput, SplitRatio, TotalOrAmountPerShare, Tx,
+        TxAction,
     };
 
     pub const DEFAULT_SECURITY: &str = "FOO";
@@ -1432,27 +1473,24 @@ mod tests {
         }
     }
 
-    fn do_test_csvtx_to_tx_full(use_total_amount: bool) {
-        // Fully explicit buy
-        let buy_csvtx = fully_populated_csvtx(TxAction::Buy, use_total_amount);
-        let sell_csvtx = fully_populated_csvtx(TxAction::Sell, use_total_amount);
-        let mut sfla_csvtx = fully_populated_csvtx(TxAction::Sfla, use_total_amount);
-        sfla_csvtx.tx_curr_to_local_exchange_rate = None;
-        sfla_csvtx.tx_currency = None;
-        if use_total_amount {
-            sfla_csvtx.shares = None;
+    // To be paired with fully_populated_csvtx
+    fn exp_tx_from_full_csv(csvtx: &CsvTx, specs: super::TxActionSpecifics) -> Tx {
+        Tx {
+            security: csvtx.security.clone().unwrap(),
+            trade_date: csvtx.trade_date.clone().unwrap(),
+            settlement_date: csvtx.settlement_date.clone().unwrap(),
+            action_specifics: specs,
+            memo: csvtx.memo.clone().unwrap(),
+            affiliate: csvtx.affiliate.clone().unwrap(),
+            read_index: csvtx.read_index,
         }
-        let sfla_csvtx = sfla_csvtx; // finalize
+    }
 
-        let mut roc_csvtx = fully_populated_csvtx(TxAction::Roc, use_total_amount);
-        roc_csvtx.shares = None;
-        let roc_csvtx = roc_csvtx;
-
-        let exp_buy_tx = Tx {
-            security: buy_csvtx.security.clone().unwrap(),
-            trade_date: buy_csvtx.trade_date.clone().unwrap(),
-            settlement_date: buy_csvtx.settlement_date.clone().unwrap(),
-            action_specifics: super::TxActionSpecifics::Buy(BuyTxSpecifics {
+    fn do_test_csvtx_to_tx_full_buy(use_total_amount: bool) {
+        let buy_csvtx = fully_populated_csvtx(TxAction::Buy, use_total_amount);
+        let exp_buy_tx = exp_tx_from_full_csv(
+            &buy_csvtx,
+            super::TxActionSpecifics::Buy(BuyTxSpecifics {
                 shares: pos(buy_csvtx.shares.unwrap()),
                 amount_per_share: gez(dec!(10.1)),
                 commission: gez(buy_csvtx.commission.unwrap()),
@@ -1465,18 +1503,18 @@ mod tests {
                     pos(buy_csvtx.commission_curr_to_local_exchange_rate.unwrap()),
                 )),
             }),
-            memo: buy_csvtx.memo.clone().unwrap(),
-            affiliate: buy_csvtx.affiliate.clone().unwrap(),
-            read_index: buy_csvtx.read_index,
-        };
+        );
 
         let tx = Tx::try_from(buy_csvtx.clone()).unwrap();
         assert_big_struct_eq(&tx, &exp_buy_tx);
         // Osclilating from Tx -> CsvTx -> Tx should be stable (not necessarily in the inverse though)
         assert_big_struct_eq(Tx::try_from(tx.to_csvtx()).unwrap(), tx);
+    }
 
-        let mut exp_sell_tx = exp_buy_tx.clone();
-        exp_sell_tx.action_specifics =
+    fn do_test_csvtx_to_tx_full_sell(use_total_amount: bool) {
+        let sell_csvtx = fully_populated_csvtx(TxAction::Sell, use_total_amount);
+        let exp_sell_tx = exp_tx_from_full_csv(
+            &sell_csvtx,
             super::TxActionSpecifics::Sell(SellTxSpecifics {
                 shares: pos(sell_csvtx.shares.unwrap()),
                 amount_per_share: gez(dec!(10.1)),
@@ -1492,59 +1530,104 @@ mod tests {
                 specified_superficial_loss: sell_csvtx
                     .specified_superficial_loss
                     .clone(),
-            });
+            }),
+        );
 
-        let tx = Tx::try_from(sell_csvtx).unwrap();
+        let tx = Tx::try_from(sell_csvtx.clone()).unwrap();
         assert_big_struct_eq(&tx, &exp_sell_tx);
+        // Osclilating from Tx -> CsvTx -> Tx should be stable (not necessarily in the inverse though)
         assert_big_struct_eq(Tx::try_from(tx.to_csvtx()).unwrap(), tx);
+    }
 
-        let mut exp_sfla_tx = exp_buy_tx.clone();
-        exp_sfla_tx.action_specifics = if use_total_amount {
-            super::TxActionSpecifics::Sfla(SflaTxSpecifics::from_total(pos(
-                sfla_csvtx.total_amount.unwrap(),
-            )))
-        } else {
-            super::TxActionSpecifics::Sfla(SflaTxSpecifics::from_per_share(
-                pos(sfla_csvtx.shares.unwrap()),
-                pos(sfla_csvtx.amount_per_share.unwrap()),
-            ))
-        };
+    fn do_test_csvtx_to_tx_full_sfla(use_total_amount: bool) {
+        let mut sfla_csvtx = fully_populated_csvtx(TxAction::Sfla, use_total_amount);
+        sfla_csvtx.tx_curr_to_local_exchange_rate = None;
+        sfla_csvtx.tx_currency = None;
+        if use_total_amount {
+            sfla_csvtx.shares = None;
+        }
+        let sfla_csvtx = sfla_csvtx; // finalize
+
+        let exp_sfla_tx = exp_tx_from_full_csv(
+            &sfla_csvtx,
+            if use_total_amount {
+                super::TxActionSpecifics::Sfla(SflaTxSpecifics::from_total(pos(
+                    sfla_csvtx.total_amount.unwrap(),
+                )))
+            } else {
+                super::TxActionSpecifics::Sfla(SflaTxSpecifics::from_per_share(
+                    pos(sfla_csvtx.shares.unwrap()),
+                    pos(sfla_csvtx.amount_per_share.unwrap()),
+                ))
+            },
+        );
 
         let tx = Tx::try_from(sfla_csvtx).unwrap();
         assert_big_struct_eq(&tx, &exp_sfla_tx);
         assert_big_struct_eq(Tx::try_from(tx.to_csvtx()).unwrap(), tx);
+    }
 
-        let mut exp_roc_tx = exp_buy_tx.clone();
-        exp_roc_tx.action_specifics =
-            super::TxActionSpecifics::Roc(RocTxSpecifics {
-                amount: if roc_csvtx.amount_per_share.is_some() {
-                    TotalOrAmountPerShare::AmountPerShare(gez(roc_csvtx
+    fn do_test_csvtx_to_tx_full_dists(use_total_amount: bool) {
+        let tx_actions = vec![
+            TxAction::Roc,
+            TxAction::RiCGDist,
+            TxAction::RiDiv,
+            TxAction::CGDiv,
+        ];
+        for action in tx_actions {
+            let mut csvtx = fully_populated_csvtx(action, use_total_amount);
+            csvtx.shares = None;
+            let csvtx = csvtx; // finalize
+
+            let dist_specs = super::DistTxSpecifics {
+                amount: if csvtx.amount_per_share.is_some() {
+                    TotalOrAmountPerShare::AmountPerShare(gez(csvtx
                         .amount_per_share
                         .unwrap()))
                 } else {
-                    TotalOrAmountPerShare::Total(gez(roc_csvtx
-                        .total_amount
-                        .unwrap()))
+                    TotalOrAmountPerShare::Total(gez(csvtx.total_amount.unwrap()))
                 },
                 tx_currency_and_rate: CurrencyAndExchangeRate::rq_new(
-                    roc_csvtx.tx_currency.clone().unwrap(),
-                    pos(roc_csvtx.tx_curr_to_local_exchange_rate.unwrap()),
+                    csvtx.tx_currency.clone().unwrap(),
+                    pos(csvtx.tx_curr_to_local_exchange_rate.unwrap()),
                 ),
-            });
+            };
 
-        let tx = Tx::try_from(roc_csvtx).unwrap();
-        assert_big_struct_eq(&tx, &exp_roc_tx);
-        assert_big_struct_eq(Tx::try_from(tx.to_csvtx()).unwrap(), tx);
+            let exp_tx = exp_tx_from_full_csv(
+                &csvtx,
+                match action {
+                    TxAction::Roc => super::TxActionSpecifics::Roc(dist_specs),
+                    TxAction::RiCGDist => {
+                        super::TxActionSpecifics::RiCGDist(dist_specs)
+                    }
+                    TxAction::RiDiv => super::TxActionSpecifics::RiDiv(dist_specs),
+                    TxAction::CGDiv => super::TxActionSpecifics::CGDiv(dist_specs),
+                    _ => panic!(),
+                },
+            );
+
+            let tx = Tx::try_from(csvtx).unwrap();
+            assert_big_struct_eq(&tx, &exp_tx);
+            assert_big_struct_eq(Tx::try_from(tx.to_csvtx()).unwrap(), tx);
+        }
     }
 
     #[test]
     fn test_csvtx_to_tx_full_amt_per_share() {
-        do_test_csvtx_to_tx_full(false);
+        // Fully explicit txs
+        do_test_csvtx_to_tx_full_buy(false);
+        do_test_csvtx_to_tx_full_sell(false);
+        do_test_csvtx_to_tx_full_sfla(false);
+        do_test_csvtx_to_tx_full_dists(false);
     }
 
     #[test]
     fn test_csvtx_to_tx_full_total_amt() {
-        do_test_csvtx_to_tx_full(true);
+        // Fully explicit txs
+        do_test_csvtx_to_tx_full_buy(true);
+        do_test_csvtx_to_tx_full_sell(true);
+        do_test_csvtx_to_tx_full_sfla(true);
+        do_test_csvtx_to_tx_full_dists(true);
     }
 
     #[test]

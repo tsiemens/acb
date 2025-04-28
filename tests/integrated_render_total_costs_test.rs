@@ -8,8 +8,8 @@ use acb::{
     portfolio::{
         bookkeeping::calc_total_costs,
         render::{render_total_costs, RenderTable},
-        Affiliate, CurrencyAndExchangeRate, PortfolioSecurityStatus, RocTxSpecifics,
-        Tx, TxActionSpecifics, TxDelta,
+        Affiliate, CurrencyAndExchangeRate, DistTxSpecifics,
+        PortfolioSecurityStatus, Tx, TxActionSpecifics, TxDelta,
     },
     util::{
         date::parse_standard_date, decimal::GreaterEqualZeroDecimal, rw::WriteHandle,
@@ -51,7 +51,7 @@ fn get_delta(td: Td) -> TxDelta {
             trade_date: parse_standard_date("1970-01-01").unwrap(),
             settlement_date: td.settle_date(),
             // This is meaningless here. Just the simplest to populate
-            action_specifics: TxActionSpecifics::Roc(RocTxSpecifics {
+            action_specifics: TxActionSpecifics::Roc(DistTxSpecifics {
                 amount: acb::portfolio::TotalOrAmountPerShare::Total(gezdec!(0)),
                 tx_currency_and_rate: CurrencyAndExchangeRate::default(),
             }),

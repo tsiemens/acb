@@ -246,7 +246,11 @@ fn get_superficial_loss_info(
                 af_split_adjustments.insert(after_tx_affil, new_split_adjustment);
             }
             // These don't change the share quantity, so they can be ignored
-            TxActionSpecifics::Roc(_) | TxActionSpecifics::Sfla(_) => (),
+            TxActionSpecifics::Roc(_)
+            | TxActionSpecifics::RiCGDist(_)
+            | TxActionSpecifics::RiDiv(_)
+            | TxActionSpecifics::CGDiv(_)
+            | TxActionSpecifics::Sfla(_) => (),
         }
     }
 
@@ -304,6 +308,9 @@ fn get_superficial_loss_info(
             // ignored
             TxActionSpecifics::Sell(_)
             | TxActionSpecifics::Roc(_)
+            | TxActionSpecifics::RiCGDist(_)
+            | TxActionSpecifics::RiDiv(_)
+            | TxActionSpecifics::CGDiv(_)
             | TxActionSpecifics::Sfla(_) => (),
         }
     }

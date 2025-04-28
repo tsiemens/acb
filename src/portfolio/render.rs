@@ -32,6 +32,18 @@ pub struct CostsTables {
     pub yearly: RenderTable,
 }
 
+#[derive(PartialEq)]
+pub enum SignDisplay {
+    OnlyMinus,
+    PlusAndMinus,
+}
+
+const EMPTY_CELL: &str = "-";
+
+fn empty_cell() -> String {
+    EMPTY_CELL.to_string()
+}
+
 struct PrintHelper {
     print_all_decimals: bool,
     display_none_env_setting: bool,
@@ -62,7 +74,7 @@ impl PrintHelper {
         if self.display_none_env_setting {
             "None"
         } else {
-            "-"
+            EMPTY_CELL
         }
     }
 
@@ -119,14 +131,14 @@ impl PrintHelper {
         }
     }
 
-    pub fn plus_minus_dollar(&self, val: Decimal, show_plus: bool) -> String {
-        self.plus_minus_opt_dollar(Some(val), show_plus)
+    pub fn plus_minus_dollar(&self, val: Decimal, sign: SignDisplay) -> String {
+        self.plus_minus_opt_dollar(Some(val), sign)
     }
 
     pub fn plus_minus_opt_dollar(
         &self,
         opt_val: Option<Decimal>,
-        show_plus: bool,
+        sign: SignDisplay,
     ) -> String {
         let val = match opt_val {
             Some(v) => v,
@@ -137,7 +149,11 @@ impl PrintHelper {
         if is_negative(&val) {
             format!("-${}", self.curr_str(val * Decimal::NEGATIVE_ONE))
         } else {
-            let plus = if show_plus { "+" } else { "" };
+            let plus = if sign == SignDisplay::PlusAndMinus {
+                "+"
+            } else {
+                ""
+            };
             format!("{}${}", plus, self.curr_str(val))
         }
     }
@@ -214,6 +230,7 @@ pub fn render_tx_table_model(
 
     let mut saw_superficial_loss = false;
     let mut saw_over_applied_sfl = false;
+    let mut saw_t_slip_cap_gain = false;
 
     for d in deltas {
         let mut superficial_loss_asterix = "".to_string();
@@ -237,7 +254,10 @@ pub fn render_tx_table_model(
 
                     superficial_loss_asterix = format!(
                         " *\n(SfL {}{}; {}{})",
-                        ph.plus_minus_dollar(*sfl.superficial_loss, false),
+                        ph.plus_minus_dollar(
+                            *sfl.superficial_loss,
+                            SignDisplay::OnlyMinus
+                        ),
                         if specified_sfl_is_forced { "!" } else { "" },
                         sfl.ratio.round_dp(2),
                         extra_sfl_note_str
@@ -270,6 +290,7 @@ pub fn render_tx_table_model(
         let mut commission: Option<String> = None;
         let mut capital_gains: Option<String> = None;
         let mut new_share_balance = String::new();
+        let mut acb_delta = d.acb_delta();
 
         match &tx.action_specifics {
             super::TxActionSpecifics::Buy(_) | super::TxActionSpecifics::Sell(_) => {
@@ -311,7 +332,7 @@ pub fn render_tx_table_model(
                     if let Some(cap_gain) = d.capital_gain {
                         capital_gains = Some(format!(
                             "{}{}",
-                            ph.plus_minus_dollar(cap_gain, false),
+                            ph.plus_minus_dollar(cap_gain, SignDisplay::OnlyMinus),
                             superficial_loss_asterix
                         ));
                     }
@@ -328,29 +349,48 @@ pub fn render_tx_table_model(
 
                 new_share_balance = changing_new_share_balance_str();
             }
-            super::TxActionSpecifics::Roc(roc_specs) => {
+            super::TxActionSpecifics::Roc(dist_specs)
+            | super::TxActionSpecifics::RiCGDist(dist_specs)
+            | super::TxActionSpecifics::RiDiv(dist_specs)
+            | super::TxActionSpecifics::CGDiv(dist_specs) => {
                 shares = Some(*d.pre_status.share_balance);
-                match &roc_specs.amount {
+                match &dist_specs.amount {
                     super::TotalOrAmountPerShare::Total(total) => {
                         amount_str = ph.curr_with_fx_str(
                             **total,
-                            &roc_specs.tx_currency_and_rate,
+                            &dist_specs.tx_currency_and_rate,
                         );
                         amount_per_share_str = ph.curr_with_fx_str(
                             **total / shares.unwrap(),
-                            &roc_specs.tx_currency_and_rate,
+                            &dist_specs.tx_currency_and_rate,
                         );
                     }
                     super::TotalOrAmountPerShare::AmountPerShare(aps) => {
                         amount_str = ph.curr_with_fx_str(
                             shares.unwrap() * **aps,
-                            &roc_specs.tx_currency_and_rate,
+                            &dist_specs.tx_currency_and_rate,
                         );
                         amount_per_share_str = ph.curr_with_fx_str(
                             **aps,
-                            &roc_specs.tx_currency_and_rate,
+                            &dist_specs.tx_currency_and_rate,
                         );
                     }
+                }
+
+                if let Some(cap_gain) = d.capital_gain {
+                    capital_gains = Some(format!(
+                        "{} (T)",
+                        ph.plus_minus_dollar(cap_gain, SignDisplay::OnlyMinus),
+                    ));
+                    saw_t_slip_cap_gain = true;
+                }
+
+                if acb_delta.is_some_and(|v| v.is_zero())
+                    && tx.action() == super::TxAction::CGDiv
+                {
+                    // Theoretically, the delta should _always_ be zero with CGDiv,
+                    // but for the sake of sanity, let's not overwrite it if not.
+                    acb_delta = None;
                 }
             }
             super::TxActionSpecifics::Sfla(sfla_specs) => {
@@ -374,6 +414,8 @@ pub fn render_tx_table_model(
                     changing_new_share_balance_str(),
                     split_specs.ratio.pre_to_post_factor()
                 );
+                // Splits to not affect ACB, so we don't want to show anything
+                acb_delta = None;
             }
         }
 
@@ -392,17 +434,17 @@ pub fn render_tx_table_model(
             tx.security.clone(),
             tx.trade_date.to_string(),
             tx.settlement_date.to_string(),
-            tx.action().pretty_str().to_string(),
+            tx.action().med_pretty_str().to_string(),
             amount_str,
-            shares.map_or(s("-"), |s| s.to_string()),
+            shares.map_or(empty_cell(), |s| s.to_string()),
             amount_per_share_str,
-            acb_of_sale.unwrap_or(s("-")),
-            commission.unwrap_or(s("-")),
-            capital_gains.unwrap_or(s("-")),
+            acb_of_sale.unwrap_or(empty_cell()),
+            commission.unwrap_or(empty_cell()),
+            capital_gains.unwrap_or(empty_cell()),
             new_share_balance,
-            ph.plus_minus_opt_dollar(d.acb_delta(), true),
+            ph.plus_minus_opt_dollar(acb_delta, SignDisplay::PlusAndMinus),
             ph.opt_dollar_str(d.post_status.total_acb.map(|d| *d)),
-            acb_per_share.unwrap_or(s("-")),
+            acb_per_share.unwrap_or(empty_cell()),
             tx.affiliate.name().to_string(),
             wrap_str_to_width(tx.memo.as_str(), 32),
         ];
@@ -416,11 +458,12 @@ pub fn render_tx_table_model(
     for year in &years {
         year_strs.push(year.to_string());
         let yearly_total = *gains.capital_gains_years_totals.get(&year).unwrap();
-        year_val_strs.push(ph.plus_minus_dollar(yearly_total, false));
+        year_val_strs
+            .push(ph.plus_minus_dollar(yearly_total, SignDisplay::OnlyMinus));
     }
     let mut total_footer_label = s("Total");
     let mut total_footer_vals_str =
-        ph.plus_minus_dollar(gains.capital_gains_total, false);
+        ph.plus_minus_dollar(gains.capital_gains_total, SignDisplay::OnlyMinus);
     if years.len() > 0 {
         total_footer_label =
             format!("{}{}{}", total_footer_label, "\n", year_strs.join("\n"));
@@ -439,6 +482,11 @@ pub fn render_tx_table_model(
 
     // Notes
     let mut notes = Vec::<String>::new();
+    if saw_t_slip_cap_gain {
+        notes.push(s(
+            " <gain> (T) = Capital gain that should appear on your T-Slip",
+        ));
+    }
     if saw_superficial_loss {
         notes.push(s(" SfL = Superficial loss adjustment"));
     }
@@ -481,13 +529,13 @@ pub fn render_aggregate_capital_gains(
 
         rows.push(vec![
             year.to_string(),
-            ph.plus_minus_dollar(yearly_total, false),
+            ph.plus_minus_dollar(yearly_total, SignDisplay::OnlyMinus),
         ]);
     }
 
     rows.push(vec![
         s("Since inception"),
-        ph.plus_minus_dollar(gains.capital_gains_total, false),
+        ph.plus_minus_dollar(gains.capital_gains_total, SignDisplay::OnlyMinus),
     ]);
 
     RenderTable {

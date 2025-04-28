@@ -18,6 +18,9 @@ fn parse_csv_action(value: &str) -> Result<TxAction, Error> {
         "buy" => Ok(TxAction::Buy),
         "sell" => Ok(TxAction::Sell),
         "roc" => Ok(TxAction::Roc),
+        "ricgdist" => Ok(TxAction::RiCGDist),
+        "ridiv" => Ok(TxAction::RiDiv),
+        "cgdiv" => Ok(TxAction::CGDiv),
         "sfla" => Ok(TxAction::Sfla),
         "split" => Ok(TxAction::Split),
         _ => Err(format!("Invalid action '{value}'")),
@@ -864,16 +867,20 @@ mod tests {
         let mut d_reader =
         CsvFileBuilder::with_custom_header_line(
             "security,trade date,settlement date,action,shares,amount/share,commission,currency,\
-			exchange rate,commission currency,commission exchange rate,\
+            exchange rate,commission currency,commission exchange rate,\
             superficial loss,split ratio,affiliate,memo\n"
         )
             .single_csv_reader_raw(&vec![
                 "FOO,2016-01-03,2016-01-05,Sell,5,1.6,0,CAD,,CAD,,,,Default,a memo",
-			    "BAR,2016-01-03,2016-01-06,Buy,7,1.7,1,USD,1.11,USD,1.11,,,Default,a memo 2",
-			    "AA,2016-01-04,2016-01-07,Sell,1,1.7,1,USD,1.11,USD,1.11,-1.2,,Default,M3",
-			    "BB,2016-01-05,2016-01-08,Sell,2,1.7,1,USD,1.11,USD,1.11,-1.3!,,Default (R),M4",
-			    "CC,2016-01-08,2016-01-10,SfLA,2,1.3,0,CAD,,CAD,,,,B,M5",
-			    "FOO,2016-01-09,2016-01-09,Split,,1.3,,,,,,,2-for-1,Default,M6",
+                "BAR,2016-01-03,2016-01-06,Buy,7,1.7,1,USD,1.11,USD,1.11,,,Default,a memo 2",
+                "AA,2016-01-04,2016-01-07,Sell,1,1.7,1,USD,1.11,USD,1.11,-1.2,,Default,M3",
+                "BB,2016-01-05,2016-01-08,Sell,2,1.7,1,USD,1.11,USD,1.11,-1.3!,,Default (R),M4",
+                "CC,2016-01-08,2016-01-10,SfLA,2,1.3,0,CAD,,CAD,,,,B,M5",
+                "FOO,2016-01-09,2016-01-09,Split,,1.3,,,,,,,2-for-1,Default,M6",
+                "CC,2016-01-08,2016-01-10,RoC,,0.1,,,,,,,,,M7",
+                "CC,2016-01-08,2016-01-10,RiCGDist,,0.2,,,,,,,,,M8",
+                "CC,2016-01-08,2016-01-10,RiDiv,,0.3,,,,,,,,,M9",
+                "CC,2016-01-08,2016-01-10,CGDiv,,0.4,,,,,,,,,M10",
             ]);
         let parsed_txs = parse_tx_csv(
             &mut d_reader,
@@ -896,7 +903,11 @@ mod tests {
             AA,2016-01-04,2016-01-07,Sell,1,1.70,1.00,USD,1.11,USD,1.11,-1.20,,Default,M3\n\
             BB,2016-01-05,2016-01-08,Sell,2,1.70,1.00,USD,1.11,USD,1.11,-1.30!,,Default (R),M4\n\
             CC,2016-01-08,2016-01-10,SfLA,2,1.30,0.00,CAD,,CAD,,,,B,M5\n\
-			FOO,2016-01-09,2016-01-09,Split,,1.30,,,,,,,2-for-1,Default,M6\n\
+            FOO,2016-01-09,2016-01-09,Split,,1.30,,,,,,,2-for-1,Default,M6\n\
+            CC,2016-01-08,2016-01-10,RoC,,0.10,,,,,,,,,M7\n\
+            CC,2016-01-08,2016-01-10,RiCGDist,,0.20,,,,,,,,,M8\n\
+            CC,2016-01-08,2016-01-10,RiDiv,,0.30,,,,,,,,,M9\n\
+            CC,2016-01-08,2016-01-10,CGDiv,,0.40,,,,,,,,,M10\n\
             "
                 .split("\n").map(|s| s.to_string()).collect::<Vec<String>>());
     }

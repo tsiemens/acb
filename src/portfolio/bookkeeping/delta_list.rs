@@ -5,8 +5,9 @@ use rust_decimal_macros::dec;
 
 use crate::{
     portfolio::{
-        Affiliate, CurrencyAndExchangeRate, DeltaSflInfo, PortfolioSecurityStatus,
-        SflaTxSpecifics, Tx, TxActionSpecifics, TxDelta,
+        Affiliate, CurrencyAndExchangeRate, DeltaSflInfo, DistTxSpecifics,
+        PortfolioSecurityStatus, SflaTxSpecifics, Tx, TxAction, TxActionSpecifics,
+        TxDelta,
     },
     util::{
         decimal::{
@@ -231,6 +232,35 @@ fn delta_for_tx(
 
     sanity_check_ptfs(&pre_tx_status, tx)?;
 
+    // Returns (amount, old_acb)
+    let get_dist_amount = |action: TxAction,
+                           dist_specs: &DistTxSpecifics|
+     -> Result<
+        (GreaterEqualZeroDecimal, GreaterEqualZeroDecimal),
+        String,
+    > {
+        let action_str = action.med_pretty_str();
+        if let Some(old_acb) = pre_tx_status.total_acb {
+            assert!(!tx.affiliate.registered());
+            let amount = match &dist_specs.amount {
+                crate::portfolio::TotalOrAmountPerShare::Total(total) => {
+                    *total * dist_specs.tx_currency_and_rate.exchange_rate.into()
+                }
+                crate::portfolio::TotalOrAmountPerShare::AmountPerShare(aps) => {
+                    *aps * pre_tx_status.share_balance
+                        * dist_specs.tx_currency_and_rate.exchange_rate.into()
+                }
+            };
+            Ok((amount, old_acb))
+        } else {
+            assert!(tx.affiliate.registered());
+            return Err(format!(
+                "Invalid {} tx on {}: Registered affiliates do not have an ACB",
+                action_str, tx.trade_date
+            ));
+        }
+    };
+
     match &tx.action_specifics {
         crate::portfolio::TxActionSpecifics::Buy(buy_specs) => {
             new_share_balance =
@@ -322,36 +352,36 @@ fn delta_for_tx(
             }
         }
         crate::portfolio::TxActionSpecifics::Roc(roc_specs) => {
-            if let Some(old_acb) = pre_tx_status.total_acb {
-                assert!(!tx.affiliate.registered());
-                let acb_reduction = match &roc_specs.amount {
-                    crate::portfolio::TotalOrAmountPerShare::Total(total) => {
-                        *total * roc_specs.tx_currency_and_rate.exchange_rate.into()
-                    }
-                    crate::portfolio::TotalOrAmountPerShare::AmountPerShare(aps) => {
-                        *aps * pre_tx_status.share_balance
-                            * roc_specs.tx_currency_and_rate.exchange_rate.into()
-                    }
-                };
-
-                new_acb_total = Some(
-                    GreaterEqualZeroDecimal::try_from(*old_acb - *acb_reduction)
-                        .map_err(|_| {
-                            format!(
-                                "Invalid RoC tx on {}: RoC ({}) exceeds \
-                                         the current ACB ({})",
-                                tx.trade_date, acb_reduction, old_acb
-                            )
-                        })?,
-                );
-            } else {
-                assert!(tx.affiliate.registered());
-                return Err(format!(
-                    "Invalid RoC tx on {}: Registered affiliates \
-                                    do not have an ACB to adjust",
-                    tx.trade_date
-                ));
-            }
+            // Reduces ACB
+            let (acb_reduction, old_acb) =
+                get_dist_amount(TxAction::Roc, &roc_specs)?;
+            new_acb_total = Some(
+                GreaterEqualZeroDecimal::try_from(*old_acb - *acb_reduction)
+                    .map_err(|_| {
+                        format!(
+                            "Invalid RoC tx on {}: RoC ({}) exceeds \
+                                     the current ACB ({})",
+                            tx.trade_date, acb_reduction, old_acb
+                        )
+                    })?,
+            );
+        }
+        crate::portfolio::TxActionSpecifics::RiCGDist(dist_specs) => {
+            // Increases ACB, and applies a (T-slip) capital gain
+            let (amount, old_acb) =
+                get_dist_amount(TxAction::RiCGDist, &dist_specs)?;
+            new_acb_total = Some(old_acb + amount);
+            capital_gains = Some(*amount);
+        }
+        crate::portfolio::TxActionSpecifics::RiDiv(dist_specs) => {
+            // Increases ACB
+            let (amount, old_acb) = get_dist_amount(TxAction::RiDiv, &dist_specs)?;
+            new_acb_total = Some(old_acb + amount);
+        }
+        crate::portfolio::TxActionSpecifics::CGDiv(dist_specs) => {
+            // Just applies a (T-slip) capital gain
+            let (amount, _) = get_dist_amount(TxAction::CGDiv, &dist_specs)?;
+            capital_gains = Some(*amount);
         }
         crate::portfolio::TxActionSpecifics::Sfla(sfla_specs) => {
             if let Some(old_acb) = pre_tx_status.total_acb {
@@ -628,10 +658,14 @@ mod tests {
         delta_for_tx(tx, Rc::new(sptf.clone())).unwrap_err()
     }
 
-    fn validate_delta(delta: TxDelta, tdt: TDt) {
+    fn validate_delta_ref(delta: TxDelta, tdt: &TDt) {
         assert_big_struct_eq(delta.post_status, tdt.post_st.x());
         assert_eq!(delta.capital_gain, tdt.gain);
         assert_eq!(delta.sfl.map(|s| s.superficial_loss), tdt.sfl);
+    }
+
+    fn validate_delta(delta: TxDelta, tdt: TDt) {
+        validate_delta_ref(delta, &tdt);
     }
 
     fn txs_to_delta_list_no_err(txs: Vec<Tx>) -> Vec<TxDelta> {
@@ -1220,6 +1254,20 @@ mod tests {
 
     #[test]
     #[rustfmt::skip]
+    fn test_basic_dist_acb_errors() {
+        let tx_actions = vec![A::Roc, A::RiCGDist, A::RiDiv, A::CGDiv];
+        for action in tx_actions {
+            // Test that dist cannot occur on registered affiliates,
+            // since they have no ACB
+            let sptf = TPSS{shares: gez!(5), total_acb: None, ..def()}.x();
+            let tx = TTx{t_day: 0, act: action, price: gez!(3.0), af_name: "(R)",
+                        ..def()}.x();
+            delta_for_tx_has_err(tx, &sptf);
+        }
+    }
+
+    #[test]
+    #[rustfmt::skip]
     fn test_basic_roc_acb_errors() {
         // Test that RoC cannot exceed the current ACB
         let sptf = TPSS{shares: gez!(2), total_acb: sgez!(20.0), ..def()}.x();
@@ -1230,56 +1278,160 @@ mod tests {
         let sptf = TPSS{shares: gez!(2), total_acb: sgez!(20.0), ..def()}.x();
         let tx = TTx{t_day: 0, act: A::Roc, t_amt: gez!(21.0), ..def()}.x();
         delta_for_tx_has_err(tx, &sptf);
+    }
 
-        // Test that RoC cannot occur on registered affiliates,
-        // since they have no ACB
-        let sptf = TPSS{shares: gez!(5), total_acb: None, ..def()}.x();
-        let tx = TTx{t_day: 0, act: A::Roc, price: gez!(3.0), af_name: "(R)",
-                     ..def()}.x();
-        delta_for_tx_has_err(tx, &sptf);
+    #[test]
+    #[rustfmt::skip]
+    fn test_basic_reinvested_cap_gain_dist_acb() {
+        // Test basic RiCGDist with different AllAffiliatesShareBalance
+        let sptf = TPSS{shares: gez!(2), all_shares: gez!(8), total_acb: sgez!(20.0),
+            ..def()}.x();
+        let tx = TTx{t_day: 0, act: A::RiCGDist, price: gez!(1.0), ..def()}.x();
+
+        let delta = delta_for_tx_ok(tx, &sptf);
+        let exp_delta = TDt{post_st: TPSS{shares: gez!(2), all_shares: gez!(8),
+                                          total_acb: sgez!(22.0), ..def()},
+                            gain: sdec!(2.0),
+                        ..def()};
+        validate_delta_ref(delta, &exp_delta);
+
+        // Same test with total amount instead
+        let tx = TTx{t_day: 0, act: A::RiCGDist, t_amt: gez!(2.0), ..def()}.x();
+        let delta = delta_for_tx_ok(tx, &sptf);
+        validate_delta_ref(delta, &exp_delta);
+
+        // Test RiCGDist with USD
+        let sptf = TPSS{shares: gez!(2), total_acb: sgez!(20.0), ..def()}.x();
+        let tx = TTx{t_day: 0, act: A::RiCGDist, price: gez!(1.0), curr: usd(),
+                     fx_rate: gez!(2.0), ..def()}.x();
+
+        let delta = delta_for_tx_ok(tx, &sptf);
+        let exp_delta = TDt{post_st: TPSS{shares: gez!(2),
+                                          total_acb: sgez!(24.0), ..def()},
+                            gain: sdec!(4.0),
+                            ..def()};
+        validate_delta_ref(delta, &exp_delta);
+
+        // Same test with total amount instead
+        let tx = TTx{t_day: 0, act: A::RiCGDist, t_amt: gez!(2.0), curr: usd(),
+                     fx_rate: gez!(2.0), ..def()}.x();
+
+        let delta = delta_for_tx_ok(tx, &sptf);
+        validate_delta_ref(delta, &exp_delta);
+    }
+
+    #[test]
+    #[rustfmt::skip]
+    fn test_basic_reinvested_dividend_acb() {
+        // Test basic RiDiv with different AllAffiliatesShareBalance
+        let sptf = TPSS{shares: gez!(2), all_shares: gez!(8), total_acb: sgez!(20.0),
+            ..def()}.x();
+        let tx = TTx{t_day: 0, act: A::RiDiv, price: gez!(1.0), ..def()}.x();
+
+        let delta = delta_for_tx_ok(tx, &sptf);
+        let exp_delta = TDt{post_st: TPSS{shares: gez!(2), all_shares: gez!(8),
+                                          total_acb: sgez!(22.0), ..def()},
+                        ..def()};
+        validate_delta_ref(delta, &exp_delta);
+
+        // Same test with total amount instead
+        let tx = TTx{t_day: 0, act: A::RiDiv, t_amt: gez!(2.0), ..def()}.x();
+        let delta = delta_for_tx_ok(tx, &sptf);
+        validate_delta_ref(delta, &exp_delta);
+
+        // Test RiDiv with USD
+        let sptf = TPSS{shares: gez!(2), total_acb: sgez!(20.0), ..def()}.x();
+        let tx = TTx{t_day: 0, act: A::RiDiv, price: gez!(1.0), curr: usd(),
+                     fx_rate: gez!(2.0), ..def()}.x();
+
+        let delta = delta_for_tx_ok(tx, &sptf);
+        let exp_delta = TDt{post_st: TPSS{shares: gez!(2),
+                                          total_acb: sgez!(24.0), ..def()},
+                            ..def()};
+        validate_delta_ref(delta, &exp_delta);
+
+        // Same test with total amount instead
+        let tx = TTx{t_day: 0, act: A::RiDiv, t_amt: gez!(2.0), curr: usd(),
+                     fx_rate: gez!(2.0), ..def()}.x();
+
+        let delta = delta_for_tx_ok(tx, &sptf);
+        validate_delta_ref(delta, &exp_delta);
+    }
+
+    #[test]
+    #[rustfmt::skip]
+    fn test_basic_cap_gain_dividend_acb() {
+        // Test basic CGDiv with different AllAffiliatesShareBalance
+        let sptf = TPSS{shares: gez!(2), all_shares: gez!(8), total_acb: sgez!(20.0),
+            ..def()}.x();
+        let tx = TTx{t_day: 0, act: A::CGDiv, price: gez!(1.0), ..def()}.x();
+
+        let delta = delta_for_tx_ok(tx, &sptf);
+        let exp_delta = TDt{post_st: TPSS{shares: gez!(2), all_shares: gez!(8),
+                                          total_acb: sgez!(20.0), ..def()},
+                            gain: sdec!(2.0),
+                        ..def()};
+        validate_delta_ref(delta, &exp_delta);
+
+        // Same test with total amount instead
+        let tx = TTx{t_day: 0, act: A::CGDiv, t_amt: gez!(2.0), ..def()}.x();
+        let delta = delta_for_tx_ok(tx, &sptf);
+        validate_delta_ref(delta, &exp_delta);
+
+        // Test CGDiv with USD
+        let sptf = TPSS{shares: gez!(2), total_acb: sgez!(20.0), ..def()}.x();
+        let tx = TTx{t_day: 0, act: A::CGDiv, price: gez!(1.0), curr: usd(),
+                     fx_rate: gez!(2.0), ..def()}.x();
+
+        let delta = delta_for_tx_ok(tx, &sptf);
+        let exp_delta = TDt{post_st: TPSS{shares: gez!(2),
+                                          total_acb: sgez!(20.0), ..def()},
+                            gain: sdec!(4.0),
+                            ..def()};
+        validate_delta_ref(delta, &exp_delta);
+
+        // Same test with total amount instead
+        let tx = TTx{t_day: 0, act: A::CGDiv, t_amt: gez!(2.0), curr: usd(),
+                     fx_rate: gez!(2.0), ..def()}.x();
+
+        let delta = delta_for_tx_ok(tx, &sptf);
+        validate_delta_ref(delta, &exp_delta);
     }
 
     #[test]
     #[rustfmt::skip]
     fn test_basic_roc_acb() {
-
         // Test basic ROC with different AllAffiliatesShareBalance
         let sptf = TPSS{shares: gez!(2), all_shares: gez!(8), total_acb: sgez!(20.0),
                         ..def()}.x();
         let tx = TTx{t_day: 0, act: A::Roc, price: gez!(1.0), ..def()}.x();
 
         let delta = delta_for_tx_ok(tx, &sptf);
-        validate_delta(delta,
-            TDt{post_st: TPSS{shares: gez!(2), all_shares: gez!(8),
-                total_acb: sgez!(18.0), ..def()}, ..def()});
+        let exp_delta = TDt{post_st: TPSS{shares: gez!(2), all_shares: gez!(8),
+                            total_acb: sgez!(18.0), ..def()}, ..def()};
+        validate_delta_ref(delta, &exp_delta);
 
         // Same test with total amount instead
         let tx = TTx{t_day: 0, act: A::Roc, t_amt: gez!(2.0), ..def()}.x();
-
         let delta = delta_for_tx_ok(tx, &sptf);
-        validate_delta(delta,
-            TDt{post_st: TPSS{shares: gez!(2), all_shares: gez!(8),
-                total_acb: sgez!(18.0), ..def()}, ..def()});
+        validate_delta_ref(delta, &exp_delta);
 
-        // Test RoC with exchange
+        // Test RoC with USD
         let sptf = TPSS{shares: gez!(2), total_acb: sgez!(20.0), ..def()}.x();
         let tx = TTx{t_day: 0, act: A::Roc, price: gez!(1.0), curr: usd(),
                      fx_rate: gez!(2.0), ..def()}.x();
 
         let delta = delta_for_tx_ok(tx, &sptf);
-        validate_delta(delta,
-            TDt{post_st: TPSS{shares: gez!(2), total_acb: sgez!(16.0), ..def()},
-                ..def()});
+        let exp_delta = TDt{post_st: TPSS{shares: gez!(2), total_acb: sgez!(16.0), ..def()},
+                            ..def()};
+        validate_delta_ref(delta, &exp_delta);
 
         // Same test with total amount instead
         let tx = TTx{t_day: 0, act: A::Roc, t_amt: gez!(2.0), curr: usd(),
             fx_rate: gez!(2.0), ..def()}.x();
 
         let delta = delta_for_tx_ok(tx, &sptf);
-        validate_delta(delta,
-            TDt{post_st: TPSS{shares: gez!(2), total_acb: sgez!(16.0), ..def()},
-                ..def()});
-
+        validate_delta_ref(delta, &exp_delta);
     }
 
     #[test]
