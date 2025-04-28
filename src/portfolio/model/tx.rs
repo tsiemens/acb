@@ -43,11 +43,11 @@ impl TxAction {
         match self {
             TxAction::Buy => "Buy",
             TxAction::Sell => "Sell",
-            TxAction::Roc => "RoC", // TODO consider making this longer. Ret. of Cap. ?
+            TxAction::Roc => "Ret. of Cap.",
             TxAction::RiCGDist => "Reinv. Cap. Gains Dist.",
             TxAction::RiDiv => "Reinv. Div.",
             TxAction::CGDiv => "Cap. Gains Div.",
-            TxAction::Sfla => "SfLA", // TODO consider making this longer. Sprfcl. Loss Adj. ?
+            TxAction::Sfla => "Sprfcl. Loss Adj.",
             TxAction::Split => "Split",
         }
     }
@@ -1780,6 +1780,6 @@ mod tests {
         // Invalid RoC, with specified shares
         let roc_csvtx = barebones_valid_sample_csvtx(TxAction::Roc);
         let err = Tx::try_from(roc_csvtx).unwrap_err();
-        assert_eq!(err, "RoC should not specify shares (found 123.1). This amount is automatic (the current share balance)");
+        assert_eq!(err, "Ret. of Cap. should not specify shares (found 123.1). This amount is automatic (the current share balance)");
     }
 }
