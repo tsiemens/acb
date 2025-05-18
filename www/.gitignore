@@ -2,3 +2,7 @@ html/imports/
 html/wasm/
 html/pkg/
 html/pkg
+html/dist
+dist/
+pkg
+node_modules/

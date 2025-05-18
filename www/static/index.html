@@ -3,7 +3,6 @@
         <meta charset="utf-8"/>
         <link rel="icon" href="./favicon.ico"/>
         <link rel="stylesheet" href="./index.css"/>
-        <script type="module" src="./index.js"></script>
     </head>
     <body>
       <div class="page-content-container">
@@ -71,7 +70,7 @@
                      <br><br>
                      <span>Confused? Check out these
                         <a href="https://github.com/tsiemens/acb/wiki/Transaction-Spreadsheets">details on the transactions CSV format</a>,
-                        or download a <a href="./sample_txs.csv">sample transactions file</a>.
+                        or download a <a href="./samples/sample_txs.csv">sample transactions file</a>.
                      </span>
                      <br><br>
                   </div>
@@ -127,7 +126,13 @@
       </div> <!-- end page-content-container -->
     </body>
     <script type="module">
-      import initPageJs from './index.js';
-      const context = initPageJs();
-   </script>
+      import { init } from './js/main.js';
+
+      // Call the initialization function when the page loads
+      window.addEventListener('DOMContentLoaded', () => {
+         init().catch(error => {
+            console.error("Failed to initialize application:", error);
+         });
+      });
+    </script>
 </html>
