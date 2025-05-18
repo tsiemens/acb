@@ -89,7 +89,7 @@ fn do_test_sample_csv_file_validity(render_costs: bool) {
         },
     );
     validate_sample_csv_file(
-        Path::new("./www/html/sample_txs.csv"),
+        Path::new("./www/static/samples/sample_txs.csv"),
         &dir.path,
         render_costs,
         None,

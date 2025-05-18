@@ -1,0 +1,21 @@
+{
+    "name": "acb-web-gui",
+    "version": "1.0.0",
+    "description": "A web interface for ACB",
+    "type": "module",
+    "scripts": {
+      "build": "tsc",
+      "watch": "tsc --watch",
+      "lint": "eslint . --ext .ts",
+      "lint:fix": "eslint . --ext .ts --fix",
+      "serve": "http-server -o"
+    },
+    "devDependencies": {
+      "typescript": "^5.0.0",
+      "http-server": "^14.1.1",
+      "eslint": "^9.26.0",
+      "@typescript-eslint/parser": "^8.32.0",
+      "@typescript-eslint/eslint-plugin": "^8.32.0",
+      "eslint-plugin-import": "^2.31.0"
+    }
+  }

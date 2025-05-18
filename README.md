@@ -99,6 +99,8 @@ You'll need `cargo` to either build or install the app. Installation is faily si
 
 https://doc.rust-lang.org/cargo/getting-started/installation.html
 
+If you want to build the web interface, you'll need to install `npm`, which should be available from your OS's package manager.
+
 ### Installation Only
 
 If you just want the `acb` binary, you can install it by running:
