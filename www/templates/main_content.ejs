@@ -1,0 +1,83 @@
+<div class="main-content">
+  <div class="main-content-files-and-buttons">
+
+  <div id="fileDropArea" class="file-drop-area">
+    <label for="fileSelectorInput">
+      <div class="file-drop-icon">📁</div>
+      <h3>Drop CSV Files Here</h3>
+      <p>or click to browse files</p>
+    </label>
+    <input type="file" multiple style="display:none" id="fileSelectorInput">
+  </div>
+
+  <div class="file-list">
+    <!-- eg.
+     <div class="file-item">
+      <span class="file-item-name">sample_data.csv</span>
+      <button class="file-remove-btn">&times;</button>
+    </div>
+    -->
+  </div>
+
+  <div class="collapsible-container">
+    <button class="collapsible-region-btn">
+        <span class="tooltip">
+          Initial Security Values
+          <span class="tooltiptext">
+            Add entries here for securities which you already held before any
+            transactions in any of the spreadsheets specified.
+            BE CAREFUL that transactions producing this initial value do not
+            cause superficial losses on your documented transactions.
+          </span>
+        </span>
+        <svg class="chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="6 9 12 15 18 9"></polyline>
+        </svg>
+    </button>
+    <div class="collapsible-region-content">
+      <div class="collapsible-region-content-inner">
+
+        <div id="initialSymbolStateInputs">
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <div class="action-buttons">
+    <button id="runButton" class="btn btn-primary" disabled="true">Run</button>
+    <button id="clearFilesButton" class="btn btn-secondary" disabled="true">Clear Files</button>
+  </div>
+
+  </div> <!-- class="main-content-files-and-buttons" -->
+
+  <%- include('error_box', {containerId: "mainErrorContainer"}) %>
+
+  <div class="output-area">
+    <div class="output-header">
+      <h2 class="output-title">Results</h2>
+      <div class="export-options">
+        <!-- Hidden and disabled until implemented -->
+        <button class="btn btn-secondary" disabled="true" style="display: none">Export</button>
+      </div>
+    </div>
+
+    <div class="view-mode-toggle">
+      <button class="view-mode-btn active" data-view-mode="security_tables">Securities</button>
+      <button class="view-mode-btn" data-view-mode="aggregate">Aggregate</button>
+      <button class="view-mode-btn" data-view-mode="text">Raw Text</button>
+    </div>
+
+    <div class="loading-spinner">
+      <div class="spinner"></div>
+      <p>Processing files...</p>
+    </div>
+
+    <div class="acb-output-container">
+      <div id="acbSecurityTablesOutput" class="acb-output"></div>
+      <div id="acbAggregateOutput" class="acb-output"></div>
+      <pre id="acbTextOutput" class="acb-output"></pre>
+    </div>
+
+  </div>
+</div>

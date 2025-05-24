@@ -1,7 +1,7 @@
 import { ElementModel } from "./model_lib.js";
 
 export class WasmVersionDisplay extends ElementModel {
-    public static readonly ID: string = "acb-version";
+    public static readonly ID: string = "acbVersion";
 
     public static get(): WasmVersionDisplay {
         return new WasmVersionDisplay(

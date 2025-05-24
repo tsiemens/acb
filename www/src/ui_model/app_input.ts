@@ -1,58 +1,25 @@
-import { ElementModel } from "./model_lib.js";
+import { ButtonElementModel, ElementModel } from "./model_lib.js";
 import { childHasFocus, ElemBuilder, InputElemBuilder } from "../dom_utils.js";
 
-export class RunButton extends ElementModel {
-   public static readonly ID: string = "run-button";
+export class RunButton extends ButtonElementModel {
+   public static readonly ID: string = "runButton";
 
    public static get(): RunButton {
       return new RunButton(
          ElementModel.getRequiredElementById(RunButton.ID));
    }
 
-   public setEnabled(enabled: boolean) {
-      this.element.setAttribute("disabled", (!enabled).toString());
-   }
-
    public setup(runApp: () => void) {
       this.setEnabled(false);
-      this.element.addEventListener('click', (_event) => {
+      this.setClickListener((_event) => {
          runApp();
       });
    }
 }
 
-class ExpandableOptions {
-   protected toggleButton: HTMLElement;
-
-   constructor(
-      buttonId: string,
-      protected optionsDivId: string,
-   ) {
-      this.toggleButton = ElementModel.getRequiredElementById(buttonId);
-   }
-
-   public setup() {
-      let divId = this.optionsDivId;
-      this.toggleButton.addEventListener('click', (_event) => {
-         const optionsDiv = ElementModel.getRequiredElementById(divId);
-         optionsDiv.hidden = !optionsDiv.hidden;
-      });
-   }
-}
-
-export class ExpandableExtraOptions extends ExpandableOptions {
-   public static readonly BUTTON_ID: string = "extra-options-button";
-   public static readonly DIV_ID: string = "extra-options-dropdown";
-
-   public static get(): ExpandableExtraOptions {
-      return new ExpandableExtraOptions(
-         ExpandableExtraOptions.BUTTON_ID,
-         ExpandableExtraOptions.DIV_ID,
-      );
-   }
-
-   public getPrintFullValuesCheckbox(): HTMLInputElement {
-      return document.getElementById('print-full-values-checkbox') as HTMLInputElement;
+export class AcbExtraOptions {
+   public static getPrintFullValuesCheckbox(): HTMLInputElement {
+      return document.getElementById('printFullValuesCheckbox') as HTMLInputElement;
    }
 }
 
@@ -65,7 +32,7 @@ export class InitSecItem {
 }
 
 export class InitialSymbolStateInputs extends ElementModel {
-   public static readonly ID: string = "initial-symbol-state-inputs";
+   public static readonly ID: string = "initialSymbolStateInputs";
 
    public static get(): InitialSymbolStateInputs {
       return new InitialSymbolStateInputs(
@@ -117,7 +84,7 @@ export class InitialSymbolStateInputs extends ElementModel {
                .placeholder("total cost basis (CAD)")
                .build(),
             new ElemBuilder("button")
-               .classes(["button", "b-skinny", "b-dark", "init-sec-button"])
+               .classes(["btn", "btn-secondary", "btn-skinny", "init-sec-button"])
                .text("Add") // This is set as "X" when the row is in delete mode
                .eventListener("click", buttonClickWrapper)
                .eventListener("focus", InitialSymbolStateInputs.handleFocusChange)

@@ -1,0 +1,11 @@
+<script type="module">
+   import { init } from '/js/main.js';
+
+   // Call the initialization function when the page loads
+   window.addEventListener('DOMContentLoaded', () => {
+      init().catch(error => {
+         console.error("Failed to initialize application:", error);
+      });
+      console.log("Page scripts initialized");
+   });
+</script>

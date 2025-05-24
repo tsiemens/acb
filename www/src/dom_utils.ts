@@ -44,6 +44,11 @@ class ElemBuilderT<T extends HTMLElement,
       this.e.innerText = t;
       return this as unknown as B;
    }
+
+   public innerHTML(t: string): B {
+      this.e.innerHTML = t;
+      return this as unknown as B;
+   }
 }
 
 export class ElemBuilder extends ElemBuilderT<HTMLElement, ElemBuilder>{}

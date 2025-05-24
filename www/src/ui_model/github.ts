@@ -1,28 +1,20 @@
+import { SidebarWarningsSection } from "./error_displays.js";
 import { ElementModel } from "./model_lib.js";
 
+// This just contains a static message in it.
 export class GitIssuesInfo extends ElementModel {
-    public static readonly ID: string = "git-issues-info";
+    public static readonly ID: string = "gitIssuesInfo";
 
     public static get(): GitIssuesInfo {
         return new GitIssuesInfo(
             ElementModel.getRequiredElementById(GitIssuesInfo.ID));
     }
-}
 
-export class GitIssuesLoadErrorP extends ElementModel {
-    public static readonly ID: string = "git-issues-load-error";
-
-    public static get(): GitIssuesLoadErrorP {
-        return new GitIssuesLoadErrorP(
-            ElementModel.getRequiredElementById(GitIssuesLoadErrorP.ID));
-    }
-
-    public setError(error: string | null) {
-        if (error) {
-            this.element.innerText = "Error loading git caveat issues: " + error;
-            this.show();
-         } else {
-            this.hide()
-         }
+    /** @override */
+    public setHidden(hidden: boolean): void {
+        super.setHidden(hidden);
+        if (!hidden) {
+             SidebarWarningsSection.get().show();
+        }
     }
 }

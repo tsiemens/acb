@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <link rel="icon" href="/images/favicon.ico"/>
+  <%- include('styles/base_styles') %>
+  <%- include('styles/body_styles') %>
+  <%- include('styles/sidebar_styles') %>
+  <%- include('styles/main_content_styles') %>
+  <%- include('styles/error_box_styles') %>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ACB</title>
+</head>
+<body>
+  <div class="container">
+    <%- include('header')%>
+
+    <div class="tab-navigation">
+      <div class="tab active">ACB Calculator</div>
+      <div class="tab">Coming Soon...</div>
+    </div>
+
+    <div class="content-area">
+      <div id="dialogBackdrop" class="info-dialog-backdrop"></div>
+      <%- include('info_dialogs') %>
+
+      <%- include('sidebar') %>
+      <%- include('main_content') %>
+    </div>
+  </div>
+
+  <%- include('scripts') %>
+</body>
+</html>

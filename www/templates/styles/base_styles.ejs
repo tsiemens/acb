@@ -1,0 +1,91 @@
+<style>
+:root {
+  --primary-color: #4a6fa5;
+  --primary-color-hover: #3b5998;
+  --secondary-color: #6c757d;
+  --secondary-color-hover: #5a6268;
+  --success-color: #28a745;
+  --light-color: #f8f9fa;
+  --dark-color: #343a40;
+  --border-radius: 8px;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+
+/* Tooltip container */
+.tooltip {
+  border-bottom: 1px dotted black; /* If you want dots under the hoverable text */
+}
+
+/* Tooltip text */
+.tooltip .tooltiptext {
+   visibility: hidden;
+   width: 140pt;
+   padding: 8pt;
+   background-color: var(--dark-color);
+   color: #fff;
+   font-size: 10pt;
+   text-align: center;
+   border-radius: 6px;
+
+   /* Position the tooltip text - see examples below! */
+   position: absolute;
+   z-index: 1;
+}
+
+/* Show the tooltip text when you mouse over the tooltip container */
+.tooltip:hover .tooltiptext {
+  visibility: visible;
+}
+
+
+.btn {
+  padding: 10px 20px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: 500;
+  transition: background-color 0.2s;
+}
+.btn[disabled=true],
+.btn:hover[disabled=true] {
+   filter: saturate(0.2) brightness(1.8);
+}
+
+.btn-primary {
+  background-color: var(--primary-color);
+  color: white;
+}
+.btn-primary:hover {
+  background-color: var(--primary-color-hover);
+}
+.btn-primary:hover[disabled=true] {
+  /* Avoid color change on hover while disabled */
+  background-color: var(--primary-color);
+}
+
+.btn-secondary {
+  background-color: var(--secondary-color);
+  color: white;
+}
+.btn-secondary:hover {
+  background-color: var(--secondary-color-hover);
+}
+.btn-secondary:hover[disabled=true] {
+  /* Avoid color change on hover while disabled */
+  background-color: var(--secondary-color);
+}
+
+.btn-skinny {
+   padding-left: 8px;
+   padding-right: 8px;
+   padding-top: 5px;
+   padding-bottom: 5px;
+}
+
+</style>
