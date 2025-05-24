@@ -4,18 +4,21 @@
     "description": "A web interface for ACB",
     "type": "module",
     "scripts": {
-      "build": "tsc",
-      "watch": "tsc --watch",
-      "lint": "eslint . --ext .ts",
-      "lint:fix": "eslint . --ext .ts --fix",
-      "serve": "http-server -o"
+        "render-templates": "node render.cjs",
+        "build-ts": "tsc",
+        "watch-ts": "tsc --watch",
+        "build": "npm run render-templates && npm run build-ts",
+        "lint": "eslint . --ext .ts",
+        "lint:fix": "eslint . --ext .ts --fix",
+        "serve": "http-server -o / dist"
     },
     "devDependencies": {
-      "typescript": "^5.0.0",
-      "http-server": "^14.1.1",
-      "eslint": "^9.26.0",
-      "@typescript-eslint/parser": "^8.32.0",
-      "@typescript-eslint/eslint-plugin": "^8.32.0",
-      "eslint-plugin-import": "^2.31.0"
+        "@typescript-eslint/eslint-plugin": "^8.32.0",
+        "@typescript-eslint/parser": "^8.32.0",
+        "ejs": "^3.1.10",
+        "eslint": "^9.26.0",
+        "eslint-plugin-import": "^2.31.0",
+        "http-server": "^14.1.1",
+        "typescript": "^5.0.0"
     }
-  }
+}

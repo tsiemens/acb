@@ -2,15 +2,17 @@ import { ElemBuilder } from "../dom_utils.js";
 import { AppRenderResult, RenderTable } from "../acb_wasm_types.js";
 import { ElementModel } from "./model_lib.js";
 
-enum AcbOutputTab {
-   Table = "table",
+enum AcbOutputViewMode {
+   SecurityTables = "security_tables",
+   Aggregate = "aggregate",
    Text = "text",
 }
 
 abstract class AcbOutputKindContainer extends ElementModel {
    public static getAll(): Array<AcbOutputKindContainer> {
       return [
-         TableOutputContainer.get(),
+         SecurityTablesOutputContainer.get(),
+         AggregateOutputContainer.get(),
          TextOutputContainer.get(),
       ];
    }
@@ -24,31 +26,22 @@ abstract class AcbOutputKindContainer extends ElementModel {
       }
    }
 
-   public abstract label(): AcbOutputTab;
+   public abstract viewMode(): AcbOutputViewMode;
 }
 
 export class TextOutputContainer extends AcbOutputKindContainer {
-   public static readonly ID: string = "acb-text-output";
+   public static readonly ID: string = "acbTextOutput";
 
    public static get(): TextOutputContainer {
       return new TextOutputContainer(
          ElementModel.getRequiredElementById(TextOutputContainer.ID));
    }
 
-   public label(): AcbOutputTab { return AcbOutputTab.Text; }
+   public viewMode(): AcbOutputViewMode { return AcbOutputViewMode.Text; }
 }
 
-export class TableOutputContainer extends AcbOutputKindContainer {
-   public static readonly ID: string = "acb-table-output";
-
-   public static get(): TableOutputContainer {
-      return new TableOutputContainer(
-         ElementModel.getRequiredElementById(TableOutputContainer.ID));
-   }
-
-   public label(): AcbOutputTab { return AcbOutputTab.Table; }
-
-   private static makeTableHeaderRow(tableModel: RenderTable): HTMLElement {
+abstract class TableOutputContainerBase extends AcbOutputKindContainer {
+   protected static makeTableHeaderRow(tableModel: RenderTable): HTMLElement {
       const tr = new ElemBuilder("tr").build();
       for (const header of tableModel.header) {
          tr.appendChild(new ElemBuilder("th").text(header).build());
@@ -56,7 +49,7 @@ export class TableOutputContainer extends AcbOutputKindContainer {
       return tr;
    }
 
-   private static makeTableContainer(
+   protected static makeTableContainer(
       headerRowTr: HTMLElement, tbody: HTMLElement): HTMLElement {
 
       const table = new ElemBuilder('table').children([
@@ -70,27 +63,21 @@ export class TableOutputContainer extends AcbOutputKindContainer {
          .build();
    }
 
-   private static makeTableTitle(title: string): HTMLElement {
+   protected static makeTableTitle(title: string): HTMLElement {
       return new ElemBuilder('div').classes(['table-title']).text(title)
          .build();
    }
+}
 
-   private static makeAggregateGainsTable(model: AppRenderResult): HTMLElement {
-      const aggModel = model.aggregateGainsTable;
-      console.log("Agg model:");
-      console.log(aggModel);
-      const tr = TableOutputContainer.makeTableHeaderRow(aggModel);
-      const tbody = new ElemBuilder('tbody').build();
-      for (const row of aggModel.rows) {
-         const rowElem = new ElemBuilder('tr').build();
-         for (const item of row) {
-            const td = new ElemBuilder('td').text(item).build();
-            rowElem.appendChild(td);
-         }
-         tbody.appendChild(rowElem);
-      }
-      return TableOutputContainer.makeTableContainer(tr, tbody);
+export class SecurityTablesOutputContainer extends TableOutputContainerBase {
+   public static readonly ID: string = "acbSecurityTablesOutput";
+
+   public static get(): SecurityTablesOutputContainer {
+      return new SecurityTablesOutputContainer(
+         ElementModel.getRequiredElementById(SecurityTablesOutputContainer.ID));
    }
+
+   public viewMode(): AcbOutputViewMode { return AcbOutputViewMode.SecurityTables; }
 
    private static addSymbolTableComponents(
       symbol: string, model: AppRenderResult,
@@ -101,7 +88,7 @@ export class TableOutputContainer extends AcbOutputKindContainer {
       if (!symbolModel) {
          throw new Error(`No symbol model found for ${symbol}`);
       }
-      const tr = TableOutputContainer.makeTableHeaderRow(symbolModel);
+      const tr = TableOutputContainerBase.makeTableHeaderRow(symbolModel);
       const tbody = new ElemBuilder('tbody').build();
 
       const addRow = function(rowItems: string[]) {
@@ -127,8 +114,8 @@ export class TableOutputContainer extends AcbOutputKindContainer {
       }
       addRow(symbolModel.footer);
 
-      const symTableContainer = TableOutputContainer.makeTableContainer(tr, tbody);
-      tablesContainer.appendChild(TableOutputContainer.makeTableTitle(symbol));
+      const symTableContainer = TableOutputContainerBase.makeTableContainer(tr, tbody);
+      tablesContainer.appendChild(TableOutputContainerBase.makeTableTitle(symbol));
       const errors = symbolModel.errors || [];
       for (const err of errors) {
          tablesContainer.appendChild(new ElemBuilder('p').classes(['error-text']).text(err).build());
@@ -142,63 +129,93 @@ export class TableOutputContainer extends AcbOutputKindContainer {
       }
    }
 
+   public populateTables(model: AppRenderResult) {
+      let tablesContainer = this.element;
+      tablesContainer.innerHTML = ""; // Clear previous tables
+
+      // Symbol tables (securityTables is a Map object)
+      const symbols = Array.from(model.securityTables.keys());
+      symbols.sort()
+      for (const symbol of symbols) {
+         SecurityTablesOutputContainer.addSymbolTableComponents(
+            symbol, model, tablesContainer);
+      }
+   }
+}
+
+export class AggregateOutputContainer extends TableOutputContainerBase {
+   public static readonly ID: string = "acbAggregateOutput";
+
+   public static get(): AggregateOutputContainer {
+      return new AggregateOutputContainer(
+         ElementModel.getRequiredElementById(AggregateOutputContainer.ID));
+   }
+
+   public viewMode(): AcbOutputViewMode { return AcbOutputViewMode.Aggregate; }
+
+   private static makeAggregateGainsTable(model: AppRenderResult): HTMLElement {
+      const aggModel = model.aggregateGainsTable;
+      console.log("Agg model:");
+      console.log(aggModel);
+      const tr = AggregateOutputContainer.makeTableHeaderRow(aggModel);
+      const tbody = new ElemBuilder('tbody').build();
+      for (const row of aggModel.rows) {
+         const rowElem = new ElemBuilder('tr').build();
+         for (const item of row) {
+            const td = new ElemBuilder('td').text(item).build();
+            rowElem.appendChild(td);
+         }
+         tbody.appendChild(rowElem);
+      }
+      return AggregateOutputContainer.makeTableContainer(tr, tbody);
+   }
+
    public populateTable(model: AppRenderResult) {
       let tablesContainer = this.element;
       tablesContainer.innerHTML = ""; // Clear previous tables
 
       // Aggregate table
       tablesContainer.appendChild(
-         TableOutputContainer.makeTableTitle("Aggregate Gains"));
+         AggregateOutputContainer.makeTableTitle("Aggregate Gains"));
       tablesContainer.appendChild(
-         TableOutputContainer.makeAggregateGainsTable(model));
-
-      // Symbol tables (securityTables is a Map object)
-      const symbols = Array.from(model.securityTables.keys());
-      symbols.sort()
-      for (const symbol of symbols) {
-         TableOutputContainer.addSymbolTableComponents(
-            symbol, model, tablesContainer);
-      }
+         AggregateOutputContainer.makeAggregateGainsTable(model));
    }
 }
 
-export class TabSelector extends ElementModel {
-   public static getAll(): Array<TabSelector> {
-      const tabLabelElems = document.getElementsByClassName('tab-label');
-      const tabLabels: Array<TabSelector> = [];
+export class OutputViewSelector extends ElementModel {
+   public static getAll(): Array<OutputViewSelector> {
+      const tabLabelElems = document.getElementsByClassName('view-mode-btn');
+      const tabLabels: Array<OutputViewSelector> = [];
       for (const tabLabel of tabLabelElems) {
-         tabLabels.push(new TabSelector(tabLabel as HTMLElement));
+         tabLabels.push(new OutputViewSelector(tabLabel as HTMLElement));
       }
       return tabLabels;
    }
 
-   public static getByLabel(label: AcbOutputTab): TabSelector {
-      return new TabSelector(
-         ElementModel.getRequiredElementByQuery(`[data-tab-label=${label}]`));
-   }
-
-   public setup(onTabActive: (tab: AcbOutputTab) => void) {
+   public setup(onViewModeActive: (tab: AcbOutputViewMode) => void) {
       this.element.addEventListener('click', (event) => {
          if (event.target) {
-            let clickedTab = new TabSelector(event.target as HTMLElement);
-            let clickedLabel = clickedTab.label();
-            TabSelectorGroup.setActiveTab(clickedLabel);
-            onTabActive(clickedLabel);
+            let clickedSelector = new OutputViewSelector(event.target as HTMLElement);
+            let clickedMode = clickedSelector.viewMode();
+            ViewModeSelectorGroup.setActiveViewMode(clickedMode);
+            onViewModeActive(clickedMode);
          }
       });
    }
 
-   public label(): AcbOutputTab {
-      let label_ = this.element.dataset.tabLabel;
-      if (!label_) {
-         throw Error("TabSelector has no label");
+   public viewMode(): AcbOutputViewMode {
+      let viewMode_ = this.element.dataset.viewMode;
+      if (!viewMode_) {
+         throw Error("TabSelector has no viewMode");
       }
-      if (label_ == AcbOutputTab.Table.toString()) {
-         return AcbOutputTab.Table;
-      } else if (label_ == AcbOutputTab.Text.toString()) {
-         return AcbOutputTab.Text;
+      if (viewMode_ == AcbOutputViewMode.SecurityTables.toString()) {
+         return AcbOutputViewMode.SecurityTables;
+      } else if (viewMode_ == AcbOutputViewMode.Text.toString()) {
+         return AcbOutputViewMode.Text;
+      } else if (viewMode_ == AcbOutputViewMode.Aggregate.toString()) {
+         return AcbOutputViewMode.Aggregate;
       }
-      throw Error(`Invalid AcbOutputTab: ${label_}`);
+      throw Error(`Invalid AcbOutputViewMode: ${viewMode_}`);
    }
 
    public setActive(active: boolean) {
@@ -211,41 +228,39 @@ export class TabSelector extends ElementModel {
    }
 }
 
-class TabSelectorGroup {
-   public static setActiveTab(label: AcbOutputTab) {
-      for (const tab of TabSelector.getAll()) {
-         let active = tab.label() == label;
-         tab.setActive(active);
+class ViewModeSelectorGroup {
+   public static setActiveViewMode(mode: AcbOutputViewMode) {
+      for (const selector of OutputViewSelector.getAll()) {
+         let active = selector.viewMode() == mode;
+         selector.setActive(active);
       }
    }
 
-   public static setup(onTabActive: (tab: AcbOutputTab) => void) {
-      for (const tab of TabSelector.getAll()) {
-         tab.setup(onTabActive);
+   public static setup(onModeActive: (mode: AcbOutputViewMode) => void) {
+      for (const selector of OutputViewSelector.getAll()) {
+         selector.setup(onModeActive);
       }
    }
 }
 
-
 export class AcbOutput {
    public static setup() {
-      let onTabActive = (label: AcbOutputTab) => {
-         AcbOutput.setActiveOutput(label);
-      };
-      TabSelectorGroup.setup(onTabActive);
+      ViewModeSelectorGroup.setup((mode: AcbOutputViewMode) => {
+         AcbOutput.setActiveOutput(mode);
+      })
 
       // Default to table output shown
-      AcbOutput.setActiveOutputAndSyncTab(AcbOutputTab.Table);
+      AcbOutput.setActiveOutputAndSyncTab(AcbOutputViewMode.SecurityTables);
    }
 
-   public static setActiveOutput(label: AcbOutputTab) {
+   public static setActiveOutput(mode: AcbOutputViewMode) {
       for (const op of AcbOutputKindContainer.getAll()) {
-         op.setActive(op.label() == label);
+         op.setActive(op.viewMode() == mode);
       }
    }
 
-   public static setActiveOutputAndSyncTab(label: AcbOutputTab) {
-      TabSelectorGroup.setActiveTab(label);
-      AcbOutput.setActiveOutput(label);
+   public static setActiveOutputAndSyncTab(viewMode: AcbOutputViewMode) {
+      ViewModeSelectorGroup.setActiveViewMode(viewMode);
+      AcbOutput.setActiveOutput(viewMode);
    }
 }

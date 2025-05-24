@@ -1,0 +1,59 @@
+<div class="sidebar">
+  <div class="info-section info-warnings-section" hidden>
+    <h3>Notices</h3>
+    <p id="gitIssuesInfo" hidden>There are currently
+      <a href="https://github.com/tsiemens/acb/issues?q=is%3Aissue+is%3Aopen+label%3A%22user+caveat%22">open caveat issues</a>.
+      Please review them and ensure they do not impact your scenario.
+   </p>
+
+  <%- include('error_box', {containerId: "gitIssuesErrorContainer", width: "100%"}) %>
+  </div>
+
+  <div class="info-section">
+    <p id="acbVersion" class="info-secondary">ACB Version: v0.0.0</p>
+
+    <h3>Information</h3>
+
+    <div class="clickable-info-item" data-dialog-id="appDescriptionDialog">
+      <p>What is this tool?</p>
+      <img src="/images/expand.svg">
+    </div>
+    <div class="clickable-info-item" data-dialog-id="fileFormatsDialog">
+      <p>Spreadsheet Format</p>
+      <img src="/images/expand.svg">
+    </div>
+    <div class="clickable-info-item" data-dialog-id="liabilityDialog">
+      <p>Liability Disclaimer</p>
+      <img src="/images/expand.svg">
+    </div>
+    <div class="clickable-info-item" data-dialog-id="dataPolicyDialog">
+      <p>Data Policy</p>
+      <img src="/images/expand.svg">
+    </div>
+    <div class="clickable-info-item" data-dialog-id="licenseDialog">
+      <p>Copyright</p>
+      <img src="/images/expand.svg">
+    </div>
+  </div>
+
+  <div class="options-section">
+    <h3>Options</h3>
+
+    <div class="option-group">
+      <div class="checkbox-container">
+        <input type="checkbox" id="printFullValuesCheckbox">
+        <label for="printFullValuesCheckbox">Render high-precision dollars</label>
+      </div>
+    </div>
+
+    <!-- <div class="option-group">
+      <label class="option-label">Processing Mode</label>
+      <select class="option-input">
+        <option>Standard Processing</option>
+        <option>Advanced Analysis</option>
+        <option>Quick Scan</option>
+      </select>
+    </div>
+    -->
+  </div>
+</div>

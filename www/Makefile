@@ -12,11 +12,9 @@ SYMLINK_STATIC = test -e dist/$1 || ln -s ../static/$1 dist/$1
 
 static-dist-link:
 	# Symlink everything in static/ into dist/
-	# eg. static/index.html -> dist/index.html
+	# eg. static/images/ -> dist/images/
 	test -e dist/ || mkdir -p dist
-	$(call SYMLINK_STATIC,index.html)
-	$(call SYMLINK_STATIC,index.css)
-	$(call SYMLINK_STATIC,favicon.ico)
+	$(call SYMLINK_STATIC,images)
 	$(call SYMLINK_STATIC,samples)
 
 npm-install:

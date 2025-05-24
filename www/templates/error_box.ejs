@@ -1,0 +1,19 @@
+<div class="error-container-outer">
+  <div id="<%= containerId %>" class="error-container" style="display: none; <%= locals?.width ? 'width: ' + width + ';' : '' %>">
+     <div class="error-header">
+         <span class="error-icon">⚠️</span>
+         <span class="error-box-title">Error</span>
+     </div>
+     <div class="error-content">
+         <p class="error-desc-pre"><%= locals?.descPre || 'Default pre-description' %></p>
+         <div class="error-message">
+             <%= locals?.errorMessage || 'Sample error message' %>
+         </div>
+         <p class="error-desc-post" style="display: none;">
+          <%= locals?.descPost || 'Default post-description' %></p>
+     </div>
+     <!-- <div class="error-footer">
+         <button class="error_close_button" class="close-button">Close</button>
+     </div> -->
+  </div>
+</div>

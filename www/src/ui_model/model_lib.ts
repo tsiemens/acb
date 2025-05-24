@@ -20,15 +20,48 @@ export class ElementModel {
         }
     }
 
-    public hide() {
-        this.element.hidden = true;
+    public getRequiredSubElementByClass(classname: string): HTMLElement {
+        let elems = this.element.getElementsByClassName(classname);
+        if (elems.length === 0) {
+            throw Error(`Could not find sub Element .${classname}`);
+        }
+        return elems[0] as HTMLElement;
     }
 
+    /** @virtual */
+    public setHidden(hidden: boolean): void {
+        this.element.hidden = hidden;
+    }
+    /** @virtual */
+    public isHidden(): boolean {
+        return this.element.hidden;
+    }
+    public hide() {
+        this.setHidden(true);
+    }
     public show() {
-        this.element.hidden = false;
+        this.setHidden(false);
+    }
+    public toggleHidden() {
+        this.setHidden(!this.isHidden());
     }
 
     public setText(text: string) {
         this.element.innerText = text;
+    }
+}
+
+export class ButtonElementModel extends ElementModel {
+    public setEnabled(enabled: boolean) {
+        // Valid for any btn/btn-primary/btn-secondary
+        if (enabled) {
+           this.element.removeAttribute("disabled");
+        } else {
+           this.element.setAttribute("disabled", "true");
+        }
+     }
+
+    public setClickListener(callback: (_event: MouseEvent) => void) {
+        this.element.addEventListener('click', callback);
     }
 }
