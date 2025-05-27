@@ -92,10 +92,9 @@ class FilesLoader {
                   file.name,
                   "Error reading " + file.name,
                   event.target && event.target.error ?
-                     `${event.target.error.name}:${event.target.error.message}` :
+                     `${event.target.error.name}: ${event.target.error.message}` :
                      "Unknown error",
                ));
-            return;
          } else {
             // If result is an ArrayBuffer, convert it to a string.
             let resultStr: string;
@@ -197,11 +196,5 @@ export class FileStager {
          }
       }
       return false;
-   }
-
-   public loadFiles(onComplete: (_: FileLoadResult) => void): void {
-      const fileList = Array.from(this.filesToUse.values());
-      const loader = new CsvFilesLoader(fileList);
-      loader.loadFiles(onComplete);
    }
 }
