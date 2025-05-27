@@ -86,6 +86,7 @@ function loadAllFileInfoAndRun() {
 
    const loader = new CsvFilesLoader(fileList);
    loader.loadFiles((result: FileLoadResult) => {
+      console.debug("loadAllFileInfoAndRun: loadFiles result: ", result);
       if (result.loadErrors.length > 0) {
          // Show the first error.
          const error = result.loadErrors[0];
