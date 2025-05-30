@@ -91,17 +91,33 @@ export class SecurityTablesOutputContainer extends TableOutputContainerBase {
       const tr = TableOutputContainerBase.makeTableHeaderRow(symbolModel);
       const tbody = new ElemBuilder('tbody').build();
 
-      const addRow = function(rowItems: string[]) {
-         const actionCol = 3;
-         let isSell = rowItems[actionCol].search(/sell/i) >= 0;
-         let isSfla = rowItems[actionCol].search(/sfla/i) >= 0;
+      const addRow = function (rowItems: string[]) {
+         const SETTLE_DATE_COL = 2;
+         const ACTION_COL = 3;
+
+         let isBuy = rowItems[ACTION_COL].search(/buy/i) >= 0;
+         let isSell = rowItems[ACTION_COL].search(/sell/i) >= 0;
+         let isSfla = rowItems[ACTION_COL].search(/sprf/i) >= 0;
+         let isSplit = rowItems[ACTION_COL].search(/split/i) >= 0;
 
          const rowElem = new ElemBuilder('tr').build();
-         if (isSell) {
+         if (isBuy) {
+            rowElem.classList.add('buy-row');
+         } else if (isSell) {
             rowElem.classList.add('sell-row');
          } else if (isSfla) {
             rowElem.classList.add('sfla-row');
+         } else if (isSplit) {
+            rowElem.classList.add('split-row');
+         } else {
+            rowElem.classList.add('other-row');
          }
+
+         // Parse year out of rowItems[SETTLE_DATE_COL], formatted as
+         // yyyy-mm-dd
+         const year: string = rowItems[SETTLE_DATE_COL].split('-')[0] || "unknown";
+         rowElem.classList.add(`year-${year}-row`);
+
          for (const item of rowItems) {
             const td = new ElemBuilder('td').text(item).build();
             rowElem.appendChild(td);
@@ -127,6 +143,66 @@ export class SecurityTablesOutputContainer extends TableOutputContainerBase {
       for (const note of symbolModel.notes || []) {
          tablesContainer.appendChild(new ElemBuilder('p').text(note).build());
       }
+
+      SecurityTablesOutputContainer.setYearRowStyles(
+         YearHighlightSelector.get().getSelectedYear()
+      );
+   }
+
+   public getYearsShownInverseOrdered(): number[] {
+      const years = new Set<number>();
+      const rows = document.querySelectorAll('[class*="year-"][class*="-row"]');
+      rows.forEach(row => {
+         row.classList.forEach(cls => {
+            if (cls.startsWith('year-') && cls.endsWith('-row')) {
+               // Extract the year part from "year-X-row"
+               const yearStr = cls.slice(5, -4);
+               const year = parseInt(yearStr, 10);
+               if (!isNaN(year)) {
+                  years.add(year);
+               }
+            }
+         });
+      });
+      // Convert years to a backward-sorted array
+      return Array.from(years).sort((a, b) => b - a);
+   }
+
+   /**
+    * Highlights rows with this year (based on their row class)
+    * @param yearToHighlight
+    */
+   public static setYearRowStyles(yearToHighlight: string | null) {
+      const styleSheet = document.styleSheets[0];
+
+      // Remove any existing rules for year highlighting
+      for (let i = styleSheet.cssRules.length - 1; i >= 0; i--) {
+         const rule = styleSheet.cssRules[i];
+         if (rule.cssText.includes(`.year-`) && rule.cssText.includes(`-row`)) {
+            styleSheet.deleteRule(i);
+         }
+      }
+
+      // Collect all year classes currently in use
+      const yearClasses = new Set<string>();
+      const rows = document.querySelectorAll('[class*="year-"][class*="-row"]');
+      rows.forEach(row => {
+         row.classList.forEach(cls => {
+            if (cls.startsWith('year-') && cls.endsWith('-row')) {
+               yearClasses.add(cls);
+            }
+         });
+      });
+
+      // Add opacity filter for all year classes except the highlighted one
+      yearClasses.forEach(yearClass => {
+         if (yearToHighlight && yearClass !== `year-${yearToHighlight}-row`) {
+            styleSheet.insertRule(
+               `.${yearClass} { filter: opacity(0.4); }`,
+               styleSheet.cssRules.length
+            );
+         }
+      });
    }
 
    public populateTables(model: AppRenderResult) {
@@ -243,6 +319,59 @@ class ViewModeSelectorGroup {
    }
 }
 
+export class YearHighlightSelector extends ElementModel {
+   public static readonly ID: string = "yearHighlightSelect";
+
+   public static get(): YearHighlightSelector {
+      return new YearHighlightSelector(
+         ElementModel.getRequiredElementById(YearHighlightSelector.ID));
+   }
+
+   public setup() {
+      this.element.addEventListener('change', () => {
+         const selectedYear = this.getSelectedYear();
+         SecurityTablesOutputContainer.setYearRowStyles(selectedYear);
+      });
+   }
+
+   public getSelectedYear(): string | null {
+      const selectElem = this.element as HTMLSelectElement;
+      const selectedValue = selectElem.value;
+      return selectedValue === "None" ? null : selectedValue;
+   }
+
+   public updateSelectableYears(years: number[]) {
+      const selectElem = this.element as HTMLSelectElement;
+      const currentSelection = selectElem.value;
+
+      // Clear all old options
+      selectElem.innerHTML = "";
+
+      // Add "None" option at the start
+      const noneOption = new ElemBuilder("option")
+         .text("None")
+         .attributes({ value: "None" })
+         .build();
+      selectElem.appendChild(noneOption);
+
+      // Add year options
+      for (const year of years) {
+         const yearOption = new ElemBuilder("option")
+         .text(year.toString())
+         .attributes({ value: year.toString() })
+         .build();
+         selectElem.appendChild(yearOption);
+      }
+
+      // Restore previous selection if still available, otherwise default to "None"
+      if (years.includes(parseInt(currentSelection))) {
+         selectElem.value = currentSelection;
+      } else {
+         selectElem.value = "None";
+      }
+   }
+}
+
 export class AcbOutput {
    public static setup() {
       ViewModeSelectorGroup.setup((mode: AcbOutputViewMode) => {
@@ -251,6 +380,8 @@ export class AcbOutput {
 
       // Default to table output shown
       AcbOutput.setActiveOutputAndSyncTab(AcbOutputViewMode.SecurityTables);
+
+      YearHighlightSelector.get().setup();
    }
 
    public static setActiveOutput(mode: AcbOutputViewMode) {

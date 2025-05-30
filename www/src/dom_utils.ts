@@ -49,6 +49,14 @@ class ElemBuilderT<T extends HTMLElement,
       this.e.innerHTML = t;
       return this as unknown as B;
    }
+
+   /* Set arbitrary attributes such as 'value', etc. */
+   public attributes(attrs: Record<string, string>): B {
+      for (const [key, value] of Object.entries(attrs)) {
+         this.e.setAttribute(key, value);
+      }
+      return this as unknown as B;
+   }
 }
 
 export class ElemBuilder extends ElemBuilderT<HTMLElement, ElemBuilder>{}

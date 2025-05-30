@@ -2,7 +2,7 @@ import { CsvFilesLoader, FileLoadResult, FileStager, printMetadataForFileList } 
 import { run_acb } from './pkg/acb_wasm.js';
 import { Result } from "./result.js";
 import { AppResultOk } from "./acb_wasm_types.js";
-import { AcbOutput, AggregateOutputContainer, SecurityTablesOutputContainer, TextOutputContainer } from "./ui_model/acb_app_output.js";
+import { AcbOutput, AggregateOutputContainer, SecurityTablesOutputContainer, TextOutputContainer, YearHighlightSelector } from "./ui_model/acb_app_output.js";
 import { AcbExtraOptions, InitialSymbolStateInputs, InitSecItem, RunButton } from "./ui_model/app_input.js";
 import { ErrorBox } from "./ui_model/error_displays.js";
 import { ClearFilesButton, FileDropArea, FileSelectorInput, SelectedFileList } from "./ui_model/file_input.js";
@@ -67,6 +67,9 @@ async function asyncRunAcb(filenames: string[], contents: string[]) {
       TextOutputContainer.get().setText(ret.textOutput);
       SecurityTablesOutputContainer.get().populateTables(ret.modelOutput);
       AggregateOutputContainer.get().populateTable(ret.modelOutput);
+      YearHighlightSelector.get().updateSelectableYears(
+         SecurityTablesOutputContainer.get().getYearsShownInverseOrdered()
+      );
       ErrorBox.getMain().hide();
    } catch (err) {
       let errMsg = typeof err === "string" ? err : (err instanceof Error ? err.message : String(err));
