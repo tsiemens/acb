@@ -19,27 +19,25 @@
     -->
   </div>
 
-  <div class="collapsible-container">
-    <button class="collapsible-region-btn">
-        <span class="tooltip">
-          Initial Security Values
-          <span class="tooltiptext">
+  <div class="collapsible-wrapper">
+    <button class="collapsible-content-btn">
+      <img class="toggle-icon" src="/images/chevron-right.svg"/>
+      Initial Security Values
+    </button>
+    <div class="collapsible-content collapsed">
+      <div class="collapsible-content-inner">
+        <div class="collapsible-content-padded-inner">
+          <h3>Initial Security Values</h3>
+          <p>
             Add entries here for securities which you already held before any
             transactions in any of the spreadsheets specified.
+          </p>
+          <p>
             BE CAREFUL that transactions producing this initial value do not
             cause superficial losses on your documented transactions.
-          </span>
-        </span>
-        <svg class="chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <polyline points="6 9 12 15 18 9"></polyline>
-        </svg>
-    </button>
-    <div class="collapsible-region-content">
-      <div class="collapsible-region-content-inner">
-
-        <div id="initialSymbolStateInputs">
+          </p>
+          <div id="initialSymbolStateInputs"></div>
         </div>
-
       </div>
     </div>
   </div>
@@ -50,6 +48,8 @@
   </div>
 
   </div> <!-- class="main-content-files-and-buttons" -->
+
+  <div class="separator"></div>
 
   <%- include('error_box', {containerId: "mainErrorContainer"}) %>
 
@@ -62,6 +62,38 @@
       </div>
     </div>
 
+    <div class="collapsible-wrapper">
+      <button class="collapsible-content-btn">
+        <img class="toggle-icon" src="/images/chevron-right.svg"/>
+        <img src="/images/eye.svg" style="height: 24px;">
+        View Settings
+      </button>
+      <div class="collapsible-content collapsed">
+        <div class="collapsible-content-inner">
+          <div class="collapsible-content-padded-inner">
+            <h3>Output View Settings</h3>
+
+            <div class="form-group">
+              <label for="yearHighlightSelect">Highlight Year:</label>
+              <select id="yearHighlightSelect">
+                <option value="" selected>None</option>
+                <option value="2025">2025</option>
+                <option value="2024">2024</option>
+                <option value="2023">2023</option>
+                <option value="2022">2022</option>
+                <option value="2021">2021</option>
+                <option value="2020">2020</option>
+                <option value="2019">2019</option>
+                <option value="2018">2018</option>
+                <option value="2017">2017</option>
+                <!-- The years here don't really matter, since they'll be
+                      set according to the output -->
+              </select>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
     <div class="view-mode-toggle">
       <button class="view-mode-btn active" data-view-mode="security_tables">Securities</button>
       <button class="view-mode-btn" data-view-mode="aggregate">Aggregate</button>
