@@ -132,17 +132,37 @@ export class SecurityTablesOutputContainer extends TableOutputContainerBase {
 
       const symTableContainer = TableOutputContainerBase.makeTableContainer(tr, tbody);
       tablesContainer.appendChild(TableOutputContainerBase.makeTableTitle(symbol));
+
+      const errorWrapper = new ElemBuilder('div')
+         .classes(['security-errors'])
+         .build();
+
       const errors = symbolModel.errors || [];
       for (const err of errors) {
-         tablesContainer.appendChild(new ElemBuilder('p').classes(['error-text']).text(err).build());
+         errorWrapper.appendChild(new ElemBuilder('p').text(err).build());
       }
       if (errors.length > 0) {
-         tablesContainer.appendChild(new ElemBuilder('p').text("Information is of parsed state only, and may not be fully correct.").build());
+         errorWrapper.appendChild(new ElemBuilder('p').text("Information is of parsed state only, and may not be fully correct.").build());
       }
+      if (errors.length == 0) {
+         errorWrapper.style.display = 'none'; // Hide if no errors
+      }
+      tablesContainer.appendChild(errorWrapper);
+
       tablesContainer.appendChild(symTableContainer);
-      for (const note of symbolModel.notes || []) {
-         tablesContainer.appendChild(new ElemBuilder('p').text(note).build());
+
+      const notesWrapper = new ElemBuilder('div')
+         .classes(['security-notes'])
+         .build();
+
+      let notes = symbolModel.notes || []
+      for (const note of notes) {
+         notesWrapper.appendChild(new ElemBuilder('p').text(note).build());
       }
+      if (notes.length == 0) {
+         notesWrapper.style.display = 'none'; // Hide if no notes
+      }
+      tablesContainer.appendChild(notesWrapper);
 
       SecurityTablesOutputContainer.setYearRowStyles(
          YearHighlightSelector.get().getSelectedYear()
