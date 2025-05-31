@@ -16,9 +16,11 @@ jobs:
 
     steps:
     - uses: actions/checkout@v4
-    - name: Build
+    - name: Build Rust
       run: make all-notest
     - name: Run tests
       run: cargo test --verbose
     - name: Check formatting
       run: make check-rustfmt
+    - name: Build WWW
+      run: make www
