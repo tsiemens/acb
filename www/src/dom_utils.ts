@@ -50,6 +50,13 @@ class ElemBuilderT<T extends HTMLElement,
       return this as unknown as B;
    }
 
+   public styles(attrs: Record<string, string>): B {
+      for (const [key, value] of Object.entries(attrs)) {
+         this.e.style.setProperty(key, value);
+      }
+      return this as unknown as B;
+   }
+
    /* Set arbitrary attributes such as 'value', etc. */
    public attributes(attrs: Record<string, string>): B {
       for (const [key, value] of Object.entries(attrs)) {
