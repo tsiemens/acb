@@ -7,6 +7,7 @@ pub mod py;
 pub mod rc;
 pub mod rw;
 pub mod sys;
+pub mod zip;
 
 #[cfg(not(target_arch = "wasm32"))]
 pub mod os;

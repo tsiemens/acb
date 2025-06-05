@@ -33,6 +33,7 @@ pub struct Options {
     pub split_annual_summary_gains: bool,
     pub render_total_costs: bool,
     pub csv_output_dir: Option<String>,
+    pub csv_output_zip: Option<String>,
     pub csv_parse_options: TxCsvParseOptions,
 }
 
@@ -50,6 +51,7 @@ impl Default for Options {
             split_annual_summary_gains: false,
             render_total_costs: false,
             csv_output_dir: None,
+            csv_output_zip: None,
             csv_parse_options: TxCsvParseOptions::default(),
         }
     }
@@ -199,7 +201,7 @@ pub async fn run_acb_app_to_render_model(
 
 fn write_render_result(
     render_res: &AppRenderResult,
-    writer: &mut dyn AcbWriter,
+    mut writer: Box<dyn AcbWriter>,
 ) -> Result<(), Error> {
     let sec_render_tables = &render_res.security_tables;
 
@@ -252,13 +254,13 @@ fn write_render_result(
         );
     }
 
-    Ok(())
+    writer.finish()
 }
 
 /// Returned Err is for exit code determination only.
 /// All errors are written to err_printer.
 pub async fn run_acb_app_to_writer(
-    writer: &mut dyn AcbWriter,
+    writer: Box<dyn AcbWriter>,
     csv_file_readers: Vec<DescribedReader>,
     all_init_status: HashMap<Security, PortfolioSecurityStatus>,
     csv_parse_options: &TxCsvParseOptions,
@@ -428,24 +430,29 @@ pub async fn run_acb_app_to_console(
         )
         .await
     } else {
-        let mut writer: Box<dyn AcbWriter> = match options.csv_output_dir {
-            Some(dir_path) => {
-                match super::outfmt::csv::CsvWriter::new_to_output_dir(&dir_path) {
-                    Ok(w) => Box::new(w),
-                    Err(e) => {
-                        write_errln!(err_printer, "{e}");
-                        return Err(());
-                    }
+        let writer: Box<dyn AcbWriter>;
+
+        if let Some(dir_path) = options.csv_output_dir {
+            match super::outfmt::csv::CsvWriter::new_to_output_dir(&dir_path) {
+                Ok(w) => writer = Box::new(w),
+                Err(e) => {
+                    write_errln!(err_printer, "{e}");
+                    return Err(());
                 }
             }
-            None => Box::new(super::outfmt::text::TextWriter::new(
+        } else if let Some(zip_path) = options.csv_output_zip {
+            let zip_path = std::path::PathBuf::from(zip_path);
+            writer =
+                Box::new(super::outfmt::csv::CsvZipWriter::new_to_file(zip_path));
+        } else {
+            // Default to text writer to stdout
+            writer = Box::new(super::outfmt::text::TextWriter::new(
                 WriteHandle::stdout_write_handle(),
-            )),
-        };
-        let writer_ref: &mut dyn AcbWriter = writer.as_mut();
+            ));
+        }
 
         run_acb_app_to_writer(
-            writer_ref,
+            writer,
             csv_file_readers,
             all_init_status,
             &options.csv_parse_options,

@@ -26,10 +26,10 @@ fn validate_sample_csv_file(
     let (err_stream, err_buff) = WriteHandle::string_buff_write_handle();
 
     let (write_handle, buff) = WriteHandle::string_buff_write_handle();
-    let mut writer = TextWriter::new(write_handle);
+    let writer = Box::new(TextWriter::new(write_handle));
 
     let res = async_std::task::block_on(run_acb_app_to_writer(
-        &mut writer,
+        writer,
         vec![reader],
         HashMap::new(),
         &TxCsvParseOptions::default(),

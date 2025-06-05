@@ -85,7 +85,7 @@ pub async fn run_acb_app(
     let out_string_buff: std::rc::Rc<std::cell::RefCell<StringBuffer>> =
         out_string_buff;
 
-    let mut writer = TextWriter::new(out_write_handle);
+    let writer = Box::new(TextWriter::new(out_write_handle));
 
     let rate_loader = RateLoader::new(
         false, // force_download
@@ -97,7 +97,7 @@ pub async fn run_acb_app(
     );
 
     let result = run_acb_app_to_writer(
-        &mut writer,
+        writer,
         csv_file_readers,
         all_init_status,
         &TxCsvParseOptions::default(),
