@@ -114,6 +114,12 @@ impl WriteHandle {
             w: RcRefCellT::new(io::empty()),
         }
     }
+
+    pub fn from_writer<T: io::Write + 'static>(w: T) -> WriteHandle {
+        WriteHandle {
+            w: RcRefCellT::new(w),
+        }
+    }
 }
 
 impl io::Write for WriteHandle {

@@ -16,4 +16,8 @@ pub trait AcbWriter {
         name: &str,
         table_model: &RenderTable,
     ) -> Result<(), Error>;
+
+    fn finish(self: Box<Self>) -> Result<(), Error> {
+        Ok(())
+    }
 }

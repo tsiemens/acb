@@ -64,6 +64,7 @@ lazy_static = "1.4.0"
 lopdf = { version = "0.32.0", features = [ "pom_parser" ], default-features = false, optional = true }
 office = { version = "0.8.1", optional = true }
 pdf-extract = { version = "0.7.7", optional = true }
+rawzip = "0.2.0"
 regex = "1.10.4"
 rust_decimal = "1.35.0"
 rust_decimal_macros = "1.34.2"

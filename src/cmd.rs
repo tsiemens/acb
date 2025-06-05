@@ -94,6 +94,10 @@ pub struct Args {
     /// Write output as CSV to the specified directory.
     #[arg(short = 'd', long)]
     pub csv_output_dir: Option<String>,
+
+    /// Write output as a zip file of containing CSVs
+    #[arg(short = 'z', long)]
+    pub csv_output_zip: Option<String>,
 }
 
 pub fn command_main() -> Result<(), ExitCode> {
@@ -141,6 +145,7 @@ pub fn command_main() -> Result<(), ExitCode> {
         split_annual_summary_gains: args.summarize_annual_gains,
         render_total_costs: args.total_costs,
         csv_output_dir: args.csv_output_dir,
+        csv_output_zip: args.csv_output_zip,
         csv_parse_options: csv_parse_options,
     };
 
