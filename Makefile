@@ -9,10 +9,17 @@ release:
 	cargo build --release
 
 www:
-	$(MAKE) -C www
+	$(MAKE) -C www build
+
+www-all:
+	$(MAKE) -C www all
 
 acb_wasm:
 	$(MAKE) -C acb_wasm
+
+web: acb_wasm www
+
+web-all: acb_wasm www-all
 
 all-notest: rust acb_wasm www
 

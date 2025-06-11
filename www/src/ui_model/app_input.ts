@@ -17,6 +17,22 @@ export class RunButton extends ButtonElementModel {
    }
 }
 
+export class ExportButton extends ButtonElementModel {
+   public static readonly ID: string = "exportButton";
+
+   public static get(): ExportButton {
+      return new ExportButton(
+         ElementModel.getRequiredElementById(ExportButton.ID));
+   }
+
+   public setup(runAppForExport: () => void) {
+      this.setEnabled(false);
+      this.setClickListener((_event) => {
+         runAppForExport();
+      });
+   }
+}
+
 export class AcbExtraOptions {
    public static getPrintFullValuesCheckbox(): HTMLInputElement {
       return document.getElementById('printFullValuesCheckbox') as HTMLInputElement;

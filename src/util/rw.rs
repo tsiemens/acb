@@ -103,6 +103,12 @@ impl WriteHandle {
         (h, buffer)
     }
 
+    pub fn byte_buff_write_handle() -> (WriteHandle, RcRefCell<Vec<u8>>) {
+        let buffer = RcRefCellT::new(Vec::new());
+        let h = WriteHandle { w: buffer.clone() };
+        (h, buffer)
+    }
+
     pub fn file_write_handle(f: File) -> WriteHandle {
         WriteHandle {
             w: RcRefCellT::new(f),

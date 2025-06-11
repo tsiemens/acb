@@ -11,9 +11,23 @@ use acb::{
     },
     util::{
         basic::SError,
-        rw::{DescribedReader, StringBuffer, WriteHandle},
+        rw::{DescribedReader, WriteHandle},
     },
 };
+
+const FORCE_DOWNLOAD_RATES: bool = false;
+const RENDER_TOTAL_COSTS: bool = false;
+
+fn make_rate_loader(err_write_handle: WriteHandle) -> RateLoader {
+    RateLoader::new(
+        FORCE_DOWNLOAD_RATES,
+        Box::new(InMemoryRatesCache::new()),
+        JsonRemoteRateLoader::new_boxed(
+            crate::http::CorsEnabledHttpRequester::new_boxed(),
+        ),
+        err_write_handle,
+    )
+}
 
 pub struct SerializableRenderTable(pub RenderTable);
 
@@ -82,19 +96,9 @@ pub async fn run_acb_app(
     let (err_write_handle, err_string_buff) =
         WriteHandle::string_buff_write_handle();
 
-    let out_string_buff: std::rc::Rc<std::cell::RefCell<StringBuffer>> =
-        out_string_buff;
-
     let writer = Box::new(TextWriter::new(out_write_handle));
 
-    let rate_loader = RateLoader::new(
-        false, // force_download
-        Box::new(InMemoryRatesCache::new()),
-        JsonRemoteRateLoader::new_boxed(
-            crate::http::CorsEnabledHttpRequester::new_boxed(),
-        ),
-        err_write_handle.clone(),
-    );
+    let rate_loader = make_rate_loader(err_write_handle.clone());
 
     let result = run_acb_app_to_writer(
         writer,
@@ -102,7 +106,7 @@ pub async fn run_acb_app(
         all_init_status,
         &TxCsvParseOptions::default(),
         render_full_dollar_values,
-        false, // render_total_costs
+        RENDER_TOTAL_COSTS,
         rate_loader,
         err_write_handle,
     )
@@ -122,6 +126,99 @@ pub async fn run_acb_app(
                 ),
             },
         }),
+        Err(()) => {
+            let error_string =
+                err_string_buff.try_borrow_mut().unwrap().export_string();
+            if !error_string.is_empty() {
+                Err(error_string)
+            } else {
+                Err("Unknown error".to_string())
+            }
+        }
+    }
+}
+
+pub struct FileContent {
+    file_name: String,
+    content: String,
+}
+
+impl From<acb::app::outfmt::csv::Utf8FileContent> for FileContent {
+    fn from(value: acb::app::outfmt::csv::Utf8FileContent) -> Self {
+        FileContent {
+            file_name: value.file_name,
+            content: value.content,
+        }
+    }
+}
+
+impl serde::ser::Serialize for FileContent {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::ser::Serializer,
+    {
+        let n_fields = 2;
+        let mut state = serializer.serialize_struct("FileTContent", n_fields)?;
+        state.serialize_field("fileName", &self.file_name)?;
+        state.serialize_field("content", &self.content)?;
+        state.end()
+    }
+}
+
+// TODO move this to a separate file
+pub struct AppExportResultOk {
+    pub csv_files: Vec<FileContent>,
+}
+
+impl serde::ser::Serialize for AppExportResultOk {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::ser::Serializer,
+    {
+        // https://serde.rs/impl-serialize.html
+
+        let n_fields = 1;
+        let mut state = serializer.serialize_struct("AppExportResultOk", n_fields)?;
+        state.serialize_field("csvFiles", &self.csv_files)?;
+        state.end()
+    }
+}
+
+pub async fn run_acb_app_for_export(
+    csv_file_readers: Vec<DescribedReader>,
+    all_init_status: HashMap<Security, PortfolioSecurityStatus>,
+    render_full_dollar_values: bool,
+) -> Result<AppExportResultOk, SError> {
+    let (err_write_handle, err_string_buff) =
+        WriteHandle::string_buff_write_handle();
+
+    let csv_coll = acb::util::rc::RcRefCellT::new(Vec::new());
+
+    let writer = Box::new(acb::app::outfmt::csv::CsvWriter::new_to_collection(
+        csv_coll.clone()));
+
+    let rate_loader = make_rate_loader(err_write_handle.clone());
+
+    let result = run_acb_app_to_writer(
+        writer,
+        csv_file_readers,
+        all_init_status,
+        &TxCsvParseOptions::default(),
+        render_full_dollar_values,
+        RENDER_TOTAL_COSTS,
+        rate_loader,
+        err_write_handle,
+    )
+    .await;
+
+    match result {
+        Ok(_) => {
+            Ok(AppExportResultOk {
+                csv_files: csv_coll.take().into_iter()
+                    .map(FileContent::from)
+                    .collect(),
+            })
+        }
         Err(()) => {
             let error_string =
                 err_string_buff.try_borrow_mut().unwrap().export_string();

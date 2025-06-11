@@ -20,10 +20,11 @@ npm-install:
 lint:
 	npm run lint
 
-npm-build: wasm-pkg npm-install lint
+build:
 	npm run build
 
-all: static-dist-link npm-build
+all:
+	npm run all
 
 clean:
 	rm -r dist

@@ -1,6 +1,6 @@
 use std::{fs::File, io, path::PathBuf};
 
-use crate::util::{os::mk_writable_dir, rw::WriteHandle};
+use crate::util::{rc::{RcRefCell}, rw::{StringBuffer, WriteHandle}};
 
 use super::model::{AcbWriter, OutputType};
 
@@ -32,9 +32,18 @@ fn print_render_table_to_csv<W: std::io::Write>(
     Ok(())
 }
 
+pub struct Utf8FileContent {
+    pub file_name: String,
+    pub content: String,
+}
+
 enum WriteMode {
-    Directory(PathBuf),
+    #[allow(dead_code)]
+    Directory(PathBuf), // Not used in wasm32 mode
     Writer(WriteHandle),
+    // Since the writer is dropped by finish, we need a way to retrieve the contents.
+    // The creator must avoid getting a mutable reference until finish is called.
+    Collection(RcRefCell<Vec<Utf8FileContent>>),
 }
 
 pub struct CsvWriter {
@@ -42,9 +51,10 @@ pub struct CsvWriter {
 }
 
 impl CsvWriter {
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn new_to_output_dir(out_dir: &String) -> Result<CsvWriter, io::Error> {
         let dir_path = PathBuf::from(out_dir);
-        mk_writable_dir(&dir_path)?;
+        crate::util::os::mk_writable_dir(&dir_path)?;
         Ok(CsvWriter {
             mode: WriteMode::Directory(dir_path),
         })
@@ -53,6 +63,12 @@ impl CsvWriter {
     pub fn new_to_writer(wh: WriteHandle) -> CsvWriter {
         CsvWriter {
             mode: WriteMode::Writer(wh),
+        }
+    }
+
+    pub fn new_to_collection(coll: RcRefCell<Vec<Utf8FileContent>>) -> CsvWriter {
+        CsvWriter {
+            mode: WriteMode::Collection(coll),
         }
     }
 
@@ -66,25 +82,6 @@ impl CsvWriter {
             OutputType::Raw => format!("{name}.csv"),
         }
     }
-
-    fn get_writer(
-        &mut self,
-        out_type: OutputType,
-        name: &str,
-    ) -> Result<Box<dyn std::io::Write>, super::model::Error> {
-        match &self.mode {
-            WriteMode::Directory(out_dir) => {
-                let file_name = Self::get_csv_file_name(out_type, name);
-                let file_path = out_dir.join(PathBuf::from(file_name));
-                let fp = File::create(file_path.clone()).map_err(|e| {
-                    format!("Failed to create {:?}: {}", file_path.to_str(), e)
-                })?;
-
-                Ok(Box::new(fp))
-            }
-            WriteMode::Writer(write_handle) => Ok(Box::new(write_handle.clone())),
-        }
-    }
 }
 
 impl AcbWriter for CsvWriter {
@@ -94,8 +91,34 @@ impl AcbWriter for CsvWriter {
         name: &str,
         table_model: &crate::portfolio::render::RenderTable,
     ) -> Result<(), super::model::Error> {
-        let writer = self.get_writer(out_type, name)?;
-        print_render_table_to_csv(writer, table_model)
+        // let writer = self.get_writer(out_type, name)?;
+        match &mut self.mode {
+            WriteMode::Directory(out_dir) => {
+                let file_name = Self::get_csv_file_name(out_type, name);
+                let file_path = out_dir.join(PathBuf::from(file_name));
+                let fp = File::create(file_path.clone()).map_err(|e| {
+                    format!("Failed to create {:?}: {}", file_path.to_str(), e)
+                })?;
+                let writer = Box::new(fp) as Box<dyn std::io::Write>;
+                print_render_table_to_csv(writer, table_model)
+            }
+            WriteMode::Writer(write_handle) => {
+                let writer = Box::new(write_handle.clone());
+                print_render_table_to_csv(writer, table_model)
+            },
+            WriteMode::Collection(contents) => {
+                let file_name = Self::get_csv_file_name(out_type, name);
+                let mut writer = Box::new(StringBuffer::new());
+                print_render_table_to_csv(&mut writer, table_model)?;
+
+                let content = Utf8FileContent {
+                    file_name,
+                    content: writer.export_string(),
+                };
+                contents.borrow_mut().push(content);
+                Ok(())
+            }
+        }
     }
 }
 
