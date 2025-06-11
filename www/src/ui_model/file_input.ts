@@ -1,5 +1,5 @@
 import { ElemBuilder } from "../dom_utils.js";
-import { RunButton } from "./app_input.js";
+import { ExportButton, RunButton } from "./app_input.js";
 import { ButtonElementModel, ElementModel } from "./model_lib.js";
 
 export class FileDropArea extends ElementModel {
@@ -120,6 +120,7 @@ export class SelectedFileList extends ElementModel {
 
       if (this.element.children.length > 0) {
          RunButton.get().setEnabled(true);
+         ExportButton.get().setEnabled(true);
          ClearFilesButton.get().setEnabled(true);
       }
    }
@@ -136,6 +137,7 @@ export class SelectedFileList extends ElementModel {
 
       if (fileList.children.length == 0) {
          RunButton.get().setEnabled(false);
+         ExportButton.get().setEnabled(false);
          ClearFilesButton.get().setEnabled(false);
       }
    }

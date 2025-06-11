@@ -105,3 +105,39 @@ export class AppResultOk {
       );
    }
 }
+
+export class FileContent {
+    constructor(
+        public fileName: string,
+        public content: string,
+    ) {}
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    public static fromJsValue(val: any): FileContent {
+        return new FileContent(
+        mustGet(val, 'fileName'),
+        mustGet(val, 'content'),
+        );
+    }
+}
+
+export class AppExportResultOk {
+    constructor(
+        public csvFiles: Array<FileContent>,
+    ) {}
+
+    /* Import type from wasm interface */
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    public static fromJsValue(val: any): AppExportResultOk {
+        return new AppExportResultOk(
+            mustGet<any[]>(val, 'csvFiles').map(FileContent.fromJsValue),
+        );
+    }
+
+   public static default(): AppExportResultOk {
+      return new AppExportResultOk(
+            "",
+            [],
+      );
+   }
+}

@@ -3,9 +3,9 @@ import JSZip from "jszip";
 import { CsvFilesLoader, FileLoadResult, FileStager, printMetadataForFileList } from "./file_reader.js";
 import { run_acb } from './pkg/acb_wasm.js';
 import { Result } from "./result.js";
-import { AppResultOk } from "./acb_wasm_types.js";
+import { AppExportResultOk, AppResultOk, FileContent } from "./acb_wasm_types.js";
 import { AcbOutput, AggregateOutputContainer, SecurityTablesOutputContainer, TextOutputContainer, YearHighlightSelector } from "./ui_model/acb_app_output.js";
-import { AcbExtraOptions, InitialSymbolStateInputs, InitSecItem, RunButton } from "./ui_model/app_input.js";
+import { AcbExtraOptions, ExportButton, InitialSymbolStateInputs, InitSecItem, RunButton } from "./ui_model/app_input.js";
 import { ErrorBox } from "./ui_model/error_displays.js";
 import { ClearFilesButton, FileDropArea, FileSelectorInput, SelectedFileList } from "./ui_model/file_input.js";
 import { AutoRunCheckbox, DebugSettings } from "./ui_model/debug.js";
@@ -42,7 +42,59 @@ function getInitSecStrs(): Result<string[], string[]> {
    return Result.Ok(initSecStrs);
 }
 
-async function asyncRunAcb(filenames: string[], contents: string[]) {
+function makeZip(files: FileContent[]): Promise<Blob> {
+   return new Promise((resolve, reject) => {
+      try {
+         // Create a zip file from the file contents
+         const zip = new JSZip();
+         for (const file of files) {
+            zip.file(file.fileName, file.content);
+         }
+         zip.generateAsync({ type: "blob" })
+            .then(resolve)
+            .catch(reject);
+      } catch (error) {
+         reject(error);
+      }
+   });
+}
+
+function makeZipAndDownload(files: FileContent[]): void {
+   makeZip(files).then((zipBlob) => {
+      let date_str = new Date().toISOString();
+      // Replace colons and dots for filename safety
+      date_str = date_str.replace(/[:.]/g, "-");
+      const filename = `acb_export_${date_str}.zip`;
+      // const blob = new Blob([zipBlob], { type: "application/zip" });
+      // Create a temporary link to trigger the download
+      const url = URL.createObjectURL(zipBlob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.style.display = "none";
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      // Clean up the URL object
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+   }).catch((err) => {
+      console.error("Error creating zip file: ", err);
+      ErrorBox.getMain().showWith({
+         title: "Export Error",
+         descPre: "An error occurred while creating the export zip file:",
+         errorText: String(err),
+      });
+   });
+}
+
+enum AcbAppRunMode {
+   Normal = "normal",
+   Export = "export",
+}
+
+async function asyncRunAcb(filenames: string[], contents: string[],
+                           mode: AcbAppRunMode = AcbAppRunMode.Normal
+) {
    console.debug("asyncRunAcb", filenames);
    const printFullDollarValues: boolean =
       AcbExtraOptions.getPrintFullValuesCheckbox().checked;
@@ -59,11 +111,20 @@ async function asyncRunAcb(filenames: string[], contents: string[]) {
    }
    const initSecs = initSecsRes.unwrap();
 
+   const exportMode: boolean = mode === AcbAppRunMode.Export;
+
    try {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment
       const jsRet: any = await run_acb(filenames, contents, initSecs,
-         printFullDollarValues);
+         printFullDollarValues, exportMode);
       console.debug("asyncRunAcb: run_acb returned: ", jsRet);
+
+      if (exportMode) {
+         const ret = AppExportResultOk.fromJsValue(jsRet);
+         makeZipAndDownload(ret.csvFiles);
+         return;
+      }
+
       const ret: AppResultOk = AppResultOk.fromJsValue(jsRet);
 
       TextOutputContainer.get().setText(ret.textOutput);
@@ -85,7 +146,7 @@ async function asyncRunAcb(filenames: string[], contents: string[]) {
    }
 }
 
-function loadAllFileInfoAndRun() {
+function loadAllFileInfoAndRun(mode: AcbAppRunMode = AcbAppRunMode.Normal) {
    console.log("loadAllFileInfoAndRun");
    const fileList = FileStager.globalInstance.getFilesToUseList();
 
@@ -104,7 +165,7 @@ function loadAllFileInfoAndRun() {
          return;
       }
 
-      asyncRunAcb(result.loadedFileNames, result.loadedContent)
+      asyncRunAcb(result.loadedFileNames, result.loadedContent, mode)
          .then(() => {}).catch((_: unknown) => {});
    });
 }
@@ -138,6 +199,9 @@ export function initAppUI() {
    ClearFilesButton.get().setup();
    CollapsibleRegion.initAll();
    RunButton.get().setup(loadAllFileInfoAndRun);
+   ExportButton.get().setup(() => {
+      loadAllFileInfoAndRun(AcbAppRunMode.Export);
+   });
 
    InitialSymbolStateInputs.get().setup();
 

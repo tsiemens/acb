@@ -19,9 +19,9 @@ impl CorsEnabledHttpRequester {
 #[async_trait::async_trait(?Send)]
 impl HttpRequester for CorsEnabledHttpRequester {
     async fn get(&self, url: &str) -> Result<String, SError> {
-        let mut opts = RequestInit::new();
-        opts.method("GET");
-        opts.mode(RequestMode::Cors);
+        let opts = RequestInit::new();
+        opts.set_method("GET");
+        opts.set_mode(RequestMode::Cors);
 
         let request = Request::new_with_str_and_init(&url, &opts)
             .map_err(|e| format!("Error creating request for {url}: {:?}", e))?;
