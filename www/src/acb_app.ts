@@ -1,3 +1,5 @@
+import JSZip from "jszip";
+
 import { CsvFilesLoader, FileLoadResult, FileStager, printMetadataForFileList } from "./file_reader.js";
 import { run_acb } from './pkg/acb_wasm.js';
 import { Result } from "./result.js";
