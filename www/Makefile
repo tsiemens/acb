@@ -1,11 +1,8 @@
 default: all
 
 wasm-pkg:
-	# Link the built wasm package to the dist directory
-	test -e dist/js/pkg || \
-		(mkdir -p dist/js && ln -s ../../../acb_wasm/pkg dist/js/pkg)
 	# Link the built wasm package to the src directory so that the
-	# linter and ts compiler can find it
+	# linter, ts compiler and vite can find it
 	test -e src/pkg || ln -s ../../acb_wasm/pkg src/pkg
 
 SYMLINK_STATIC = test -e dist/$1 || ln -s ../static/$1 dist/$1
