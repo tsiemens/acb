@@ -127,16 +127,16 @@ export class AppExportResultOk {
     ) {}
 
     /* Import type from wasm interface */
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    /* eslint-disable-next-line @typescript-eslint/no-explicit-any */
     public static fromJsValue(val: any): AppExportResultOk {
         return new AppExportResultOk(
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             mustGet<any[]>(val, 'csvFiles').map(FileContent.fromJsValue),
         );
     }
 
    public static default(): AppExportResultOk {
       return new AppExportResultOk(
-            "",
             [],
       );
    }

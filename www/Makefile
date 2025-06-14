@@ -27,7 +27,10 @@ all:
 	npm run all
 
 clean:
-	rm -r dist
-	rm src/pkg
+	test ! -e dist || rm -r dist
+	test ! -e src/pkg || rm src/pkg
+
+clean-all: clean
+	test ! -e node_modules || rm -r node_modules
 
 .PHONY: wasm-pkg clean

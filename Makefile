@@ -21,7 +21,9 @@ web: acb_wasm www
 
 web-all: acb_wasm www-all
 
-all-notest: rust acb_wasm www
+all-rust-notest: rust acb_wasm
+
+all-notest: all-rust-notest www-all
 
 all: all-notest test
 
@@ -52,4 +54,4 @@ install:
 uninstall:
 	cargo uninstall acb
 
-.PHONY: clean test acb_wasm www
+.PHONY: clean test acb_wasm www www-all

@@ -347,7 +347,7 @@ fn parse_statement(
     parallel_pages: bool,
 ) -> Result<StatementFmvs, SError> {
     tracing::info!("Parsing {}...", file_path.to_string_lossy());
-    let doc = lopdf::Document::load(&file_path).map_err(|e| {
+    let doc = pdf_extract::Document::load(&file_path).map_err(|e| {
         format!("Error loading {}: {}", file_path.to_string_lossy(), e)
     })?;
     // We expect out date and FMV to be on pages 1 and 7. Allow some wiggle

@@ -1,6 +1,6 @@
 export type JSONValue = string | number | boolean | null | object | Array<JSONValue>;
 
-function asError(e: unknown): Error {
+export function asError(e: unknown): Error {
    if (e instanceof Error) {
       return e;
    } else {

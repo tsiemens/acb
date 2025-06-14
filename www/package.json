@@ -10,12 +10,13 @@
         "static-dist-link": "make static-dist-link",
         "wasm-pkg": "make wasm-pkg",
         "clean": "make clean",
-        "build": "npm run wasm-pkg && npm run static-dist-link && npm run render-templates && npm run build-ts",
+        "pre-build": "npm install && npm run wasm-pkg && npm run static-dist-link",
+        "build": "npm run render-templates && npm run build-ts",
         "vite-dev": "vite",
         "lint": "eslint . --ext .ts",
         "lint:fix": "eslint . --ext .ts --fix",
         "serve": "http-server -o / dist",
-        "all": "npm run static-dist-link && npm run wasm-pkg && npm install && npm run lint && npm run build"
+        "all": "npm run pre-build && npm run lint && npm run build"
     },
     "dependencies": {
         "jszip": "^3.10.1"
