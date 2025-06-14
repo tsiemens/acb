@@ -12,6 +12,7 @@ import { AutoRunCheckbox, DebugSettings } from "./ui_model/debug.js";
 import { loadTestFile } from "./debug.js";
 import { InfoDialog, InfoListItem } from "./ui_model/info_dialogs.js";
 import { CollapsibleRegion } from "./ui_model/components.js";
+import { asError } from "./http_utils.js";
 
 /**
  * Get colon-delimited initial security values (format is as expected by acb).
@@ -54,7 +55,7 @@ function makeZip(files: FileContent[]): Promise<Blob> {
             .then(resolve)
             .catch(reject);
       } catch (error) {
-         reject(error);
+         reject(asError(error));
       }
    });
 }
@@ -77,7 +78,7 @@ function makeZipAndDownload(files: FileContent[]): void {
       // Clean up the URL object
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
-   }).catch((err) => {
+   }).catch((err: unknown) => {
       console.error("Error creating zip file: ", err);
       ErrorBox.getMain().showWith({
          title: "Export Error",

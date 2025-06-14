@@ -1,6 +1,9 @@
 use std::{fs::File, io, path::PathBuf};
 
-use crate::util::{rc::{RcRefCell}, rw::{StringBuffer, WriteHandle}};
+use crate::util::{
+    rc::RcRefCell,
+    rw::{StringBuffer, WriteHandle},
+};
 
 use super::model::{AcbWriter, OutputType};
 
@@ -105,7 +108,7 @@ impl AcbWriter for CsvWriter {
             WriteMode::Writer(write_handle) => {
                 let writer = Box::new(write_handle.clone());
                 print_render_table_to_csv(writer, table_model)
-            },
+            }
             WriteMode::Collection(contents) => {
                 let file_name = Self::get_csv_file_name(out_type, name);
                 let mut writer = Box::new(StringBuffer::new());

@@ -1,6 +1,6 @@
 use std::{collections::VecDeque, rc::Rc, sync::Arc};
 
-use lopdf::Document;
+use pdf_extract::Document;
 
 use crate::util::{basic::SError, py::run_python_script_file, rw::StringBuffer};
 
