@@ -42,6 +42,27 @@
     </div>
   </div>
 
+  <div class="form-group">
+    <label for="acbFeatureModeSelect">Mode:</label>
+    <select id="acbFeatureModeSelect" style="width: fit-content;">
+      <option value="calculate" selected>Calculate Gains</option>
+      <!-- Both of these will show the date selector when active. -->
+      <!-- This will essentially run the equivalent of
+           `acb --summarize-annual-gains --summarize-before DATE`  -->
+      <option value="tx_summary" >Summarize Transactions</option>
+       <!-- This will essentially run the equivalent of what
+            `acb --summarize-before DATE` , and then just extract the share numbers
+            and display them. -->
+      <option value="tally_shares">Tally Share Balances</option>
+    </select>
+
+    <!-- The date portion should default to Dec 31, and the year should
+         be the previous year. -->
+    <label for="acbSummaryDatePicker" style="margin-left: 10px; display: none;">Latest Date:</label>
+    <input type="date" id="acbSummaryDatePicker"
+           style="width: fit-content; margin-left: 10px; display: none;">
+  </div>
+
   <div class="action-buttons">
     <button id="runButton" class="btn btn-primary" disabled="true">Run</button>
     <button id="clearFilesButton" class="btn btn-secondary" disabled="true">Clear Files</button>
@@ -95,6 +116,7 @@
     </div>
     <div class="view-mode-toggle">
       <button class="view-mode-btn active" data-view-mode="security_tables">Securities</button>
+      <button class="view-mode-btn" data-view-mode="summary">Summary</button>
       <button class="view-mode-btn" data-view-mode="aggregate">Aggregate</button>
       <button class="view-mode-btn" data-view-mode="text">Raw Text</button>
     </div>
@@ -106,6 +128,7 @@
 
     <div class="acb-output-container">
       <div id="acbSecurityTablesOutput" class="acb-output"></div>
+      <div id="acbSummaryOutput" class="acb-output"></div>
       <div id="acbAggregateOutput" class="acb-output"></div>
       <pre id="acbTextOutput" class="acb-output"></pre>
     </div>

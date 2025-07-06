@@ -134,6 +134,88 @@ pub struct AppRenderResult {
     pub costs_tables: Option<CostsTables>,
 }
 
+/// Result type for summary mode, containing structured summary data, CSV text, and warnings/errors.
+pub struct AppSummaryRenderResult {
+    pub summary_txs: Vec<Tx>,
+    pub csv_text: String,
+    pub warnings: Vec<String>,
+    pub errors: Vec<String>,
+}
+
+fn format_summary_errors(errors_struct: &AppSummaryError) -> Vec<String> {
+    let mut errors = Vec::new();
+    if let Some(e) = &errors_struct.general_error {
+        errors.push(format!("Error: {}", e));
+    }
+    for (sec, e) in &errors_struct.sec_errors {
+        errors.push(format!("Error in {}: {}", sec, e));
+    }
+    errors
+}
+
+/// Converts warnings from HashMap<String, Vec<String>> (in CollectedSummaryData)
+/// to Vec<String> for display.
+fn format_summary_warnings(warnings: &HashMap<String, Vec<String>>) -> Vec<String> {
+    warnings
+        .iter()
+        .map(|(warning, secs)| {
+            if secs.is_empty() {
+                format!("{}.", warning)
+            } else {
+                format!("{}. Encountered for {}", warning, secs.join(", "))
+            }
+        })
+        .collect()
+}
+
+/// Runs the summary mode and returns a structured result and CSV text output.
+pub async fn run_acb_app_summary_to_render_model(
+    latest_date: Date,
+    csv_file_readers: Vec<DescribedReader>,
+    all_init_status: HashMap<Security, PortfolioSecurityStatus>,
+    options: Options,
+    rate_loader: RateLoader,
+    err_printer: WriteHandle,
+) -> AppSummaryRenderResult {
+    let res = run_acb_app_summary_to_model(
+        latest_date,
+        csv_file_readers,
+        all_init_status,
+        options,
+        rate_loader,
+        err_printer.clone(),
+    )
+    .await;
+
+    match res {
+        Ok(summary_data) => {
+            // Convert txs to CSV text
+            let csv_txs: Vec<crate::portfolio::CsvTx> = summary_data
+                .txs
+                .iter()
+                .map(|tx| crate::portfolio::CsvTx::from(tx.clone()))
+                .collect();
+            let mut csv_buf = Vec::new();
+            let csv_text = match write_txs_to_csv(&csv_txs, &mut csv_buf) {
+                Ok(()) => String::from_utf8(csv_buf).unwrap_or_default(),
+                Err(e) => format!("Error writing CSV: {e}"),
+            };
+            AppSummaryRenderResult {
+                summary_txs: summary_data.txs,
+                csv_text,
+                warnings: format_summary_warnings(&summary_data.warnings),
+                errors: Vec::new(),
+            }
+        }
+        Err(err_struct) => AppSummaryRenderResult {
+            summary_txs: Vec::new(),
+            csv_text: String::new(),
+            warnings: Vec::new(),
+            errors: format_summary_errors(&err_struct),
+        },
+    }
+}
+
 /// Runs the entire ACB app in the "default" mode (processing TXs and
 /// generating and rendering a delta list plus some aggregations).
 /// This is output as a generic render model, so that it can be fed
@@ -370,25 +452,19 @@ pub async fn run_acb_app_summary_to_console(
     let summ_data = match summ_res {
         Ok(summ_data) => summ_data,
         Err(err_struct) => {
-            if let Some(e) = err_struct.general_error {
-                write_errln!(err_printer, "Error: {e}");
-            }
-            for (sec, e) in err_struct.sec_errors {
-                write_errln!(err_printer, "Error in {sec}: {e}");
+            let errors = format_summary_errors(&err_struct);
+            for error in errors {
+                write_errln!(err_printer, "{}", error);
             }
             return Err(());
         }
     };
 
-    if summ_data.warnings.len() > 0 {
+    let formatted_warnings = format_summary_warnings(&summ_data.warnings);
+    if !formatted_warnings.is_empty() {
         write_errln!(err_printer, "Warnings:");
-        for (warning, secs) in summ_data.warnings {
-            write_errln!(
-                err_printer,
-                " {}. Encountered for {}",
-                warning,
-                secs.join(",")
-            );
+        for warning in formatted_warnings {
+            write_errln!(err_printer, " {}", warning);
         }
         write_errln!(err_printer, "");
     }

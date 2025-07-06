@@ -41,6 +41,17 @@ fn date_naive_to_date(dn: &chrono::NaiveDate) -> Date {
     .unwrap()
 }
 
+/*
+ * month and day_of_month are 1-indexed.
+ */
+pub fn from_date_ints(
+    year: i32,
+    month: u8,
+    day_of_month: u8,
+) -> Result<Date, time::error::ComponentRange> {
+    Date::from_calendar_date(year, Month::December.nth_next(month), day_of_month)
+}
+
 pub fn parse_month(m: &str) -> Result<Month, ()> {
     let m_lower = m.to_lowercase();
     let trimmed = m_lower.trim();

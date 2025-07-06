@@ -17,6 +17,8 @@ www-all:
 acb_wasm:
 	$(MAKE) -C acb_wasm
 
+wasm: acb_wasm
+
 web: acb_wasm www
 
 web-all: acb_wasm www-all

@@ -1,20 +1,30 @@
 import { ElemBuilder } from "../dom_utils.js";
 import { AppRenderResult, RenderTable } from "../acb_wasm_types.js";
 import { ElementModel } from "./model_lib.js";
+import { AppFunctionMode } from "../common/acb_app_types.js";
 
-enum AcbOutputViewMode {
+export enum AcbOutputViewMode {
    SecurityTables = "security_tables",
    Aggregate = "aggregate",
+   Summary = "summary",
    Text = "text",
 }
 
-abstract class AcbOutputKindContainer extends ElementModel {
+export abstract class AcbOutputKindContainer extends ElementModel {
+
+   private static allOutputKindContainerGetters: Map<string, () => AcbOutputKindContainer> =
+      new Map();
+
+   public static registerOutputKindContainer(name: string, getter: () => AcbOutputKindContainer) {
+      AcbOutputKindContainer.allOutputKindContainerGetters.set(name, getter);
+   }
+
    public static getAll(): Array<AcbOutputKindContainer> {
-      return [
-         SecurityTablesOutputContainer.get(),
-         AggregateOutputContainer.get(),
-         TextOutputContainer.get(),
-      ];
+      const all = [];
+      for (const getter of AcbOutputKindContainer.allOutputKindContainerGetters.values()) {
+         all.push(getter());
+      }
+      return all;
    }
 
    public setActive(active: boolean) {
@@ -40,7 +50,10 @@ export class TextOutputContainer extends AcbOutputKindContainer {
    public viewMode(): AcbOutputViewMode { return AcbOutputViewMode.Text; }
 }
 
-abstract class TableOutputContainerBase extends AcbOutputKindContainer {
+AcbOutputKindContainer.registerOutputKindContainer(
+   TextOutputContainer.ID, TextOutputContainer.get);
+
+export abstract class TableOutputContainerBase extends AcbOutputKindContainer {
    protected static makeTableHeaderRow(tableModel: RenderTable): HTMLElement {
       const tr = new ElemBuilder("tr").build();
       for (const header of tableModel.header) {
@@ -239,6 +252,9 @@ export class SecurityTablesOutputContainer extends TableOutputContainerBase {
    }
 }
 
+AcbOutputKindContainer.registerOutputKindContainer(
+   SecurityTablesOutputContainer.ID, SecurityTablesOutputContainer.get);
+
 export class AggregateOutputContainer extends TableOutputContainerBase {
    public static readonly ID: string = "acbAggregateOutput";
 
@@ -278,6 +294,11 @@ export class AggregateOutputContainer extends TableOutputContainerBase {
    }
 }
 
+AcbOutputKindContainer.registerOutputKindContainer(
+   AggregateOutputContainer.ID, AggregateOutputContainer.get);
+
+// Each output view mode has its own selector, for the views
+// that mode supports.
 export class OutputViewSelector extends ElementModel {
    public static getAll(): Array<OutputViewSelector> {
       const tabLabelElems = document.getElementsByClassName('view-mode-btn');
@@ -310,6 +331,8 @@ export class OutputViewSelector extends ElementModel {
          return AcbOutputViewMode.Text;
       } else if (viewMode_ == AcbOutputViewMode.Aggregate.toString()) {
          return AcbOutputViewMode.Aggregate;
+      } else if (viewMode_ == AcbOutputViewMode.Summary.toString()) {
+         return AcbOutputViewMode.Summary;
       }
       throw Error(`Invalid AcbOutputViewMode: ${viewMode_}`);
    }
@@ -322,6 +345,10 @@ export class OutputViewSelector extends ElementModel {
          this.element.classList.remove(ACTIVE);
       }
    }
+
+   public isActive(): boolean {
+      return this.element.classList.contains('active');
+   }
 }
 
 class ViewModeSelectorGroup {
@@ -332,9 +359,26 @@ class ViewModeSelectorGroup {
       }
    }
 
+   public static getActiveViewMode(): AcbOutputViewMode | null {
+      for (const selector of OutputViewSelector.getAll()) {
+         if (selector.isActive()) {
+            return selector.viewMode();
+         }
+      }
+      return null;
+   }
+
    public static setup(onModeActive: (mode: AcbOutputViewMode) => void) {
       for (const selector of OutputViewSelector.getAll()) {
          selector.setup(onModeActive);
+      }
+   }
+
+   // Hides any selectors that are not in the provided set.
+   // eg. Used to hide the "Summary" tab if we just ran a regular ACB calculation.
+   public static setSelectableViewModes(modes: Array<AcbOutputViewMode>) {
+      for (const selector of OutputViewSelector.getAll()) {
+         selector.element.style.display = (modes.includes(selector.viewMode())) ? 'block' : 'none';
       }
    }
 }
@@ -392,14 +436,35 @@ export class YearHighlightSelector extends ElementModel {
    }
 }
 
+function selectableViewModesForAppFunction(funcMode: AppFunctionMode): Array<AcbOutputViewMode> {
+   switch (funcMode) {
+      case AppFunctionMode.Calculate:
+         return [
+            AcbOutputViewMode.SecurityTables,
+            AcbOutputViewMode.Aggregate,
+            AcbOutputViewMode.Text,
+         ];
+      case AppFunctionMode.TxSummary:
+         return [
+            AcbOutputViewMode.Summary,
+            AcbOutputViewMode.Text,
+         ];
+      case AppFunctionMode.TallyShares:
+         return [
+            AcbOutputViewMode.Summary,
+            AcbOutputViewMode.Text,
+         ];
+   }
+}
+
 export class AcbOutput {
    public static setup() {
       ViewModeSelectorGroup.setup((mode: AcbOutputViewMode) => {
          AcbOutput.setActiveOutput(mode);
       })
 
-      // Default to table output shown
-      AcbOutput.setActiveOutputAndSyncTab(AcbOutputViewMode.SecurityTables);
+      let defaultAppFunction = AppFunctionMode.Calculate;
+      AcbOutput.setAppFunctionViewMode(defaultAppFunction);
 
       YearHighlightSelector.get().setup();
    }
@@ -413,5 +478,22 @@ export class AcbOutput {
    public static setActiveOutputAndSyncTab(viewMode: AcbOutputViewMode) {
       ViewModeSelectorGroup.setActiveViewMode(viewMode);
       AcbOutput.setActiveOutput(viewMode);
+   }
+
+   public static setAppFunctionViewMode(funcMode: AppFunctionMode) {
+      const modes = selectableViewModesForAppFunction(funcMode);
+      AcbOutput.setSelectableViewModes(modes);
+   }
+
+   private static setSelectableViewModes(modes: Array<AcbOutputViewMode>) {
+      // Get selected view mode before we hide any selectors
+      const selectedMode = ViewModeSelectorGroup.getActiveViewMode();
+      // Check if selectedMode is in modes
+      if (selectedMode !== null && !modes.includes(selectedMode)) {
+         // If not, select the first mode in modes
+         AcbOutput.setActiveOutputAndSyncTab(modes[0]);
+      }
+
+      ViewModeSelectorGroup.setSelectableViewModes(modes);
    }
 }
