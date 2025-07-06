@@ -43,7 +43,13 @@ export function mustGet<T>(obj: any, key: string): T {
 }
 
 // Mainly to be used with Result type
-export type UnitT = undefined;
-export function Unit(): UnitT {
-   return undefined;
+export class Unit {
+   public static readonly INSTANCE: Unit = new Unit();
+
+   private constructor() {
+      // Private constructor to prevent instantiation
+   }
+   public static get(): Unit {
+      return Unit.INSTANCE;
+   }
 }

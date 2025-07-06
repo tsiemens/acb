@@ -1,5 +1,6 @@
 import { ButtonElementModel, ElementModel } from "./model_lib.js";
 import { childHasFocus, ElemBuilder, InputElemBuilder } from "../dom_utils.js";
+import { AppFunctionMode } from "../common/acb_app_types.js";
 
 export class RunButton extends ButtonElementModel {
    public static readonly ID: string = "runButton";
@@ -183,5 +184,70 @@ export class InitialSymbolStateInputs extends ElementModel {
          items.push(InitialSymbolStateInputs.getRowData(rowElem));
       }
       return items;
+   }
+}
+
+export class FunctionModeSelector extends ElementModel {
+   public static readonly ID: string = "acbFeatureModeSelect";
+
+   public static get(): FunctionModeSelector {
+      return new FunctionModeSelector(
+         ElementModel.getRequiredElementById(FunctionModeSelector.ID));
+   }
+
+   public setup() {
+      this.element.addEventListener("change", () => {
+         SummaryDatePicker.get().updateVisibilityForCurrentMode();
+      });
+   }
+
+   public getSelectedMode(): AppFunctionMode {
+      return (this.element as HTMLSelectElement).value as AppFunctionMode;
+   }
+}
+
+export class SummaryDatePicker extends ElementModel {
+   public static readonly ID: string = "acbSummaryDatePicker";
+
+   public static get(): SummaryDatePicker {
+      return new SummaryDatePicker(
+         ElementModel.getRequiredElementById(SummaryDatePicker.ID));
+   }
+
+   public static getLabel(): HTMLLabelElement {
+      let label = document.querySelector(`label[for="${SummaryDatePicker.ID}"]`)
+
+      if (!label) {
+         throw new Error(`Could not find label for ${SummaryDatePicker.ID}`);
+      }
+      return label as HTMLLabelElement;
+   }
+
+   public setup() {
+      this.updateVisibilityForCurrentMode();
+      const defaultDate = SummaryDatePicker.getDefaultDate();
+      (this.element as HTMLInputElement).value = defaultDate.toISOString().split('T')[0];
+   }
+
+   public setVisibility(visible: boolean) {
+      (this.element).style.display = visible ? "inline-block" : "none";
+      SummaryDatePicker.getLabel().style.display = visible ? "inline-block" : "none";
+   }
+
+   public updateVisibilityForCurrentMode() {
+      const funcMode = FunctionModeSelector.get().getSelectedMode();
+      console.debug("DatePicker.updateVisibilityForCurrentMode", funcMode);
+      this.setVisibility(funcMode === AppFunctionMode.TxSummary);
+   }
+
+   public getValue(): Date | null {
+      const value = (this.element as HTMLInputElement).value;
+      return value ? new Date(value) : null;
+   }
+
+   public static getDefaultDate(): Date {
+      const now = new Date();
+      let lastYear = now.getFullYear() - 1;
+      return new Date(`${lastYear.toString()}-12-31`);
    }
 }

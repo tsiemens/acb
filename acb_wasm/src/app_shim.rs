@@ -165,7 +165,6 @@ impl serde::ser::Serialize for FileContent {
     }
 }
 
-// TODO move this to a separate file
 pub struct AppExportResultOk {
     pub csv_files: Vec<FileContent>,
 }
@@ -229,4 +228,81 @@ pub async fn run_acb_app_for_export(
             }
         }
     }
+}
+
+pub struct AppSummaryResultOk {
+    pub csv_text: String,
+    pub summary_table: SerializableRenderTable,
+}
+
+impl serde::ser::Serialize for AppSummaryResultOk {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::ser::Serializer,
+    {
+        let n_fields = 2;
+        let mut state = serializer.serialize_struct("AppSummaryResultOk", n_fields)?;
+        state.serialize_field("csvText", &self.csv_text)?;
+        state.serialize_field("summaryTable", &self.summary_table)?;
+        state.end()
+    }
+}
+
+pub async fn run_acb_app_summary(
+    latest_date: acb::util::date::Date,
+    csv_file_readers: Vec<DescribedReader>,
+    all_init_status: HashMap<Security, PortfolioSecurityStatus>,
+    split_annual_summary_gains: bool,
+    render_full_dollar_values: bool,
+) -> Result<AppSummaryResultOk, SError> {
+    use acb::app::{Options, run_acb_app_summary_to_render_model};
+
+    let (err_write_handle, err_string_buff) =
+        WriteHandle::string_buff_write_handle();
+
+    let rate_loader = make_rate_loader(err_write_handle.clone());
+
+    let options = Options {
+        render_full_dollar_values,
+        split_annual_summary_gains,
+        ..Options::default()
+    };
+
+    let result = run_acb_app_summary_to_render_model(
+        latest_date,
+        csv_file_readers,
+        all_init_status,
+        options,
+        rate_loader,
+        err_write_handle,
+    ).await;
+
+    let buffered_error_string =
+        err_string_buff.try_borrow_mut().unwrap().export_string();
+    let mut errors: Vec<String> = vec![];
+    if !buffered_error_string.is_empty() {
+        // Most of the time these are warnings, so put them first.
+        // Other times they /could/ be duplicates (though unlikely),
+        // but if that were the case, they'd naturally be printed first
+        // and wrapped into an error second, so we should render them
+        // in that order.
+        errors.push(buffered_error_string);
+    }
+    errors.extend(result.errors.iter().map(String::clone));
+
+    let csv_txs: Vec<acb::portfolio::CsvTx> = result.summary_txs.iter().map(
+        |tx| acb::portfolio::CsvTx::from(tx.clone())).collect();
+    let table = acb::portfolio::io::tx_csv::txs_to_csv_table(&csv_txs);
+    let summary_table = SerializableRenderTable(RenderTable {
+        header: table.header.into_iter().map(|s| s.to_string()).collect(),
+        rows: table.rows,
+        footer: vec![],
+        notes: vec![],
+        errors,
+    });
+
+    Ok(AppSummaryResultOk {
+        csv_text: result.csv_text,
+        summary_table,
+    })
 }

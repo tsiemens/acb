@@ -141,3 +141,26 @@ export class AppExportResultOk {
       );
    }
 }
+
+export class AppSummaryResultOk {
+    constructor(
+        public csvText: string,
+        public summaryTable: RenderTable,
+    ) {}
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    public static fromJsValue(val: any): AppSummaryResultOk {
+        return new AppSummaryResultOk(
+            mustGet(val, 'csvText'),
+            RenderTable.fromJsValue(mustGet(val, 'summaryTable')),
+        );
+    }
+
+    public static default(): AppSummaryResultOk {
+        return new AppSummaryResultOk(
+            '',
+            new RenderTable([], [], [], [], []),
+        );
+    }
+}
+

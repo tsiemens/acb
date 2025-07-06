@@ -1,11 +1,10 @@
 import JSZip from "jszip";
-
 import { CsvFilesLoader, FileLoadResult, FileStager, printMetadataForFileList } from "./file_reader.js";
 import { run_acb } from './pkg/acb_wasm.js';
 import { Result } from "./result.js";
 import { AppExportResultOk, AppResultOk, FileContent } from "./acb_wasm_types.js";
 import { AcbOutput, AggregateOutputContainer, SecurityTablesOutputContainer, TextOutputContainer, YearHighlightSelector } from "./ui_model/acb_app_output.js";
-import { AcbExtraOptions, ExportButton, InitialSymbolStateInputs, InitSecItem, RunButton } from "./ui_model/app_input.js";
+import { AcbExtraOptions, SummaryDatePicker, ExportButton, FunctionModeSelector, InitialSymbolStateInputs, InitSecItem, RunButton } from "./ui_model/app_input.js";
 import { ErrorBox } from "./ui_model/error_displays.js";
 import { ClearFilesButton, FileDropArea, FileSelectorInput, SelectedFileList } from "./ui_model/file_input.js";
 import { AutoRunCheckbox, DebugSettings } from "./ui_model/debug.js";
@@ -60,24 +59,32 @@ function makeZip(files: FileContent[]): Promise<Blob> {
    });
 }
 
+function makeFilenameDateString(): string {
+   let date_str = new Date().toISOString();
+   // Replace colons and dots for filename safety
+   date_str = date_str.replace(/[:.]/g, "-");
+   return date_str;
+}
+
+function downloadBlob(filename: string, blob: Blob) {
+   // Create a temporary link to trigger the download
+   const url = URL.createObjectURL(blob);
+   const a = document.createElement("a");
+   a.href = url;
+   a.style.display = "none";
+   a.download = filename;
+   document.body.appendChild(a);
+   a.click();
+   // Clean up the URL object
+   document.body.removeChild(a);
+   URL.revokeObjectURL(url);
+}
+
 function makeZipAndDownload(files: FileContent[]): void {
    makeZip(files).then((zipBlob) => {
-      let date_str = new Date().toISOString();
-      // Replace colons and dots for filename safety
-      date_str = date_str.replace(/[:.]/g, "-");
+      let date_str = makeFilenameDateString();
       const filename = `acb_export_${date_str}.zip`;
-      // const blob = new Blob([zipBlob], { type: "application/zip" });
-      // Create a temporary link to trigger the download
-      const url = URL.createObjectURL(zipBlob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.style.display = "none";
-      a.download = filename;
-      document.body.appendChild(a);
-      a.click();
-      // Clean up the URL object
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
+      downloadBlob(filename, zipBlob);
    }).catch((err: unknown) => {
       console.error("Error creating zip file: ", err);
       ErrorBox.getMain().showWith({
@@ -88,15 +95,26 @@ function makeZipAndDownload(files: FileContent[]): void {
    });
 }
 
+function downloadCsv(filenameBase: string, csvContent: string) {
+   let date_str = makeFilenameDateString();
+   const filename = `${filenameBase}_${date_str}.csv`;
+   const blob = new Blob([csvContent], { type: "text/csv" });
+   downloadBlob(filename, blob);
+}
+
 enum AcbAppRunMode {
    Normal = "normal",
    Export = "export",
 }
 
-async function asyncRunAcb(filenames: string[], contents: string[],
-                           mode: AcbAppRunMode = AcbAppRunMode.Normal
-) {
-   console.debug("asyncRunAcb", filenames);
+class CommonRunOptions {
+   constructor(
+      public printFullDollarValues: boolean,
+      public initSecs: string[],
+   ) {}
+}
+
+function getCommonRunOptions(): Result<CommonRunOptions, Unit> {
    const printFullDollarValues: boolean =
       AcbExtraOptions.getPrintFullValuesCheckbox().checked;
    const initSecsRes = getInitSecStrs();
@@ -108,9 +126,22 @@ async function asyncRunAcb(filenames: string[], contents: string[],
          descPre: "There was a problem with the initial security values:",
          errorText: errors.join("\n"),
       });
-      return;
+      return Result.Err(Unit.get());
    }
    const initSecs = initSecsRes.unwrap();
+   return Result.Ok(new CommonRunOptions(printFullDollarValues, initSecs));
+}
+
+async function asyncRunAcb(filenames: string[], contents: string[],
+                           mode: AcbAppRunMode = AcbAppRunMode.Normal
+) {
+   console.debug("asyncRunAcb", filenames);
+   const commonOptions = getCommonRunOptions();
+   if (commonOptions.isErr()) {
+      // Error already handled in getCommonRunOptions
+      return;
+   }
+   const { printFullDollarValues, initSecs } = commonOptions.unwrap();
 
    const exportMode: boolean = mode === AcbAppRunMode.Export;
 
@@ -127,6 +158,8 @@ async function asyncRunAcb(filenames: string[], contents: string[],
       }
 
       const ret: AppResultOk = AppResultOk.fromJsValue(jsRet);
+
+      AcbOutput.setAppFunctionViewMode(AppFunctionMode.Calculate);
 
       TextOutputContainer.get().setText(ret.textOutput);
       SecurityTablesOutputContainer.get().populateTables(ret.modelOutput);
@@ -147,28 +180,55 @@ async function asyncRunAcb(filenames: string[], contents: string[],
    }
 }
 
-function loadAllFileInfoAndRun(mode: AcbAppRunMode = AcbAppRunMode.Normal) {
-   console.log("loadAllFileInfoAndRun");
-   const fileList = FileStager.globalInstance.getFilesToUseList();
+// Handler for summary mode
+import { run_acb_summary } from './pkg/acb_wasm.js';
+import { AppSummaryResultOk } from "./acb_wasm_types.js";
+import { SummaryOutputContainer } from "./ui_model/summary_output.js";
+import { Unit } from "./basic_utils.js";
+import { AppFunctionMode } from "./common/acb_app_types.js";
 
-   const loader = new CsvFilesLoader(fileList);
-   loader.loadFiles((result: FileLoadResult) => {
-      console.debug("loadAllFileInfoAndRun: loadFiles result: ", result);
-      if (result.loadErrors.length > 0) {
-         // Show the first error.
-         const error = result.loadErrors[0];
-         console.log("Error loading files: ", result.loadErrors);
-         ErrorBox.getMain().showWith({
-            title: "Read Error",
-            descPre: error.errorDesc,
-            errorText: error.error,
-         });
+async function asyncRunAcbSummary(filenames: string[], contents: string[], latestDate: Date, mode: AcbAppRunMode) {
+   console.debug("asyncRunAcbSummary", filenames);
+   const commonOptions = getCommonRunOptions();
+   if (commonOptions.isErr()) {
+      // Error already handled in getCommonRunOptions
+      return;
+   }
+   const { printFullDollarValues, initSecs } = commonOptions.unwrap();
+
+   // Also, pass split_annual_summary_gains as true (or add UI for it if needed).
+   const splitAnnualSummaryGains = true;
+
+   try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment
+      const jsRet: any = await run_acb_summary(
+         latestDate, filenames, contents, initSecs, splitAnnualSummaryGains, printFullDollarValues
+      );
+      console.debug("asyncRunAcbSummary: run_acb_summary returned: ", jsRet);
+      const ret: AppSummaryResultOk = AppSummaryResultOk.fromJsValue(jsRet);
+
+      if (mode === AcbAppRunMode.Export) {
+         downloadCsv("acb_summary", ret.csvText);
          return;
       }
 
-      asyncRunAcb(result.loadedFileNames, result.loadedContent, mode)
-         .then(() => {}).catch((_: unknown) => {});
-   });
+      AcbOutput.setAppFunctionViewMode(AppFunctionMode.TxSummary);
+
+      // Display CSV text output
+      TextOutputContainer.get().setText(ret.csvText);
+      // Display summary table in its own container
+      SummaryOutputContainer.get().populateTable(ret.summaryTable);
+      ErrorBox.getMain().hide();
+   } catch (err) {
+      let errMsg = typeof err === "string" ? err : (err instanceof Error ? err.message : String(err));
+      console.error("asyncRunAcbSummary caught error: ", err);
+      ErrorBox.getMain().showWith({
+         title: "Processing Error",
+         descPre: "An error occurred while processing the summary. Please review the error details below:",
+         errorText: errMsg,
+         descPost: "If this seems unexpected, try clearing your cache."
+      });
+   }
 }
 
 function addFilesToUse(fileList: FileList): void {
@@ -199,10 +259,44 @@ export function initAppUI() {
    });
    ClearFilesButton.get().setup();
    CollapsibleRegion.initAll();
-   RunButton.get().setup(loadAllFileInfoAndRun);
-   ExportButton.get().setup(() => {
-      loadAllFileInfoAndRun(AcbAppRunMode.Export);
-   });
+
+   FunctionModeSelector.get().setup();
+   SummaryDatePicker.get().setup();
+
+   function runHandler(acbRunMode: AcbAppRunMode = AcbAppRunMode.Normal) {
+      const funcMode = FunctionModeSelector.get().getSelectedMode();
+      const fileList = FileStager.globalInstance.getFilesToUseList();
+      const loader = new CsvFilesLoader(fileList);
+      loader.loadFiles((result: FileLoadResult) => {
+         if (result.loadErrors.length > 0) {
+            const error = result.loadErrors[0];
+            ErrorBox.getMain().showWith({
+               title: "Read Error",
+               descPre: error.errorDesc,
+               errorText: error.error,
+            });
+            return;
+         }
+         if (funcMode === AppFunctionMode.Calculate) {
+            asyncRunAcb(result.loadedFileNames, result.loadedContent, acbRunMode)
+               .then(() => {}).catch((_: unknown) => {});
+         } else if (funcMode === AppFunctionMode.TxSummary) {
+            const datePicker = SummaryDatePicker.get();
+            const latestDate = datePicker.getValue() || SummaryDatePicker.getDefaultDate();
+            asyncRunAcbSummary(result.loadedFileNames, result.loadedContent, latestDate, acbRunMode)
+               .then(() => {}).catch((_: unknown) => {});
+         } else {
+            console.error("Unsupported function mode: ", funcMode);
+            ErrorBox.getMain().showWith({
+               title: "Unsupported Function Mode",
+               descPre: `The selected function mode ${funcMode} is not yet supported.`,
+            });
+         }
+      });
+   }
+
+   RunButton.get().setup(() => { runHandler(AcbAppRunMode.Normal) });
+   ExportButton.get().setup(() => { runHandler(AcbAppRunMode.Export) });
 
    InitialSymbolStateInputs.get().setup();
 
