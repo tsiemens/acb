@@ -9,6 +9,7 @@ pub enum ReaderArg {
     Auto,
     Pypdf,
     Lopdf,
+    Jspdf, // pdf-parse via Node.js
 }
 
 impl std::fmt::Display for ReaderArg {
@@ -67,6 +68,7 @@ fn main() -> Result<(), ()> {
         ReaderArg::Auto => pdf::get_pages_text_from_path,
         ReaderArg::Pypdf => pdf::get_pages_text_from_path_py,
         ReaderArg::Lopdf => pdf::get_pages_text_from_path_lo,
+        ReaderArg::Jspdf => pdf::get_pages_text_from_path_js,
     };
 
     let path = args.input;

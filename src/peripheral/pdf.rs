@@ -402,6 +402,44 @@ pub fn get_pages_text_from_path_lo(
     }
 }
 
+/// Uses the pdf-parse npm package as the reading engine.
+pub fn get_pages_text_from_path_js(
+    p: &std::path::PathBuf,
+    page_numbers: Option<&[u32]>,
+) -> Result<Vec<String>, SError> {
+    let mut args = vec!["--parsable-page-markers".to_string()];
+    if let Some(pns) = page_numbers {
+        for pn in pns {
+            args.push("-p".to_string());
+            args.push(pn.to_string());
+        }
+    }
+    args.push(p.display().to_string());
+
+    let js_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("js");
+    let script_path = js_dir.join("pdf_text.js");
+
+    let output = std::process::Command::new("node")
+        .arg(&script_path)
+        .args(args)
+        .output()
+        .map_err(|e| format!("Failed to run Node.js script: {}", e))?;
+
+    if !output.status.success() {
+        return Err(String::from_utf8_lossy(&output.stderr).to_string());
+    }
+
+    let output_str = String::from_utf8_lossy(&output.stdout).to_string();
+    let split_pat = regex::Regex::new(r"PAGE_BREAK<\d+>").unwrap();
+
+    Ok(split_pat
+        .split(&output_str)
+        .enumerate()
+        .filter(|(i, _)| *i != 0)
+        .map(|(_, s)| s.to_string())
+        .collect())
+}
+
 /// Automatically determines the reader engine to use for this PDF.
 /// Mind you, this isn't a very efficient process, because it relies on
 /// successive reader engines to fail to parse the document.
@@ -434,6 +472,12 @@ pub fn get_all_pages_text_from_path_lo(
     p: &std::path::PathBuf,
 ) -> Result<Vec<String>, SError> {
     get_pages_text_from_path_lo(p, None)
+}
+
+pub fn get_all_pages_text_from_path_js(
+    p: &std::path::PathBuf,
+) -> Result<Vec<String>, SError> {
+    get_pages_text_from_path_js(p, None)
 }
 
 pub fn get_all_pages_text_from_path(

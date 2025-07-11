@@ -19,11 +19,14 @@ acb_wasm:
 
 web: acb_wasm www
 
+local-npm:
+	$(MAKE) -C js install
+
 web-all: acb_wasm www-all
 
 all-rust-notest: rust acb_wasm
 
-all-notest: all-rust-notest www-all
+all-notest: all-rust-notest www-all local-npm
 
 all: all-notest test
 

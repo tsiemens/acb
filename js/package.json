@@ -1,0 +1,9 @@
+{
+  "name": "pdf-text-extractor",
+  "version": "1.0.0",
+  "description": "PDF text extraction using pdf-parse",
+  "main": "pdf_text.js",
+  "dependencies": {
+    "pdf-parse": "^1.1.1"
+  }
+}
