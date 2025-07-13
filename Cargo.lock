@@ -2299,9 +2299,9 @@ checksum = "f60fcc7d6849342eff22c4350c8b9a989ee8ceabc4b481253e8946b9fe83d684"
 
 [[package]]
 name = "rawzip"
-version = "0.2.0"
+version = "0.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f56483ae996be55c2bdfd193157620e8f70608c76416a3a754fd2531ea7f437d"
+checksum = "15175d688c45677b5c1973398e0682a3efd381d3c7c0ccce86791d998986fac7"
 
 [[package]]
 name = "redox_syscall"

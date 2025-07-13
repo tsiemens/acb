@@ -47,13 +47,14 @@ impl ZipWriter {
         // in rawzip. Default file permission seems to be o664 (rw-rw-r--),
         // which is fine. Unfortunately though the modified date is set to 0,
         // so they all end up showing up as Dec 31 1979.
-        let options = rawzip::ZipEntryOptions::default()
-            .compression_method(rawzip::CompressionMethod::Store);
 
         // Start of a new file in our zip archive.
-        let entry_writer = self.archive.new_file(name, options).map_err(|e| {
-            format!("Failed to create new file in zip archive: {}", e)
-        })?;
+        let entry_writer = self.archive.new_file(name)
+            .compression_method(rawzip::CompressionMethod::Store)
+            .create()
+            .map_err(|e| {
+                format!("Failed to create new file in zip archive: {}", e)
+            })?;
 
         // We're not doing any compression so we can just use the raw file.
         // No need to wrap in an encoder.
@@ -109,7 +110,7 @@ mod tests {
             .map_err(|e| format!("No next entry: {e}"))?
             .unwrap();
 
-        assert_eq!(entry.file_safe_path().unwrap(), "file.txt");
+        assert_eq!(entry.file_path().try_normalize().unwrap().as_ref(), "file.txt");
 
         assert_eq!(entry.compression_method(), rawzip::CompressionMethod::Store);
 
