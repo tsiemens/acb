@@ -1,0 +1,62 @@
+# Template config for sanitize-etrade-test-pdf.py
+# Copy this file to sanitize_config.toml and customize as needed.
+
+[[replacements]]
+pattern = "REALFIRSTNAME"
+replacement = "JOHN"
+
+[[replacements]]
+pattern = "REALLASTNAME"
+replacement = "DOE"
+
+[[replacements]]
+pattern = "REALADDRESSNUMBER"
+replacement = "1"
+
+[[replacements]]
+pattern = "REALSTREETNAME"
+replacement = "BLAH"
+
+[[replacements]]
+pattern = "REALCITY"
+replacement = "VANCOUVER"
+
+[[replacements]]
+pattern = "V0V\\s*0V0"
+replacement = "HOH OHO"
+
+[[replacements]]
+pattern = "REALCORP(\\s+INC)?"
+replacement = "FOO SYSTEMS"
+
+[[replacements]]
+pattern = "REAL"
+replacement = "FOO"
+
+[[replacements]]
+pattern = "9876"
+replacement = "0001"
+
+[[replacements]]
+pattern = "XXXX-9999"
+replacement = "XXXX-1234"
+
+[[replacements]]
+pattern = "987654321"
+replacement = "12345678"
+
+[[replacements]]
+pattern = "999-XXX...-..."
+replacement = "123-XXX789-111"
+
+[[replacements]]
+pattern = "987654321"
+replacement = "123456789"
+
+[randomizer]
+# Seeds for randomizing values. Change these to anonymize your own data.
+dollar_seed = "your_dollar_seed_here"
+share_seed = "your_share_seed_here"
+# Thresholds for randomizing values (values below threshold are not changed)
+dollar_threshold = 30.0
+share_threshold = 5.0

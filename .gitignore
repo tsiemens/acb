@@ -30,3 +30,6 @@ venv/
 
 # VSCode
 .vscode/
+
+# Local-only configs
+py/sanitize_config.toml
