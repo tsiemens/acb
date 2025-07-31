@@ -43,14 +43,12 @@ impl ZipWriter {
         name: &str,
     ) -> Result<ZipEntryWriter<'b>, String> {
         // We are not compressing the data, so we can use the Store compression method.
-        // Note that at the time of writing, this is the only entry option available
-        // in rawzip. Default file permission seems to be o664 (rw-rw-r--),
-        // which is fine. Unfortunately though the modified date is set to 0,
-        // so they all end up showing up as Dec 31 1979.
-
-        // Start of a new file in our zip archive.
         let entry_writer = self.archive.new_file(name)
             .compression_method(rawzip::CompressionMethod::Store)
+            .last_modified(rawzip::time::UtcDateTime::from_unix(
+                chrono::offset::Local::now().to_utc().timestamp()
+            ))
+            .unix_permissions(0o644) // rw-r--r--
             .create()
             .map_err(|e| {
                 format!("Failed to create new file in zip archive: {}", e)
