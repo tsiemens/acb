@@ -43,10 +43,12 @@ impl ZipWriter {
         name: &str,
     ) -> Result<ZipEntryWriter<'b>, String> {
         // We are not compressing the data, so we can use the Store compression method.
-        let entry_writer = self.archive.new_file(name)
+        let entry_writer = self
+            .archive
+            .new_file(name)
             .compression_method(rawzip::CompressionMethod::Store)
             .last_modified(rawzip::time::UtcDateTime::from_unix(
-                chrono::offset::Local::now().to_utc().timestamp()
+                chrono::offset::Local::now().to_utc().timestamp(),
             ))
             .unix_permissions(0o644) // rw-r--r--
             .create()
@@ -108,7 +110,10 @@ mod tests {
             .map_err(|e| format!("No next entry: {e}"))?
             .unwrap();
 
-        assert_eq!(entry.file_path().try_normalize().unwrap().as_ref(), "file.txt");
+        assert_eq!(
+            entry.file_path().try_normalize().unwrap().as_ref(),
+            "file.txt"
+        );
 
         assert_eq!(entry.compression_method(), rawzip::CompressionMethod::Store);
 
