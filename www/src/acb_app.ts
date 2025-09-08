@@ -1,17 +1,21 @@
 import JSZip from "jszip";
+import { Unit } from "./basic_utils.js";
+import { AppFunctionMode } from "./common/acb_app_types.js";
 import { CsvFilesLoader, FileLoadResult, FileStager, printMetadataForFileList } from "./file_reader.js";
-import { run_acb } from './pkg/acb_wasm.js';
+import { run_acb, run_acb_summary } from './pkg/acb_wasm.js';
 import { Result } from "./result.js";
-import { AppExportResultOk, AppResultOk, FileContent } from "./acb_wasm_types.js";
+import { AppExportResultOk, AppResultOk, AppSummaryResultOk, FileContent, RenderTable } from "./acb_wasm_types.js";
 import { AcbOutput, AggregateOutputContainer, SecurityTablesOutputContainer, TextOutputContainer, YearHighlightSelector } from "./ui_model/acb_app_output.js";
 import { AcbExtraOptions, SummaryDatePicker, ExportButton, FunctionModeSelector, InitialSymbolStateInputs, InitSecItem, RunButton } from "./ui_model/app_input.js";
 import { ErrorBox } from "./ui_model/error_displays.js";
 import { ClearFilesButton, FileDropArea, FileSelectorInput, SelectedFileList } from "./ui_model/file_input.js";
 import { AutoRunCheckbox, DebugSettings } from "./ui_model/debug.js";
+import { SummaryOutputContainer } from "./ui_model/summary_output.js";
 import { loadTestFile } from "./debug.js";
 import { InfoDialog, InfoListItem } from "./ui_model/info_dialogs.js";
 import { CollapsibleRegion } from "./ui_model/components.js";
 import { asError } from "./http_utils.js";
+
 
 /**
  * Get colon-delimited initial security values (format is as expected by acb).
@@ -181,12 +185,6 @@ async function asyncRunAcb(filenames: string[], contents: string[],
 }
 
 // Handler for summary mode
-import { run_acb_summary } from './pkg/acb_wasm.js';
-import { AppSummaryResultOk } from "./acb_wasm_types.js";
-import { SummaryOutputContainer } from "./ui_model/summary_output.js";
-import { Unit } from "./basic_utils.js";
-import { AppFunctionMode } from "./common/acb_app_types.js";
-
 async function asyncRunAcbSummary(filenames: string[], contents: string[], latestDate: Date, mode: AcbAppRunMode) {
    console.debug("asyncRunAcbSummary", filenames);
    const commonOptions = getCommonRunOptions();
@@ -222,6 +220,73 @@ async function asyncRunAcbSummary(filenames: string[], contents: string[], lates
    } catch (err) {
       let errMsg = typeof err === "string" ? err : (err instanceof Error ? err.message : String(err));
       console.error("asyncRunAcbSummary caught error: ", err);
+      ErrorBox.getMain().showWith({
+         title: "Processing Error",
+         descPre: "An error occurred while processing the summary. Please review the error details below:",
+         errorText: errMsg,
+         descPost: "If this seems unexpected, try clearing your cache."
+      });
+   }
+}
+
+function generateShareTallyRenderTable(txSummary: RenderTable): [RenderTable, string] {
+   if (txSummary.header[0] !== "security") {
+      throw new Error(`Expected 'security' column at index 0, found '${txSummary.header[0]}'`);
+   }
+   if (txSummary.header[4] !== "shares") {
+      throw new Error(`Expected 'shares' column at index 4, found '${txSummary.header[4]}'`);
+   }
+
+   const header = ["security", "shares"];
+   let csvText = header.join(",") + "\n";
+   const rows = txSummary.rows.map((row) => {
+      const sec = row[0];
+      const shares = row[4];
+      let tallyRow = [sec, shares];
+      csvText += tallyRow.join(",") + "\n";
+      return tallyRow;
+   });
+   const table = new RenderTable(
+      header, rows, txSummary.footer, txSummary.notes, txSummary.errors);
+   return [table, csvText];
+}
+
+// Handler for share tally mode
+async function asyncRunAcbShareTally(filenames: string[], contents: string[], latestDate: Date, mode: AcbAppRunMode) {
+   console.debug("asyncRunAcbShareTally", filenames);
+   const commonOptions = getCommonRunOptions();
+   if (commonOptions.isErr()) {
+      // Error already handled in getCommonRunOptions
+      return;
+   }
+   const { printFullDollarValues, initSecs } = commonOptions.unwrap();
+
+   const splitAnnualSummaryGains = false;
+
+   try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment
+      const jsRet: any = await run_acb_summary(
+         latestDate, filenames, contents, initSecs, splitAnnualSummaryGains, printFullDollarValues
+      );
+      console.debug("asyncRunAcbShareTally: run_acb_summary returned: ", jsRet);
+      const ret: AppSummaryResultOk = AppSummaryResultOk.fromJsValue(jsRet);
+
+      const [shareTallyTable, csvText] = generateShareTallyRenderTable(ret.summaryTable);
+
+      if (mode === AcbAppRunMode.Export) {
+         downloadCsv("acb_share_tally", csvText);
+         return;
+      }
+
+      AcbOutput.setAppFunctionViewMode(AppFunctionMode.TallyShares);
+
+      // Display CSV text output
+      TextOutputContainer.get().setText(csvText);
+      SummaryOutputContainer.get().populateTable(shareTallyTable);
+      ErrorBox.getMain().hide();
+   } catch (err) {
+      let errMsg = typeof err === "string" ? err : (err instanceof Error ? err.message : String(err));
+      console.error("asyncRunAcbShareTally caught error: ", err);
       ErrorBox.getMain().showWith({
          title: "Processing Error",
          descPre: "An error occurred while processing the summary. Please review the error details below:",
@@ -277,20 +342,25 @@ export function initAppUI() {
             });
             return;
          }
-         if (funcMode === AppFunctionMode.Calculate) {
-            asyncRunAcb(result.loadedFileNames, result.loadedContent, acbRunMode)
-               .then(() => {}).catch((_: unknown) => {});
-         } else if (funcMode === AppFunctionMode.TxSummary) {
-            const datePicker = SummaryDatePicker.get();
-            const latestDate = datePicker.getValue() || SummaryDatePicker.getDefaultDate();
-            asyncRunAcbSummary(result.loadedFileNames, result.loadedContent, latestDate, acbRunMode)
-               .then(() => {}).catch((_: unknown) => {});
-         } else {
-            console.error("Unsupported function mode: ", funcMode);
-            ErrorBox.getMain().showWith({
-               title: "Unsupported Function Mode",
-               descPre: `The selected function mode ${funcMode} is not yet supported.`,
-            });
+         switch (funcMode) {
+            case AppFunctionMode.Calculate:
+               asyncRunAcb(result.loadedFileNames, result.loadedContent, acbRunMode)
+                  .then(() => {}).catch((_: unknown) => {});
+               break;
+            case AppFunctionMode.TxSummary: {
+               const datePicker = SummaryDatePicker.get();
+               const latestDate = datePicker.getValue() || SummaryDatePicker.getDefaultDate(funcMode);
+               asyncRunAcbSummary(result.loadedFileNames, result.loadedContent, latestDate, acbRunMode)
+                  .then(() => {}).catch((_: unknown) => {});
+               break;
+            }
+            case AppFunctionMode.TallyShares: {
+               const datePicker = SummaryDatePicker.get();
+               const latestDate = datePicker.getValue() || SummaryDatePicker.getDefaultDate(funcMode);
+               asyncRunAcbShareTally(result.loadedFileNames, result.loadedContent, latestDate, acbRunMode)
+                  .then(() => {}).catch((_: unknown) => {});
+               break;
+            }
          }
       });
    }

@@ -197,7 +197,7 @@ export class FunctionModeSelector extends ElementModel {
 
    public setup() {
       this.element.addEventListener("change", () => {
-         SummaryDatePicker.get().updateVisibilityForCurrentMode();
+         SummaryDatePicker.get().updateForCurrentMode();
       });
    }
 
@@ -208,6 +208,8 @@ export class FunctionModeSelector extends ElementModel {
 
 export class SummaryDatePicker extends ElementModel {
    public static readonly ID: string = "acbSummaryDatePicker";
+
+   private static lastPickedDates = new Map<AppFunctionMode, Date>();
 
    public static get(): SummaryDatePicker {
       return new SummaryDatePicker(
@@ -224,9 +226,14 @@ export class SummaryDatePicker extends ElementModel {
    }
 
    public setup() {
-      this.updateVisibilityForCurrentMode();
-      const defaultDate = SummaryDatePicker.getDefaultDate();
-      (this.element as HTMLInputElement).value = defaultDate.toISOString().split('T')[0];
+      this.updateForCurrentMode();
+      this.element.addEventListener("change", () => {
+         const date = SummaryDatePicker.get().getValue();
+         if (date) {
+            const mode = FunctionModeSelector.get().getSelectedMode();
+            SummaryDatePicker.lastPickedDates.set(mode, date);
+         }
+      });
    }
 
    public setVisibility(visible: boolean) {
@@ -234,10 +241,18 @@ export class SummaryDatePicker extends ElementModel {
       SummaryDatePicker.getLabel().style.display = visible ? "inline-block" : "none";
    }
 
-   public updateVisibilityForCurrentMode() {
+   public updateForCurrentMode() {
       const funcMode = FunctionModeSelector.get().getSelectedMode();
       console.debug("DatePicker.updateVisibilityForCurrentMode", funcMode);
-      this.setVisibility(funcMode === AppFunctionMode.TxSummary);
+      this.setVisibility(funcMode === AppFunctionMode.TxSummary ||
+                         funcMode === AppFunctionMode.TallyShares);
+
+      // Check if we have a saved date for this mode
+      let date = SummaryDatePicker.lastPickedDates.get(funcMode);
+      if (!date) {
+         date = SummaryDatePicker.getDefaultDate(funcMode);
+      }
+      (this.element as HTMLInputElement).value = date.toISOString().split('T')[0];
    }
 
    public getValue(): Date | null {
@@ -245,9 +260,12 @@ export class SummaryDatePicker extends ElementModel {
       return value ? new Date(value) : null;
    }
 
-   public static getDefaultDate(): Date {
+   public static getDefaultDate(mode: AppFunctionMode): Date {
       const now = new Date();
-      let lastYear = now.getFullYear() - 1;
-      return new Date(`${lastYear.toString()}-12-31`);
+      if (mode === AppFunctionMode.TxSummary) {
+         let lastYear = now.getFullYear() - 1;
+         return new Date(`${lastYear.toString()}-12-31`);
+      }
+      return now;
    }
 }
