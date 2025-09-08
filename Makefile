@@ -25,7 +25,7 @@ web-all: acb_wasm www-all
 
 all-rust-notest: rust acb_wasm
 
-all-notest: all-rust-notest www-all
+all-notest: all-rust-notest web-all
 
 all: all-notest test
 
