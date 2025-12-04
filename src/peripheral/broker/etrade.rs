@@ -776,11 +776,122 @@ fn parse_post_ms_2023_trade_confirmation(
             filename: Some(get_filename(filepath)),
         })
     } else {
-        Err(
-            "No transaction found in Morgan Stanley/Etrade trade confirmation slip"
-                .to_string(),
-        )
+        parse_post_ms_2023_trade_confirmation_alt(pdf_text, filepath)
     }
+}
+
+// An alternative parser for post-MS-2023 trade confirmations, though it's
+// not clear yet if this applies to all documents post ~2025-Q4.
+// The formatting for these after extracting the text is quite weird, though the
+// rendered PDF looks essentially the same as it did before.
+fn parse_post_ms_2023_trade_confirmation_alt(
+    pdf_text: &str,
+    filepath: &Path,
+) -> Result<BrokerTx, SError> {
+    // Step 1: Remove extraneous text that confuses word boundaries, etc.
+    // eg. the page 1 of 2, 2 of 2, etc.
+    // Find the final one, which should be 2 of 2, or something
+    // (almost always 2 of 2). Then we can use the known number of pages to
+    // adjust the text extraction accordingly.
+
+    let final_page_re = regex::Regex::new(r"(\d+)\s+of\s+(\d+)").unwrap();
+    let mut last_total_pages = 0;
+    for m in final_page_re.captures_iter(pdf_text) {
+        let page_num: usize = m.get(1).unwrap().as_str().parse().unwrap_or(0);
+        let total_pages: usize = m.get(2).unwrap().as_str().parse().unwrap_or(0);
+        if page_num == total_pages {
+            last_total_pages = total_pages;
+        }
+    }
+
+    let mut cleaned_text = pdf_text.to_string();
+    tracing::debug!(
+        "parse_post_ms_2023_trade_confirmation_alt: cleaning {} page indicators",
+        last_total_pages
+    );
+    for i in 1..=last_total_pages {
+        let page_marker = format!("{} of {}", i, last_total_pages);
+        cleaned_text = cleaned_text.replace(&page_marker, "");
+    }
+
+    // Step 2:
+    // Individually search for each field as a separate regex, since they might
+    // be ordered weirdly.
+    let symbol_re = regex::Regex::new(r"\bISIN:\s*(?P<symbol>\S+)").unwrap();
+    let values_line_re = regex::Regex::new(
+        r"(?P<txdate>\d+/\d+/\d+)\s+(?P<sdate>\d+/\d+/\d+)\s+(?P<nshares>\d+)\s+(?P<price>\d+\.\d+)\s+"
+    )
+    .unwrap();
+    let action_re =
+        regex::Regex::new(r"Transaction Type:\s*(?P<action>\S.*\S)").unwrap();
+    let commission_re =
+        regex::Regex::new(r"Commission\s*\$(?P<commission>\S+)").unwrap();
+    let fee_re = regex::Regex::new(r"Transaction Fee\s*\$(?P<fee>\S+)").unwrap();
+    let account_re = regex::Regex::new(r"(?P<account>\d+-XXX\d+-\d+)").unwrap();
+
+    let do_match_opt = |re: &regex::Regex| -> Result<Option<String>, SError> {
+        if let Some(m) = re.captures(&cleaned_text) {
+            Ok(Some(m.get(1).unwrap().as_str().to_string()))
+        } else {
+            Ok(None)
+        }
+    };
+
+    let do_match = |re: &regex::Regex, field_name: &str| -> Result<String, SError> {
+        if let Some(m) = re.captures(&cleaned_text) {
+            Ok(m.name(field_name).unwrap().as_str().to_string())
+        } else {
+            Err(format!("Could not find field {}", field_name))
+        }
+    };
+
+    let do_match_dec_opt =
+        |re: &regex::Regex, field_name: &str| -> Result<Option<Decimal>, SError> {
+            if let Some(m) = re.captures(&cleaned_text) {
+                let val_str = m.get(1).unwrap().as_str();
+                let val_dec = val_str.parse::<Decimal>().map_err(|e| {
+                    format!("Decimal parse error in field {}: {}", field_name, e)
+                })?;
+                Ok(Some(val_dec))
+            } else {
+                Ok(None)
+            }
+        };
+
+    let values_m = CapturesHelper::new(
+        values_line_re
+            .captures(&cleaned_text)
+            .ok_or_else(|| "Could not find date, price line".to_string())?,
+    );
+
+    let txdate_str = values_m.group("txdate").to_string();
+    let sdate_str = values_m.group("sdate").to_string();
+
+    Ok(BrokerTx {
+        security: do_match(&symbol_re, "symbol")?,
+        trade_date: Date::parse(&txdate_str, ETRADE_SLASH_DATE_FORMAT)
+            .map_err(|e| format!("Date parse error in {}: {}", txdate_str, e))?,
+        settlement_date: Date::parse(&sdate_str, ETRADE_SLASH_DATE_FORMAT)
+            .map_err(|e| format!("Date parse error in {}: {}", sdate_str, e))?,
+        trade_date_and_time: txdate_str.clone(),
+        settlement_date_and_time: sdate_str.clone(),
+        action: TxAction::try_from(do_match(&action_re, "action")?.as_str())?,
+        amount_per_share: values_m.dec_group("price")?,
+        num_shares: values_m.dec_group("nshares")?,
+        commission: do_match_dec_opt(&commission_re, "commission")?
+            .unwrap_or(Decimal::ZERO)
+            + do_match_dec_opt(&fee_re, "fee")?.unwrap_or(Decimal::ZERO),
+        currency: crate::portfolio::Currency::usd(),
+        memo: String::new(),
+        exchange_rate: None,
+        affiliate: crate::portfolio::Affiliate::default(),
+        row_num: 1,
+        account: new_account(
+            do_match_opt(&account_re)?.unwrap_or("UNKNOWN".to_string()),
+        ),
+        sort_tiebreak: None,
+        filename: Some(get_filename(filepath)),
+    })
 }
 
 pub enum EtradePdfContent {
@@ -1414,6 +1525,63 @@ mod tests {
                 amount_per_share: dec!(200.01),
                 num_shares: dec!(123),
                 commission: dec!(4.12),
+                currency: crate::portfolio::Currency::usd(),
+                memo: s(""),
+                exchange_rate: None,
+                affiliate: crate::portfolio::Affiliate::default(),
+                row_num: 1,
+                account: new_account(s("123-XXX123-123")),
+                sort_tiebreak: None,
+                filename: Some(s("tconf.pdf")),
+            },
+        );
+
+        // Alt (2025 Q4 and later?) format
+        // pypdf-based output (does not work with lopdf)
+        let pdf_text = "
+            This transaction is confirmed in accordance with the information provided on the Conditions and Disclosures page.Your Account Number:
+            E*TRADE from Morgan Stanley
+            Trade Date Settlement Date Quantity Price Settlement Amount
+            Transaction Type: Sold Short
+            Description: FOOSYSTEMS INCNet Amount $24,601.23 
+            JOHN DOE
+            1234 STREET AVE.
+            VANCOUVER BRITISH COLUMBIA H0H 0H0
+            CANADA123-XXX123-123
+            Account Type - Cash
+            P.O. BOX 484
+            JERSEY CITY, NJ 07303-0484
+            (800)-387-2331
+            Morgan Stanley Smith Barney LLC. Member SIPC. The transaction(s) may have been executed with Morgan Stanley & Co. LLC, an
+            affiliate, which may receive compensation for any such services. E*TRADE is a business of Morgan Stanley.
+            1 of 211/21/2025 11/24/2025 123 200.01
+            Symbol / CUSIP / ISIN: FOO / 123456789 / US0123456789Principal $24,601.23
+            Commission $3.91
+            Unsolicited trade
+            Sell short exempt
+            Morgan Stanley Smith Barney LLC acted as agent.
+
+            2 of 2
+        ";
+
+        let tx = parse_post_ms_2023_trade_confirmation(
+            pdf_text,
+            &std::path::PathBuf::from("foo/bar/tconf.pdf"),
+        )
+        .unwrap();
+
+        assert_big_struct_eq(
+            tx,
+            BrokerTx {
+                security: s("FOO"),
+                trade_date: date("2025-11-21"),
+                settlement_date: date("2025-11-24"),
+                trade_date_and_time: s("11/21/2025"),
+                settlement_date_and_time: s("11/24/2025"),
+                action: TxAction::Sell,
+                amount_per_share: dec!(200.01),
+                num_shares: dec!(123),
+                commission: dec!(3.91),
                 currency: crate::portfolio::Currency::usd(),
                 memo: s(""),
                 exchange_rate: None,
