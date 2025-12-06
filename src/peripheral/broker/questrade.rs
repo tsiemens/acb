@@ -37,12 +37,13 @@ pub fn sheet_to_txs(
     // Also, None
     let ignored_actions: HashSet<&'static str> = HashSet::from_iter(
         vec![
-            "BRW", "TFI", "TF6", "MGR", "DEP", "NAC", "CON", "INT", "EFT", "RDM", "",
+            "BRW", "TFI", "TF6", "MGR", "DEP", "NAC", "CON", "INT", "EFT", "RDM",
+            "LFJ", "FCH", "",
         ]
         .into_iter(),
     );
     let allowed_actions: HashSet<&'static str> = HashSet::from_iter(
-        vec!["BUY", "SELL", "DIS", "LIQ", "FXT", "DIV"].into_iter(),
+        vec!["BUY", "SELL", "DIS", "LIQ", "FXT", "DIV", "CIL"].into_iter(),
     );
 
     let mut fx_tracker = FxTracker::new();
@@ -135,7 +136,8 @@ pub fn sheet_to_txs(
                 ));
             }
 
-            if action_str == "DIV" {
+            // Dividends or Cash-in-lieu should be recorded if foreign currency
+            if action_str == "DIV" || action_str == "CIL" {
                 if reader.get_str("Currency")?.to_uppercase() == "USD" {
                     let div_tx = FxTracker::fx_tx(
                         Currency::usd(),
@@ -146,7 +148,7 @@ pub fn sheet_to_txs(
                         row_num,
                         account,
                         None, // exchange rate
-                        format!("DIV from {pre_alias_symbol}"),
+                        format!("{action_str} from {pre_alias_symbol}"),
                     )?;
                     fx_tracker.add_income_fx_tx(div_tx);
                 }
