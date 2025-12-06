@@ -65,3 +65,17 @@ export class ButtonElementModel extends ElementModel {
         this.element.addEventListener('click', callback);
     }
 }
+
+export class CheckboxElementModel extends ElementModel {
+    public isChecked(): boolean {
+        return (this.element as HTMLInputElement).checked;
+    }
+
+    public setChecked(checked: boolean) {
+        (this.element as HTMLInputElement).checked = checked;
+    }
+
+    public setChangeListener(callback: (_event: Event) => void) {
+        this.element.addEventListener('change', callback);
+    }
+}

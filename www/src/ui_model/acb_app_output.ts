@@ -1,6 +1,6 @@
 import { ElemBuilder } from "../dom_utils.js";
 import { AppRenderResult, RenderTable } from "../acb_wasm_types.js";
-import { ElementModel } from "./model_lib.js";
+import { CheckboxElementModel, ElementModel } from "./model_lib.js";
 import { AppFunctionMode } from "../common/acb_app_types.js";
 
 export enum AcbOutputViewMode {
@@ -134,6 +134,24 @@ export class SecurityTablesOutputContainer extends TableOutputContainerBase {
       if (!symbolModel) {
          throw new Error(`No symbol model found for ${symbol}`);
       }
+
+      const yearsSet = new Set<string>();
+      for (const row of symbolModel.rows) {
+         const settleDate = row[2]; // Assuming date is in yyyy-mm-dd format
+         const year = settleDate.split('-')[0];
+         if (year) {
+            yearsSet.add(year);
+         }
+      }
+
+      const wrapperDiv = new ElemBuilder('div')
+         .classes(['security-wrapper'])
+         .attributes({
+            'data-activity-years': Array.from(yearsSet).join(','),
+            'data-has-error': symbolModel.errors && symbolModel.errors.length > 0 ? 'true' : 'false'
+         })
+         .build();
+
       const tr = TableOutputContainerBase.makeTableHeaderRow(symbolModel);
       const tbody = new ElemBuilder('tbody').build();
 
@@ -177,7 +195,7 @@ export class SecurityTablesOutputContainer extends TableOutputContainerBase {
       addRow(symbolModel.footer);
 
       const symTableContainer = TableOutputContainerBase.makeTableContainer(tr, tbody);
-      tablesContainer.appendChild(TableOutputContainerBase.makeTableTitle(symbol));
+      wrapperDiv.appendChild(TableOutputContainerBase.makeTableTitle(symbol));
 
       let errorsAndNotes =
          TableOutputContainerBase.makeTableErrorsAndNotes(symbolModel);
@@ -187,9 +205,11 @@ export class SecurityTablesOutputContainer extends TableOutputContainerBase {
             .build());
       }
 
-      tablesContainer.appendChild(errorsAndNotes.errorsDiv);
-      tablesContainer.appendChild(symTableContainer);
-      tablesContainer.appendChild(errorsAndNotes.notesDiv);
+      wrapperDiv.appendChild(errorsAndNotes.errorsDiv);
+      wrapperDiv.appendChild(symTableContainer);
+      wrapperDiv.appendChild(errorsAndNotes.notesDiv);
+
+      tablesContainer.appendChild(wrapperDiv);
 
       SecurityTablesOutputContainer.setYearRowStyles(
          YearHighlightSelector.get().getSelectedYear()
@@ -262,6 +282,42 @@ export class SecurityTablesOutputContainer extends TableOutputContainerBase {
       for (const symbol of symbols) {
          SecurityTablesOutputContainer.addSymbolTableComponents(
             symbol, model, tablesContainer);
+      }
+   }
+
+   public static setSecurityWrapperStyles(selectedYear: string | null) {
+      const styleSheet = document.styleSheets[0];
+
+      // Remove any existing rules for security wrapper visibility
+      for (let i = styleSheet.cssRules.length - 1; i >= 0; i--) {
+         const rule = styleSheet.cssRules[i];
+         if (rule.cssText.includes('.security-wrapper')) {
+            styleSheet.deleteRule(i);
+         }
+      }
+
+      if (selectedYear) {
+         // Add rule to show wrappers with the selected year and no errors
+         styleSheet.insertRule(
+            `.security-wrapper[data-activity-years*="${selectedYear}"] { display: block; }`,
+            styleSheet.cssRules.length
+         );
+         styleSheet.insertRule(
+            `.security-wrapper[data-has-error="true"] { display: block; }`,
+            styleSheet.cssRules.length
+         );
+
+         // Add rule to hide wrappers without the selected year
+         styleSheet.insertRule(
+            `.security-wrapper:not([data-has-error="true"]):not([data-activity-years*="${selectedYear}"]) { display: none; }`,
+            styleSheet.cssRules.length
+         );
+      } else {
+         // Ensure all wrappers are visible if no year is selected
+         styleSheet.insertRule(
+            `.security-wrapper { display: block; }`,
+            styleSheet.cssRules.length
+         );
       }
    }
 }
@@ -415,6 +471,11 @@ export class YearHighlightSelector extends ElementModel {
       this.element.addEventListener('change', () => {
          const selectedYear = this.getSelectedYear();
          SecurityTablesOutputContainer.setYearRowStyles(selectedYear);
+         if (InactiveYearHideCheckbox.get().isChecked()) {
+            SecurityTablesOutputContainer.setSecurityWrapperStyles(selectedYear);
+         } else {
+            SecurityTablesOutputContainer.setSecurityWrapperStyles(null);
+         }
       });
    }
 
@@ -456,6 +517,23 @@ export class YearHighlightSelector extends ElementModel {
    }
 }
 
+export class InactiveYearHideCheckbox extends CheckboxElementModel {
+   public static readonly ID: string = "hideNoActivityCheckbox";
+
+   public static get(): InactiveYearHideCheckbox {
+      return new InactiveYearHideCheckbox(
+         ElementModel.getRequiredElementById(InactiveYearHideCheckbox.ID));
+   }
+
+   public setup() {
+      this.setChangeListener(() => {
+         const isChecked = InactiveYearHideCheckbox.get().isChecked();
+         const selectedYear = isChecked ? YearHighlightSelector.get().getSelectedYear() : null;
+         SecurityTablesOutputContainer.setSecurityWrapperStyles(selectedYear);
+      });
+   }
+}
+
 function selectableViewModesForAppFunction(funcMode: AppFunctionMode): Array<AcbOutputViewMode> {
    switch (funcMode) {
       case AppFunctionMode.Calculate:
@@ -487,6 +565,7 @@ export class AcbOutput {
       AcbOutput.setAppFunctionViewMode(defaultAppFunction);
 
       YearHighlightSelector.get().setup();
+      InactiveYearHideCheckbox.get().setup();
    }
 
    public static setActiveOutput(mode: AcbOutputViewMode) {
