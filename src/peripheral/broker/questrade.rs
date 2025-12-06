@@ -32,6 +32,7 @@ pub fn sheet_to_txs(
         HashMap::<&'static str, (&'static str, &'static str)>::from([
             // symbol : (alias_to, AKA)
             ("H038778", ("DLR.TO", "DLR.U.TO")),
+            ("G036247", ("DLR.TO", "DLR.U.TO")),
         ]);
 
     // Also, None
