@@ -216,7 +216,15 @@ async function asyncRunAcbSummary(filenames: string[], contents: string[], lates
       TextOutputContainer.get().setText(ret.csvText);
       // Display summary table in its own container
       SummaryOutputContainer.get().populateTable(ret.summaryTable);
-      ErrorBox.getMain().hide();
+      if (ret.summaryTable.errors && ret.summaryTable.errors.length > 0) {
+         ErrorBox.getMain().showWith({
+            title: "Processing Error(s)",
+            descPre: "The following errors were generated during processing:",
+            errorText: ret.summaryTable.errors.map(err => err.trim()).join("\n"),
+         });
+      } else {
+         ErrorBox.getMain().hide();
+      }
    } catch (err) {
       let errMsg = typeof err === "string" ? err : (err instanceof Error ? err.message : String(err));
       console.error("asyncRunAcbSummary caught error: ", err);
@@ -283,7 +291,15 @@ async function asyncRunAcbShareTally(filenames: string[], contents: string[], la
       // Display CSV text output
       TextOutputContainer.get().setText(csvText);
       SummaryOutputContainer.get().populateTable(shareTallyTable);
-      ErrorBox.getMain().hide();
+      if (shareTallyTable.errors && shareTallyTable.errors.length > 0) {
+         ErrorBox.getMain().showWith({
+            title: "Processing Error(s)",
+            descPre: "The following errors were generated during processing:",
+            errorText: shareTallyTable.errors.map(err => err.trim()).join("\n"),
+         });
+      } else {
+         ErrorBox.getMain().hide();
+      }
    } catch (err) {
       let errMsg = typeof err === "string" ? err : (err instanceof Error ? err.message : String(err));
       console.error("asyncRunAcbShareTally caught error: ", err);

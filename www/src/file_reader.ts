@@ -54,6 +54,22 @@ export function printMetadataForFileList(fileList: FileList) {
    }
 }
 
+// Decodes a base64 string to a UTF-8 string, handling BOM if present.
+// (In base 64, BOM is "77u/" at the start of the string.)
+function decodeBase64(base64String: string) {
+   const binaryString = atob(base64String);
+   const bytes = new Uint8Array(binaryString.length);
+
+   for (let i = 0; i < binaryString.length; i++) {
+      bytes[i] = binaryString.charCodeAt(i);
+   }
+
+   // TextDecoder automatically handles  UTF-8 Byte Order Mark (BOM) removal with
+   // the ignoreBOM option
+   const decoder = new TextDecoder('utf-8', { ignoreBOM: true });
+   return decoder.decode(bytes);
+}
+
 class FilesLoader {
    private loadQueue: FileLoadQueue;
    constructor(filesToLoad: File[]) {
@@ -98,6 +114,8 @@ class FilesLoader {
          } else {
             // If result is an ArrayBuffer, convert it to a string.
             let resultStr: string;
+            console.debug("result type:", typeof result,
+                          ", is ArrayBuffer:", (result instanceof ArrayBuffer));
             if (result instanceof ArrayBuffer) {
                const decoder = new TextDecoder("utf-8");
                const content = decoder.decode(result);
@@ -108,7 +126,13 @@ class FilesLoader {
 
             // Decode base64
             const b64Content = resultStr.split(";base64,")[1];
-            const content = atob(b64Content);
+            const content = decodeBase64(b64Content);
+            if (content && content.length > 100) {
+               console.debug(`readFile text result: "${content.slice(0, 50)}" ... ` +
+                             `"${content.slice(-50)}`);
+            } else {
+               console.debug("readFile text result:", content);
+            }
 
             this.loadQueue.loadedContent[fileIndex] = content;
          }

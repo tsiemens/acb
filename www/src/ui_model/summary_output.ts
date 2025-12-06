@@ -34,10 +34,15 @@ export class SummaryOutputContainer extends TableOutputContainerBase {
             tbody.appendChild(tr);
         }
 
+        let errorsAndNotes =
+            TableOutputContainerBase.makeTableErrorsAndNotes(table);
+
         // Create the final table container using base class helper
         const tableContainer = TableOutputContainerBase.makeTableContainer(headerRow, tbody);
         container.appendChild(TableOutputContainerBase.makeTableTitle("Summary"));
+        container.appendChild(errorsAndNotes.errorsDiv);
         container.appendChild(tableContainer);
+        container.appendChild(errorsAndNotes.notesDiv);
     }
 }
 

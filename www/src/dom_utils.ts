@@ -7,6 +7,18 @@ export function childHasFocus(elem: HTMLElement) {
    return false;
 }
 
+export function setTextContentToTextWithNewlines(elem: HTMLElement, text: string): void {
+   // Clear existing content
+   elem.innerHTML = "";
+   const lines = text.split("\n");
+   for (let i = 0; i < lines.length; i++) {
+      elem.appendChild(document.createTextNode(lines[i]));
+      if (i < lines.length - 1) {
+         elem.appendChild(document.createElement("br"));
+      }
+   }
+}
+
 class ElemBuilderT<T extends HTMLElement,
                    B extends ElemBuilderT<T, B>> {
    protected e: T;

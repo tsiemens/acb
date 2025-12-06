@@ -1,3 +1,4 @@
+import { setTextContentToTextWithNewlines } from "../dom_utils.js";
 import { ElementModel } from "./model_lib.js";
 
 export class ErrorBox extends ElementModel {
@@ -38,15 +39,15 @@ export class ErrorBox extends ElementModel {
       titleElement.textContent = params.title ? params.title : "Error";
 
       const descElement = this.getRequiredSubElementByClass('error-desc-pre');
-      descElement.textContent = params.descPre ? params.descPre : "";
+      setTextContentToTextWithNewlines(descElement, params.descPre ? params.descPre : "");
       descElement.style.display = params.descPre ? 'block' : 'none';
 
       const errorMessageElement = this.getRequiredSubElementByClass('error-message');
-      errorMessageElement.textContent = params.errorText ? params.errorText : "";
+      setTextContentToTextWithNewlines(errorMessageElement, params.errorText ? params.errorText : "");
       errorMessageElement.style.display = params.errorText ? 'block' : 'none';
 
       const postElement = this.getRequiredSubElementByClass('error-desc-post');
-      postElement.textContent = params.descPost ? params.descPost : "";
+      setTextContentToTextWithNewlines(postElement, params.descPost ? params.descPost : "");
       postElement.style.display = params.descPost ? 'block' : 'none';
 
       this.show();

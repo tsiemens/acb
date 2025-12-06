@@ -80,6 +80,39 @@ export abstract class TableOutputContainerBase extends AcbOutputKindContainer {
       return new ElemBuilder('div').classes(['table-title']).text(title)
          .build();
    }
+
+   // Creates and returns divs for errors and notes from the symbol model.
+   // These should generally be placed as siblings to the table container
+   // (from makeTableContainer).
+   protected static makeTableErrorsAndNotes(
+      symbolModel: RenderTable): { errorsDiv: HTMLElement, notesDiv: HTMLElement } {
+
+      const errorsWrapper = new ElemBuilder('div')
+         .classes(['security-errors'])
+         .build();
+
+      const errors = symbolModel.errors || [];
+      for (const err of errors) {
+         errorsWrapper.appendChild(new ElemBuilder('p').text(err).build());
+      }
+      if (errors.length == 0) {
+         errorsWrapper.style.display = 'none'; // Hide if no errors
+      }
+
+      const notesWrapper = new ElemBuilder('div')
+         .classes(['security-notes'])
+         .build();
+
+      let notes = symbolModel.notes || []
+      for (const note of notes) {
+         notesWrapper.appendChild(new ElemBuilder('p').text(note).build());
+      }
+      if (notes.length == 0) {
+         notesWrapper.style.display = 'none'; // Hide if no notes
+      }
+
+      return { errorsDiv: errorsWrapper, notesDiv: notesWrapper };
+   }
 }
 
 export class SecurityTablesOutputContainer extends TableOutputContainerBase {
@@ -146,36 +179,17 @@ export class SecurityTablesOutputContainer extends TableOutputContainerBase {
       const symTableContainer = TableOutputContainerBase.makeTableContainer(tr, tbody);
       tablesContainer.appendChild(TableOutputContainerBase.makeTableTitle(symbol));
 
-      const errorWrapper = new ElemBuilder('div')
-         .classes(['security-errors'])
-         .build();
+      let errorsAndNotes =
+         TableOutputContainerBase.makeTableErrorsAndNotes(symbolModel);
+      if (errorsAndNotes.errorsDiv.hasChildNodes()) {
+         errorsAndNotes.errorsDiv.appendChild(new ElemBuilder('p').text(
+            "Information is of parsed state only, and may not be fully correct.")
+            .build());
+      }
 
-      const errors = symbolModel.errors || [];
-      for (const err of errors) {
-         errorWrapper.appendChild(new ElemBuilder('p').text(err).build());
-      }
-      if (errors.length > 0) {
-         errorWrapper.appendChild(new ElemBuilder('p').text("Information is of parsed state only, and may not be fully correct.").build());
-      }
-      if (errors.length == 0) {
-         errorWrapper.style.display = 'none'; // Hide if no errors
-      }
-      tablesContainer.appendChild(errorWrapper);
-
+      tablesContainer.appendChild(errorsAndNotes.errorsDiv);
       tablesContainer.appendChild(symTableContainer);
-
-      const notesWrapper = new ElemBuilder('div')
-         .classes(['security-notes'])
-         .build();
-
-      let notes = symbolModel.notes || []
-      for (const note of notes) {
-         notesWrapper.appendChild(new ElemBuilder('p').text(note).build());
-      }
-      if (notes.length == 0) {
-         notesWrapper.style.display = 'none'; // Hide if no notes
-      }
-      tablesContainer.appendChild(notesWrapper);
+      tablesContainer.appendChild(errorsAndNotes.notesDiv);
 
       SecurityTablesOutputContainer.setYearRowStyles(
          YearHighlightSelector.get().getSelectedYear()
@@ -289,8 +303,14 @@ export class AggregateOutputContainer extends TableOutputContainerBase {
       // Aggregate table
       tablesContainer.appendChild(
          AggregateOutputContainer.makeTableTitle("Aggregate Gains"));
+
+      let errorsAndNotes =
+         TableOutputContainerBase.makeTableErrorsAndNotes(model.aggregateGainsTable);
+
+      tablesContainer.appendChild(errorsAndNotes.errorsDiv);
       tablesContainer.appendChild(
          AggregateOutputContainer.makeAggregateGainsTable(model));
+      tablesContainer.appendChild(errorsAndNotes.notesDiv);
    }
 }
 
