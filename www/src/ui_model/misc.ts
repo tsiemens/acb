@@ -10,6 +10,6 @@ export class WasmVersionDisplay extends ElementModel {
     }
 
     public setVersion(version: string) {
-        this.element.innerText = `ACB v${version}, ACB-Web v${webappVersion}`;
+        this.element.innerText = `acb v${version}, acb-web v${webappVersion}`;
     }
 }

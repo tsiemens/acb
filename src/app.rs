@@ -10,6 +10,6 @@ pub mod outfmt;
 // reference for when the last time the app was updated.
 // Major version is kept at 0, since the app is perpetually in 'beta' due to there
 // not being a tax-lawer on staff to verify anything.
-pub const ACB_APP_VERSION: &str = "0.25.04";
+pub const ACB_APP_VERSION: &str = "0.25.12";
 
 pub use approot::*;
