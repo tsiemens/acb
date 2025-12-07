@@ -563,6 +563,7 @@ export class AcbOutput {
 
       let defaultAppFunction = AppFunctionMode.Calculate;
       AcbOutput.setAppFunctionViewMode(defaultAppFunction);
+      AcbOutput.setActiveOutputAndSyncTab(AcbOutputViewMode.SecurityTables);
 
       YearHighlightSelector.get().setup();
       InactiveYearHideCheckbox.get().setup();
