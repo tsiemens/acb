@@ -1,4 +1,5 @@
 import { defineConfig } from 'vite';
+import packageJson from './package.json';
 
 export default defineConfig({
   build: {
@@ -55,5 +56,9 @@ export default defineConfig({
 
   resolve: {
     extensions: ['.ts', '.js'],
+  },
+
+  define: {
+    __PACKAGE_VERSION__: JSON.stringify(packageJson.version),
   }
 });

@@ -1,4 +1,5 @@
 import { ElementModel } from "./model_lib.js";
+import { webappVersion } from "../versions.js";
 
 export class WasmVersionDisplay extends ElementModel {
     public static readonly ID: string = "acbVersion";
@@ -9,6 +10,6 @@ export class WasmVersionDisplay extends ElementModel {
     }
 
     public setVersion(version: string) {
-        this.element.innerText = "ACB Version: " + version;
+        this.element.innerText = `ACB v${version}, ACB-Web v${webappVersion}`;
     }
 }
