@@ -6,7 +6,7 @@ use acb::{
     app::{outfmt::text::TextWriter, run_acb_app_to_writer},
     fx::io::{InMemoryRatesCache, JsonRemoteRateLoader, RateLoader},
     portfolio::{
-        io::tx_csv::TxCsvParseOptions, render::RenderTable, PortfolioSecurityStatus,
+        io::tx_csv::TxCsvParseOptions, render::RenderTable,
         Security,
     },
     util::{
@@ -88,7 +88,6 @@ impl serde::ser::Serialize for AppResultOk {
 
 pub async fn run_acb_app(
     csv_file_readers: Vec<DescribedReader>,
-    all_init_status: HashMap<Security, PortfolioSecurityStatus>,
     render_full_dollar_values: bool,
 ) -> Result<AppResultOk, SError> {
     let (out_write_handle, out_string_buff) =
@@ -103,7 +102,6 @@ pub async fn run_acb_app(
     let result = run_acb_app_to_writer(
         writer,
         csv_file_readers,
-        all_init_status,
         &TxCsvParseOptions::default(),
         render_full_dollar_values,
         RENDER_TOTAL_COSTS,
@@ -185,7 +183,6 @@ impl serde::ser::Serialize for AppExportResultOk {
 
 pub async fn run_acb_app_for_export(
     csv_file_readers: Vec<DescribedReader>,
-    all_init_status: HashMap<Security, PortfolioSecurityStatus>,
     render_full_dollar_values: bool,
 ) -> Result<AppExportResultOk, SError> {
     let (err_write_handle, err_string_buff) =
@@ -201,7 +198,6 @@ pub async fn run_acb_app_for_export(
     let result = run_acb_app_to_writer(
         writer,
         csv_file_readers,
-        all_init_status,
         &TxCsvParseOptions::default(),
         render_full_dollar_values,
         RENDER_TOTAL_COSTS,
@@ -251,7 +247,6 @@ impl serde::ser::Serialize for AppSummaryResultOk {
 pub async fn run_acb_app_summary(
     latest_date: acb::util::date::Date,
     csv_file_readers: Vec<DescribedReader>,
-    all_init_status: HashMap<Security, PortfolioSecurityStatus>,
     split_annual_summary_gains: bool,
     render_full_dollar_values: bool,
 ) -> Result<AppSummaryResultOk, SError> {
@@ -271,7 +266,6 @@ pub async fn run_acb_app_summary(
     let result = run_acb_app_summary_to_render_model(
         latest_date,
         csv_file_readers,
-        all_init_status,
         options,
         rate_loader,
         err_write_handle,

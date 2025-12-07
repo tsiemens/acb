@@ -84,14 +84,13 @@ enum AcbAppRunMode {
 class CommonRunOptions {
    constructor(
       public printFullDollarValues: boolean,
-      public initSecs: string[],
    ) {}
 }
 
 function getCommonRunOptions(): Result<CommonRunOptions, Unit> {
    const printFullDollarValues: boolean =
       AcbExtraOptions.getPrintFullValuesCheckbox().checked;
-   return Result.Ok(new CommonRunOptions(printFullDollarValues, []));
+   return Result.Ok(new CommonRunOptions(printFullDollarValues));
 }
 
 async function asyncRunAcb(filenames: string[], contents: string[],
@@ -103,13 +102,13 @@ async function asyncRunAcb(filenames: string[], contents: string[],
       // Error already handled in getCommonRunOptions
       return;
    }
-   const { printFullDollarValues, initSecs } = commonOptions.unwrap();
+   const { printFullDollarValues } = commonOptions.unwrap();
 
    const exportMode: boolean = mode === AcbAppRunMode.Export;
 
    try {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment
-      const jsRet: any = await run_acb(filenames, contents, initSecs,
+      const jsRet: any = await run_acb(filenames, contents,
          printFullDollarValues, exportMode);
       console.debug("asyncRunAcb: run_acb returned: ", jsRet);
 
@@ -150,7 +149,7 @@ async function asyncRunAcbSummary(filenames: string[], contents: string[], lates
       // Error already handled in getCommonRunOptions
       return;
    }
-   const { printFullDollarValues, initSecs } = commonOptions.unwrap();
+   const { printFullDollarValues } = commonOptions.unwrap();
 
    // Also, pass split_annual_summary_gains as true (or add UI for it if needed).
    const splitAnnualSummaryGains = true;
@@ -158,7 +157,7 @@ async function asyncRunAcbSummary(filenames: string[], contents: string[], lates
    try {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment
       const jsRet: any = await run_acb_summary(
-         latestDate, filenames, contents, initSecs, splitAnnualSummaryGains, printFullDollarValues
+         latestDate, filenames, contents, splitAnnualSummaryGains, printFullDollarValues
       );
       console.debug("asyncRunAcbSummary: run_acb_summary returned: ", jsRet);
       const ret: AppSummaryResultOk = AppSummaryResultOk.fromJsValue(jsRet);
@@ -225,14 +224,14 @@ async function asyncRunAcbShareTally(filenames: string[], contents: string[], la
       // Error already handled in getCommonRunOptions
       return;
    }
-   const { printFullDollarValues, initSecs } = commonOptions.unwrap();
+   const { printFullDollarValues } = commonOptions.unwrap();
 
    const splitAnnualSummaryGains = false;
 
    try {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment
       const jsRet: any = await run_acb_summary(
-         latestDate, filenames, contents, initSecs, splitAnnualSummaryGains, printFullDollarValues
+         latestDate, filenames, contents, splitAnnualSummaryGains, printFullDollarValues
       );
       console.debug("asyncRunAcbShareTally: run_acb_summary returned: ", jsRet);
       const ret: AppSummaryResultOk = AppSummaryResultOk.fromJsValue(jsRet);

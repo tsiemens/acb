@@ -9,7 +9,6 @@ use crate::portfolio::io::tx_csv::TxCsvParseOptions;
 use crate::util::date::{parse_dyn_date_format, parse_standard_date};
 use crate::util::http::standalone::StandaloneAppRequester;
 use crate::{
-    app::input_parse::parse_initial_status,
     portfolio::csv_common::CsvCol,
     util::rw::{DescribedReader, WriteHandle},
     write_errln,
@@ -61,14 +60,6 @@ pub struct Args {
     #[arg(long)]
     pub date_fmt: Option<String>,
 
-    /// Base share count and ACBs for symbols, assumed at the beginning of time.
-    ///
-    /// Formatted as SYM:nShares:totalAcb. Eg. GOOG:20:1000.00 . May be provided multiple times.
-    ///
-    /// Only applies to the default affiliate.
-    #[arg(short = 'b', long)]
-    pub symbol_base: Vec<String>,
-
     /// Print all digits in output values
     #[arg(long, default_value_t = false)]
     pub print_full_values: bool,
@@ -110,14 +101,6 @@ pub fn command_main() -> Result<(), ExitCode> {
     }
 
     let mut err_printer = WriteHandle::stderr_write_handle();
-
-    let all_init_status = match parse_initial_status(&args.symbol_base) {
-        Ok(v) => v,
-        Err(e) => {
-            write_errln!(err_printer, "Error parsing --symbol-base: {e}");
-            return Err(ExitCode::FAILURE);
-        }
-    };
 
     let mut csv_readers =
         Vec::<DescribedReader>::with_capacity(args.csv_files.len());
@@ -180,7 +163,6 @@ pub fn command_main() -> Result<(), ExitCode> {
 
     async_std::task::block_on(run_acb_app_to_console(
         csv_readers,
-        all_init_status,
         options,
         rate_loader,
         err_printer,

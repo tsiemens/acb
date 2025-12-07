@@ -495,7 +495,6 @@ impl From<Result<Vec<TxDelta>, TxDeltaListError>> for DeltaListResult {
 
 pub fn txs_to_delta_list(
     txs: &Vec<Tx>,
-    initial_status: Option<Rc<PortfolioSecurityStatus>>,
 ) -> DeltaListResult {
     let mut active_txs: &Vec<Tx> = txs;
     // These will be populated if we end up injecting new Txs,
@@ -510,7 +509,6 @@ pub fn txs_to_delta_list(
 
     let mut ptf_statuses = AffiliatePortfolioSecurityStatuses::new(
         txs[0].security.clone(),
-        initial_status,
     );
 
     // Use a while loop here, since active_txs can grow while we iterate
@@ -624,7 +622,7 @@ mod tests {
         pre_tx_status: Rc<PortfolioSecurityStatus>,
     ) -> Result<(TxDelta, Option<Vec<Tx>>), super::Error> {
         let mut ptf_statuses =
-            AffiliatePortfolioSecurityStatuses::new(tx.security.clone(), None);
+            AffiliatePortfolioSecurityStatuses::new(tx.security.clone());
         let share_diff = GreaterEqualZeroDecimal::try_from(
             *pre_tx_status.all_affiliate_share_balance
                 - *pre_tx_status.share_balance,
@@ -669,11 +667,11 @@ mod tests {
     }
 
     fn txs_to_delta_list_no_err(txs: Vec<Tx>) -> Vec<TxDelta> {
-        super::txs_to_delta_list(&txs, None).0.unwrap()
+        super::txs_to_delta_list(&txs).0.unwrap()
     }
 
     fn txs_to_delta_list_with_err(txs: Vec<Tx>) {
-        super::txs_to_delta_list(&txs, None).0.unwrap_err();
+        super::txs_to_delta_list(&txs).0.unwrap_err();
     }
 
     fn validate_deltas(deltas: Vec<TxDelta>, exp: Vec<TDt>) {

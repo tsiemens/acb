@@ -1,6 +1,6 @@
 mod common;
 
-use std::{collections::HashMap, path::Path};
+use std::path::Path;
 
 use acb::{
     app::{outfmt::text::TextWriter, run_acb_app_to_writer},
@@ -31,7 +31,6 @@ fn validate_sample_csv_file(
     let res = async_std::task::block_on(run_acb_app_to_writer(
         writer,
         vec![reader],
-        HashMap::new(),
         &TxCsvParseOptions::default(),
         false,
         render_costs,
@@ -41,8 +40,6 @@ fn validate_sample_csv_file(
                 cache_dir.to_path_buf(),
                 err_stream.clone(),
             )),
-            // Box::new(MockRemoteRateLoader{
-            //     remote_year_rates: RcRefCellT::new(HashMap::new()) }),
             JsonRemoteRateLoader::new_boxed(StandaloneAppRequester::new_boxed()),
             err_stream.clone(),
         ),

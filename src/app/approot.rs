@@ -17,7 +17,7 @@ use crate::{
             RenderTable,
         },
         summary::{make_aggregate_summary_txs, CollectedSummaryData},
-        CumulativeCapitalGains, PortfolioSecurityStatus, Security, Tx, TxDelta,
+        CumulativeCapitalGains, Security, Tx, TxDelta,
     },
     util::rw::{DescribedReader, WriteHandle},
     write_errln,
@@ -62,7 +62,6 @@ impl Default for Options {
 /// yearly capital gains and costs.
 pub async fn run_acb_app_to_delta_models(
     csv_file_readers: Vec<DescribedReader>,
-    all_init_status: HashMap<Security, PortfolioSecurityStatus>,
     csv_parse_options: &TxCsvParseOptions,
     mut rate_loader: RateLoader,
     mut err_printer: WriteHandle,
@@ -96,10 +95,7 @@ pub async fn run_acb_app_to_delta_models(
     for (sec, mut sec_txs) in txs_by_sec {
         crate::portfolio::splits::replace_global_security_splits(&mut sec_txs)?;
 
-        let sec_init_status =
-            all_init_status.get(&sec).map(|o| std::rc::Rc::new(o.clone()));
-
-        let deltas_res = txs_to_delta_list(&sec_txs, sec_init_status);
+        let deltas_res = txs_to_delta_list(&sec_txs);
         delta_results.insert(sec, deltas_res);
     }
 
@@ -172,7 +168,6 @@ fn format_summary_warnings(warnings: &HashMap<String, Vec<String>>) -> Vec<Strin
 pub async fn run_acb_app_summary_to_render_model(
     latest_date: Date,
     csv_file_readers: Vec<DescribedReader>,
-    all_init_status: HashMap<Security, PortfolioSecurityStatus>,
     options: Options,
     rate_loader: RateLoader,
     err_printer: WriteHandle,
@@ -180,7 +175,6 @@ pub async fn run_acb_app_summary_to_render_model(
     let res = run_acb_app_summary_to_model(
         latest_date,
         csv_file_readers,
-        all_init_status,
         options,
         rate_loader,
         err_printer.clone(),
@@ -222,7 +216,6 @@ pub async fn run_acb_app_summary_to_render_model(
 /// to alternate output formatters (like to console, CSV, or javascript object).
 pub async fn run_acb_app_to_render_model(
     csv_file_readers: Vec<DescribedReader>,
-    all_init_status: HashMap<Security, PortfolioSecurityStatus>,
     csv_parse_options: &TxCsvParseOptions,
     render_full_dollar_values: bool,
     render_total_costs: bool,
@@ -231,7 +224,6 @@ pub async fn run_acb_app_to_render_model(
 ) -> Result<AppRenderResult, Error> {
     let deltas_results_by_sec = run_acb_app_to_delta_models(
         csv_file_readers,
-        all_init_status,
         csv_parse_options,
         rate_loader,
         err_printer,
@@ -344,7 +336,6 @@ fn write_render_result(
 pub async fn run_acb_app_to_writer(
     writer: Box<dyn AcbWriter>,
     csv_file_readers: Vec<DescribedReader>,
-    all_init_status: HashMap<Security, PortfolioSecurityStatus>,
     csv_parse_options: &TxCsvParseOptions,
     render_full_dollar_values: bool,
     render_total_costs: bool,
@@ -353,7 +344,6 @@ pub async fn run_acb_app_to_writer(
 ) -> Result<AppRenderResult, ()> {
     let res = run_acb_app_to_render_model(
         csv_file_readers,
-        all_init_status,
         csv_parse_options,
         render_full_dollar_values,
         render_total_costs,
@@ -386,14 +376,12 @@ pub struct AppSummaryError {
 pub async fn run_acb_app_summary_to_model(
     latest_date: Date,
     csv_file_readers: Vec<DescribedReader>,
-    all_init_status: HashMap<Security, PortfolioSecurityStatus>,
     options: Options,
     rate_loader: RateLoader,
     err_printer: WriteHandle,
 ) -> Result<CollectedSummaryData, AppSummaryError> {
     let deltas_results_by_sec = run_acb_app_to_delta_models(
         csv_file_readers,
-        all_init_status,
         &options.csv_parse_options,
         rate_loader,
         err_printer,
@@ -434,7 +422,6 @@ pub async fn run_acb_app_summary_to_model(
 pub async fn run_acb_app_summary_to_console(
     latest_date: Date,
     csv_file_readers: Vec<DescribedReader>,
-    all_init_status: HashMap<Security, PortfolioSecurityStatus>,
     options: Options,
     rate_loader: RateLoader,
     mut err_printer: WriteHandle,
@@ -442,7 +429,6 @@ pub async fn run_acb_app_summary_to_console(
     let summ_res = run_acb_app_summary_to_model(
         latest_date,
         csv_file_readers,
-        all_init_status,
         options,
         rate_loader,
         err_printer.clone(),
@@ -490,7 +476,6 @@ pub async fn run_acb_app_summary_to_console(
 #[cfg(not(target_arch = "wasm32"))]
 pub async fn run_acb_app_to_console(
     csv_file_readers: Vec<DescribedReader>,
-    all_init_status: HashMap<Security, PortfolioSecurityStatus>,
     options: Options,
     rate_loader: RateLoader,
     mut err_printer: WriteHandle,
@@ -499,7 +484,6 @@ pub async fn run_acb_app_to_console(
         run_acb_app_summary_to_console(
             summary_mode_latest_date,
             csv_file_readers,
-            all_init_status,
             options,
             rate_loader,
             err_printer,
@@ -530,7 +514,6 @@ pub async fn run_acb_app_to_console(
         run_acb_app_to_writer(
             writer,
             csv_file_readers,
-            all_init_status,
             &options.csv_parse_options,
             options.render_full_dollar_values,
             options.render_total_costs,
@@ -617,7 +600,6 @@ mod tests {
 
         let render_res = block_on(run_acb_app_to_render_model(
             readers,
-            HashMap::new(),
             &TxCsvParseOptions::default(),
             false,
             render_costs,
@@ -650,7 +632,6 @@ mod tests {
 
         let render_res = block_on(run_acb_app_to_render_model(
             readers,
-            HashMap::new(),
             &TxCsvParseOptions::default(),
             false,
             render_costs,
@@ -689,7 +670,6 @@ mod tests {
 
         let render_res = block_on(run_acb_app_to_render_model(
             readers,
-            HashMap::new(),
             &TxCsvParseOptions::default(),
             false,
             render_costs,
@@ -737,7 +717,6 @@ mod tests {
 
         let render_res = block_on(run_acb_app_to_render_model(
             readers,
-            HashMap::new(),
             &TxCsvParseOptions::default(),
             false,
             false,

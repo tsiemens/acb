@@ -680,7 +680,7 @@ mod tests {
     }
 
     fn txs_to_ok_delta_list(txs: &Vec<Tx>) -> Vec<TxDelta> {
-        txs_to_delta_list(txs, None).unwrap_full_deltas()
+        txs_to_delta_list(txs).unwrap_full_deltas()
     }
 
     fn validate_txs(exp_txs: &Vec<Tx>, actual_txs: &Vec<Tx>) {

@@ -13,7 +13,6 @@ This is primarily designed for Canadians filing tax returns, who have stocks, RS
 - By default applies the superficial loss rule to capital losses, when appropriate
 - Can accept multiple csv files (eg. one of each year of transactions, or however they are organized)
 - Can do computations for multiple securities/symbols in a single execution
-- Can apply an "initial" value for each symbol (eg. apply last year's used ACB/stock quanity) ("Default" affiliate only).
 - Can emit a "summary" CSV, which can compact a large number of historical transactions into just a few, which preserve a record of yearly capital gains.
 - Supports multiple "affiliated persons", or "affiliates". Eg. your spouse or your registered accounts (RRSPs, TFSAs, etc.).
 

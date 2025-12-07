@@ -1,4 +1,3 @@
-use acb::app::input_parse::parse_initial_status;
 use acb::util::rw::DescribedReader;
 use wasm_bindgen::prelude::*;
 
@@ -30,24 +29,21 @@ fn get_csv_readers(
 pub async fn run_acb(
     file_descs: Vec<String>,
     file_contents: Vec<String>,
-    initial_security_states: Vec<String>,
     render_full_values: bool,
     export_mode: bool,
 ) -> Result<JsValue, JsValue> {
     let csv_readers = get_csv_readers(file_descs, file_contents)?;
-    let all_init_status = parse_initial_status(&initial_security_states)
-        .map_err(|e| JsValue::from_str(&e))?;
 
     if export_mode {
         let result =
-            app_shim::run_acb_app_for_export(csv_readers, all_init_status, render_full_values)
+            app_shim::run_acb_app_for_export(csv_readers, render_full_values)
                 .await
                 .map_err(|e| JsValue::from_str(&e))?;
         return Ok(serde_wasm_bindgen::to_value(&result)?);
     }
 
     let result =
-        app_shim::run_acb_app(csv_readers, all_init_status, render_full_values)
+        app_shim::run_acb_app(csv_readers, render_full_values)
             .await
             .map_err(|e| JsValue::from_str(&e))?;
 
@@ -59,13 +55,10 @@ pub async fn run_acb_summary(
     latest_date: web_sys::js_sys::Date,
     file_descs: Vec<String>,
     file_contents: Vec<String>,
-    initial_security_states: Vec<String>,
     split_annual_summary_gains: bool,
     render_full_values: bool,
 ) -> Result<JsValue, JsValue> {
     let csv_readers = get_csv_readers(file_descs, file_contents)?;
-    let all_init_status = parse_initial_status(&initial_security_states)
-        .map_err(|e| JsValue::from_str(&e))?;
 
     let latest_date_rs = acb::util::date::from_date_ints(
         latest_date.get_full_year() as i32,
@@ -76,7 +69,7 @@ pub async fn run_acb_summary(
 
     let result =
         app_shim::run_acb_app_summary(
-            latest_date_rs, csv_readers, all_init_status,
+            latest_date_rs, csv_readers,
             split_annual_summary_gains, render_full_values)
             .await
             .map_err(|e| JsValue::from_str(&e))?;
