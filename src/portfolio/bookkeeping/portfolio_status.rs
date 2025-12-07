@@ -23,9 +23,7 @@ impl AffiliatePortfolioSecurityStatuses {
     /// Panics if initial_default_aff_status's share_balance and all_affiliate_share_balance are
     /// not equal. This is because if they were not equal, it would imply that some
     /// other transaction/status was before this, so it would not actually be the initial.
-    pub fn new(
-        security: String,
-    ) -> AffiliatePortfolioSecurityStatuses {
+    pub fn new(security: String) -> AffiliatePortfolioSecurityStatuses {
         AffiliatePortfolioSecurityStatuses {
             last_post_status_for_affiliate: HashMap::new(),
             security: security,
@@ -186,9 +184,7 @@ pub mod testlib {
 mod tests {
     use crate::gezdec as gez;
     use crate::{
-        portfolio::{
-            bookkeeping::testlib::TPSS, testlib::default_sec, Affiliate,
-        },
+        portfolio::{bookkeeping::testlib::TPSS, testlib::default_sec, Affiliate},
         util::decimal::GreaterEqualZeroDecimal,
     };
 
@@ -235,8 +231,7 @@ mod tests {
         // Case:
         // set_latest_post_status("B")
         // get_latest_post_status()
-        let mut statuses =
-            AffiliatePortfolioSecurityStatuses::new(default_sec());
+        let mut statuses = AffiliatePortfolioSecurityStatuses::new(default_sec());
         statuses.set_latest_post_status(
             &af_b,
             TPSS {
@@ -267,8 +262,7 @@ mod tests {
         // set_latest_post_status("B")
         // get_next_pre_status("Default")
         // get_latest_post_status()
-        let mut statuses =
-            AffiliatePortfolioSecurityStatuses::new(default_sec());
+        let mut statuses = AffiliatePortfolioSecurityStatuses::new(default_sec());
         statuses.set_latest_post_status(
             &af_b,
             TPSS {
@@ -330,8 +324,7 @@ mod tests {
         // set_latest_post_status("Default")
 
         // Buy 2 default
-        let mut statuses =
-            AffiliatePortfolioSecurityStatuses::new(default_sec());
+        let mut statuses = AffiliatePortfolioSecurityStatuses::new(default_sec());
         let next_pre = statuses.get_next_pre_status(&default_af);
         assert_eq!(
             TPSS {
@@ -580,8 +573,7 @@ mod tests {
     fn test_registered() {
         let default_r_af = Affiliate::default_registered();
 
-        let mut statuses =
-            AffiliatePortfolioSecurityStatuses::new(default_sec());
+        let mut statuses = AffiliatePortfolioSecurityStatuses::new(default_sec());
 
         // Case:
         // get_next_pre_status("(R)")
@@ -627,8 +619,7 @@ mod tests {
     fn test_panic_some_acb_registered() {
         let default_r_af = Affiliate::default_registered();
 
-        let mut statuses =
-            AffiliatePortfolioSecurityStatuses::new(default_sec());
+        let mut statuses = AffiliatePortfolioSecurityStatuses::new(default_sec());
         statuses.set_latest_post_status(
             &default_r_af,
             TPSS {
@@ -646,8 +637,7 @@ mod tests {
     fn test_panic_none_acb_non_registered() {
         let default_af = Affiliate::default();
 
-        let mut statuses =
-            AffiliatePortfolioSecurityStatuses::new(default_sec());
+        let mut statuses = AffiliatePortfolioSecurityStatuses::new(default_sec());
         statuses.set_latest_post_status(
             &default_af,
             TPSS {

@@ -457,8 +457,7 @@ mod tests {
     fn create_test_status(
         af_shares: &[(Affiliate, GreaterEqualZeroDecimal)],
     ) -> AffiliatePortfolioSecurityStatuses {
-        let mut statuses =
-            AffiliatePortfolioSecurityStatuses::new(default_sec());
+        let mut statuses = AffiliatePortfolioSecurityStatuses::new(default_sec());
         let mut total = GreaterEqualZeroDecimal::zero();
         for (af, shares) in af_shares {
             total += *shares;

@@ -493,9 +493,7 @@ impl From<Result<Vec<TxDelta>, TxDeltaListError>> for DeltaListResult {
     }
 }
 
-pub fn txs_to_delta_list(
-    txs: &Vec<Tx>,
-) -> DeltaListResult {
+pub fn txs_to_delta_list(txs: &Vec<Tx>) -> DeltaListResult {
     let mut active_txs: &Vec<Tx> = txs;
     // These will be populated if we end up injecting new Txs,
     // and active_txs will refer to them.
@@ -507,9 +505,8 @@ pub fn txs_to_delta_list(
         return Ok(deltas).into();
     }
 
-    let mut ptf_statuses = AffiliatePortfolioSecurityStatuses::new(
-        txs[0].security.clone(),
-    );
+    let mut ptf_statuses =
+        AffiliatePortfolioSecurityStatuses::new(txs[0].security.clone());
 
     // Use a while loop here, since active_txs can grow while we iterate
     // it. DO NOT use `continue` in this loop!
