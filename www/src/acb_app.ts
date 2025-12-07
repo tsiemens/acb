@@ -6,7 +6,7 @@ import { run_acb, run_acb_summary } from './pkg/acb_wasm.js';
 import { Result } from "./result.js";
 import { AppExportResultOk, AppResultOk, AppSummaryResultOk, FileContent, RenderTable } from "./acb_wasm_types.js";
 import { AcbOutput, AggregateOutputContainer, SecurityTablesOutputContainer, TextOutputContainer, YearHighlightSelector } from "./ui_model/acb_app_output.js";
-import { AcbExtraOptions, SummaryDatePicker, ExportButton, FunctionModeSelector, InitialSymbolStateInputs, InitSecItem, RunButton } from "./ui_model/app_input.js";
+import { AcbExtraOptions, SummaryDatePicker, ExportButton, FunctionModeSelector, RunButton } from "./ui_model/app_input.js";
 import { ErrorBox } from "./ui_model/error_displays.js";
 import { ClearFilesButton, FileDropArea, FileSelectorInput, SelectedFileList } from "./ui_model/file_input.js";
 import { AutoRunCheckbox, DebugSettings } from "./ui_model/debug.js";
@@ -15,36 +15,6 @@ import { loadTestFile } from "./debug.js";
 import { InfoDialog, InfoListItem } from "./ui_model/info_dialogs.js";
 import { CollapsibleRegion } from "./ui_model/components.js";
 import { asError } from "./http_utils.js";
-
-
-/**
- * Get colon-delimited initial security values (format is as expected by acb).
- * */
-function getInitSecStrs(): Result<string[], string[]> {
-   const items: InitSecItem[] = InitialSymbolStateInputs.get().getData();
-   const initSecStrs: string[] = [];
-   const errors: string[] = [];
-
-   // Empty items are ignored
-   for (const item of items) {
-      if (item.security) {
-         if (item.quantity && item.acb) {
-            initSecStrs.push(
-               `${item.security}:${item.quantity}:${item.acb}`,
-            );
-         } else {
-            errors.push(`Invalid quantity and/or ACB for ${item.security}`);
-         }
-      } else if (item.quantity || item.acb) {
-         errors.push("Missing security name");
-      }
-   }
-
-   if (errors.length) {
-      return Result.Err(errors);
-   }
-   return Result.Ok(initSecStrs);
-}
 
 function makeZip(files: FileContent[]): Promise<Blob> {
    return new Promise((resolve, reject) => {
@@ -121,19 +91,7 @@ class CommonRunOptions {
 function getCommonRunOptions(): Result<CommonRunOptions, Unit> {
    const printFullDollarValues: boolean =
       AcbExtraOptions.getPrintFullValuesCheckbox().checked;
-   const initSecsRes = getInitSecStrs();
-   if (initSecsRes.isErr()) {
-      const errors = initSecsRes.unwrapErr();
-      console.error("asyncRunAcb: initSecsRes error: ", errors);
-      ErrorBox.getMain().showWith({
-         title: "Processing Error",
-         descPre: "There was a problem with the initial security values:",
-         errorText: errors.join("\n"),
-      });
-      return Result.Err(Unit.get());
-   }
-   const initSecs = initSecsRes.unwrap();
-   return Result.Ok(new CommonRunOptions(printFullDollarValues, initSecs));
+   return Result.Ok(new CommonRunOptions(printFullDollarValues, []));
 }
 
 async function asyncRunAcb(filenames: string[], contents: string[],
@@ -383,8 +341,6 @@ export function initAppUI() {
 
    RunButton.get().setup(() => { runHandler(AcbAppRunMode.Normal) });
    ExportButton.get().setup(() => { runHandler(AcbAppRunMode.Export) });
-
-   InitialSymbolStateInputs.get().setup();
 
    AcbOutput.setup();
 
