@@ -5,7 +5,7 @@ use clap::Parser;
 use itertools::Itertools;
 use rust_decimal::Decimal;
 
-use super::broker::{etrade::BenefitEntry, BrokerTx};
+use super::broker::{etrade::BenefitEntry, BrokerTx, FxTracker};
 use crate::app::outfmt::csv::CsvWriter;
 use crate::app::outfmt::model::{AcbWriter, OutputType};
 use crate::app::outfmt::text::TextWriter;
@@ -191,10 +191,15 @@ fn dump_extracted_data(
 
 /// Constructs/extracts CsvTxs from the BenefitsAndTrades, and emits a sorted result.
 /// Errors if sell-to-cover data is incomplete.
+///
+/// If `generate_fx` is true, FX transactions will be generated for manual trades
+/// (but not for sell-to-cover sales).
 fn txs_from_data(
     trade_data: &BenefitsAndTrades,
+    generate_fx: bool,
 ) -> Result<Vec<crate::portfolio::CsvTx>, SError> {
     let mut csv_txs = Vec::new();
+    let mut fx_tracker = FxTracker::new();
 
     for (i, b) in trade_data.benefits.iter().enumerate() {
         let buy_tx = crate::portfolio::CsvTx {
@@ -246,7 +251,7 @@ fn txs_from_data(
         }
     }
 
-    // Remaining trades
+    // Remaining trades (manual trades)
     let read_index_base = csv_txs.len();
     for (i, trade) in trade_data.other_trades.iter().enumerate() {
         let mut tx: CsvTx = trade.clone().into();
@@ -264,6 +269,21 @@ fn txs_from_data(
         );
         tx.read_index = (read_index_base + i).try_into().unwrap();
         csv_txs.push(tx);
+
+        if generate_fx && !trade.currency.is_default() {
+            fx_tracker.add_implicit_fxt(trade).map_err(|e| format!("{e}"))?;
+        }
+    }
+
+    // Add FX transactions from manual trades
+    if generate_fx {
+        let fx_txs = fx_tracker.get_fx_txs().map_err(|(_txs, e)| format!("{e}"))?;
+        let fx_read_index_base = csv_txs.len();
+        for (i, fx_tx) in fx_txs.iter().enumerate() {
+            let mut tx: CsvTx = fx_tx.clone().into();
+            tx.read_index = (fx_read_index_base + i).try_into().unwrap();
+            csv_txs.push(tx);
+        }
     }
 
     csv_txs.sort();
@@ -274,9 +294,10 @@ fn txs_from_data(
 fn render_txs_from_data(
     trade_data: &BenefitsAndTrades,
     pretty: bool,
+    generate_fx: bool,
     out_w: WriteHandle,
 ) -> Result<(), SError> {
-    let txs = txs_from_data(trade_data)?;
+    let txs = txs_from_data(trade_data, generate_fx)?;
 
     let mut printer: Box<dyn AcbWriter> = if pretty {
         Box::new(TextWriter::new(out_w))
@@ -565,6 +586,10 @@ pub struct Args {
     /// Does not affect tracing. Set TRACE variable for this.
     #[arg(long)]
     pub debug: bool,
+
+    /// Do not generate FX transactions for manual trades
+    #[arg(long)]
+    pub no_fx: bool,
 }
 
 pub fn run() -> Result<(), ()> {
@@ -628,7 +653,7 @@ pub fn run_with_args(
         }
     }
 
-    render_txs_from_data(&benefits_and_trades, args.pretty, out_w)
+    render_txs_from_data(&benefits_and_trades, args.pretty, !args.no_fx, out_w)
         .map_err(|e| write_errln!(err_w, "Error: {e}"))?;
 
     Ok(())
@@ -1065,7 +1090,7 @@ mod tests {
                 TTx{tdate: dt(19), n_sh: 2, act: TxAction::Buy,
                     ..dflt()}.x(),
             ]
-        }).unwrap();
+        }, false).unwrap();
 
         assert_vec_eq(txs, vec![
             // Vest without Stc
@@ -1168,5 +1193,87 @@ mod tests {
                 read_index: 1,
             },
         ]);
+    }
+
+    #[rustfmt::skip]
+    #[test]
+    fn test_txs_from_data_with_fx_generation() {
+        let data = super::BenefitsAndTrades {
+            benefits: vec![
+                TBen{tdate: dt(10), n_stc: Some(20), stc_tdate: Some(dt(10)),
+                     ..dflt()}.x(),
+            ],
+            other_trades: vec![
+                TTx{tdate: dt(15), n_sh: 10, act: TxAction::Sell, ..dflt()}.x(),
+            ],
+        };
+
+        // With FX generation enabled
+        let txs_with_fx = super::txs_from_data(&data, true).unwrap();
+        // Should have: 1 benefit buy + 1 sell-to-cover + 1 manual sell + 1 FX tx
+        assert_eq!(txs_with_fx.len(), 4);
+
+        // Find the FX transaction
+        let fx_txs: Vec<_> = txs_with_fx.iter()
+            .filter(|tx| tx.security.as_ref().map_or(false, |s| s.ends_with(".FX")))
+            .collect();
+        assert_eq!(fx_txs.len(), 1);
+        let fx_tx = fx_txs[0];
+        assert_eq!(fx_tx.security, Some("USD.FX".to_string()));
+        assert_eq!(fx_tx.action, Some(TxAction::Buy));
+        // Manual sell of 10 shares @ 1.40 - 5.99 commission = 14 - 5.99 = 8.01 USD acquired
+        assert_eq!(fx_tx.shares, Some(dec!(8.01)));
+
+        // With FX generation disabled
+        let txs_no_fx = super::txs_from_data(&data, false).unwrap();
+        // Should have: 1 benefit buy + 1 sell-to-cover + 1 manual sell (no FX)
+        assert_eq!(txs_no_fx.len(), 3);
+        let fx_txs: Vec<_> = txs_no_fx.iter()
+            .filter(|tx| tx.security.as_ref().map_or(false, |s| s.ends_with(".FX")))
+            .collect();
+        assert_eq!(fx_txs.len(), 0);
+    }
+
+    #[rustfmt::skip]
+    #[test]
+    fn test_txs_from_data_fx_only_for_manual_trades() {
+        // Test that sell-to-cover does NOT generate FX, only manual trades do
+        let data = super::BenefitsAndTrades {
+            benefits: vec![
+                TBen{tdate: dt(10), n_stc: Some(50), stc_tdate: Some(dt(10)),
+                     ..dflt()}.x(),
+            ],
+            other_trades: vec![],
+        };
+
+        let txs = super::txs_from_data(&data, true).unwrap();
+        // Should have: 1 benefit buy + 1 sell-to-cover, NO FX
+        assert_eq!(txs.len(), 2);
+        let fx_txs: Vec<_> = txs.iter()
+            .filter(|tx| tx.security.as_ref().map_or(false, |s| s.ends_with(".FX")))
+            .collect();
+        assert_eq!(fx_txs.len(), 0);
+    }
+
+    #[rustfmt::skip]
+    #[test]
+    fn test_txs_from_data_fx_buy_decreases_usd() {
+        // A manual BUY should decrease USD holdings (sell USD.FX)
+        let data = super::BenefitsAndTrades {
+            benefits: vec![],
+            other_trades: vec![
+                TTx{tdate: dt(15), n_sh: 10, act: TxAction::Buy, ..dflt()}.x(),
+            ],
+        };
+
+        let txs = super::txs_from_data(&data, true).unwrap();
+        assert_eq!(txs.len(), 2);
+
+        let fx_tx = txs.iter()
+            .find(|tx| tx.security.as_ref().map_or(false, |s| s.ends_with(".FX")))
+            .unwrap();
+        assert_eq!(fx_tx.action, Some(TxAction::Sell));
+        // Buy 10 shares @ 1.40 + 5.99 commission = 14 + 5.99 = 19.99 USD spent
+        assert_eq!(fx_tx.shares, Some(dec!(19.99)));
     }
 }
