@@ -1,0 +1,89 @@
+#!/usr/bin/env python3
+
+import os
+from pathlib import Path
+import sys
+
+def get_script_dir() -> Path:
+    """
+    Returns the real absolute path to the directory this script is in.
+    Ignores symlinks.
+    """
+    return Path(__file__).resolve().parent
+
+def get_repo_dir() -> Path:
+    return get_script_dir().parent
+
+def get_bin_dir() -> Path:
+    return get_repo_dir() / 'target' / 'debug'
+
+def exec_acb_program(program: str):
+    bin_dir = get_bin_dir()
+    program_path = bin_dir / program
+    if not program_path.exists():
+        print(f"Error: Program '{program}' not found in {bin_dir}", file=sys.stderr)
+        exit(1)
+
+    # Replace the current process with the program
+    os.execv(str(program_path), [program_path.name] + sys.argv[2:])
+
+def get_programs() -> list[str]:
+    # Get list of executables in the bin dir, excluding 'python'
+    bin_dir = get_bin_dir()
+    programs = []
+    for item in bin_dir.iterdir():
+        if item.is_file() and item.stat().st_mode & 0o111:
+            if item.name != 'python':
+                programs.append(item.name)
+    return programs
+
+program_to_aliases = {
+    "csv-to-xlsx": ["csv2xl"],
+    "pdf-text": ["pdf"],
+    "questrade-statement-fmv": ["qt-fmv"],
+    "tx-export-convert": ["export-convert", "broker-convert", "tx-convert"],
+    "etrade-plan-pdf-tx-extract": ["etrade"],
+}
+
+def alias_to_program() -> dict[str, str]:
+    alias_map = {}
+    for program, aliases in program_to_aliases.items():
+        for alias in aliases:
+            alias_map[alias] = program
+    return alias_map
+
+def print_usage():
+    print( f"Usage: {sys.argv[0]} [<command>]" )
+    print( "Where <command> is one of:" )
+    programs = sorted(get_programs())
+    for prog in programs:
+        print(f"  {prog}", end='')
+        if prog in program_to_aliases:
+            aliases = program_to_aliases[prog]
+            print(f" (aka: {', '.join(aliases)})", end='')
+        print("")
+
+def main():
+    if len( sys.argv ) < 2:
+        print_usage()
+        exit(1)
+
+    if sys.argv[ 1 ] in ( "help", "--help", "-h" ):
+        print_usage()
+        exit(0)
+
+    cmd = sys.argv[ 1 ]
+
+    all_programs = get_programs()
+    if cmd in all_programs:
+        program = cmd
+    else:
+        program = alias_to_program().get(cmd, cmd)
+        if program is None:
+            print(f"Unknown command: {cmd}", file=sys.stderr)
+            exit(1)
+
+    exec_acb_program(program)
+
+if __name__ == '__main__':
+    main()
