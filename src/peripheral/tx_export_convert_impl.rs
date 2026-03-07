@@ -7,7 +7,7 @@ use clap::Parser;
 use regex::Regex;
 use rust_decimal::Decimal;
 
-use office::{Excel, Range};
+use calamine::{open_workbook_auto, Data, Range, Reader};
 
 use crate::app::outfmt::csv::CsvWriter;
 use crate::app::outfmt::model::AcbWriter;
@@ -29,15 +29,15 @@ use super::broker::BrokerTx;
 /// because the office library does not provide an API to get the
 /// sheets in any particular order. They end up coming back in a random
 /// order.
-fn read_xl_file(path: &Path, sheet_name: Option<&str>) -> Result<Range, SError> {
-    let mut workbook = Excel::open(path).map_err(|e| format!("{e}"))?;
+fn read_xl_file(path: &Path, sheet_name: Option<&str>) -> Result<Range<Data>, SError> {
+    let mut workbook = open_workbook_auto(path).map_err(|e| format!("{e}"))?;
 
     let sheet_names: Vec<String>;
 
     let sheet = if let Some(sn) = sheet_name {
         sn
     } else {
-        sheet_names = workbook.sheet_names().map_err(|e| format!("{e}"))?;
+        sheet_names = workbook.sheet_names();
         if sheet_names.len() > 1 {
             return Err(format!(
                 "Workbook has more than one one sheet: {sheet_names:?}. \

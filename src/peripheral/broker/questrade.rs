@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 
 use lazy_static::lazy_static;
 
-use office::Range;
+use calamine::{Data, Range};
 use time::Date;
 
 use crate::{
@@ -20,7 +20,7 @@ const QUESTRADE_ACCOUNT_BROKER_NAME: &str = "Questrade";
 
 /// Converts a QT spreadsheet into Txs
 pub fn sheet_to_txs(
-    sheet: &Range,
+    sheet: &Range<Data>,
     fpath: Option<&std::path::Path>,
 ) -> Result<Vec<BrokerTx>, SheetToTxsErr> {
     // Column names:
