@@ -95,7 +95,7 @@ impl LazyPageTextVec {
     pub fn optimized_iter(
         &mut self,
         page_groups: Vec<Vec<u32>>,
-    ) -> OptimizedPageIter {
+    ) -> OptimizedPageIter<'_> {
         OptimizedPageIter::new(self, page_groups)
     }
 
