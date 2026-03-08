@@ -102,8 +102,6 @@ impl CurrencyAndExchangeRate {
 
 #[cfg(test)]
 mod tests {
-    use rust_decimal_macros::dec;
-
     use crate::{
         pdec,
         portfolio::{Currency, CurrencyAndExchangeRate},

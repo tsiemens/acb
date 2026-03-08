@@ -4,6 +4,44 @@ use wasm_bindgen::prelude::*;
 pub mod app_shim;
 pub mod http;
 
+/// Convert a raw Excel workbook (as bytes) to ACB-format CSV text.
+///
+/// `sheet_name` selects which sheet to parse; pass `None`/`undefined` from JS
+/// to auto-select the only sheet (errors if there is more than one).
+///
+/// Returns an `XlConvertResult` with `csvText` and `nonFatalErrors` fields,
+/// or an error string on fatal failure.
+#[wasm_bindgen]
+pub fn convert_xl_to_csv(
+    data: Vec<u8>,
+    sheet_name: Option<String>,
+) -> Result<JsValue, JsValue> {
+    use acb::peripheral::excel::XlSource;
+    use acb::peripheral::tx_export_convert_impl::{convert_xl_txs, BrokerArg};
+    use acb::portfolio::io::tx_csv::write_txs_to_csv;
+
+    let (csv_txs, non_fatal_errors) = convert_xl_txs(
+        XlSource::Data(data),
+        &BrokerArg::Questrade,
+        sheet_name.as_deref(),
+        None,  // account_filter
+        None,  // security_filter
+        false, // no_fx
+        false, // no_sort (i.e. sort by default)
+        None,  // usd_exchange_rate
+    )
+    .map_err(|e| JsValue::from_str(&e))?;
+
+    let mut buf: Vec<u8> = Vec::new();
+    write_txs_to_csv(&csv_txs, &mut buf)
+        .map_err(|e| JsValue::from_str(&format!("{e}")))?;
+    let csv_text =
+        String::from_utf8(buf).map_err(|e| JsValue::from_str(&format!("{e}")))?;
+
+    let result = app_shim::XlConvertResult { csv_text, non_fatal_errors };
+    Ok(serde_wasm_bindgen::to_value(&result)?)
+}
+
 #[wasm_bindgen]
 pub fn get_acb_version() -> String {
     acb::app::ACB_APP_VERSION.to_string()
