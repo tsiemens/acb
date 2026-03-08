@@ -1,7 +1,9 @@
 import { defineConfig } from 'vite';
+import vue from '@vitejs/plugin-vue';
 import packageJson from './package.json';
 
 export default defineConfig({
+  plugins: [vue()],
   build: {
     minify: 'terser',
     terserOptions: {
@@ -29,6 +31,12 @@ export default defineConfig({
       output: {
         entryFileNames: '[name].js',
         chunkFileNames: '[name]-[hash].js',
+        // Fixed css name so index.ejs can reference it with a <link> tag.
+        // (Vite doesn't inject <link> tags when building from a .ts entry point.)
+        assetFileNames: (assetInfo) => {
+          if (assetInfo.name?.endsWith('.css')) return 'main.css';
+          return 'assets/[name]-[hash][extname]';
+        },
         preserveModulesRoot: 'src',
         manualChunks: undefined // Disable code-splitting
       },
