@@ -1,18 +1,16 @@
 use std::collections::HashSet;
 use std::io::Write;
-use std::path::Path;
 use std::path::PathBuf;
 
 use clap::Parser;
 use regex::Regex;
 use rust_decimal::Decimal;
 
-use calamine::{open_workbook_auto, Data, Range, Reader};
-
 use crate::app::outfmt::csv::CsvWriter;
 use crate::app::outfmt::model::AcbWriter;
 use crate::app::outfmt::text::TextWriter;
 use crate::peripheral::broker::Account;
+use crate::portfolio::CsvTx;
 use crate::portfolio::Currency;
 use crate::util::basic::SError;
 use crate::util::rw::WriteHandle;
@@ -20,35 +18,7 @@ use crate::write_errln;
 
 use super::broker::questrade;
 use super::broker::BrokerTx;
-
-/// Reads the named sheet or the only sheet.
-/// If no sheet name is provided, there must only be a single sheet,
-/// otherwise returns Err.
-///
-/// Note: This could not/cannot be based on the sheet index,
-/// because the office library does not provide an API to get the
-/// sheets in any particular order. They end up coming back in a random
-/// order.
-fn read_xl_file(path: &Path, sheet_name: Option<&str>) -> Result<Range<Data>, SError> {
-    let mut workbook = open_workbook_auto(path).map_err(|e| format!("{e}"))?;
-
-    let sheet_names: Vec<String>;
-
-    let sheet = if let Some(sn) = sheet_name {
-        sn
-    } else {
-        sheet_names = workbook.sheet_names();
-        if sheet_names.len() > 1 {
-            return Err(format!(
-                "Workbook has more than one one sheet: {sheet_names:?}. \
-                Sheet name must be specified"
-            ));
-        }
-        sheet_names.get(0).ok_or_else(|| "Workbook has no sheets".to_string())?
-    };
-
-    workbook.worksheet_range(sheet).map_err(|e| format!("{e}"))
-}
+use super::excel::{read_xl_source, XlSource};
 
 fn filter_and_verify_tx_accounts(
     account_filter: &Option<Regex>,
@@ -89,6 +59,72 @@ impl std::fmt::Display for BrokerArg {
         let s = format!("{self:?}").to_lowercase();
         write!(f, "{s}")
     }
+}
+
+/// Converts an Excel workbook into a list of CSV transactions.
+///
+/// Returns `(csv_txs, non_fatal_errors)`. When `non_fatal_errors` is non-empty,
+/// `csv_txs` is a partial result; callers should report the errors to the user.
+/// Returns `Err` only on fatal errors where no output can be produced.
+pub fn convert_xl_txs(
+    source: XlSource,
+    broker: &BrokerArg,
+    sheet: Option<&str>,
+    account_filter: Option<Regex>,
+    security_filter: Option<Regex>,
+    no_fx: bool,
+    no_sort: bool,
+    usd_exchange_rate: Option<Decimal>,
+) -> Result<(Vec<CsvTx>, Vec<String>), SError> {
+    let source_path: Option<PathBuf> = match &source {
+        XlSource::Path(p) => Some(p.clone()),
+        XlSource::Data(_) => None,
+    };
+
+    let rg = read_xl_source(source, sheet)?;
+
+    let tx_res = match broker {
+        BrokerArg::Questrade => {
+            questrade::sheet_to_txs(&rg, source_path.as_deref())
+        }
+    };
+
+    let (mut txs, non_fatal_errors) = match tx_res {
+        Ok(txs) => (txs, vec![]),
+        Err(res_err) => {
+            if let Some(partial_txs) = res_err.txs {
+                let errs = res_err.errors.iter().map(|e| format!("{e}")).collect();
+                (partial_txs, errs)
+            } else {
+                // Fatal error. No partial output.
+                let errs: Vec<String> =
+                    res_err.errors.iter().map(|e| format!("{e}")).collect();
+                return Err(errs.join("\n"));
+            }
+        }
+    };
+
+    txs = filter_and_verify_tx_accounts(&account_filter, txs)?;
+
+    if let Some(pattern) = security_filter {
+        txs = txs.into_iter().filter(|tx| pattern.is_match(&tx.security)).collect();
+    }
+    if no_fx {
+        txs = txs.into_iter().filter(|tx| !tx.security.ends_with(".FX")).collect();
+    }
+    if let Some(rate) = usd_exchange_rate {
+        for tx in &mut txs {
+            if tx.currency == Currency::usd() {
+                tx.exchange_rate = Some(rate)
+            }
+        }
+    }
+    if !no_sort {
+        txs.sort();
+    }
+
+    let csv_txs: Vec<CsvTx> = txs.into_iter().map(|t| t.into()).collect();
+    Ok((csv_txs, non_fatal_errors))
 }
 
 /// A convenience script to convert export spreadsheets from brokerages to the ACB
@@ -156,67 +192,22 @@ pub fn run_with_args(
     out_w: WriteHandle,
     mut err_w: WriteHandle,
 ) -> Result<(), ()> {
-    let rg = match read_xl_file(
-        &args.export_file,
-        args.sheet.as_ref().map(|v| v.as_str()),
+    let (csv_txs, non_fatal_errors) = match convert_xl_txs(
+        XlSource::Path(args.export_file.clone()),
+        &args.broker,
+        args.sheet.as_deref(),
+        args.account,
+        args.security,
+        args.no_fx,
+        args.no_sort,
+        args.usd_exchange_rate,
     ) {
-        Ok(rg) => rg,
+        Ok(result) => result,
         Err(e) => {
             write_errln!(err_w, "{e}");
             return Err(());
         }
     };
-
-    let tx_res = match args.broker {
-        BrokerArg::Questrade => {
-            questrade::sheet_to_txs(&rg, Some(&args.export_file))
-        }
-    };
-
-    let (mut txs, errors) = match tx_res {
-        Ok(txs) => (txs, None),
-        Err(res_err) => {
-            if let Some(partial_txs) = res_err.txs {
-                (partial_txs, Some(res_err.errors))
-            } else {
-                // Fatal error. No partial output.
-                let _ = write!(err_w, "Error:");
-                for e in res_err.errors {
-                    write_errln!(err_w, "{e}");
-                }
-                return Err(());
-            }
-        }
-    };
-
-    txs = match filter_and_verify_tx_accounts(&args.account, txs) {
-        Ok(txs_) => txs_,
-        Err(e) => {
-            write_errln!(err_w, "{e}");
-            return Err(());
-        }
-    };
-
-    if let Some(pattern) = args.security {
-        txs = txs.into_iter().filter(|tx| pattern.is_match(&tx.security)).collect();
-    }
-    if args.no_fx {
-        txs = txs.into_iter().filter(|tx| !tx.security.ends_with(".FX")).collect();
-    }
-    if let Some(rate) = args.usd_exchange_rate {
-        for tx in &mut txs {
-            if tx.currency == Currency::usd() {
-                tx.exchange_rate = Some(rate)
-            }
-        }
-    }
-    if !args.no_sort {
-        txs.sort();
-    }
-
-    // Convert to CsvTx (at least. Maybe even to Tx and back too)
-    let csv_txs: Vec<crate::portfolio::CsvTx> =
-        txs.into_iter().map(|t| t.into()).collect();
 
     let mut printer: Box<dyn AcbWriter> = if args.pretty {
         Box::new(TextWriter::new(out_w))
@@ -239,9 +230,9 @@ pub fn run_with_args(
             write_errln!(err_w, "{e}");
         })?;
 
-    if let Some(es) = errors {
+    if !non_fatal_errors.is_empty() {
         let _ = write!(err_w, "Errors:");
-        for e in es {
+        for e in &non_fatal_errors {
             write_errln!(err_w, " - {e}");
         }
         Err(())

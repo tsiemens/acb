@@ -1,7 +1,14 @@
-use std::{collections::HashMap, str::FromStr};
+use std::{
+    collections::HashMap,
+    io::{Cursor, Read, Seek},
+    path::{Path, PathBuf},
+    str::FromStr,
+};
 
-use calamine::{Data, Rows};
+use calamine::{open_workbook_auto, open_workbook_auto_from_rs, Data, Range, Reader, Rows};
 use rust_decimal::{prelude::FromPrimitive, Decimal};
+
+use crate::util::basic::SError;
 
 use super::sheet_common::SheetParseError;
 
@@ -100,6 +107,84 @@ impl<'a> SheetReader<'a> {
 
     fn err(&self, s: String) -> SheetParseError {
         SheetParseError::new(self.row_num, s)
+    }
+}
+
+/// Resolves the target sheet name and returns its range from an already-opened
+/// workbook. If `sheet_name` is `None` the workbook must contain exactly one
+/// sheet; otherwise an error is returned.
+///
+/// Note: sheet selection cannot be based on index because the calamine API
+/// does not guarantee a stable ordering for sheet names.
+fn worksheet_from_workbook<RS, R>(
+    workbook: &mut R,
+    sheet_name: Option<&str>,
+) -> Result<Range<Data>, SError>
+where
+    RS: Read + Seek,
+    R: Reader<RS>,
+    <R as Reader<RS>>::Error: std::fmt::Display,
+{
+    let sheet_names: Vec<String>;
+
+    let sheet = if let Some(sn) = sheet_name {
+        sn
+    } else {
+        sheet_names = workbook.sheet_names();
+        if sheet_names.len() > 1 {
+            return Err(format!(
+                "Workbook has more than one sheet: {sheet_names:?}. \
+                Sheet name must be specified"
+            ));
+        }
+        sheet_names
+            .get(0)
+            .ok_or_else(|| "Workbook has no sheets".to_string())?
+    };
+
+    workbook.worksheet_range(sheet).map_err(|e| format!("{e}"))
+}
+
+/// Reads the named sheet (or the only sheet) from a workbook file on disk.
+///
+/// Note: This could not/cannot be based on the sheet index,
+/// because the office library does not provide an API to get the
+/// sheets in any particular order. They end up coming back in a random
+/// order.
+pub fn read_xl_file(
+    path: &Path,
+    sheet_name: Option<&str>,
+) -> Result<Range<Data>, SError> {
+    let mut workbook = open_workbook_auto(path).map_err(|e| format!("{e}"))?;
+    worksheet_from_workbook(&mut workbook, sheet_name)
+}
+
+/// Reads the named sheet (or the only sheet) from raw in-memory workbook bytes.
+pub fn read_xl_data(
+    data: Vec<u8>,
+    sheet_name: Option<&str>,
+) -> Result<Range<Data>, SError> {
+    let cursor = Cursor::new(data);
+    let mut workbook =
+        open_workbook_auto_from_rs(cursor).map_err(|e| format!("{e}"))?;
+    worksheet_from_workbook(&mut workbook, sheet_name)
+}
+
+/// Source of an Excel workbook: either a file path or raw in-memory bytes.
+pub enum XlSource {
+    Path(PathBuf),
+    Data(Vec<u8>),
+}
+
+/// Opens an Excel workbook from the given source and returns the named sheet
+/// (or the only sheet if `sheet_name` is `None`).
+pub fn read_xl_source(
+    source: XlSource,
+    sheet_name: Option<&str>,
+) -> Result<Range<Data>, SError> {
+    match source {
+        XlSource::Path(path) => read_xl_file(&path, sheet_name),
+        XlSource::Data(data) => read_xl_data(data, sheet_name),
     }
 }
 
