@@ -1,5 +1,6 @@
 import { handleGitUserCaveatIssues } from "../github.js";
 import { ElementModel, ButtonElementModel } from "./model_lib.js";
+import { getFileManagerStore, FileKind } from "../vue/file_manager_store.js";
 
 // This is in debug for now, since the only thing in it is the debug button
 // It is hidden by default, and only shown when something in it is enabled.
@@ -89,6 +90,30 @@ class GithubFetchErrorButton extends ButtonElementModel {
    }
 }
 
+class AddMockFilesButton extends ButtonElementModel {
+   public static readonly ID: string = "addMockFilesButton";
+
+   public static get(): AddMockFilesButton {
+      return new AddMockFilesButton(
+         ElementModel.getRequiredElementById(AddMockFilesButton.ID));
+   }
+
+   public setup() {
+      this.setClickListener((_event) => {
+         const store = getFileManagerStore();
+         const d = (k: FileKind) => FileKind.isDownloadableDefault(k);
+         store.addFile({ name: 'transactions_2024.csv',           kind: FileKind.AcbTxCsv,      isDownloadable: d(FileKind.AcbTxCsv),      useChecked: true,  data: new Uint8Array() });
+         store.addFile({ name: 'transactions_2023.csv',           kind: FileKind.AcbTxCsv,      isDownloadable: d(FileKind.AcbTxCsv),      useChecked: false, data: new Uint8Array() });
+         store.addFile({ name: 'acb_export_2024-01-15T12-00.zip', kind: FileKind.AcbOutputZip,  isDownloadable: d(FileKind.AcbOutputZip),  useChecked: false, data: new Uint8Array() });
+         store.addFile({ name: 'acb_export_2023-12-31T08-30.zip', kind: FileKind.AcbOutputZip,  isDownloadable: d(FileKind.AcbOutputZip),  useChecked: false, data: new Uint8Array() });
+         store.addFile({ name: 'summary_output.txt',              kind: FileKind.OutputText,    isDownloadable: d(FileKind.OutputText),    useChecked: false, data: new Uint8Array() });
+         store.addFile({ name: 'questrade_export.xlsx',           kind: FileKind.QuestradeXlsx, isDownloadable: d(FileKind.QuestradeXlsx), useChecked: true,  data: new Uint8Array() });
+         store.addFile({ name: 'unrecognized_file.dat',           kind: FileKind.Other,         isDownloadable: d(FileKind.Other),         useChecked: false, data: new Uint8Array(), warning: 'File type could not be determined' });
+         store.hasNotification = true;
+      });
+   }
+}
+
 // When this checkbox is clicked, we'll re-load the page with debug_autoload=true
 // in the URL, which will trigger autoload when the page loads.
 export class AutoRunCheckbox extends ElementModel {
@@ -130,6 +155,7 @@ export class DebugSettings {
       // Inside debug panel
       GithubFetchErrorButton.get().setup();
       GithubOpenIssuesButton.get().setup();
+      AddMockFilesButton.get().setup();
       AutoRunCheckbox.get().setup();
    }
 }
