@@ -57,16 +57,21 @@ export interface FileManagerState {
    // state store once one exists, rather than being set directly here.
    relevantInputKinds: Set<FileKind>;
    addFile(entry: Omit<FileEntry, 'id' | 'isSelected'>): FileEntry;
+   removeFiles(ids: number[]): void;
 }
 
 function makeState(): FileManagerState {
    return reactive({
-      files: [],
+      files: [] as FileEntry[],
       hasNotification: false,
       // Mock: ACB calculator mode is assumed active by default.
       relevantInputKinds: new Set([FileKind.AcbTxCsv]),
       addFile(entry: Omit<FileEntry, 'id' | 'isSelected'>): FileEntry {
          return addFile(this, entry);
+      },
+      removeFiles(ids: number[]): void {
+         const idSet = new Set(ids);
+         this.files = this.files.filter((f) => !idSet.has(f.id));
       },
    });
 }

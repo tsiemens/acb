@@ -13,6 +13,7 @@ const isExpanded = ref(false);
 // null means "All"
 const activeKindFilter = ref<FileKind | null>(null);
 const lastClickedFilteredIndex = ref<number | null>(null);
+const showClearModal = ref(false);
 
 // --- Constants ---
 
@@ -34,9 +35,10 @@ const filteredFiles = computed(() => {
 
 const selectedFiles = computed(() => filteredFiles.value.filter((f) => f.isSelected));
 const hasSelection = computed(() => selectedFiles.value.length > 0);
-const hasDownloadableSelected = computed(() =>
-   selectedFiles.value.some((f) => f.isDownloadable)
+const downloadableSelected = computed(() =>
+   selectedFiles.value.filter((f) => f.isDownloadable)
 );
+const hasDownloadableSelected = computed(() => downloadableSelected.value.length > 0);
 
 // Height needed to show all files (unfiltered) plus the header row, capped at
 // 50vh. Using CSS min() in an inline style keeps this stable across filter
@@ -84,9 +86,18 @@ function selectAll() {
    filteredFiles.value.forEach((f) => (f.isSelected = true));
 }
 
-function clearSelection() {
-   props.store.files.forEach((f) => (f.isSelected = false));
+function handleClearClick() {
+   if (hasDownloadableSelected.value) {
+      showClearModal.value = true;
+   } else {
+      removeSelected();
+   }
+}
+
+function removeSelected() {
+   props.store.removeFiles(selectedFiles.value.map((f) => f.id));
    lastClickedFilteredIndex.value = null;
+   showClearModal.value = false;
 }
 </script>
 
@@ -111,6 +122,28 @@ function clearSelection() {
          >
             <span class="fm-toggle-icon" :class="{ 'fm-rotated': isExpanded }">▲</span>
          </button>
+      </div>
+
+      <!-- Confirmation modal -->
+      <div v-if="showClearModal" class="fm-modal-overlay" @click.self="showClearModal = false">
+         <div class="fm-modal">
+            <p class="fm-modal-title">Clear generated files?</p>
+            <p class="fm-modal-body">
+               The following file<span v-if="downloadableSelected.length !== 1">s</span>
+               will be permanently removed:
+            </p>
+            <ul class="fm-modal-file-list">
+               <li v-for="f in downloadableSelected" :key="f.id">{{ f.name }}</li>
+            </ul>
+            <p v-if="selectedFiles.length > downloadableSelected.length" class="fm-modal-body">
+               Plus {{ selectedFiles.length - downloadableSelected.length }} other selected
+               file<span v-if="selectedFiles.length - downloadableSelected.length !== 1">s</span>.
+            </p>
+            <div class="fm-modal-actions">
+               <button class="btn-modal-cancel" @click="showClearModal = false">Cancel</button>
+               <button class="btn-modal-confirm" @click="removeSelected">Remove</button>
+            </div>
+         </div>
       </div>
 
       <!-- Expandable content -->
@@ -143,8 +176,8 @@ function clearSelection() {
                <button
                   v-if="hasSelection"
                   class="fm-action-btn"
-                  title="Clear selected"
-                  @click="clearSelection"
+                  title="Remove selected"
+                  @click="handleClearClick"
                >
                   <img :src="'/images/bin_full.svg'" class="fm-action-icon">
                </button>
@@ -500,5 +533,85 @@ function clearSelection() {
 .fm-tag-download {
    background-color: #d4edda;
    color: #155724;
+}
+
+/* Confirmation modal */
+
+.fm-modal-overlay {
+   position: absolute;
+   inset: 0;
+   background-color: rgba(0, 0, 0, 0.35);
+   border-radius: 8px 8px 0 0;
+   display: flex;
+   align-items: center;
+   justify-content: center;
+   z-index: 10;
+}
+
+.fm-modal {
+   background: #fff;
+   border-radius: 8px;
+   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.22);
+   padding: 20px 24px 16px;
+   width: min(340px, 90%);
+}
+
+.fm-modal-title {
+   font-weight: 600;
+   font-size: 15px;
+   margin: 0 0 10px;
+}
+
+.fm-modal-body {
+   font-size: 13px;
+   color: #444;
+   margin: 0 0 6px;
+}
+
+.fm-modal-file-list {
+   font-size: 13px;
+   color: #333;
+   margin: 0 0 10px;
+   padding-left: 18px;
+}
+
+.fm-modal-file-list li {
+   margin-bottom: 2px;
+   word-break: break-all;
+}
+
+.fm-modal-actions {
+   display: flex;
+   justify-content: flex-end;
+   gap: 8px;
+   margin-top: 14px;
+}
+
+.btn-modal-cancel,
+.btn-modal-confirm {
+   padding: 5px 16px;
+   border-radius: 4px;
+   font-size: 13px;
+   cursor: pointer;
+   border: 1px solid transparent;
+}
+
+.btn-modal-cancel {
+   background: #f0f0f0;
+   border-color: #ccc;
+   color: #333;
+}
+
+.btn-modal-cancel:hover {
+   background: #e4e4e4;
+}
+
+.btn-modal-confirm {
+   background: #c0392b;
+   color: #fff;
+}
+
+.btn-modal-confirm:hover {
+   background: #a93226;
 }
 </style>
