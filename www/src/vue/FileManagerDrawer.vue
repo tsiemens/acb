@@ -5,22 +5,24 @@ import type { FileManagerState, FileEntry } from './file_manager_store.js';
 
 const props = defineProps<{
    store: FileManagerState;
+   onFilesDropped?: (fileList: FileList) => void;
 }>();
 
 // --- UI state (local to this component) ---
 
-const isExpanded = ref(false);
 // null means "All"
 const activeKindFilter = ref<FileKind | null>(null);
 const lastClickedFilteredIndex = ref<number | null>(null);
 const showClearModal = ref(false);
+const isDropActive = ref(false);
+const fileInput = ref<HTMLInputElement | null>(null);
 
 // --- Constants ---
 
 // Approximate rendered height of each table row (td padding 6px*2 + 13px font
 // at ~1.4 line-height + 1px border). Used to pre-size the file list wrapper so
 // the drawer height doesn't jump when the kind filter changes.
-const ROW_HEIGHT_PX = 33;
+const ROW_HEIGHT_PX = 34;
 
 // --- Computed ---
 
@@ -44,7 +46,7 @@ const hasDownloadableSelected = computed(() => downloadableSelected.value.length
 // 50vh. Using CSS min() in an inline style keeps this stable across filter
 // changes without needing a resize observer.
 const fileListWrapperHeight = computed(() => {
-   const totalPx = (props.store.files.length + 1) * ROW_HEIGHT_PX;
+   const totalPx = (Math.max(props.store.files.length, 1) + 1) * ROW_HEIGHT_PX;
    return `min(${totalPx}px, 50vh)`;
 });
 
@@ -63,8 +65,8 @@ const allVisibleInputUseChecked = computed({
 // --- Actions ---
 
 function toggleExpanded() {
-   isExpanded.value = !isExpanded.value;
-   if (isExpanded.value) props.store.hasNotification = false;
+   props.store.isExpanded = !props.store.isExpanded;
+   if (props.store.isExpanded) props.store.hasNotification = false;
 }
 
 function handleRowClick(file: FileEntry, index: number, event: MouseEvent) {
@@ -94,6 +96,37 @@ function handleClearClick() {
    }
 }
 
+function handleDrawerDragOver(event: DragEvent) {
+   event.preventDefault();
+   if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy';
+   isDropActive.value = true;
+}
+
+function handleDrawerDragLeave() {
+   isDropActive.value = false;
+}
+
+function handleDrawerDrop(event: DragEvent) {
+   event.preventDefault();
+   isDropActive.value = false;
+   if (event.dataTransfer?.files && props.onFilesDropped) {
+      props.onFilesDropped(event.dataTransfer.files);
+   }
+}
+
+function handleDropZoneClick() {
+   fileInput.value?.click();
+}
+
+function handleFileInputChange(event: Event) {
+   const files = (event.target as HTMLInputElement).files;
+   if (files && props.onFilesDropped) {
+      props.onFilesDropped(files);
+   }
+   // Reset so the same file can be re-selected
+   (event.target as HTMLInputElement).value = '';
+}
+
 function removeSelected() {
    props.store.removeFiles(selectedFiles.value.map((f) => f.id));
    lastClickedFilteredIndex.value = null;
@@ -102,7 +135,7 @@ function removeSelected() {
 </script>
 
 <template>
-   <div class="fm-drawer" :class="{ 'fm-expanded': isExpanded }">
+   <div class="fm-drawer" :class="{ 'fm-expanded': store.isExpanded }">
 
       <!-- Top bar -->
       <div class="fm-top-bar" @click="toggleExpanded">
@@ -118,9 +151,9 @@ function removeSelected() {
          <button
             class="fm-toggle-btn"
             @click.stop="toggleExpanded"
-            :aria-label="isExpanded ? 'Collapse' : 'Expand'"
+            :aria-label="store.isExpanded ? 'Collapse' : 'Expand'"
          >
-            <span class="fm-toggle-icon" :class="{ 'fm-rotated': isExpanded }">▲</span>
+            <span class="fm-toggle-icon" :class="{ 'fm-rotated': store.isExpanded }">▲</span>
          </button>
       </div>
 
@@ -147,7 +180,7 @@ function removeSelected() {
       </div>
 
       <!-- Expandable content -->
-      <div class="fm-content" v-show="isExpanded">
+      <div class="fm-content" v-show="store.isExpanded">
 
          <!-- Action bar -->
          <div class="fm-action-bar">
@@ -189,6 +222,26 @@ function removeSelected() {
             </div>
          </div>
 
+         <!-- Drop zone -->
+         <div
+            v-if="onFilesDropped"
+            class="fm-drop-zone"
+            :class="{ 'fm-drop-active': isDropActive }"
+            @dragover="handleDrawerDragOver"
+            @dragleave="handleDrawerDragLeave"
+            @drop="handleDrawerDrop"
+            @click="handleDropZoneClick"
+         >
+            Drop files here or <span class="fm-drop-browse">browse</span>
+            <input
+               ref="fileInput"
+               type="file"
+               multiple
+               class="fm-drop-file-input"
+               @change="handleFileInputChange"
+            >
+         </div>
+
          <!-- File list -->
          <div class="fm-file-list-wrapper" :style="{ height: fileListWrapperHeight }">
             <table class="fm-file-list">
@@ -207,6 +260,9 @@ function removeSelected() {
                   </tr>
                </thead>
                <tbody>
+                  <tr v-if="filteredFiles.length === 0" class="fm-empty-row">
+                     <td colspan="3">No files</td>
+                  </tr>
                   <tr
                      v-for="(file, i) in filteredFiles"
                      :key="file.id"
@@ -416,6 +472,40 @@ function removeSelected() {
    filter: invert(0.4);
 }
 
+/* Drop zone */
+
+.fm-drop-zone {
+   margin: 8px 12px;
+   padding: 12px;
+   border: 2px dashed #c8cdd3;
+   border-radius: 6px;
+   text-align: center;
+   font-size: 12px;
+   color: #888;
+   cursor: pointer;
+   transition: border-color 0.15s, background-color 0.15s, color 0.15s;
+}
+
+.fm-drop-zone:hover {
+   border-color: #999;
+   background-color: #fafafa;
+}
+
+.fm-drop-zone.fm-drop-active {
+   border-color: var(--primary-color);
+   background-color: var(--light-color);
+   color: var(--primary-color);
+}
+
+.fm-drop-browse {
+   text-decoration: underline;
+   color: var(--primary-color);
+}
+
+.fm-drop-file-input {
+   display: none;
+}
+
 /* File list */
 
 .fm-file-list-wrapper {
@@ -445,8 +535,18 @@ function removeSelected() {
 
 .fm-col-use {
    width: 60px;
-   text-align: center;
    white-space: nowrap;
+}
+
+th.fm-col-use {
+   text-align: center;
+}
+
+/* Select every direct child of a th.fm-col-use */
+th.fm-col-use > * {
+   display: inline-flex;
+   align-items: center;
+   vertical-align: middle;
 }
 
 .fm-col-use-label {
@@ -463,6 +563,14 @@ function removeSelected() {
    white-space: nowrap;
    text-align: right;
    padding-right: 12px;
+}
+
+.fm-empty-row td {
+   padding: 10px;
+   text-align: center;
+   color: #aaa;
+   font-style: italic;
+   font-size: 12px;
 }
 
 .fm-file-row {

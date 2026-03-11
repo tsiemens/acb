@@ -1,6 +1,6 @@
 import { handleGitUserCaveatIssues } from "../github.js";
 import { ElementModel, ButtonElementModel } from "./model_lib.js";
-import { getFileManagerStore, FileKind } from "../vue/file_manager_store.js";
+import { getFileManagerStore, FileKind, modifyDrawerNotificationForUserAddedFiles } from "../vue/file_manager_store.js";
 
 // This is in debug for now, since the only thing in it is the debug button
 // It is hidden by default, and only shown when something in it is enabled.
@@ -109,7 +109,7 @@ class AddMockFilesButton extends ButtonElementModel {
          store.addFile({ name: 'summary_output.txt',              kind: FileKind.OutputText,    isDownloadable: d(FileKind.OutputText),    useChecked: false, data: new Uint8Array() });
          store.addFile({ name: 'questrade_export.xlsx',           kind: FileKind.QuestradeXlsx, isDownloadable: d(FileKind.QuestradeXlsx), useChecked: true,  data: new Uint8Array() });
          store.addFile({ name: 'unrecognized_file.dat',           kind: FileKind.Other,         isDownloadable: d(FileKind.Other),         useChecked: false, data: new Uint8Array(), warning: 'File type could not be determined' });
-         store.hasNotification = true;
+         modifyDrawerNotificationForUserAddedFiles(store);
       });
    }
 }
