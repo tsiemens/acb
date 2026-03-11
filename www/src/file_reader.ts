@@ -70,7 +70,7 @@ function decodeBase64(base64String: string) {
    return decoder.decode(bytes);
 }
 
-class FilesLoader {
+export class FilesLoader {
    private loadQueue: FileLoadQueue;
    constructor(filesToLoad: File[]) {
       this.loadQueue = new FileLoadQueue(filesToLoad);
@@ -221,4 +221,42 @@ export class FileStager {
       }
       return false;
    }
+}
+
+export interface FileByteResult {
+   name: string;
+   data: Uint8Array;
+   error?: string;
+}
+
+// Loads an array of files as raw bytes (Uint8Array). Suitable for both text and
+// binary files. Calls onComplete once all files have been read.
+export function loadFilesAsBytes(
+   files: File[],
+   onComplete: (results: FileByteResult[]) => void,
+): void {
+   if (files.length === 0) {
+      onComplete([]);
+      return;
+   }
+
+   const results: FileByteResult[] = files.map((f) => ({ name: f.name, data: new Uint8Array(0) }));
+   let remaining = files.length;
+
+   files.forEach((file, i) => {
+      const reader = new FileReader();
+      reader.addEventListener('loadend', (event) => {
+         remaining--;
+         const result = event.target?.result;
+         if (result instanceof ArrayBuffer) {
+            results[i].data = new Uint8Array(result);
+         } else {
+            results[i].error = event.target?.error
+               ? `${event.target.error.name}: ${event.target.error.message}`
+               : 'Unknown error reading file';
+         }
+         if (remaining === 0) onComplete(results);
+      });
+      reader.readAsArrayBuffer(file);
+   });
 }

@@ -1,7 +1,8 @@
 import JSZip from "jszip";
 import { Unit } from "./basic_utils.js";
 import { AppFunctionMode } from "./common/acb_app_types.js";
-import { CsvFilesLoader, FileLoadResult, FileStager, printMetadataForFileList } from "./file_reader.js";
+import { CsvFilesLoader, FileLoadResult, FileStager, loadFilesAsBytes, printMetadataForFileList } from "./file_reader.js";
+import { FileKind, getFileManagerStore, modifyDrawerNotificationForUserAddedFiles } from './vue/file_manager_store.js';
 import { run_acb, run_acb_summary } from './pkg/acb_wasm.js';
 import { Result } from "./result.js";
 import { AppExportResultOk, AppResultOk, AppSummaryResultOk, FileContent, RenderTable } from "./acb_wasm_types.js";
@@ -269,8 +270,43 @@ async function asyncRunAcbShareTally(filenames: string[], contents: string[], la
    }
 }
 
+function detectFileKind(file: File): FileKind {
+   if (file.type === 'text/csv' || file.name.endsWith('.csv')) {
+      return FileKind.AcbTxCsv;
+   }
+   if (
+      file.name.endsWith('.xlsx') ||
+      file.type === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+   ) {
+      return FileKind.QuestradeXlsx;
+   }
+   return FileKind.Other;
+}
+
+// NOTE (until refactoring is done): This adds files to the new
+// file manager drawer.
+export function loadAndAddFilesToFileManager(fileList: FileList): void {
+   const files = Array.from(fileList);
+   loadFilesAsBytes(files, (results) => {
+      const store = getFileManagerStore();
+      results.forEach((result, i) => {
+         const kind = detectFileKind(files[i]);
+         store.addFile({
+            name: result.name,
+            kind,
+            isDownloadable: false,
+            useChecked: result.error ? false : FileKind.isInput(kind),
+            data: result.data,
+            warning: result.error,
+         });
+      });
+      modifyDrawerNotificationForUserAddedFiles(store);
+   });
+}
+
 function addFilesToUse(fileList: FileList): void {
    printMetadataForFileList(fileList);
+   loadAndAddFilesToFileManager(fileList);
    for (const file of fileList) {
       if (file.type == "text/csv") {
          if (FileStager.globalInstance.isFileSelected(file)) {

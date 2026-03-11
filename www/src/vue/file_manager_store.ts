@@ -50,6 +50,7 @@ export interface FileEntry {
 export interface FileManagerState {
    files: FileEntry[];
    hasNotification: boolean;
+   isExpanded: boolean;
    // Which input kinds are relevant to the currently active app mode. The Use
    // checkbox is highlighted for relevant kinds and neutral for others.
    //
@@ -64,6 +65,7 @@ function makeState(): FileManagerState {
    return reactive({
       files: [] as FileEntry[],
       hasNotification: false,
+      isExpanded: false,
       // Mock: ACB calculator mode is assumed active by default.
       relevantInputKinds: new Set([FileKind.AcbTxCsv]),
       addFile(entry: Omit<FileEntry, 'id' | 'isSelected'>): FileEntry {
@@ -82,6 +84,15 @@ let nextId = 1;
 export function getFileManagerStore(): FileManagerState {
    if (!store) store = makeState();
    return store;
+}
+
+// Call after adding files on behalf of the user. Sets the notification dot
+// only when the drawer is closed — no need to notify if they can already see
+// the new entries.
+export function modifyDrawerNotificationForUserAddedFiles(store: FileManagerState): void {
+   if (!store.isExpanded) {
+      store.hasNotification = true;
+   }
 }
 
 export function addFile(
