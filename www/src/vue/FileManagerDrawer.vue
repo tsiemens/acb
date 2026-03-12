@@ -232,7 +232,7 @@ function removeSelected() {
             @drop="handleDrawerDrop"
             @click="handleDropZoneClick"
          >
-            Drop files here or <span class="fm-drop-browse">browse</span>
+            Drop files here or&nbsp;<span class="fm-drop-browse">browse</span>
             <input
                ref="fileInput"
                type="file"
@@ -476,7 +476,11 @@ function removeSelected() {
 
 .fm-drop-zone {
    margin: 8px 12px;
-   padding: 12px;
+   padding: 18px 12px;
+   min-height: 60px;
+   display: flex;
+   align-items: center;
+   justify-content: center;
    border: 2px dashed #c8cdd3;
    border-radius: 6px;
    text-align: center;
