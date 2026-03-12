@@ -1,15 +1,15 @@
 import JSZip from "jszip";
 import { Unit } from "./basic_utils.js";
 import { AppFunctionMode } from "./common/acb_app_types.js";
-import { CsvFilesLoader, FileLoadResult, FileStager, loadFilesAsBytes, printMetadataForFileList } from "./file_reader.js";
-import { FileKind, getFileManagerStore, modifyDrawerNotificationForUserAddedFiles } from './vue/file_manager_store.js';
+import { fileBytesToString, loadFilesAsBytes, printMetadataForFileList } from "./file_reader.js";
+import { FileEntry, FileKind, getFileManagerStore, modifyDrawerNotificationForUserAddedFiles } from './vue/file_manager_store.js';
 import { run_acb, run_acb_summary } from './pkg/acb_wasm.js';
 import { Result } from "./result.js";
 import { AppExportResultOk, AppResultOk, AppSummaryResultOk, FileContent, RenderTable } from "./acb_wasm_types.js";
 import { AcbOutput, AggregateOutputContainer, SecurityTablesOutputContainer, TextOutputContainer, YearHighlightSelector } from "./ui_model/acb_app_output.js";
 import { AcbExtraOptions, SummaryDatePicker, ExportButton, FunctionModeSelector, RunButton } from "./ui_model/app_input.js";
 import { ErrorBox } from "./ui_model/error_displays.js";
-import { ClearFilesButton, FileDropArea, FileSelectorInput, SelectedFileList } from "./ui_model/file_input.js";
+import { FileDropArea, FileSelectorInput } from "./ui_model/file_input.js";
 import { AutoRunCheckbox, DebugSettings } from "./ui_model/debug.js";
 import { SummaryOutputContainer } from "./ui_model/summary_output.js";
 import { loadTestFile } from "./debug.js";
@@ -307,18 +307,27 @@ export function loadAndAddFilesToFileManager(fileList: FileList): void {
 function addFilesToUse(fileList: FileList): void {
    printMetadataForFileList(fileList);
    loadAndAddFilesToFileManager(fileList);
-   for (const file of fileList) {
-      if (file.type == "text/csv") {
-         if (FileStager.globalInstance.isFileSelected(file)) {
-            console.log("File", file.name, "already selected.");
-         } else {
-            const fileId = FileStager.globalInstance.addFileToUse(file);
-            SelectedFileList.get().addFileListEntry(fileId, file.name);
-         }
-      } else {
-         console.log("File " + file.name + " ignored. Not CSV.");
+}
+
+function fileEntiesToNamesAndStringContents(entries: FileEntry[]
+   ): [filenames: string[], contents: string[]] {
+   const filenames: string[] = [];
+   const contents: string[] = [];
+
+   for (const entry of entries) {
+      if (entry.warning) {
+         console.warn(`Skipping file ${entry.name} due to warning: ${entry.warning}`);
+         continue;
       }
+      if (!entry.useChecked) {
+         console.log(`Skipping file ${entry.name} because useChecked is false.`);
+         continue;
+      }
+      const contentStr = fileBytesToString(entry.data);
+      filenames.push(entry.name);
+      contents.push(contentStr);
    }
+   return [filenames, contents];
 }
 
 export function initAppUI() {
@@ -327,11 +336,6 @@ export function initAppUI() {
 
    FileDropArea.get().setup(addFilesToUse);
    FileSelectorInput.get().setup(addFilesToUse);
-   SelectedFileList.get().setup((fileId: number) => {
-      console.log("onRemoveFile", fileId);
-      FileStager.globalInstance.removeFile(fileId);
-   });
-   ClearFilesButton.get().setup();
    CollapsibleRegion.initAll();
 
    FunctionModeSelector.get().setup();
@@ -339,43 +343,54 @@ export function initAppUI() {
 
    function runHandler(acbRunMode: AcbAppRunMode = AcbAppRunMode.Normal) {
       const funcMode = FunctionModeSelector.get().getSelectedMode();
-      const fileList = FileStager.globalInstance.getFilesToUseList();
-      const loader = new CsvFilesLoader(fileList);
-      loader.loadFiles((result: FileLoadResult) => {
-         if (result.loadErrors.length > 0) {
-            const error = result.loadErrors[0];
-            ErrorBox.getMain().showWith({
-               title: "Read Error",
-               descPre: error.errorDesc,
-               errorText: error.error,
-            });
-            return;
+      const store = getFileManagerStore();
+
+      const csvFiles = store.files.filter(
+         f => f.kind === FileKind.AcbTxCsv && f.useChecked && !f.warning
+      );
+      let [filenames, filesContents] = fileEntiesToNamesAndStringContents(csvFiles);
+
+      // TODO temporary.
+      // Run button should ideally be disabled until at least one
+      // valid file is selected, but this is a quick way to prevent errors from
+      // trying to run with no files.
+      if (filenames.length === 0) {
+         ErrorBox.getMain().showWith({
+            title: "No Valid Files",
+            descPre: "Please add and select at least one valid CSV file before running (use the new file manager drawer).",
+         });
+         return;
+      }
+
+      switch (funcMode) {
+         case AppFunctionMode.Calculate:
+            asyncRunAcb(filenames, filesContents, acbRunMode)
+               .then(() => {}).catch((_: unknown) => {});
+            break;
+         case AppFunctionMode.TxSummary: {
+            const datePicker = SummaryDatePicker.get();
+            const latestDate = datePicker.getValue() || SummaryDatePicker.getDefaultDate(funcMode);
+            asyncRunAcbSummary(filenames, filesContents, latestDate, acbRunMode)
+               .then(() => {}).catch((_: unknown) => {});
+            break;
          }
-         switch (funcMode) {
-            case AppFunctionMode.Calculate:
-               asyncRunAcb(result.loadedFileNames, result.loadedContent, acbRunMode)
-                  .then(() => {}).catch((_: unknown) => {});
-               break;
-            case AppFunctionMode.TxSummary: {
-               const datePicker = SummaryDatePicker.get();
-               const latestDate = datePicker.getValue() || SummaryDatePicker.getDefaultDate(funcMode);
-               asyncRunAcbSummary(result.loadedFileNames, result.loadedContent, latestDate, acbRunMode)
-                  .then(() => {}).catch((_: unknown) => {});
-               break;
-            }
-            case AppFunctionMode.TallyShares: {
-               const datePicker = SummaryDatePicker.get();
-               const latestDate = datePicker.getValue() || SummaryDatePicker.getDefaultDate(funcMode);
-               asyncRunAcbShareTally(result.loadedFileNames, result.loadedContent, latestDate, acbRunMode)
-                  .then(() => {}).catch((_: unknown) => {});
-               break;
-            }
+         case AppFunctionMode.TallyShares: {
+            const datePicker = SummaryDatePicker.get();
+            const latestDate = datePicker.getValue() || SummaryDatePicker.getDefaultDate(funcMode);
+            asyncRunAcbShareTally(filenames, filesContents, latestDate, acbRunMode)
+               .then(() => {}).catch((_: unknown) => {});
+            break;
          }
-      });
+      }
    }
 
    RunButton.get().setup(() => { runHandler(AcbAppRunMode.Normal) });
    ExportButton.get().setup(() => { runHandler(AcbAppRunMode.Export) });
+   // TODO: Temporary until we tie these into the file manager store.
+   // Probably as vue wathers.
+   RunButton.get().setEnabled(true);
+   ExportButton.get().setEnabled(true);
+
 
    AcbOutput.setup();
 
@@ -383,8 +398,16 @@ export function initAppUI() {
    // Debug auto-run
    if (AutoRunCheckbox.get().checked()) {
       loadTestFile((testFile) => {
-         asyncRunAcb([testFile.name], [testFile.contents])
-            .then(() => {}).catch((_: unknown) => {});
+         const store = getFileManagerStore();
+         const encoder = new TextEncoder();
+         store.addFile({
+            name: testFile.name,
+            kind: FileKind.AcbTxCsv,
+            isDownloadable: false,
+            useChecked: true,
+            data: encoder.encode(testFile.contents),
+         });
+         runHandler(AcbAppRunMode.Normal);
       })
    }
 }
