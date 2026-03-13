@@ -1,4 +1,4 @@
-export function printMetadataForFileList(fileList: FileList) {
+function printMetadataForFileList(fileList: File[]) {
    for (const file of fileList) {
       // Not supported in Safari for iOS.
       const name = file.name ? file.name : 'NOT SUPPORTED';
@@ -68,6 +68,8 @@ export function loadFilesAsBytes(
       onComplete([]);
       return;
    }
+
+   printMetadataForFileList(files);
 
    const results: FileByteResult[] = files.map((f) => ({ name: f.name, data: new Uint8Array(0) }));
    let remaining = files.length;

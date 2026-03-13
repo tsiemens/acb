@@ -1,5 +1,6 @@
 import { createApp } from 'vue';
 import { loadAndAddFilesToFileManager, initAppUI } from './acb_app.js';
+import FileDropArea from './vue/FileDropArea.vue';
 import { loadGitUserCaveatIssues } from './github.js';
 import wasm_init, { get_acb_version } from './pkg/acb_wasm.js';
 import { WasmVersionDisplay } from './ui_model/misc.js';
@@ -21,6 +22,10 @@ function createVueApps(): void {
       store: getErrorBoxStore(ErrorBox.GIT_ERRORS_ID),
       width: '100%',
    }).mount(`#${ErrorBox.GIT_ERRORS_ID}`);
+
+   createApp(FileDropArea, {
+      onFilesDropped: loadAndAddFilesToFileManager,
+   }).mount('#fileDropAreaApp');
 
    const fileManagerStore = getFileManagerStore();
    createApp(FileManagerDrawer, {

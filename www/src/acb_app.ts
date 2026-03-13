@@ -1,7 +1,7 @@
 import JSZip from "jszip";
 import { Unit } from "./basic_utils.js";
 import { AppFunctionMode } from "./common/acb_app_types.js";
-import { fileBytesToString, loadFilesAsBytes, printMetadataForFileList } from "./file_reader.js";
+import { fileBytesToString, loadFilesAsBytes } from "./file_reader.js";
 import { FileEntry, FileKind, getFileManagerStore, modifyDrawerNotificationForUserAddedFiles } from './vue/file_manager_store.js';
 import { run_acb, run_acb_summary } from './pkg/acb_wasm.js';
 import { Result } from "./result.js";
@@ -9,7 +9,6 @@ import { AppExportResultOk, AppResultOk, AppSummaryResultOk, FileContent, Render
 import { AcbOutput, AggregateOutputContainer, SecurityTablesOutputContainer, TextOutputContainer, YearHighlightSelector } from "./ui_model/acb_app_output.js";
 import { AcbExtraOptions, SummaryDatePicker, ExportButton, FunctionModeSelector, RunButton } from "./ui_model/app_input.js";
 import { ErrorBox } from "./ui_model/error_displays.js";
-import { FileDropArea, FileSelectorInput } from "./ui_model/file_input.js";
 import { AutoRunCheckbox, DebugSettings } from "./ui_model/debug.js";
 import { SummaryOutputContainer } from "./ui_model/summary_output.js";
 import { loadTestFile } from "./debug.js";
@@ -304,11 +303,6 @@ export function loadAndAddFilesToFileManager(fileList: FileList): void {
    });
 }
 
-function addFilesToUse(fileList: FileList): void {
-   printMetadataForFileList(fileList);
-   loadAndAddFilesToFileManager(fileList);
-}
-
 function fileEntiesToNamesAndStringContents(entries: FileEntry[]
    ): [filenames: string[], contents: string[]] {
    const filenames: string[] = [];
@@ -334,8 +328,6 @@ export function initAppUI() {
    InfoDialog.initAll();
    InfoListItem.initAll();
 
-   FileDropArea.get().setup(addFilesToUse);
-   FileSelectorInput.get().setup(addFilesToUse);
    CollapsibleRegion.initAll();
 
    FunctionModeSelector.get().setup();
