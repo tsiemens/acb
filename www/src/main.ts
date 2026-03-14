@@ -18,10 +18,10 @@ import InfoDialogs from './vue/InfoDialogs.vue';
 import { getInfoDialogStore } from './vue/info_dialog_store.js';
 import OutputArea from './vue/OutputArea.vue';
 import { getOutputStore } from './vue/output_store.js';
-import DebugPanel from './vue/DebugPanel.vue';
 import { FileKind } from './vue/file_manager_store.js';
 import { loadTestFile } from './debug.js';
 import Sidebar from './vue/Sidebar.vue';
+import AppHeader from './vue/AppHeader.vue';
 
 function createVueApps(): void {
    createApp(InfoDialogs, {
@@ -65,7 +65,7 @@ function createVueApps(): void {
       store: getOutputStore(),
    }).mount('#collapsibleRegionApp');
 
-   createApp(DebugPanel, {
+   createApp(AppHeader, {
       onAutoRun: () => {
          loadTestFile((testFile) => {
             const store = getFileManagerStore();
@@ -80,7 +80,7 @@ function createVueApps(): void {
             runHandler(AcbAppRunMode.Run);
          });
       },
-   }).mount('#debugPanelApp');
+   }).mount('#appHeaderApp');
 
    createApp(FileManagerDrawer, {
       store: fileManagerStore,
