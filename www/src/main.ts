@@ -15,10 +15,16 @@ import { getAppInputStore } from './vue/app_input_store.js';
 import CollapsibleRegion from './vue/CollapsibleRegion.vue';
 import SidebarInfo from './vue/SidebarInfo.vue';
 import { getSidebarInfoStore } from './vue/sidebar_info_store.js';
+import InfoDialogs from './vue/InfoDialogs.vue';
+import { getInfoDialogStore } from './vue/info_dialog_store.js';
 
 function createVueApps(): void {
    // Inject components which have been converted to Vue apps.
    // Eventually, may be able to have a single app if everything gets converted (?).
+
+   createApp(InfoDialogs, {
+      store: getInfoDialogStore(),
+   }).mount('#infoDialogsApp');
 
    createApp(ErrorBoxVue, {
       store: getErrorBoxStore(ErrorBox.MAIN_ERRORS_ID),
