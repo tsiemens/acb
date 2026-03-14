@@ -66,7 +66,9 @@ function createVueApps(): void {
    createApp(OutputArea, {
       store: getOutputStore(),
    }).mount('#outputAreaApp');
-   createApp(CollapsibleRegion).mount('#collapsibleRegionApp');
+   createApp(CollapsibleRegion, {
+      store: getOutputStore(),
+   }).mount('#collapsibleRegionApp');
 
    createApp(FileManagerDrawer, {
       store: fileManagerStore,

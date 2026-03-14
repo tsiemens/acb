@@ -23,10 +23,11 @@
 
     <div class="acb-output-container">
       <div
-        id="acbSecurityTablesOutput"
         class="acb-output"
         :class="{ inactive: store.activeViewMode !== ViewMode.SecurityTables }"
-      ></div>
+      >
+        <SecurityTablesOutput :store="store" />
+      </div>
       <div
         class="acb-output"
         :class="{ inactive: store.activeViewMode !== ViewMode.Summary }"
@@ -60,10 +61,11 @@
 import { defineComponent, type PropType } from 'vue';
 import { type OutputStore, AcbOutputViewMode, getViewModeLabel } from './output_store.js';
 import DataTable from './DataTable.vue';
+import SecurityTablesOutput from './SecurityTablesOutput.vue';
 
 export default defineComponent({
    name: 'OutputArea',
-   components: { DataTable },
+   components: { DataTable, SecurityTablesOutput },
    props: {
       store: {
          type: Object as PropType<OutputStore>,
