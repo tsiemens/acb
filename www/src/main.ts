@@ -1,5 +1,5 @@
 import { createApp } from 'vue';
-import { loadAndAddFilesToFileManager, runHandler, initAppUI } from './acb_app.js';
+import { loadAndAddFilesToFileManager, runHandler } from './acb_app.js';
 import { AcbAppRunMode } from "./common/acb_app_types.js";
 import { loadGitUserCaveatIssues } from './github.js';
 import wasm_init, { get_acb_version } from './pkg/acb_wasm.js';
@@ -55,8 +55,6 @@ export async function init(): Promise<void> {
       getSidebarInfoStore().acbVersion = `v${get_acb_version()}`;
 
       createVueApp();
-      initAppUI();
-
       loadGitUserCaveatIssues();
 
       console.log("Application initialization complete");

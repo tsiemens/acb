@@ -18,8 +18,7 @@
 import { defineComponent, computed, type PropType } from 'vue';
 import { webappVersion } from '../versions.js';
 import type { SidebarInfoStore } from './sidebar_info_store.js';
-import { ErrorBox as ErrorBoxModel } from '../ui_model/error_displays.js';
-import { getErrorBoxStore } from './error_box_store.js';
+import { ErrorBox as ErrorBoxModel, getErrorBoxStore } from './error_box_store.js';
 import ErrorBox from './ErrorBox.vue';
 
 export default defineComponent({
