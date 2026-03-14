@@ -5,7 +5,6 @@ import FileDropArea from './vue/FileDropArea.vue';
 import SplitRunButton from './vue/SplitRunButton.vue';
 import { loadGitUserCaveatIssues } from './github.js';
 import wasm_init, { get_acb_version } from './pkg/acb_wasm.js';
-import { WasmVersionDisplay } from './ui_model/misc.js';
 import { ErrorBox } from './ui_model/error_displays.js';
 import { getErrorBoxStore } from './vue/error_box_store.js';
 import ErrorBoxVue from './vue/ErrorBox.vue';
@@ -14,6 +13,8 @@ import FileManagerDrawer from './vue/FileManagerDrawer.vue';
 import AppInputControls from './vue/AppInputControls.vue';
 import { getAppInputStore } from './vue/app_input_store.js';
 import CollapsibleRegion from './vue/CollapsibleRegion.vue';
+import SidebarInfo from './vue/SidebarInfo.vue';
+import { getSidebarInfoStore } from './vue/sidebar_info_store.js';
 
 function createVueApps(): void {
    // Inject components which have been converted to Vue apps.
@@ -23,6 +24,11 @@ function createVueApps(): void {
       store: getErrorBoxStore(ErrorBox.MAIN_ERRORS_ID),
    }).mount(`#${ErrorBox.MAIN_ERRORS_ID}`);
 
+   createApp(SidebarInfo, {
+      store: getSidebarInfoStore(),
+   }).mount('#sidebarInfoApp');
+
+   // Git issues ErrorBox must mount after SidebarInfo, which provides its container
    createApp(ErrorBoxVue, {
       store: getErrorBoxStore(ErrorBox.GIT_ERRORS_ID),
       width: '100%',
@@ -72,7 +78,7 @@ export async function init(): Promise<void> {
    console.log("Starting application initialization");
    try {
       await initWasmLib();
-      WasmVersionDisplay.get().setVersion(get_acb_version());
+      getSidebarInfoStore().acbVersion = `v${get_acb_version()}`;
 
       createVueApps();
       initAppUI();
