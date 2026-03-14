@@ -12,8 +12,8 @@ import { ErrorBox } from "./ui_model/error_displays.js";
 import { AutoRunCheckbox, DebugSettings } from "./ui_model/debug.js";
 import { SummaryOutputContainer } from "./ui_model/summary_output.js";
 import { loadTestFile } from "./debug.js";
-import { InfoDialog, InfoListItem } from "./ui_model/info_dialogs.js";
 import { asError } from "./http_utils.js";
+import { openDialog } from "./vue/info_dialog_store.js";
 
 function makeZip(files: FileContent[]): Promise<Blob> {
    return new Promise((resolve, reject) => {
@@ -360,8 +360,18 @@ export function runHandler(acbRunMode: AcbAppRunMode = AcbAppRunMode.Run) {
 }
 
 export function initAppUI() {
-   InfoDialog.initAll();
-   InfoListItem.initAll();
+   // Temporary bridge: wire sidebar info items to the Vue info dialog store
+   // until the sidebar is converted to Vue (Phase 2b).
+   const infoListItems = document.querySelectorAll('.clickable-info-item');
+   infoListItems.forEach((item) => {
+      item.addEventListener('click', (event) => {
+         const element = (event.target as Element).closest('.clickable-info-item');
+         const dialogId = element?.getAttribute('data-dialog-id');
+         if (dialogId) {
+            openDialog(dialogId);
+         }
+      });
+   });
 
    // Temporary bridge: sync the sidebar checkbox to the app input store
    // until the sidebar is converted to Vue (Phase 5a).
