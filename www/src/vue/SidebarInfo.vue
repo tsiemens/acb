@@ -6,7 +6,7 @@
       Please review them and ensure they do not impact your scenario.
     </p>
 
-    <div :id="gitErrorsId"></div>
+    <ErrorBox :store="gitErrorBoxStore" width="100%" />
   </div>
 
   <div class="info-section">
@@ -18,10 +18,13 @@
 import { defineComponent, computed, type PropType } from 'vue';
 import { webappVersion } from '../versions.js';
 import type { SidebarInfoStore } from './sidebar_info_store.js';
-import { ErrorBox } from '../ui_model/error_displays.js';
+import { ErrorBox as ErrorBoxModel } from '../ui_model/error_displays.js';
+import { getErrorBoxStore } from './error_box_store.js';
+import ErrorBox from './ErrorBox.vue';
 
 export default defineComponent({
    name: 'SidebarInfo',
+   components: { ErrorBox },
    props: {
       store: {
          type: Object as PropType<SidebarInfoStore>,
@@ -29,13 +32,13 @@ export default defineComponent({
       },
    },
    setup(props) {
-      const gitErrorsId = ErrorBox.GIT_ERRORS_ID;
+      const gitErrorBoxStore = getErrorBoxStore(ErrorBoxModel.GIT_ERRORS_ID);
 
       const versionText = computed(() =>
          `acb ${props.store.acbVersion}, acb-web v${webappVersion}`
       );
 
-      return { versionText, gitErrorsId };
+      return { versionText, gitErrorBoxStore };
    },
 });
 </script>
