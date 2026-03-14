@@ -13,7 +13,6 @@ import { AutoRunCheckbox, DebugSettings } from "./ui_model/debug.js";
 import { SummaryOutputContainer } from "./ui_model/summary_output.js";
 import { loadTestFile } from "./debug.js";
 import { InfoDialog, InfoListItem } from "./ui_model/info_dialogs.js";
-import { CollapsibleRegion } from "./ui_model/components.js";
 import { asError } from "./http_utils.js";
 
 function makeZip(files: FileContent[]): Promise<Blob> {
@@ -363,8 +362,6 @@ export function runHandler(acbRunMode: AcbAppRunMode = AcbAppRunMode.Run) {
 export function initAppUI() {
    InfoDialog.initAll();
    InfoListItem.initAll();
-
-   CollapsibleRegion.initAll();
 
    // Temporary bridge: sync the sidebar checkbox to the app input store
    // until the sidebar is converted to Vue (Phase 5a).
