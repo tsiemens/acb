@@ -18,6 +18,8 @@ import { getSidebarInfoStore } from './vue/sidebar_info_store.js';
 import InfoDialogs from './vue/InfoDialogs.vue';
 import { getInfoDialogStore } from './vue/info_dialog_store.js';
 import SidebarInfoItems from './vue/SidebarInfoItems.vue';
+import OutputArea from './vue/OutputArea.vue';
+import { getOutputStore } from './vue/output_store.js';
 
 function createVueApps(): void {
    // Inject components which have been converted to Vue apps.
@@ -59,6 +61,11 @@ function createVueApps(): void {
          runHandler(mode);
       },
    }).mount('#splitRunButtonApp');
+
+   // OutputArea must mount before CollapsibleRegion, since it provides its container
+   createApp(OutputArea, {
+      store: getOutputStore(),
+   }).mount('#outputAreaApp');
    createApp(CollapsibleRegion).mount('#collapsibleRegionApp');
 
    createApp(FileManagerDrawer, {
