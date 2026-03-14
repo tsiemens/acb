@@ -1,16 +1,20 @@
 import { JSONValue, loadJSON } from './http_utils.js';
-import { ErrorBox, SidebarWarningsSection } from './ui_model/error_displays.js';
-import { GitIssuesInfo } from './ui_model/github.js';
+import { ErrorBox } from './ui_model/error_displays.js';
+import { getSidebarInfoStore } from './vue/sidebar_info_store.js';
 
 // Exported only for debugging
 export function handleGitUserCaveatIssues(jsonObj: JSONValue) {
    console.log(jsonObj);
+   const store = getSidebarInfoStore();
    // This json object will be a list when successful, and a dict with a message
    // on error.
    if (jsonObj instanceof Array) {
       console.log("json obj length:", jsonObj.length);
       ErrorBox.getGitIssues().hide();
-      GitIssuesInfo.get().setHidden(jsonObj.length == 0);
+      store.gitIssuesVisible = jsonObj.length > 0;
+      if (jsonObj.length > 0) {
+         store.warningsSectionVisible = true;
+      }
    } else if ((jsonObj instanceof Object) && 'message' in jsonObj) {
       console.log("loadGitUserCaveatIssues failed!");
       console.log(jsonObj);
@@ -18,13 +22,13 @@ export function handleGitUserCaveatIssues(jsonObj: JSONValue) {
          title: "Open Issues Load Error",
          errorText: (jsonObj.message as string).toString(),
       });
-      SidebarWarningsSection.get().show();
+      store.warningsSectionVisible = true;
    } else {
       ErrorBox.getGitIssues().showWith({
          title: "Open Issues Load Error",
          descPre: "Received unknown format",
       });
-      SidebarWarningsSection.get().show();
+      store.warningsSectionVisible = true;
    }
 }
 
@@ -40,6 +44,6 @@ export function loadGitUserCaveatIssues() {
          // eslint-disable-next-line @typescript-eslint/restrict-template-expressions
          errorText: `${error}`,
       });
-      SidebarWarningsSection.get().show();
+      getSidebarInfoStore().warningsSectionVisible = true;
    });
  }
