@@ -37,3 +37,4 @@ venv/
 # Transient local planning docs
 local_md/
 local_docs/
+local_scripts/
