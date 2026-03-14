@@ -13,6 +13,7 @@ import { getFileManagerStore } from './vue/file_manager_store.js';
 import FileManagerDrawer from './vue/FileManagerDrawer.vue';
 import AppInputControls from './vue/AppInputControls.vue';
 import { getAppInputStore } from './vue/app_input_store.js';
+import CollapsibleRegion from './vue/CollapsibleRegion.vue';
 
 function createVueApps(): void {
    // Inject components which have been converted to Vue apps.
@@ -43,6 +44,8 @@ function createVueApps(): void {
          runHandler(mode);
       },
    }).mount('#splitRunButtonApp');
+   createApp(CollapsibleRegion).mount('#collapsibleRegionApp');
+
    createApp(FileManagerDrawer, {
       store: fileManagerStore,
       onFilesDropped: loadAndAddFilesToFileManager,
