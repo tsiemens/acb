@@ -17,6 +17,7 @@ import SidebarInfo from './vue/SidebarInfo.vue';
 import { getSidebarInfoStore } from './vue/sidebar_info_store.js';
 import InfoDialogs from './vue/InfoDialogs.vue';
 import { getInfoDialogStore } from './vue/info_dialog_store.js';
+import SidebarInfoItems from './vue/SidebarInfoItems.vue';
 
 function createVueApps(): void {
    // Inject components which have been converted to Vue apps.
@@ -39,6 +40,8 @@ function createVueApps(): void {
       store: getErrorBoxStore(ErrorBox.GIT_ERRORS_ID),
       width: '100%',
    }).mount(`#${ErrorBox.GIT_ERRORS_ID}`);
+
+   createApp(SidebarInfoItems).mount('#sidebarInfoItemsApp');
 
    createApp(FileDropArea, {
       onFilesDropped: loadAndAddFilesToFileManager,
