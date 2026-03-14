@@ -1,5 +1,6 @@
 import { reactive } from 'vue';
 import { AppFunctionMode } from '../common/acb_app_types.js';
+import type { RenderTable } from '../acb_wasm_types.js';
 
 export enum AcbOutputViewMode {
    SecurityTables = "security_tables",
@@ -13,6 +14,8 @@ export interface OutputStore {
    selectableViewModes: AcbOutputViewMode[];
    isLoading: boolean;
    textOutput: string;
+   summaryTable: RenderTable | null;
+   aggregateTable: RenderTable | null;
 }
 
 let store: OutputStore | null = null;
@@ -24,6 +27,8 @@ export function getOutputStore(): OutputStore {
          selectableViewModes: selectableViewModesForAppFunction(AppFunctionMode.Calculate),
          isLoading: false,
          textOutput: '',
+         summaryTable: null,
+         aggregateTable: null,
       });
    }
    return store;

@@ -28,15 +28,25 @@
         :class="{ inactive: store.activeViewMode !== ViewMode.SecurityTables }"
       ></div>
       <div
-        id="acbSummaryOutput"
         class="acb-output"
         :class="{ inactive: store.activeViewMode !== ViewMode.Summary }"
-      ></div>
+      >
+        <DataTable
+          v-if="store.summaryTable"
+          :table="store.summaryTable"
+          title="Summary"
+        />
+      </div>
       <div
-        id="acbAggregateOutput"
         class="acb-output"
         :class="{ inactive: store.activeViewMode !== ViewMode.Aggregate }"
-      ></div>
+      >
+        <DataTable
+          v-if="store.aggregateTable"
+          :table="store.aggregateTable"
+          title="Aggregate Gains"
+        />
+      </div>
       <pre
         id="acbTextOutput"
         class="acb-output"
@@ -49,9 +59,11 @@
 <script lang="ts">
 import { defineComponent, type PropType } from 'vue';
 import { type OutputStore, AcbOutputViewMode, getViewModeLabel } from './output_store.js';
+import DataTable from './DataTable.vue';
 
 export default defineComponent({
    name: 'OutputArea',
+   components: { DataTable },
    props: {
       store: {
          type: Object as PropType<OutputStore>,
