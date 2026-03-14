@@ -1,0 +1,185 @@
+<script setup lang="ts">
+import { ref, computed, onMounted, onUnmounted } from 'vue';
+import { AcbAppRunMode } from '../common/acb_app_types.js';
+import { FileKind } from './file_manager_store.js';
+import type { FileManagerState } from './file_manager_store.js';
+
+interface RunModeOption {
+   mode: AcbAppRunMode;
+   label: string;
+   icon?: string;
+}
+
+const RUN_MODE_OPTIONS: RunModeOption[] = [
+   { mode: AcbAppRunMode.Run,    label: 'Run' },
+   { mode: AcbAppRunMode.Export, label: 'Export', icon: '/images/submit-document.svg' },
+];
+
+const props = defineProps<{
+   store: FileManagerState;
+   onAction: (mode: AcbAppRunMode) => void;
+}>();
+
+const menuOpen = ref(false);
+const activeMode = ref<AcbAppRunMode>(AcbAppRunMode.Run);
+const containerRef = ref<HTMLElement | null>(null);
+
+const disabled = computed(() =>
+   !props.store.files.some(f => FileKind.isInput(f.kind) && f.useChecked && !f.warning)
+);
+
+const activeLabel = computed(() =>
+   RUN_MODE_OPTIONS.find((o) => o.mode === activeMode.value)!.label
+);
+
+const dropdownOptions = computed(() =>
+   RUN_MODE_OPTIONS.filter((o) => o.mode !== activeMode.value)
+);
+
+function handlePrimaryClick() {
+   if (disabled.value) return;
+   props.onAction(activeMode.value);
+}
+
+function handleToggleClick() {
+   if (disabled.value) return;
+   menuOpen.value = !menuOpen.value;
+}
+
+function handleSelectMode(mode: AcbAppRunMode) {
+   activeMode.value = mode;
+   menuOpen.value = false;
+}
+
+function handleClickOutside(event: MouseEvent) {
+   if (containerRef.value && !containerRef.value.contains(event.target as Node)) {
+      menuOpen.value = false;
+   }
+}
+
+onMounted(() => document.addEventListener('click', handleClickOutside));
+onUnmounted(() => document.removeEventListener('click', handleClickOutside));
+</script>
+
+<template>
+   <div ref="containerRef" class="split-btn-container">
+      <div class="split-btn" :class="{ disabled }">
+         <button
+            class="split-btn-primary"
+            :disabled="disabled"
+            @click="handlePrimaryClick"
+         >
+            {{ activeLabel }}
+         </button>
+         <button
+            class="split-btn-toggle"
+            :disabled="disabled"
+            @click.stop="handleToggleClick"
+            aria-label="Select action"
+         >
+            <span class="split-btn-arrow" :class="{ open: menuOpen }">&#x25BC;</span>
+         </button>
+      </div>
+      <ul v-if="menuOpen" class="split-btn-menu">
+         <li
+            v-for="opt in dropdownOptions"
+            :key="opt.mode"
+            class="split-btn-menu-item"
+            @click="handleSelectMode(opt.mode)"
+         >
+            <img v-if="opt.icon" :src="opt.icon" class="split-btn-menu-icon">
+            {{ opt.label }}
+         </li>
+      </ul>
+   </div>
+</template>
+
+<style scoped>
+.split-btn-container {
+   position: relative;
+   display: inline-block;
+}
+
+.split-btn {
+   display: inline-flex;
+   border-radius: 4px;
+   overflow: hidden;
+}
+
+.split-btn-primary,
+.split-btn-toggle {
+   border: none;
+   color: white;
+   cursor: pointer;
+   font-weight: 500;
+   font-size: 14px;
+   background-color: var(--primary-color);
+   transition: background-color 0.15s;
+}
+
+.split-btn-primary {
+   padding: 10px 20px;
+}
+
+.split-btn-toggle {
+   padding: 10px 10px;
+   border-left: 1px solid rgba(255, 255, 255, 0.3);
+}
+
+.split-btn-primary:hover:not(:disabled),
+.split-btn-toggle:hover:not(:disabled) {
+   background-color: var(--primary-color-hover);
+}
+
+.split-btn.disabled .split-btn-primary,
+.split-btn.disabled .split-btn-toggle {
+   filter: saturate(0.2) brightness(1.8);
+   cursor: default;
+}
+
+.split-btn-arrow {
+   display: inline-block;
+   font-size: 10px;
+   transition: transform 0.15s;
+}
+
+.split-btn-arrow.open {
+   transform: rotate(180deg);
+}
+
+.split-btn-menu {
+   position: absolute;
+   top: 100%;
+   left: 0;
+   margin: 4px 0 0;
+   padding: 4px 0;
+   list-style: none;
+   background: white;
+   border: 1px solid #d1d5db;
+   border-radius: 4px;
+   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+   z-index: 10;
+   min-width: 100%;
+}
+
+.split-btn-menu-item {
+   display: flex;
+   align-items: center;
+   gap: 8px;
+   padding: 8px 16px;
+   cursor: pointer;
+   font-size: 14px;
+   color: #333;
+   white-space: nowrap;
+}
+
+.split-btn-menu-icon {
+   width: 16px;
+   height: 16px;
+   filter: invert(0.3);
+}
+
+.split-btn-menu-item:hover {
+   background-color: #f0f4fa;
+}
+</style>

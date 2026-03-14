@@ -1,13 +1,13 @@
 import JSZip from "jszip";
 import { Unit } from "./basic_utils.js";
-import { AppFunctionMode } from "./common/acb_app_types.js";
+import { AcbAppRunMode, AppFunctionMode } from "./common/acb_app_types.js";
 import { fileBytesToString, loadFilesAsBytes } from "./file_reader.js";
 import { FileEntry, FileKind, getFileManagerStore, modifyDrawerNotificationForUserAddedFiles } from './vue/file_manager_store.js';
 import { run_acb, run_acb_summary } from './pkg/acb_wasm.js';
 import { Result } from "./result.js";
 import { AppExportResultOk, AppResultOk, AppSummaryResultOk, FileContent, RenderTable } from "./acb_wasm_types.js";
 import { AcbOutput, AggregateOutputContainer, SecurityTablesOutputContainer, TextOutputContainer, YearHighlightSelector } from "./ui_model/acb_app_output.js";
-import { AcbExtraOptions, SummaryDatePicker, ExportButton, FunctionModeSelector, RunButton } from "./ui_model/app_input.js";
+import { AcbExtraOptions, SummaryDatePicker, FunctionModeSelector } from "./ui_model/app_input.js";
 import { ErrorBox } from "./ui_model/error_displays.js";
 import { AutoRunCheckbox, DebugSettings } from "./ui_model/debug.js";
 import { SummaryOutputContainer } from "./ui_model/summary_output.js";
@@ -76,11 +76,6 @@ function downloadCsv(filenameBase: string, csvContent: string) {
    downloadBlob(filename, blob);
 }
 
-enum AcbAppRunMode {
-   Normal = "normal",
-   Export = "export",
-}
-
 class CommonRunOptions {
    constructor(
       public printFullDollarValues: boolean,
@@ -94,7 +89,7 @@ function getCommonRunOptions(): Result<CommonRunOptions, Unit> {
 }
 
 async function asyncRunAcb(filenames: string[], contents: string[],
-                           mode: AcbAppRunMode = AcbAppRunMode.Normal
+                           mode: AcbAppRunMode = AcbAppRunMode.Run
 ) {
    console.debug("asyncRunAcb", filenames);
    const commonOptions = getCommonRunOptions();
@@ -324,6 +319,49 @@ function fileEntiesToNamesAndStringContents(entries: FileEntry[]
    return [filenames, contents];
 }
 
+export function runHandler(acbRunMode: AcbAppRunMode = AcbAppRunMode.Run) {
+   const funcMode = FunctionModeSelector.get().getSelectedMode();
+   const store = getFileManagerStore();
+
+   const csvFiles = store.files.filter(
+      f => f.kind === FileKind.AcbTxCsv && f.useChecked && !f.warning
+   );
+   let [filenames, filesContents] = fileEntiesToNamesAndStringContents(csvFiles);
+
+   // TODO temporary.
+   // Run button should ideally be disabled until at least one
+   // valid file is selected, but this is a quick way to prevent errors from
+   // trying to run with no files.
+   if (filenames.length === 0) {
+      ErrorBox.getMain().showWith({
+         title: "No Valid Files",
+         descPre: "Please add and select at least one valid CSV file before running (use the new file manager drawer).",
+      });
+      return;
+   }
+
+   switch (funcMode) {
+      case AppFunctionMode.Calculate:
+         asyncRunAcb(filenames, filesContents, acbRunMode)
+            .then(() => {}).catch((_: unknown) => {});
+         break;
+      case AppFunctionMode.TxSummary: {
+         const datePicker = SummaryDatePicker.get();
+         const latestDate = datePicker.getValue() || SummaryDatePicker.getDefaultDate(funcMode);
+         asyncRunAcbSummary(filenames, filesContents, latestDate, acbRunMode)
+            .then(() => {}).catch((_: unknown) => {});
+         break;
+      }
+      case AppFunctionMode.TallyShares: {
+         const datePicker = SummaryDatePicker.get();
+         const latestDate = datePicker.getValue() || SummaryDatePicker.getDefaultDate(funcMode);
+         asyncRunAcbShareTally(filenames, filesContents, latestDate, acbRunMode)
+            .then(() => {}).catch((_: unknown) => {});
+         break;
+      }
+   }
+}
+
 export function initAppUI() {
    InfoDialog.initAll();
    InfoListItem.initAll();
@@ -332,57 +370,6 @@ export function initAppUI() {
 
    FunctionModeSelector.get().setup();
    SummaryDatePicker.get().setup();
-
-   function runHandler(acbRunMode: AcbAppRunMode = AcbAppRunMode.Normal) {
-      const funcMode = FunctionModeSelector.get().getSelectedMode();
-      const store = getFileManagerStore();
-
-      const csvFiles = store.files.filter(
-         f => f.kind === FileKind.AcbTxCsv && f.useChecked && !f.warning
-      );
-      let [filenames, filesContents] = fileEntiesToNamesAndStringContents(csvFiles);
-
-      // TODO temporary.
-      // Run button should ideally be disabled until at least one
-      // valid file is selected, but this is a quick way to prevent errors from
-      // trying to run with no files.
-      if (filenames.length === 0) {
-         ErrorBox.getMain().showWith({
-            title: "No Valid Files",
-            descPre: "Please add and select at least one valid CSV file before running (use the new file manager drawer).",
-         });
-         return;
-      }
-
-      switch (funcMode) {
-         case AppFunctionMode.Calculate:
-            asyncRunAcb(filenames, filesContents, acbRunMode)
-               .then(() => {}).catch((_: unknown) => {});
-            break;
-         case AppFunctionMode.TxSummary: {
-            const datePicker = SummaryDatePicker.get();
-            const latestDate = datePicker.getValue() || SummaryDatePicker.getDefaultDate(funcMode);
-            asyncRunAcbSummary(filenames, filesContents, latestDate, acbRunMode)
-               .then(() => {}).catch((_: unknown) => {});
-            break;
-         }
-         case AppFunctionMode.TallyShares: {
-            const datePicker = SummaryDatePicker.get();
-            const latestDate = datePicker.getValue() || SummaryDatePicker.getDefaultDate(funcMode);
-            asyncRunAcbShareTally(filenames, filesContents, latestDate, acbRunMode)
-               .then(() => {}).catch((_: unknown) => {});
-            break;
-         }
-      }
-   }
-
-   RunButton.get().setup(() => { runHandler(AcbAppRunMode.Normal) });
-   ExportButton.get().setup(() => { runHandler(AcbAppRunMode.Export) });
-   // TODO: Temporary until we tie these into the file manager store.
-   // Probably as vue wathers.
-   RunButton.get().setEnabled(true);
-   ExportButton.get().setEnabled(true);
-
 
    AcbOutput.setup();
 
@@ -399,7 +386,7 @@ export function initAppUI() {
             useChecked: true,
             data: encoder.encode(testFile.contents),
          });
-         runHandler(AcbAppRunMode.Normal);
+         runHandler(AcbAppRunMode.Run);
       })
    }
 }
