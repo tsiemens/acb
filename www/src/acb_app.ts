@@ -9,8 +9,6 @@ import { AppExportResultOk, AppResultOk, AppSummaryResultOk, FileContent, Render
 import { getOutputStore, setAppFunctionViewMode } from "./vue/output_store.js";
 import { getAppInputStore, getSummaryDate } from "./vue/app_input_store.js";
 import { ErrorBox } from "./ui_model/error_displays.js";
-import { AutoRunCheckbox, DebugSettings } from "./ui_model/debug.js";
-import { loadTestFile } from "./debug.js";
 import { asError } from "./http_utils.js";
 
 function makeZip(files: FileContent[]): Promise<Blob> {
@@ -363,23 +361,5 @@ export function initAppUI() {
       printFullCheckbox.addEventListener('change', () => {
          appInputStore.printFullValues = printFullCheckbox.checked;
       });
-   }
-
-
-   DebugSettings.init();
-   // Debug auto-run
-   if (AutoRunCheckbox.get().checked()) {
-      loadTestFile((testFile) => {
-         const store = getFileManagerStore();
-         const encoder = new TextEncoder();
-         store.addFile({
-            name: testFile.name,
-            kind: FileKind.AcbTxCsv,
-            isDownloadable: false,
-            useChecked: true,
-            data: encoder.encode(testFile.contents),
-         });
-         runHandler(AcbAppRunMode.Run);
-      })
    }
 }

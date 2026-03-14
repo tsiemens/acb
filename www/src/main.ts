@@ -20,6 +20,9 @@ import { getInfoDialogStore } from './vue/info_dialog_store.js';
 import SidebarInfoItems from './vue/SidebarInfoItems.vue';
 import OutputArea from './vue/OutputArea.vue';
 import { getOutputStore } from './vue/output_store.js';
+import DebugPanel from './vue/DebugPanel.vue';
+import { FileKind } from './vue/file_manager_store.js';
+import { loadTestFile } from './debug.js';
 
 function createVueApps(): void {
    // Inject components which have been converted to Vue apps.
@@ -69,6 +72,23 @@ function createVueApps(): void {
    createApp(CollapsibleRegion, {
       store: getOutputStore(),
    }).mount('#collapsibleRegionApp');
+
+   createApp(DebugPanel, {
+      onAutoRun: () => {
+         loadTestFile((testFile) => {
+            const store = getFileManagerStore();
+            const encoder = new TextEncoder();
+            store.addFile({
+               name: testFile.name,
+               kind: FileKind.AcbTxCsv,
+               isDownloadable: false,
+               useChecked: true,
+               data: encoder.encode(testFile.contents),
+            });
+            runHandler(AcbAppRunMode.Run);
+         });
+      },
+   }).mount('#debugPanelApp');
 
    createApp(FileManagerDrawer, {
       store: fileManagerStore,
