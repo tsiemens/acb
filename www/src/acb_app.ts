@@ -6,7 +6,8 @@ import { FileEntry, FileKind, getFileManagerStore, modifyDrawerNotificationForUs
 import { run_acb, run_acb_summary } from './pkg/acb_wasm.js';
 import { Result } from "./result.js";
 import { AppExportResultOk, AppResultOk, AppSummaryResultOk, FileContent, RenderTable } from "./acb_wasm_types.js";
-import { AcbOutput, AggregateOutputContainer, SecurityTablesOutputContainer, TextOutputContainer, YearHighlightSelector } from "./ui_model/acb_app_output.js";
+import { AggregateOutputContainer, InactiveYearHideCheckbox, SecurityTablesOutputContainer, TextOutputContainer, YearHighlightSelector } from "./ui_model/acb_app_output.js";
+import { setAppFunctionViewMode } from "./vue/output_store.js";
 import { getAppInputStore, getSummaryDate } from "./vue/app_input_store.js";
 import { ErrorBox } from "./ui_model/error_displays.js";
 import { AutoRunCheckbox, DebugSettings } from "./ui_model/debug.js";
@@ -112,7 +113,7 @@ async function asyncRunAcb(filenames: string[], contents: string[],
 
       const ret: AppResultOk = AppResultOk.fromJsValue(jsRet);
 
-      AcbOutput.setAppFunctionViewMode(AppFunctionMode.Calculate);
+      setAppFunctionViewMode(AppFunctionMode.Calculate);
 
       TextOutputContainer.get().setText(ret.textOutput);
       SecurityTablesOutputContainer.get().populateTables(ret.modelOutput);
@@ -159,7 +160,7 @@ async function asyncRunAcbSummary(filenames: string[], contents: string[], lates
          return;
       }
 
-      AcbOutput.setAppFunctionViewMode(AppFunctionMode.TxSummary);
+      setAppFunctionViewMode(AppFunctionMode.TxSummary);
 
       // Display CSV text output
       TextOutputContainer.get().setText(ret.csvText);
@@ -235,7 +236,7 @@ async function asyncRunAcbShareTally(filenames: string[], contents: string[], la
          return;
       }
 
-      AcbOutput.setAppFunctionViewMode(AppFunctionMode.TallyShares);
+      setAppFunctionViewMode(AppFunctionMode.TallyShares);
 
       // Display CSV text output
       TextOutputContainer.get().setText(csvText);
@@ -369,7 +370,11 @@ export function initAppUI() {
       });
    }
 
-   AcbOutput.setup();
+   // View mode tabs and output container switching are now handled by Vue
+   // (OutputArea.vue + output_store). Year highlight and hide checkbox setup
+   // remain here until task 3d converts them.
+   YearHighlightSelector.get().setup();
+   InactiveYearHideCheckbox.get().setup();
 
    DebugSettings.init();
    // Debug auto-run
