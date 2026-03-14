@@ -1,37 +1,5 @@
-import { ButtonElementModel, ElementModel } from "./model_lib.js";
+import { ElementModel } from "./model_lib.js";
 import { AppFunctionMode } from "../common/acb_app_types.js";
-
-export class RunButton extends ButtonElementModel {
-   public static readonly ID: string = "runButton";
-
-   public static get(): RunButton {
-      return new RunButton(
-         ElementModel.getRequiredElementById(RunButton.ID));
-   }
-
-   public setup(runApp: () => void) {
-      this.setEnabled(false);
-      this.setClickListener((_event) => {
-         runApp();
-      });
-   }
-}
-
-export class ExportButton extends ButtonElementModel {
-   public static readonly ID: string = "exportButton";
-
-   public static get(): ExportButton {
-      return new ExportButton(
-         ElementModel.getRequiredElementById(ExportButton.ID));
-   }
-
-   public setup(runAppForExport: () => void) {
-      this.setEnabled(false);
-      this.setClickListener((_event) => {
-         runAppForExport();
-      });
-   }
-}
 
 export class AcbExtraOptions {
    public static getPrintFullValuesCheckbox(): HTMLInputElement {
