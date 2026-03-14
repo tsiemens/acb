@@ -41,7 +41,7 @@
         id="acbTextOutput"
         class="acb-output"
         :class="{ inactive: store.activeViewMode !== ViewMode.Text }"
-      ></pre>
+      >{{ store.textOutput }}</pre>
     </div>
   </div>
 </template>

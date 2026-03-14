@@ -6,8 +6,8 @@ import { FileEntry, FileKind, getFileManagerStore, modifyDrawerNotificationForUs
 import { run_acb, run_acb_summary } from './pkg/acb_wasm.js';
 import { Result } from "./result.js";
 import { AppExportResultOk, AppResultOk, AppSummaryResultOk, FileContent, RenderTable } from "./acb_wasm_types.js";
-import { AggregateOutputContainer, InactiveYearHideCheckbox, SecurityTablesOutputContainer, TextOutputContainer, YearHighlightSelector } from "./ui_model/acb_app_output.js";
-import { setAppFunctionViewMode } from "./vue/output_store.js";
+import { AggregateOutputContainer, InactiveYearHideCheckbox, SecurityTablesOutputContainer, YearHighlightSelector } from "./ui_model/acb_app_output.js";
+import { getOutputStore, setAppFunctionViewMode } from "./vue/output_store.js";
 import { getAppInputStore, getSummaryDate } from "./vue/app_input_store.js";
 import { ErrorBox } from "./ui_model/error_displays.js";
 import { AutoRunCheckbox, DebugSettings } from "./ui_model/debug.js";
@@ -115,7 +115,7 @@ async function asyncRunAcb(filenames: string[], contents: string[],
 
       setAppFunctionViewMode(AppFunctionMode.Calculate);
 
-      TextOutputContainer.get().setText(ret.textOutput);
+      getOutputStore().textOutput = ret.textOutput;
       SecurityTablesOutputContainer.get().populateTables(ret.modelOutput);
       AggregateOutputContainer.get().populateTable(ret.modelOutput);
       YearHighlightSelector.get().updateSelectableYears(
@@ -163,7 +163,7 @@ async function asyncRunAcbSummary(filenames: string[], contents: string[], lates
       setAppFunctionViewMode(AppFunctionMode.TxSummary);
 
       // Display CSV text output
-      TextOutputContainer.get().setText(ret.csvText);
+      getOutputStore().textOutput = ret.csvText;
       // Display summary table in its own container
       SummaryOutputContainer.get().populateTable(ret.summaryTable);
       if (ret.summaryTable.errors && ret.summaryTable.errors.length > 0) {
@@ -239,7 +239,7 @@ async function asyncRunAcbShareTally(filenames: string[], contents: string[], la
       setAppFunctionViewMode(AppFunctionMode.TallyShares);
 
       // Display CSV text output
-      TextOutputContainer.get().setText(csvText);
+      getOutputStore().textOutput = csvText;
       SummaryOutputContainer.get().populateTable(shareTallyTable);
       if (shareTallyTable.errors && shareTallyTable.errors.length > 0) {
          ErrorBox.getMain().showWith({
