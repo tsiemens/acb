@@ -13,21 +13,17 @@ import FileManagerDrawer from './vue/FileManagerDrawer.vue';
 import AppInputControls from './vue/AppInputControls.vue';
 import { getAppInputStore } from './vue/app_input_store.js';
 import CollapsibleRegion from './vue/CollapsibleRegion.vue';
-import SidebarInfo from './vue/SidebarInfo.vue';
 import { getSidebarInfoStore } from './vue/sidebar_info_store.js';
 import InfoDialogs from './vue/InfoDialogs.vue';
 import { getInfoDialogStore } from './vue/info_dialog_store.js';
-import SidebarInfoItems from './vue/SidebarInfoItems.vue';
 import OutputArea from './vue/OutputArea.vue';
 import { getOutputStore } from './vue/output_store.js';
 import DebugPanel from './vue/DebugPanel.vue';
 import { FileKind } from './vue/file_manager_store.js';
 import { loadTestFile } from './debug.js';
+import Sidebar from './vue/Sidebar.vue';
 
 function createVueApps(): void {
-   // Inject components which have been converted to Vue apps.
-   // Eventually, may be able to have a single app if everything gets converted (?).
-
    createApp(InfoDialogs, {
       store: getInfoDialogStore(),
    }).mount('#infoDialogsApp');
@@ -36,17 +32,13 @@ function createVueApps(): void {
       store: getErrorBoxStore(ErrorBox.MAIN_ERRORS_ID),
    }).mount(`#${ErrorBox.MAIN_ERRORS_ID}`);
 
-   createApp(SidebarInfo, {
-      store: getSidebarInfoStore(),
-   }).mount('#sidebarInfoApp');
+   // Sidebar must mount before git issues ErrorBox, since SidebarInfo provides its container
+   createApp(Sidebar).mount('#sidebarApp');
 
-   // Git issues ErrorBox must mount after SidebarInfo, which provides its container
    createApp(ErrorBoxVue, {
       store: getErrorBoxStore(ErrorBox.GIT_ERRORS_ID),
       width: '100%',
    }).mount(`#${ErrorBox.GIT_ERRORS_ID}`);
-
-   createApp(SidebarInfoItems).mount('#sidebarInfoItemsApp');
 
    createApp(FileDropArea, {
       onFilesDropped: loadAndAddFilesToFileManager,

@@ -353,13 +353,5 @@ export function runHandler(acbRunMode: AcbAppRunMode = AcbAppRunMode.Run) {
 }
 
 export function initAppUI() {
-   // Temporary bridge: sync the sidebar checkbox to the app input store
-   // until the sidebar is converted to Vue (Phase 5a).
-   const printFullCheckbox = document.getElementById('printFullValuesCheckbox') as HTMLInputElement;
-   if (printFullCheckbox) {
-      const appInputStore = getAppInputStore();
-      printFullCheckbox.addEventListener('change', () => {
-         appInputStore.printFullValues = printFullCheckbox.checked;
-      });
-   }
+   // No-op — retained as a hook for any future imperative init.
 }
