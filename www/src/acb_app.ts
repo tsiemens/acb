@@ -6,12 +6,11 @@ import { FileEntry, FileKind, getFileManagerStore, modifyDrawerNotificationForUs
 import { run_acb, run_acb_summary } from './pkg/acb_wasm.js';
 import { Result } from "./result.js";
 import { AppExportResultOk, AppResultOk, AppSummaryResultOk, FileContent, RenderTable } from "./acb_wasm_types.js";
-import { AggregateOutputContainer, InactiveYearHideCheckbox, SecurityTablesOutputContainer, YearHighlightSelector } from "./ui_model/acb_app_output.js";
+import { InactiveYearHideCheckbox, SecurityTablesOutputContainer, YearHighlightSelector } from "./ui_model/acb_app_output.js";
 import { getOutputStore, setAppFunctionViewMode } from "./vue/output_store.js";
 import { getAppInputStore, getSummaryDate } from "./vue/app_input_store.js";
 import { ErrorBox } from "./ui_model/error_displays.js";
 import { AutoRunCheckbox, DebugSettings } from "./ui_model/debug.js";
-import { SummaryOutputContainer } from "./ui_model/summary_output.js";
 import { loadTestFile } from "./debug.js";
 import { asError } from "./http_utils.js";
 
@@ -115,9 +114,10 @@ async function asyncRunAcb(filenames: string[], contents: string[],
 
       setAppFunctionViewMode(AppFunctionMode.Calculate);
 
-      getOutputStore().textOutput = ret.textOutput;
+      const outputStore = getOutputStore();
+      outputStore.textOutput = ret.textOutput;
+      outputStore.aggregateTable = ret.modelOutput.aggregateGainsTable;
       SecurityTablesOutputContainer.get().populateTables(ret.modelOutput);
-      AggregateOutputContainer.get().populateTable(ret.modelOutput);
       YearHighlightSelector.get().updateSelectableYears(
          SecurityTablesOutputContainer.get().getYearsShownInverseOrdered()
       );
@@ -162,10 +162,9 @@ async function asyncRunAcbSummary(filenames: string[], contents: string[], lates
 
       setAppFunctionViewMode(AppFunctionMode.TxSummary);
 
-      // Display CSV text output
-      getOutputStore().textOutput = ret.csvText;
-      // Display summary table in its own container
-      SummaryOutputContainer.get().populateTable(ret.summaryTable);
+      const outputStore = getOutputStore();
+      outputStore.textOutput = ret.csvText;
+      outputStore.summaryTable = ret.summaryTable;
       if (ret.summaryTable.errors && ret.summaryTable.errors.length > 0) {
          ErrorBox.getMain().showWith({
             title: "Processing Error(s)",
@@ -238,9 +237,9 @@ async function asyncRunAcbShareTally(filenames: string[], contents: string[], la
 
       setAppFunctionViewMode(AppFunctionMode.TallyShares);
 
-      // Display CSV text output
-      getOutputStore().textOutput = csvText;
-      SummaryOutputContainer.get().populateTable(shareTallyTable);
+      const outputStore = getOutputStore();
+      outputStore.textOutput = csvText;
+      outputStore.summaryTable = shareTallyTable;
       if (shareTallyTable.errors && shareTallyTable.errors.length > 0) {
          ErrorBox.getMain().showWith({
             title: "Processing Error(s)",
