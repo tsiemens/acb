@@ -12,6 +12,7 @@ export interface OutputStore {
    activeViewMode: AcbOutputViewMode;
    selectableViewModes: AcbOutputViewMode[];
    isLoading: boolean;
+   textOutput: string;
 }
 
 let store: OutputStore | null = null;
@@ -22,6 +23,7 @@ export function getOutputStore(): OutputStore {
          activeViewMode: AcbOutputViewMode.SecurityTables,
          selectableViewModes: selectableViewModesForAppFunction(AppFunctionMode.Calculate),
          isLoading: false,
+         textOutput: '',
       });
    }
    return store;
