@@ -6,7 +6,6 @@ import { FileEntry, FileKind, getFileManagerStore, modifyDrawerNotificationForUs
 import { run_acb, run_acb_summary } from './pkg/acb_wasm.js';
 import { Result } from "./result.js";
 import { AppExportResultOk, AppResultOk, AppSummaryResultOk, FileContent, RenderTable } from "./acb_wasm_types.js";
-import { InactiveYearHideCheckbox, SecurityTablesOutputContainer, YearHighlightSelector } from "./ui_model/acb_app_output.js";
 import { getOutputStore, setAppFunctionViewMode } from "./vue/output_store.js";
 import { getAppInputStore, getSummaryDate } from "./vue/app_input_store.js";
 import { ErrorBox } from "./ui_model/error_displays.js";
@@ -117,10 +116,7 @@ async function asyncRunAcb(filenames: string[], contents: string[],
       const outputStore = getOutputStore();
       outputStore.textOutput = ret.textOutput;
       outputStore.aggregateTable = ret.modelOutput.aggregateGainsTable;
-      SecurityTablesOutputContainer.get().populateTables(ret.modelOutput);
-      YearHighlightSelector.get().updateSelectableYears(
-         SecurityTablesOutputContainer.get().getYearsShownInverseOrdered()
-      );
+      outputStore.securityTables = ret.modelOutput.securityTables;
       ErrorBox.getMain().hide();
    } catch (err) {
       let errMsg = typeof err === "string" ? err : (err instanceof Error ? err.message : String(err));
@@ -369,11 +365,6 @@ export function initAppUI() {
       });
    }
 
-   // View mode tabs and output container switching are now handled by Vue
-   // (OutputArea.vue + output_store). Year highlight and hide checkbox setup
-   // remain here until task 3d converts them.
-   YearHighlightSelector.get().setup();
-   InactiveYearHideCheckbox.get().setup();
 
    DebugSettings.init();
    // Debug auto-run

@@ -16,6 +16,9 @@ export interface OutputStore {
    textOutput: string;
    summaryTable: RenderTable | null;
    aggregateTable: RenderTable | null;
+   securityTables: Map<string, RenderTable> | null;
+   highlightedYear: string | null;
+   hideInactiveSecurities: boolean;
 }
 
 let store: OutputStore | null = null;
@@ -29,6 +32,9 @@ export function getOutputStore(): OutputStore {
          textOutput: '',
          summaryTable: null,
          aggregateTable: null,
+         securityTables: null,
+         highlightedYear: null,
+         hideInactiveSecurities: false,
       });
    }
    return store;
