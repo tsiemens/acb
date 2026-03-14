@@ -1,5 +1,5 @@
 import { JSONValue, loadJSON } from './http_utils.js';
-import { ErrorBox } from './ui_model/error_displays.js';
+import { ErrorBox } from './vue/error_box_store.js';
 import { getSidebarInfoStore } from './vue/sidebar_info_store.js';
 
 // Exported only for debugging

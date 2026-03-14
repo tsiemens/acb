@@ -31,7 +31,7 @@ import { getAppInputStore } from './app_input_store.js';
 import { getFileManagerStore } from './file_manager_store.js';
 import { getOutputStore } from './output_store.js';
 import { getErrorBoxStore } from './error_box_store.js';
-import { ErrorBox as ErrorBoxModel } from '../ui_model/error_displays.js';
+import { ErrorBox as ErrorBoxModel } from './error_box_store.js';
 import { AcbAppRunMode } from '../common/acb_app_types.js';
 
 export default defineComponent({

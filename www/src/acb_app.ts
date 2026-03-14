@@ -8,7 +8,7 @@ import { Result } from "./result.js";
 import { AppExportResultOk, AppResultOk, AppSummaryResultOk, FileContent, RenderTable } from "./acb_wasm_types.js";
 import { getOutputStore, setAppFunctionViewMode } from "./vue/output_store.js";
 import { getAppInputStore, getSummaryDate } from "./vue/app_input_store.js";
-import { ErrorBox } from "./ui_model/error_displays.js";
+import { ErrorBox } from "./vue/error_box_store.js";
 import { asError } from "./http_utils.js";
 
 function makeZip(files: FileContent[]): Promise<Blob> {
@@ -350,8 +350,4 @@ export function runHandler(acbRunMode: AcbAppRunMode = AcbAppRunMode.Run) {
          break;
       }
    }
-}
-
-export function initAppUI() {
-   // No-op — retained as a hook for any future imperative init.
 }
