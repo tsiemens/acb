@@ -7,7 +7,7 @@ import { run_acb, run_acb_summary } from './pkg/acb_wasm.js';
 import { Result } from "./result.js";
 import { AppExportResultOk, AppResultOk, AppSummaryResultOk, FileContent, RenderTable } from "./acb_wasm_types.js";
 import { AcbOutput, AggregateOutputContainer, SecurityTablesOutputContainer, TextOutputContainer, YearHighlightSelector } from "./ui_model/acb_app_output.js";
-import { AcbExtraOptions, SummaryDatePicker, FunctionModeSelector } from "./ui_model/app_input.js";
+import { getAppInputStore, getSummaryDate } from "./vue/app_input_store.js";
 import { ErrorBox } from "./ui_model/error_displays.js";
 import { AutoRunCheckbox, DebugSettings } from "./ui_model/debug.js";
 import { SummaryOutputContainer } from "./ui_model/summary_output.js";
@@ -83,8 +83,7 @@ class CommonRunOptions {
 }
 
 function getCommonRunOptions(): Result<CommonRunOptions, Unit> {
-   const printFullDollarValues: boolean =
-      AcbExtraOptions.getPrintFullValuesCheckbox().checked;
+   const printFullDollarValues: boolean = getAppInputStore().printFullValues;
    return Result.Ok(new CommonRunOptions(printFullDollarValues));
 }
 
@@ -320,10 +319,11 @@ function fileEntiesToNamesAndStringContents(entries: FileEntry[]
 }
 
 export function runHandler(acbRunMode: AcbAppRunMode = AcbAppRunMode.Run) {
-   const funcMode = FunctionModeSelector.get().getSelectedMode();
-   const store = getFileManagerStore();
+   const appInputStore = getAppInputStore();
+   const funcMode = appInputStore.functionMode;
+   const fileStore = getFileManagerStore();
 
-   const csvFiles = store.files.filter(
+   const csvFiles = fileStore.files.filter(
       f => f.kind === FileKind.AcbTxCsv && f.useChecked && !f.warning
    );
    let [filenames, filesContents] = fileEntiesToNamesAndStringContents(csvFiles);
@@ -346,15 +346,13 @@ export function runHandler(acbRunMode: AcbAppRunMode = AcbAppRunMode.Run) {
             .then(() => {}).catch((_: unknown) => {});
          break;
       case AppFunctionMode.TxSummary: {
-         const datePicker = SummaryDatePicker.get();
-         const latestDate = datePicker.getValue() || SummaryDatePicker.getDefaultDate(funcMode);
+         const latestDate = getSummaryDate(appInputStore);
          asyncRunAcbSummary(filenames, filesContents, latestDate, acbRunMode)
             .then(() => {}).catch((_: unknown) => {});
          break;
       }
       case AppFunctionMode.TallyShares: {
-         const datePicker = SummaryDatePicker.get();
-         const latestDate = datePicker.getValue() || SummaryDatePicker.getDefaultDate(funcMode);
+         const latestDate = getSummaryDate(appInputStore);
          asyncRunAcbShareTally(filenames, filesContents, latestDate, acbRunMode)
             .then(() => {}).catch((_: unknown) => {});
          break;
@@ -368,8 +366,15 @@ export function initAppUI() {
 
    CollapsibleRegion.initAll();
 
-   FunctionModeSelector.get().setup();
-   SummaryDatePicker.get().setup();
+   // Temporary bridge: sync the sidebar checkbox to the app input store
+   // until the sidebar is converted to Vue (Phase 5a).
+   const printFullCheckbox = document.getElementById('printFullValuesCheckbox') as HTMLInputElement;
+   if (printFullCheckbox) {
+      const appInputStore = getAppInputStore();
+      printFullCheckbox.addEventListener('change', () => {
+         appInputStore.printFullValues = printFullCheckbox.checked;
+      });
+   }
 
    AcbOutput.setup();
 

@@ -3,26 +3,7 @@
 
   <div id="fileDropAreaApp"></div>
 
-  <div class="form-group">
-    <label for="acbFeatureModeSelect">Mode:</label>
-    <select id="acbFeatureModeSelect" style="width: fit-content;">
-      <option value="calculate" selected>Calculate Gains</option>
-      <!-- Both of these will show the date selector when active. -->
-      <!-- This essentially runs the equivalent of
-           `acb --summarize-annual-gains --summarize-before DATE`  -->
-      <option value="tx_summary" >Summarize Transactions</option>
-       <!-- This essentially runs the equivalent of what
-            `acb --summarize-before DATE` , and then just extracts the share numbers
-            and displays them. -->
-      <option value="tally_shares">Tally Share Balances</option>
-    </select>
-
-    <!-- The date portion should default to Dec 31, and the year should
-         be the previous year. -->
-    <label for="acbSummaryDatePicker" style="margin-left: 10px; display: none;">Latest Date:</label>
-    <input type="date" id="acbSummaryDatePicker"
-           style="width: fit-content; margin-left: 10px; display: none;">
-  </div>
+  <div id="appInputControlsApp"></div>
 
   <div class="action-buttons">
     <div id="splitRunButtonApp"></div>

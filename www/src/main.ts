@@ -11,6 +11,8 @@ import { getErrorBoxStore } from './vue/error_box_store.js';
 import ErrorBoxVue from './vue/ErrorBox.vue';
 import { getFileManagerStore } from './vue/file_manager_store.js';
 import FileManagerDrawer from './vue/FileManagerDrawer.vue';
+import AppInputControls from './vue/AppInputControls.vue';
+import { getAppInputStore } from './vue/app_input_store.js';
 
 function createVueApps(): void {
    // Inject components which have been converted to Vue apps.
@@ -28,6 +30,10 @@ function createVueApps(): void {
    createApp(FileDropArea, {
       onFilesDropped: loadAndAddFilesToFileManager,
    }).mount('#fileDropAreaApp');
+
+   createApp(AppInputControls, {
+      store: getAppInputStore(),
+   }).mount('#appInputControlsApp');
 
    const fileManagerStore = getFileManagerStore();
 
