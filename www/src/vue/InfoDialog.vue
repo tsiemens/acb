@@ -5,7 +5,7 @@
   >
     <div class="info-dialog-header">
       <h3 class="info-dialog-title">{{ title }}</h3>
-      <button class="info-dialog-close" @click="close">&times;</button>
+      <button class="info-dialog-close" @click="close" title="Close - Esc">&times;</button>
     </div>
     <div class="info-dialog-content">
       <slot></slot>
