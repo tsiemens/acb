@@ -20,6 +20,7 @@
   <FileManagerDrawer
     :store="fileManagerStore"
     :onFilesDropped="onFilesDropped"
+    :onDownloadSelected="downloadSelectedFiles"
   />
 </template>
 
@@ -33,6 +34,7 @@ import FileManagerDrawer from './FileManagerDrawer.vue';
 import { getInfoDialogStore } from './info_dialog_store.js';
 import { getFileManagerStore } from './file_manager_store.js';
 import { AcbAppRunMode } from '../common/acb_app_types.js';
+import { downloadSelectedFiles } from '../download_utils.js';
 
 export default defineComponent({
    name: 'App',
@@ -55,7 +57,7 @@ export default defineComponent({
       const infoDialogStore = getInfoDialogStore();
       const fileManagerStore = getFileManagerStore();
 
-      return { infoDialogStore, fileManagerStore };
+      return { infoDialogStore, fileManagerStore, downloadSelectedFiles };
    },
 });
 </script>
