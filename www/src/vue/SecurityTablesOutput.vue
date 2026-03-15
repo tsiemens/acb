@@ -1,44 +1,14 @@
 <template>
   <div v-if="store.securityTables">
-    <div
+    <DataTable
       v-for="symbol in sortedSymbols"
       :key="symbol"
-      class="security-wrapper"
       v-show="shouldShowSecurity(symbol)"
-    >
-      <div class="table-title">{{ symbol }}</div>
-
-      <div v-if="getErrors(symbol).length > 0" class="security-errors">
-        <p v-for="(err, i) in getErrors(symbol)" :key="i">{{ err }}</p>
-        <p>Information is of parsed state only, and may not be fully correct.</p>
-      </div>
-
-      <div class="table-fixed-head">
-        <table>
-          <thead>
-            <tr>
-              <th v-for="(col, i) in getTable(symbol).header" :key="i">{{ col }}</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr
-              v-for="(row, ri) in getTable(symbol).rows"
-              :key="ri"
-              :class="[rowActionClass(row), rowYearClass(row), rowHighlightClass(row)]"
-            >
-              <td v-for="(cell, ci) in row" :key="ci">{{ cell }}</td>
-            </tr>
-            <tr v-if="getTable(symbol).footer">
-              <td v-for="(cell, ci) in getTable(symbol).footer" :key="ci">{{ cell }}</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-
-      <div v-if="getNotes(symbol).length > 0" class="security-notes">
-        <p v-for="(note, i) in getNotes(symbol)" :key="i">{{ note }}</p>
-      </div>
-    </div>
+      :table="getTable(symbol)"
+      :title="symbol"
+      :rowClassFn="rowClassFn"
+      errorSuffix="Information is of parsed state only, and may not be fully correct."
+    />
   </div>
 </template>
 
@@ -46,12 +16,14 @@
 import { defineComponent, computed, type PropType } from 'vue';
 import type { OutputStore } from './output_store.js';
 import type { RenderTable } from '../acb_wasm_types.js';
+import DataTable from './DataTable.vue';
 
 const SETTLE_DATE_COL = 2;
 const ACTION_COL = 3;
 
 export default defineComponent({
    name: 'SecurityTablesOutput',
+   components: { DataTable },
    props: {
       store: {
          type: Object as PropType<OutputStore>,
@@ -66,14 +38,6 @@ export default defineComponent({
 
       function getTable(symbol: string): RenderTable {
          return props.store.securityTables!.get(symbol)!;
-      }
-
-      function getErrors(symbol: string): string[] {
-         return getTable(symbol).errors || [];
-      }
-
-      function getNotes(symbol: string): string[] {
-         return getTable(symbol).notes || [];
       }
 
       function getYearsForSymbol(symbol: string): Set<string> {
@@ -95,56 +59,50 @@ export default defineComponent({
          return getYearsForSymbol(symbol).has(props.store.highlightedYear);
       }
 
-      function rowActionClass(row: string[]): string {
+      function rowClassFn(row: string[]): string[] {
          const action = row[ACTION_COL] || '';
-         if (/buy/i.test(action)) return 'buy-row';
-         if (/sell/i.test(action)) return 'sell-row';
-         if (/sprf/i.test(action)) return 'sfla-row';
-         if (/split/i.test(action)) return 'split-row';
-         return 'other-row';
-      }
+         let actionClass = 'other-row';
+         if (/buy/i.test(action)) actionClass = 'buy-row';
+         else if (/sell/i.test(action)) actionClass = 'sell-row';
+         else if (/sprf/i.test(action)) actionClass = 'sfla-row';
+         else if (/split/i.test(action)) actionClass = 'split-row';
 
-      function rowYearClass(row: string[]): string {
-         const year = row[SETTLE_DATE_COL]?.split('-')[0] || 'unknown';
-         return `year-${year}-row`;
-      }
-
-      function rowHighlightClass(row: string[]): string {
-         if (!props.store.highlightedYear) return '';
          const year = row[SETTLE_DATE_COL]?.split('-')[0];
-         return year !== props.store.highlightedYear ? 'year-dimmed' : '';
+         const yearClass = `year-${year || 'unknown'}-row`;
+
+         const dimmed = props.store.highlightedYear && year !== props.store.highlightedYear
+            ? 'year-dimmed' : '';
+
+         return [actionClass, yearClass, dimmed].filter(Boolean);
       }
 
-      return {
-         sortedSymbols, getTable, getErrors, getNotes,
-         shouldShowSecurity, rowActionClass, rowYearClass, rowHighlightClass,
-      };
+      return { sortedSymbols, getTable, shouldShowSecurity, rowClassFn };
    },
 });
 </script>
 
 <style scoped>
-.year-dimmed {
+:deep(.year-dimmed) {
   filter: opacity(0.4);
 }
 
-.buy-row td {
+:deep(.buy-row) td {
   background: #fff5e0;
 }
 
-.sell-row td {
+:deep(.sell-row) td {
   background: #e9f5ff;
 }
 
-.sfla-row td {
+:deep(.sfla-row) td {
   background: #fff6fd;
 }
 
-.split-row td {
+:deep(.split-row) td {
   background: #e4ffea;
 }
 
-.other-row td {
+:deep(.other-row) td {
   background: white;
 }
 </style>

@@ -1,8 +1,6 @@
 <style>
 :root {
   --primary-color: #4a6fa5;
-  --table-header-bg: #ededed;
-  --table-cell-border-color: #999;
   --primary-color-hover: #3b5998;
   --secondary-color: #6c757d;
   --secondary-color-hover: #5a6268;
@@ -128,66 +126,5 @@
   box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
 }
 
-.security-errors {
-  border: 1px solid #f5c6cb;
-  background: #fbe6e7;
-  border-radius: 5px;
-  padding: 10px;
-  margin-bottom: 10px;
-}
-
-.security-notes {
-  border: 1px solid #c7c7c7;
-  background: #f9f9f9;
-  border-radius: 5px;
-  padding: 10px;
-  margin-top: 5px;
-}
-
-.table-title {
-  padding-left: 8px;
-  background: var(--dark-color);
-  color: white;
-  border-radius: 5px;
-  margin-bottom: 5px;
-  margin-top: 20px;
-  font-weight: bold;
-}
-
-.table-fixed-head {
-  overflow-y: auto;
-  max-height: 500px;
-}
-.table-fixed-head thead th {
-  position: sticky;
-  top: 0;
-}
-.table-fixed-head table {
-  border-collapse: collapse;
-  width: 100%;
-}
-.table-fixed-head th,
-.table-fixed-head td {
-  padding: 8px 16px;
-  font-size: 9pt;
-}
-.table-fixed-head th {
-  background: var(--table-header-bg);
-  color: black;
-  z-index: 1;
-}
-.table-fixed-head td {
-  box-shadow: inset 1px 1px var(--table-cell-border-color);
-}
-.table-fixed-head th {
-  box-shadow: inset 1px 1px var(--table-cell-border-color);
-}
-.table-fixed-head thead {
-  box-shadow: inset 0px -1px var(--table-cell-border-color);
-}
-.table-fixed-head table {
-  border-right: solid 1px var(--table-cell-border-color);
-  border-bottom: solid 1px var(--table-cell-border-color);
-}
 
 </style>
