@@ -57,3 +57,25 @@ export default defineComponent({
    },
 });
 </script>
+
+<style scoped>
+.main-content {
+  flex: 1;
+  background-color: white;
+  border-radius: var(--border-radius);
+  padding: 20px;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+}
+
+.separator {
+  height: 2px;
+  background: linear-gradient(90deg, transparent, #e2e8f0, transparent);
+  margin: 30px 0;
+}
+
+.action-buttons {
+  display: flex;
+  gap: 10px;
+  margin: 20px 0;
+}
+</style>

@@ -125,6 +125,26 @@ export default defineComponent({
 
 <style scoped>
 .year-dimmed {
-   filter: opacity(0.4);
+  filter: opacity(0.4);
+}
+
+.buy-row td {
+  background: #fff5e0;
+}
+
+.sell-row td {
+  background: #e9f5ff;
+}
+
+.sfla-row td {
+  background: #fff6fd;
+}
+
+.split-row td {
+  background: #e4ffea;
+}
+
+.other-row td {
+  background: white;
 }
 </style>

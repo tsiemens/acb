@@ -41,3 +41,21 @@ export default defineComponent({
    },
 });
 </script>
+
+<style scoped>
+.info-warnings-section {
+  background-color: #fff3cd;
+  border: 1px solid #ffeeba;
+  padding: 15px;
+  border-radius: var(--border-radius);
+  margin-bottom: 20px;
+}
+
+.info-warnings-section h3 {
+  color: #856404;
+}
+
+.info-secondary {
+  color: var(--secondary-color);
+}
+</style>

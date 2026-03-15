@@ -101,3 +101,20 @@ export default defineComponent({
    },
 });
 </script>
+
+<style scoped>
+.debug-panel {
+  position: absolute;
+  border: 1px solid #ccc;
+  padding: 10px;
+  margin-top: 5px;
+  background-color: #f9f9f9;
+  z-index: 1;
+  width: 300px;
+  translate: -150px;
+}
+
+.btn-debug {
+  margin-bottom: 5px;
+}
+</style>

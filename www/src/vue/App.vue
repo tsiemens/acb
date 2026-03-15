@@ -59,3 +59,44 @@ export default defineComponent({
    },
 });
 </script>
+
+<style scoped>
+.container {
+  /* max-width: 1200px; */
+  margin: 0 auto;
+  padding: 20px;
+}
+
+.tab-navigation {
+  display: flex;
+  border-bottom: 1px solid #ddd;
+  margin-bottom: 20px;
+}
+
+.tab {
+  padding: 10px 20px;
+  cursor: pointer;
+  border: 1px solid transparent;
+  border-bottom: none;
+  border-top-left-radius: var(--border-radius);
+  border-top-right-radius: var(--border-radius);
+  margin-right: 5px;
+  font-weight: 500;
+}
+
+.tab.active {
+  background-color: white;
+  border-color: #ddd;
+  margin-bottom: -1px;
+}
+
+.tab:hover:not(.active) {
+  background-color: #f0f0f0;
+}
+
+.content-area {
+  display: flex;
+  gap: 20px;
+  margin-bottom: 20px;
+}
+</style>
