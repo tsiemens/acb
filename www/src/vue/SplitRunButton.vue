@@ -21,24 +21,18 @@ const props = defineProps<{
 }>();
 
 const menuOpen = ref(false);
-const activeMode = ref<AcbAppRunMode>(AcbAppRunMode.Run);
 const containerRef = ref<HTMLElement | null>(null);
 
 const disabled = computed(() =>
    !props.store.files.some(f => FileKind.isInput(f.kind) && f.useChecked && !f.warning)
 );
 
-const activeLabel = computed(() =>
-   RUN_MODE_OPTIONS.find((o) => o.mode === activeMode.value)!.label
-);
-
-const dropdownOptions = computed(() =>
-   RUN_MODE_OPTIONS.filter((o) => o.mode !== activeMode.value)
-);
+const primaryOption = RUN_MODE_OPTIONS[0];
+const dropdownOptions = RUN_MODE_OPTIONS.slice(1);
 
 function handlePrimaryClick() {
    if (disabled.value) return;
-   props.onAction(activeMode.value);
+   props.onAction(primaryOption.mode);
 }
 
 function handleToggleClick() {
@@ -47,7 +41,7 @@ function handleToggleClick() {
 }
 
 function handleSelectMode(mode: AcbAppRunMode) {
-   activeMode.value = mode;
+   props.onAction(mode);
    menuOpen.value = false;
 }
 
@@ -69,7 +63,7 @@ onUnmounted(() => document.removeEventListener('click', handleClickOutside));
             :disabled="disabled"
             @click="handlePrimaryClick"
          >
-            {{ activeLabel }}
+            {{ primaryOption.label }}
          </button>
          <button
             class="split-btn-toggle"

@@ -6,6 +6,7 @@ import type { FileManagerState, FileEntry } from './file_manager_store.js';
 const props = defineProps<{
    store: FileManagerState;
    onFilesDropped?: (fileList: FileList) => void;
+   onDownloadSelected?: (files: FileEntry[]) => void;
 }>();
 
 // --- UI state (local to this component) ---
@@ -215,9 +216,10 @@ function removeSelected() {
                   <img :src="'/images/bin_full.svg'" class="fm-action-icon">
                </button>
                <button
-                  v-if="hasDownloadableSelected"
+                  v-if="hasDownloadableSelected && onDownloadSelected"
                   class="fm-action-btn"
                   title="Download selected"
+                  @click="onDownloadSelected(downloadableSelected)"
                >&#x2B07;</button>
             </div>
          </div>
