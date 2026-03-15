@@ -1,6 +1,6 @@
 <template>
   <div class="sidebar">
-    <SidebarInfo :store="sidebarInfoStore" />
+    <SidebarBasicInfo :store="sidebarInfoStore" />
     <SidebarInfoItems />
 
     <div class="options-section">
@@ -23,14 +23,14 @@
 
 <script lang="ts">
 import { defineComponent } from 'vue';
-import SidebarInfo from './SidebarInfo.vue';
+import SidebarBasicInfo from './SidebarBasicInfo.vue';
 import SidebarInfoItems from './SidebarInfoItems.vue';
 import { getSidebarInfoStore } from './sidebar_info_store.js';
 import { getAppInputStore } from './app_input_store.js';
 
 export default defineComponent({
    name: 'Sidebar',
-   components: { SidebarInfo, SidebarInfoItems },
+   components: { SidebarBasicInfo, SidebarInfoItems },
    setup() {
       const sidebarInfoStore = getSidebarInfoStore();
       const appInputStore = getAppInputStore();
