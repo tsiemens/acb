@@ -7,7 +7,7 @@
 </template>
 
 <script lang="ts">
-import { defineComponent, type PropType } from 'vue';
+import { defineComponent, type PropType, watch, onUnmounted } from 'vue';
 import { type InfoDialogStore, closeDialog } from './info_dialog_store.js';
 
 export default defineComponent({
@@ -18,10 +18,31 @@ export default defineComponent({
          required: true,
       },
    },
-   setup() {
+   setup(props) {
       function close() {
          closeDialog();
       }
+
+      function onKeyDown(e: KeyboardEvent) {
+         if (e.key === 'Escape') {
+            closeDialog();
+         }
+      }
+
+      watch(
+         () => props.store.activeDialogId,
+         (id) => {
+            if (id !== null) {
+               document.addEventListener('keydown', onKeyDown);
+            } else {
+               document.removeEventListener('keydown', onKeyDown);
+            }
+         }
+      );
+
+      onUnmounted(() => {
+         document.removeEventListener('keydown', onKeyDown);
+      });
 
       return { close };
    },
@@ -30,7 +51,6 @@ export default defineComponent({
 
 <style scoped>
 .info-dialog-backdrop {
-  display: none;
   position: fixed;
   top: 0;
   left: 0;
