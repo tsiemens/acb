@@ -98,7 +98,7 @@ You'll need `cargo` to either build or install the app. Installation is faily si
 
 https://doc.rust-lang.org/cargo/getting-started/installation.html
 
-If you want to build the web interface, you'll need to install `npm`, which should be available from your OS's package manager.
+If you want to build the web interface, you'll need to install the correct version of `npm`. See [www/README.md](www/README.md) for details.
 
 ### Installation Only
 

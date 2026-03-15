@@ -31,6 +31,8 @@ make acb_wasm     # WASM package only (uses wasm-pack)
 make www          # TypeScript/Vite frontend only
 ```
 
+Do NOT run the system `npm`. Only either run the `make` commands in www/, or `www/scripts/npm`, which should run the correct version.
+
 Python utilities (in `py/`):
 ```sh
 make test-py      # runs pytest in py/
