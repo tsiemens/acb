@@ -20,7 +20,7 @@ export function handleGitUserCaveatIssues(jsonObj: JSONValue) {
       console.log(jsonObj);
       ErrorBox.getGitIssues().showWith({
          title: "Open Issues Load Error",
-         errorText: (jsonObj.message as string).toString(),
+         errorText: jsonObj.message as string,
       });
       store.warningsSectionVisible = true;
    } else {
