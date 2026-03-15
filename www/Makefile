@@ -1,3 +1,5 @@
+NPM = scripts/npm
+
 default: all
 
 wasm-pkg:
@@ -15,16 +17,16 @@ static-dist-link:
 	$(call SYMLINK_STATIC,samples)
 
 npm-install:
-	npm install
+	$(NPM) install
 
 lint:
-	npm run lint
+	$(NPM) run lint
 
 build:
-	npm run build
+	$(NPM) run build
 
 all:
-	npm run all
+	$(NPM) run all
 
 clean:
 	test ! -e dist || rm -r dist
