@@ -33,3 +33,21 @@ export default defineComponent({
    },
 });
 </script>
+
+<style scoped>
+.clickable-info-item {
+  display: flex;
+  align-items: flex-start;
+  cursor: pointer;
+}
+
+.clickable-info-item p {
+  flex: 1;
+}
+
+.clickable-info-item img {
+  height: 12pt;
+  margin-left: 8px;
+  margin-top: 5px;
+}
+</style>

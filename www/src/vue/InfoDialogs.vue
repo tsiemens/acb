@@ -79,3 +79,14 @@ export default defineComponent({
    },
 });
 </script>
+
+<style scoped>
+.info-list {
+  list-style-position: inside;
+  margin-left: 10px;
+}
+
+.info-list li {
+  margin-bottom: 5px;
+}
+</style>

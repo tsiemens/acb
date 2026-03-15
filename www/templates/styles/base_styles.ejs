@@ -1,6 +1,8 @@
 <style>
 :root {
   --primary-color: #4a6fa5;
+  --table-header-bg: #ededed;
+  --table-cell-border-color: #999;
   --primary-color-hover: #3b5998;
   --secondary-color: #6c757d;
   --secondary-color-hover: #5a6268;
@@ -86,6 +88,120 @@
    padding-right: 8px;
    padding-top: 5px;
    padding-bottom: 5px;
+}
+
+.info-section {
+  margin-bottom: 25px;
+}
+
+.info-section h3 {
+  font-size: 18px;
+  margin-bottom: 10px;
+  color: var(--primary-color);
+}
+
+.info-section p {
+  margin-bottom: 10px;
+}
+
+.checkbox-container {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.checkbox-container label {
+  margin-left: 10px;
+}
+
+.form-group {
+  margin-bottom: 16px;
+}
+
+.form-group label {
+  display: block;
+  margin-bottom: 4px;
+  font-weight: 500;
+  color: #374151;
+  font-size: 14px;
+}
+
+.form-group input, .form-group select {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 14px;
+  background: white;
+  transition: border-color 0.2s ease;
+}
+
+.form-group input:focus, .form-group select:focus {
+  outline: none;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.security-errors {
+  border: 1px solid #f5c6cb;
+  background: #fbe6e7;
+  border-radius: 5px;
+  padding: 10px;
+  margin-bottom: 10px;
+}
+
+.security-notes {
+  border: 1px solid #c7c7c7;
+  background: #f9f9f9;
+  border-radius: 5px;
+  padding: 10px;
+  margin-top: 5px;
+}
+
+.table-title {
+  padding-left: 8px;
+  background: var(--dark-color);
+  color: white;
+  border-radius: 5px;
+  margin-bottom: 5px;
+  margin-top: 20px;
+  font-weight: bold;
+}
+
+.table-fixed-head {
+  overflow-y: auto;
+  max-height: 500px;
+}
+.table-fixed-head thead th {
+  position: sticky;
+  top: 0;
+}
+.table-fixed-head table {
+  border-collapse: collapse;
+  width: 100%;
+}
+.table-fixed-head th,
+.table-fixed-head td {
+  padding: 8px 16px;
+  font-size: 9pt;
+}
+.table-fixed-head th {
+  background: var(--table-header-bg);
+  color: black;
+  z-index: 1;
+}
+.table-fixed-head td {
+  box-shadow: inset 1px 1px var(--table-cell-border-color);
+}
+.table-fixed-head th {
+  box-shadow: inset 1px 1px var(--table-cell-border-color);
+}
+.table-fixed-head thead {
+  box-shadow: inset 0px -1px var(--table-cell-border-color);
+}
+.table-fixed-head table {
+  border-right: solid 1px var(--table-cell-border-color);
+  border-bottom: solid 1px var(--table-cell-border-color);
 }
 
 </style>

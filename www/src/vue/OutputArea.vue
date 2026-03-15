@@ -81,3 +81,76 @@ export default defineComponent({
    },
 });
 </script>
+
+<style scoped>
+.output-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 15px;
+}
+
+.output-title {
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.loading-spinner {
+  display: none;
+  text-align: center;
+  padding: 20px;
+}
+
+.spinner {
+  width: 40px;
+  height: 40px;
+  border: 4px solid rgba(0, 0, 0, 0.1);
+  border-radius: 50%;
+  border-top-color: var(--primary-color);
+  animation: spin 1s ease-in-out infinite;
+  margin: 0 auto;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.view-mode-toggle {
+  display: flex;
+  gap: 5px;
+  margin-bottom: 15px;
+}
+
+.view-mode-btn {
+  padding: 5px 10px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  background-color: #f8f9fa;
+  cursor: pointer;
+}
+
+.view-mode-btn.active {
+  background-color: var(--primary-color);
+  color: white;
+  border-color: var(--primary-color);
+}
+
+.view-mode-btn:hover {
+  background-color: #e3e3e3;
+}
+
+.view-mode-btn.active:hover {
+  /* No hover color while active */
+  background-color: var(--primary-color);
+}
+
+.acb-output-container {
+  margin: auto;
+  width: -moz-fit-content;
+  width: fit-content;
+}
+
+.acb-output.inactive {
+  display: none;
+}
+</style>
