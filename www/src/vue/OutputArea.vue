@@ -4,7 +4,7 @@
       <h2 class="output-title">Results</h2>
     </div>
 
-    <CollapsibleRegion :store="store" />
+    <CollapsibleAcbAppOutputViewSettings :store="store" />
 
     <div class="view-mode-toggle">
       <button
@@ -62,11 +62,11 @@ import { defineComponent, type PropType } from 'vue';
 import { type OutputStore, AcbOutputViewMode, getViewModeLabel } from './output_store.js';
 import DataTable from './DataTable.vue';
 import SecurityTablesOutput from './SecurityTablesOutput.vue';
-import CollapsibleRegion from './CollapsibleRegion.vue';
+import CollapsibleAcbAppOutputViewSettings from './CollapsibleAcbAppOutputViewSettings.vue';
 
 export default defineComponent({
    name: 'OutputArea',
-   components: { DataTable, SecurityTablesOutput, CollapsibleRegion },
+   components: { DataTable, SecurityTablesOutput, CollapsibleAcbAppOutputViewSettings },
    props: {
       store: {
          type: Object as PropType<OutputStore>,
