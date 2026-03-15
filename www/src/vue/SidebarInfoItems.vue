@@ -1,5 +1,5 @@
 <template>
-  <div class="info-section">
+  <SidebarInfoSection>
     <h3>Information</h3>
 
     <div
@@ -11,12 +11,13 @@
       <p>{{ item.label }}</p>
       <img :src="'/images/expand.svg'">
     </div>
-  </div>
+  </SidebarInfoSection>
 </template>
 
 <script lang="ts">
 import { defineComponent } from 'vue';
 import { openDialog } from './info_dialog_store.js';
+import SidebarInfoSection from './SidebarInfoSection.vue';
 
 const items = [
    { dialogId: 'appDescriptionDialog', label: 'What is this tool?' },
@@ -28,6 +29,7 @@ const items = [
 
 export default defineComponent({
    name: 'SidebarInfoItems',
+   components: { SidebarInfoSection },
    setup() {
       return { items, openDialog };
    },

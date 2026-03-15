@@ -1,5 +1,5 @@
 <template>
-  <div class="info-section info-warnings-section" v-show="store.warningsSectionVisible">
+  <SidebarInfoSection class="info-warnings-section" v-show="store.warningsSectionVisible">
     <h3>Notices</h3>
     <p v-show="store.gitIssuesVisible">There are currently
       <a href="https://github.com/tsiemens/acb/issues?q=is%3Aissue+is%3Aopen+label%3A%22user+caveat%22">open caveat issues</a>.
@@ -7,11 +7,11 @@
     </p>
 
     <ErrorBox :store="gitErrorBoxStore" width="100%" />
-  </div>
+  </SidebarInfoSection>
 
-  <div class="info-section">
+  <SidebarInfoSection>
     <p class="info-secondary">{{ versionText }}</p>
-  </div>
+  </SidebarInfoSection>
 </template>
 
 <script lang="ts">
@@ -20,10 +20,11 @@ import { webappVersion } from '../versions.js';
 import type { SidebarInfoStore } from './sidebar_info_store.js';
 import { ErrorBox as ErrorBoxModel, getErrorBoxStore } from './error_box_store.js';
 import ErrorBox from './ErrorBox.vue';
+import SidebarInfoSection from './SidebarInfoSection.vue';
 
 export default defineComponent({
-   name: 'SidebarInfo',
-   components: { ErrorBox },
+   name: 'SidebarBasicInfo',
+   components: { ErrorBox, SidebarInfoSection },
    props: {
       store: {
          type: Object as PropType<SidebarInfoStore>,
