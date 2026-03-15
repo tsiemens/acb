@@ -1,12 +1,12 @@
 import { createApp } from 'vue';
-import { loadAndAddFilesToFileManager, runHandler } from './acb_app.js';
+import {
+   autoRunHandler as debugAutoRunHandler,
+   loadAndAddFilesToFileManager,
+   runHandler } from './acb_app.js';
 import { AcbAppRunMode } from "./common/acb_app_types.js";
 import { loadGitUserCaveatIssues } from './github.js';
 import wasm_init, { get_acb_version } from './pkg/acb_wasm.js';
 import { getSidebarInfoStore } from './vue/sidebar_info_store.js';
-import { getFileManagerStore } from './vue/file_manager_store.js';
-import { FileKind } from './vue/file_manager_store.js';
-import { loadTestFile } from './debug.js';
 import App from './vue/App.vue';
 
 function createVueApp(): void {
@@ -15,20 +15,7 @@ function createVueApp(): void {
       onRunAction: (mode: AcbAppRunMode) => {
          runHandler(mode);
       },
-      onAutoRun: () => {
-         loadTestFile((testFile) => {
-            const store = getFileManagerStore();
-            const encoder = new TextEncoder();
-            store.addFile({
-               name: testFile.name,
-               kind: FileKind.AcbTxCsv,
-               isDownloadable: false,
-               useChecked: true,
-               data: encoder.encode(testFile.contents),
-            });
-            runHandler(AcbAppRunMode.Run);
-         });
-      },
+      onAutoRun: debugAutoRunHandler,
    }).mount('#app');
 }
 

@@ -3,6 +3,7 @@ import { Unit } from "./basic_utils.js";
 import { AcbAppRunMode, AppFunctionMode } from "./common/acb_app_types.js";
 import { fileBytesToString, loadFilesAsBytes } from "./file_reader.js";
 import { FileEntry, FileKind, getFileManagerStore, modifyDrawerNotificationForUserAddedFiles } from './vue/file_manager_store.js';
+import { loadTestFile } from "./debug.js";
 import { run_acb, run_acb_summary } from './pkg/acb_wasm.js';
 import { Result } from "./result.js";
 import { AppExportResultOk, AppResultOk, AppSummaryResultOk, FileContent, RenderTable } from "./acb_wasm_types.js";
@@ -308,6 +309,21 @@ function fileEntiesToNamesAndStringContents(entries: FileEntry[]
       contents.push(contentStr);
    }
    return [filenames, contents];
+}
+
+export function autoRunHandler(): void {
+   loadTestFile((testFile) => {
+      const store = getFileManagerStore();
+      const encoder = new TextEncoder();
+      store.addFile({
+         name: testFile.name,
+         kind: FileKind.AcbTxCsv,
+         isDownloadable: false,
+         useChecked: true,
+         data: encoder.encode(testFile.contents),
+      });
+      runHandler(AcbAppRunMode.Run);
+   });
 }
 
 export function runHandler(acbRunMode: AcbAppRunMode = AcbAppRunMode.Run) {
