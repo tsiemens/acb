@@ -40,8 +40,11 @@ export default defineConfig({
         preserveModulesRoot: 'src',
         manualChunks: undefined // Disable code-splitting
       },
-      preserveEntrySignatures: true,
-      treeshake: false
+      preserveEntrySignatures: 'strict',
+      treeshake: false,
+      checks: {
+        pluginTimings: false
+      }
     }
   },
   // Add this to handle WASM files properly
