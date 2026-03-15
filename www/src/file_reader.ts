@@ -44,10 +44,10 @@ export function fileBytesToString(bytes: Uint8Array): string {
       b64Decoded = true;
    }
    if (content && content.length > 100) {
-      console.debug(`fileBytesToString (b64: ${b64Decoded}): "${content.slice(0, 50)}" ... ` +
+      console.debug(`fileBytesToString (b64: ${String(b64Decoded)}): "${content.slice(0, 50)}" ... ` +
                      `"${content.slice(-50)}`);
    } else {
-      console.debug(`fileBytesToString: (b64: ${b64Decoded})`, content);
+      console.debug(`fileBytesToString: (b64: ${String(b64Decoded)})`, content);
    }
    return content;
 }

@@ -21,10 +21,12 @@ function makeState(): ErrorBoxState {
 const stores = new Map<string, ErrorBoxState>();
 
 export function getErrorBoxStore(id: string): ErrorBoxState {
-   if (!stores.has(id)) {
-      stores.set(id, makeState());
+   let store = stores.get(id);
+   if (!store) {
+      store = makeState();
+      stores.set(id, store);
    }
-   return stores.get(id)!;
+   return store;
 }
 
 export class ErrorBox {
