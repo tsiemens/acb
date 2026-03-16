@@ -2,18 +2,29 @@ import { createApp } from 'vue';
 import {
    autoRunHandler as debugAutoRunHandler,
    loadAndAddFilesToFileManager,
-   runHandler } from './acb_app.js';
+   runHandler as acbRunHandler } from './acb_app.js';
+import { runHandler as brokerConvertRunHandler } from './broker_convert_app.js';
 import { AcbAppRunMode } from "./common/acb_app_types.js";
 import { loadGitUserCaveatIssues } from './github.js';
 import wasm_init, { get_acb_version } from './pkg/acb_wasm.js';
 import { getSidebarInfoStore } from './vue/sidebar_info_store.js';
+import { getTabStore, TabId } from './vue/tab_store.js';
 import App from './vue/App.vue';
 
 function createVueApp(): void {
+   const tabStore = getTabStore();
+
    createApp(App, {
       onFilesDropped: loadAndAddFilesToFileManager,
       onRunAction: (mode: AcbAppRunMode) => {
-         runHandler(mode);
+         switch (tabStore.activeTab) {
+            case TabId.AcbCalc:
+               acbRunHandler(mode);
+               break;
+            case TabId.BrokerConvert:
+               brokerConvertRunHandler(mode);
+               break;
+         }
       },
       onAutoRun: debugAutoRunHandler,
    }).mount('#app');

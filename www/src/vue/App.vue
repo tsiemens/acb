@@ -22,6 +22,8 @@
       />
       <BrokerConvertTabContent
         v-if="tabStore.activeTab === TabId.BrokerConvert"
+        :onFilesDropped="onFilesDropped"
+        :onRunAction="onRunAction"
       />
     </div>
   </div>

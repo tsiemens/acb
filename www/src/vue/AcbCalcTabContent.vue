@@ -2,7 +2,9 @@
   <TabContent tabId="acb-calc">
     <div class="files-and-buttons">
 
-      <FileDropArea :onFilesDropped="onFilesDropped" />
+      <FileDropArea
+         :onFilesDropped="onFilesDropped"
+         dropMessage="Drop CSV Files Here" />
 
       <AppInputControls :store="appInputStore" />
 
