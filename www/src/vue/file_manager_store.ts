@@ -1,4 +1,5 @@
-import { reactive } from 'vue';
+import { reactive, watchEffect } from 'vue';
+import { getTabStore, TabId, type TabIdType } from './tab_store.js';
 
 export enum FileKind {
    AcbTxCsv    = 'AcbTxCsv',
@@ -51,14 +52,21 @@ export interface FileManagerState {
    files: FileEntry[];
    hasNotification: boolean;
    isExpanded: boolean;
-   // Which input kinds are relevant to the currently active app mode. The Use
-   // checkbox is highlighted for relevant kinds and neutral for others.
-   //
-   // TODO: This should eventually be derived from (or replaced by) the main app
-   // state store once one exists, rather than being set directly here.
+   // Which input kinds are relevant to the active tab. The Use checkbox is
+   // highlighted for relevant kinds and neutral for others. Derived from the
+   // tab store via watchEffect.
    relevantInputKinds: Set<FileKind>;
    addFile(entry: Omit<FileEntry, 'id' | 'isSelected'>): FileEntry;
    removeFiles(ids: number[]): void;
+}
+
+function relevantInputKindsForTab(tabId: TabIdType): Set<FileKind> {
+   switch (tabId) {
+      case TabId.AcbCalc:
+         return new Set([FileKind.AcbTxCsv]);
+      case TabId.BrokerConvert:
+         return new Set([FileKind.QuestradeXlsx]);
+   }
 }
 
 function makeState(): FileManagerState {
@@ -66,8 +74,7 @@ function makeState(): FileManagerState {
       files: [] as FileEntry[],
       hasNotification: false,
       isExpanded: false,
-      // Mock: ACB calculator mode is assumed active by default.
-      relevantInputKinds: new Set([FileKind.AcbTxCsv]),
+      relevantInputKinds: relevantInputKindsForTab(getTabStore().activeTab),
       addFile(entry: Omit<FileEntry, 'id' | 'isSelected'>): FileEntry {
          return addFile(this, entry);
       },
@@ -82,7 +89,13 @@ let store: FileManagerState | null = null;
 let nextId = 1;
 
 export function getFileManagerStore(): FileManagerState {
-   if (!store) store = makeState();
+   if (!store) {
+      store = makeState();
+      const tabStore = getTabStore();
+      watchEffect(() => {
+         store!.relevantInputKinds = relevantInputKindsForTab(tabStore.activeTab);
+      });
+   }
    return store;
 }
 
