@@ -1,9 +1,13 @@
 <script setup lang="ts">
 import { ref } from 'vue';
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
    onFilesDropped: (fileList: FileList) => void;
-}>();
+   dropMessage?: string;
+}>(), {
+   dropMessage: 'Drop Files Here',
+});
+
 
 const isDropActive = ref(false);
 const fileInput = ref<HTMLInputElement | null>(null);
@@ -54,7 +58,7 @@ function handleFileInputChange(event: Event) {
       @click="handleClick"
    >
       <div class="file-drop-icon">&#x1F4C1;</div>
-      <h3>Drop CSV Files Here</h3>
+      <h3>{{ dropMessage }}</h3>
       <p>or click to browse files</p>
       <input
          ref="fileInput"

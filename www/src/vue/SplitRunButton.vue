@@ -24,7 +24,12 @@ const menuOpen = ref(false);
 const containerRef = ref<HTMLElement | null>(null);
 
 const disabled = computed(() =>
-   !props.store.files.some(f => FileKind.isInput(f.kind) && f.useChecked && !f.warning)
+   !props.store.files.some(f =>
+      FileKind.isInput(f.kind) &&
+      f.useChecked &&
+      !f.warning &&
+      props.store.relevantInputKinds.has(f.kind)
+   )
 );
 
 const primaryOption = RUN_MODE_OPTIONS[0];
