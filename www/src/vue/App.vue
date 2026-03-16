@@ -3,16 +3,25 @@
     <AppHeader :onAutoRun="onAutoRun" />
 
     <div class="tab-navigation">
-      <div class="tab active">ACB Calculator</div>
+      <div
+        v-for="tab in tabs" :key="tab.id"
+        class="tab"
+        :class="{ active: tabStore.activeTab === tab.id }"
+        @click="tabStore.activeTab = tab.id"
+      >{{ tab.label }}</div>
     </div>
 
     <div class="content-area">
       <InfoDialogs :store="infoDialogStore" />
 
       <Sidebar />
-      <MainContent
+      <AcbCalcTabContent
+        v-if="tabStore.activeTab === TabId.AcbCalc"
         :onFilesDropped="onFilesDropped"
         :onRunAction="onRunAction"
+      />
+      <BrokerConvertTabContent
+        v-if="tabStore.activeTab === TabId.BrokerConvert"
       />
     </div>
   </div>
@@ -29,16 +38,18 @@ import { defineComponent, type PropType } from 'vue';
 import AppHeader from './AppHeader.vue';
 import InfoDialogs from './InfoDialogs.vue';
 import Sidebar from './Sidebar.vue';
-import MainContent from './MainContent.vue';
+import AcbCalcTabContent from './AcbCalcTabContent.vue';
+import BrokerConvertTabContent from './BrokerConvertTabContent.vue';
 import FileManagerDrawer from './FileManagerDrawer.vue';
 import { getInfoDialogStore } from './info_dialog_store.js';
 import { getFileManagerStore } from './file_manager_store.js';
+import { getTabStore, tabs, TabId } from './tab_store.js';
 import { AcbAppRunMode } from '../common/acb_app_types.js';
 import { downloadSelectedFiles } from '../download_utils.js';
 
 export default defineComponent({
    name: 'App',
-   components: { AppHeader, InfoDialogs, Sidebar, MainContent, FileManagerDrawer },
+   components: { AppHeader, InfoDialogs, Sidebar, AcbCalcTabContent, BrokerConvertTabContent, FileManagerDrawer },
    props: {
       onFilesDropped: {
          type: Function as PropType<(fileList: FileList) => void>,
@@ -56,8 +67,9 @@ export default defineComponent({
    setup() {
       const infoDialogStore = getInfoDialogStore();
       const fileManagerStore = getFileManagerStore();
+      const tabStore = getTabStore();
 
-      return { infoDialogStore, fileManagerStore, downloadSelectedFiles };
+      return { tabs, TabId, tabStore, infoDialogStore, fileManagerStore, downloadSelectedFiles };
    },
 });
 </script>

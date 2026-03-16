@@ -3,7 +3,7 @@
     <SidebarBasicInfo :store="sidebarInfoStore" />
     <SidebarInfoItems />
 
-    <div class="options-section">
+    <div v-if="tabStore.activeTab === TabId.AcbCalc" class="options-section">
       <h3>Options</h3>
 
       <div class="option-group">
@@ -27,6 +27,7 @@ import SidebarBasicInfo from './SidebarBasicInfo.vue';
 import SidebarInfoItems from './SidebarInfoItems.vue';
 import { getSidebarInfoStore } from './sidebar_info_store.js';
 import { getAppInputStore } from './app_input_store.js';
+import { getTabStore, TabId } from './tab_store.js';
 
 export default defineComponent({
    name: 'Sidebar',
@@ -34,12 +35,13 @@ export default defineComponent({
    setup() {
       const sidebarInfoStore = getSidebarInfoStore();
       const appInputStore = getAppInputStore();
+      const tabStore = getTabStore();
 
       function onPrintFullChange(event: Event) {
          appInputStore.printFullValues = (event.target as HTMLInputElement).checked;
       }
 
-      return { sidebarInfoStore, appInputStore, onPrintFullChange };
+      return { sidebarInfoStore, appInputStore, tabStore, TabId, onPrintFullChange };
    },
 });
 </script>
