@@ -63,6 +63,18 @@ const allVisibleInputUseChecked = computed({
    },
 });
 
+const inputFiles = computed(() =>
+   props.store.files.filter((f) => FileKind.isInput(f.kind))
+);
+
+const activeInputCount = computed(() =>
+   inputFiles.value.filter(
+      (f) => f.useChecked && !f.warning && props.store.relevantInputKinds.has(f.kind),
+   ).length
+);
+
+const hasWarnings = computed(() => props.store.files.some((f) => f.warning));
+
 // --- Actions ---
 
 function toggleExpanded() {
@@ -143,6 +155,15 @@ function removeSelected() {
          <div class="fm-top-bar-left">
             <span class="fm-title">Files</span>
             <span class="fm-count">({{ store.files.length }})</span>
+            <span
+               v-if="activeInputCount !== store.files.length"
+               class="fm-active-count"
+            >· {{ activeInputCount }} active</span>
+            <span
+               v-if="hasWarnings"
+               class="fm-top-bar-warning"
+               title="One or more files have errors"
+            >⚠</span>
             <span
                v-if="store.hasNotification"
                class="fm-notification-dot"
@@ -361,6 +382,17 @@ function removeSelected() {
 .fm-count {
    font-size: 13px;
    opacity: 0.85;
+}
+
+.fm-active-count {
+   font-size: 13px;
+   opacity: 0.85;
+}
+
+.fm-top-bar-warning {
+   font-size: 14px;
+   color: #ffcc00;
+   filter: drop-shadow(0 0 2px rgba(255, 204, 0, 0.6));
 }
 
 .fm-notification-dot {
