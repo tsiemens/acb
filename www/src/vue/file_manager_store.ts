@@ -4,6 +4,9 @@ import { getTabStore, TabId, type TabIdType } from './tab_store.js';
 export enum FileKind {
    AcbTxCsv    = 'AcbTxCsv',
    QuestradeXlsx = 'QuestradeXls',
+   EtradeTradeConfirmationPdf = 'EtradeTradeConfirmationPdf',
+   EtradeBenefitPdf = 'EtradeBenefitPdf',
+   EtradeBenefitsExcel = 'EtradeBenefitsExcel',
    OutputText  = 'OutputText',
    AcbOutputZip = 'AcbOutputZip',
    Other       = 'Other',
@@ -16,11 +19,14 @@ interface FileKindMeta {
 }
 
 const FILE_KIND_META: Record<FileKind, FileKindMeta> = {
-   [FileKind.AcbTxCsv]:      { label: 'ACB TX csv',     isInput: true,  isDownloadableDefault: false },
-   [FileKind.QuestradeXlsx]: { label: 'Questrade xlsx', isInput: true,  isDownloadableDefault: false },
-   [FileKind.OutputText]:    { label: 'Text',           isInput: false, isDownloadableDefault: true  },
-   [FileKind.AcbOutputZip]:  { label: 'ACB Output',     isInput: false, isDownloadableDefault: true  },
-   [FileKind.Other]:         { label: 'Other',          isInput: false, isDownloadableDefault: false },
+   [FileKind.AcbTxCsv]:                   { label: 'ACB TX csv',           isInput: true,  isDownloadableDefault: false },
+   [FileKind.QuestradeXlsx]:              { label: 'Questrade xlsx',       isInput: true,  isDownloadableDefault: false },
+   [FileKind.EtradeTradeConfirmationPdf]: { label: 'E*TRADE Trade pdf',   isInput: true,  isDownloadableDefault: false },
+   [FileKind.EtradeBenefitPdf]:           { label: 'E*TRADE Benefit pdf',  isInput: true,  isDownloadableDefault: false },
+   [FileKind.EtradeBenefitsExcel]:        { label: 'E*TRADE Benefits xlsx', isInput: true,  isDownloadableDefault: false },
+   [FileKind.OutputText]:                 { label: 'Text',                 isInput: false, isDownloadableDefault: true  },
+   [FileKind.AcbOutputZip]:               { label: 'ACB Output',           isInput: false, isDownloadableDefault: true  },
+   [FileKind.Other]:                      { label: 'Other',                isInput: false, isDownloadableDefault: false },
 };
 
 // Declaration/namespace merge, so we can add static methods to the FileKind enum.
@@ -67,7 +73,12 @@ function relevantInputKindsForTab(tabId: TabIdType): Set<FileKind> {
       case TabId.AcbCalc:
          return new Set([FileKind.AcbTxCsv]);
       case TabId.BrokerConvert:
-         return new Set([FileKind.QuestradeXlsx]);
+         return new Set([
+            FileKind.QuestradeXlsx,
+            FileKind.EtradeTradeConfirmationPdf,
+            FileKind.EtradeBenefitPdf,
+            FileKind.EtradeBenefitsExcel,
+         ]);
    }
 }
 
