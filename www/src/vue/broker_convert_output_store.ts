@@ -20,11 +20,16 @@ export const BROKER_CONVERT_VIEW_MODES: ReadonlyArray<BrokerConvertViewMode> = [
    BrokerConvertViewMode.RawText,
 ];
 
+export interface NamedTable {
+   name: string;
+   table: RenderTable;
+}
+
 export interface BrokerConvertOutputStore {
    activeViewMode: BrokerConvertViewMode;
    isLoading: boolean;
    textOutput: string;
-   transactionsTable: RenderTable | null;
+   transactionsTables: NamedTable[];
 }
 
 let _store: BrokerConvertOutputStore | null = null;
@@ -35,7 +40,7 @@ export function getBrokerConvertOutputStore(): BrokerConvertOutputStore {
          activeViewMode: BrokerConvertViewMode.Transactions,
          isLoading: false,
          textOutput: '',
-         transactionsTable: null,
+         transactionsTables: [],
       });
    }
    return _store;

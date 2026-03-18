@@ -58,6 +58,8 @@ export interface FileManagerState {
    relevantInputKinds: Set<FileKind>;
    addFile(entry: Omit<FileEntry, 'id' | 'isSelected'>): FileEntry;
    removeFiles(ids: number[]): void;
+   clearSelection(): void;
+   setSelectedByIds(ids: Set<number>): void;
 }
 
 function relevantInputKindsForTab(tabId: TabIdType): Set<FileKind> {
@@ -82,6 +84,12 @@ function makeState(): FileManagerState {
          const idSet = new Set(ids);
          this.files = this.files.filter((f) => !idSet.has(f.id));
       },
+      clearSelection(): void {
+         this.files.forEach((f) => (f.isSelected = false));
+      },
+      setSelectedByIds(ids: Set<number>): void {
+         this.files.forEach((f) => (f.isSelected = ids.has(f.id)));
+      },
    });
 }
 
@@ -91,9 +99,10 @@ let nextId = 1;
 export function getFileManagerStore(): FileManagerState {
    if (!store) {
       store = makeState();
+      const s = store;
       const tabStore = getTabStore();
       watchEffect(() => {
-         store!.relevantInputKinds = relevantInputKindsForTab(tabStore.activeTab);
+         s.relevantInputKinds = relevantInputKindsForTab(tabStore.activeTab);
       });
    }
    return store;

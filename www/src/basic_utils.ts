@@ -42,6 +42,10 @@ export function mustGet<T>(obj: any, key: string): T {
    return val as T;
 }
 
+export function fileBaseName(filename: string): string {
+   return filename.replace(/\.[^.]+$/, '');
+}
+
 // Mainly to be used with Result type
 export class Unit {
    public static readonly INSTANCE: Unit = new Unit();

@@ -25,8 +25,10 @@
         :class="{ inactive: store.activeViewMode !== ViewMode.Transactions }"
       >
         <DataTable
-          v-if="store.transactionsTable"
-          :table="store.transactionsTable"
+          v-for="(entry, i) in store.transactionsTables"
+          :key="i"
+          :table="entry.table"
+          :title="entry.name"
         />
       </div>
       <pre
