@@ -3,7 +3,7 @@ import { AcbAppRunMode, AppFunctionMode } from "./common/acb_app_types.js";
 import { fileBytesToString, loadFilesAsBytes } from "./file_reader.js";
 import { FileEntry, FileKind, getFileManagerStore, modifyDrawerNotificationForUserAddedFiles } from './vue/file_manager_store.js';
 import { loadTestFile } from "./debug.js";
-import { run_acb, run_acb_summary } from './pkg/acb_wasm.js';
+import { run_acb, run_acb_summary, detect_file_kind } from './pkg/acb_wasm.js';
 import { Result } from "./result.js";
 import { AppExportResultOk, AppResultOk, AppSummaryResultOk, RenderTable } from "./acb_wasm_types.js";
 import { getOutputStore, setAppFunctionViewMode } from "./vue/output_store.js";
@@ -195,17 +195,27 @@ async function asyncRunAcbShareTally(filenames: string[], contents: string[], la
    }
 }
 
-function detectFileKind(file: File): FileKind {
-   if (file.type === 'text/csv' || file.name.endsWith('.csv')) {
-      return FileKind.AcbTxCsv;
-   }
-   if (
-      file.name.endsWith('.xlsx') ||
-      file.type === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-   ) {
-      return FileKind.QuestradeXlsx;
-   }
-   return FileKind.Other;
+const WASM_FILE_KIND_MAP: Record<string, FileKind> = {
+   'AcbTxCsv': FileKind.AcbTxCsv,
+   'QuestradeExcel': FileKind.QuestradeXlsx,
+   'EtradeTradeConfirmationPdf': FileKind.EtradeTradeConfirmationPdf,
+   'EtradeBenefitPdf': FileKind.EtradeBenefitPdf,
+   'EtradeBenefitsExcel': FileKind.EtradeBenefitsExcel,
+};
+
+interface FileDetectResult {
+   kind: FileKind;
+   warning?: string;
+}
+
+function detectFileKindFromBytes(data: Uint8Array, fileName: string): FileDetectResult {
+   // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+   const wasmResult = detect_file_kind(data, fileName);
+   // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+   const kind: FileKind = WASM_FILE_KIND_MAP[wasmResult.kind as string] ?? FileKind.Other;
+   // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+   const warning: string | undefined = wasmResult.warning as string | undefined;
+   return { kind, warning };
 }
 
 // NOTE (until refactoring is done): This adds files to the new
@@ -214,15 +224,18 @@ export function loadAndAddFilesToFileManager(fileList: FileList): void {
    const files = Array.from(fileList);
    loadFilesAsBytes(files, (results) => {
       const store = getFileManagerStore();
-      results.forEach((result, i) => {
-         const kind = detectFileKind(files[i]);
+      results.forEach((result) => {
+         // Prefer the file-read error if present; otherwise use the
+         // detection warning (e.g. "missing column 'action'").
+         const detectResult = detectFileKindFromBytes(result.data, result.name);
+         const warning = result.error ?? detectResult.warning;
          store.addFile({
             name: result.name,
-            kind,
+            kind: detectResult.kind,
             isDownloadable: false,
-            useChecked: result.error ? false : FileKind.isInput(kind),
+            useChecked: warning ? false : FileKind.isInput(detectResult.kind),
             data: result.data,
-            warning: result.error,
+            warning,
          });
       });
       modifyDrawerNotificationForUserAddedFiles(store);

@@ -49,6 +49,50 @@ pub fn get_acb_version() -> String {
     acb::app::ACB_APP_VERSION.to_string()
 }
 
+/// Detect the kind of broker/ACB file from raw bytes and a file name.
+///
+/// Returns a `{ kind: string, warning?: string }` object.
+/// `kind` is a tag like "AcbTxCsv", "QuestradeExcel", "Unknown", etc.
+/// `warning` is an optional hint explaining why detection returned Unknown.
+#[wasm_bindgen]
+pub fn detect_file_kind(data: &[u8], file_name: &str) -> JsValue {
+    use acb::peripheral::broker::{
+        detect_file_kind as detect, FileDetectResult, FileDetectSource, FileKind,
+    };
+
+    let result = detect(FileDetectSource::Bytes { data, file_name })
+        .unwrap_or(FileDetectResult {
+            kind: FileKind::Unknown,
+            warning: None,
+        });
+
+    let kind_str = match result.kind {
+        FileKind::AcbTxCsv => "AcbTxCsv",
+        FileKind::QuestradeExcel => "QuestradeExcel",
+        FileKind::EtradeTradeConfirmationPdf => "EtradeTradeConfirmationPdf",
+        FileKind::EtradeBenefitPdf => "EtradeBenefitPdf",
+        FileKind::EtradeBenefitsExcel => "EtradeBenefitsExcel",
+        FileKind::Unknown => "Unknown",
+    };
+
+    let js_obj = web_sys::js_sys::Object::new();
+    web_sys::js_sys::Reflect::set(
+        &js_obj,
+        &JsValue::from_str("kind"),
+        &JsValue::from_str(kind_str),
+    )
+    .unwrap();
+    if let Some(warning) = result.warning {
+        web_sys::js_sys::Reflect::set(
+            &js_obj,
+            &JsValue::from_str("warning"),
+            &JsValue::from_str(&warning),
+        )
+        .unwrap();
+    }
+    js_obj.into()
+}
+
 fn get_csv_readers(
     file_descs: Vec<String>,
     file_contents: Vec<String>,

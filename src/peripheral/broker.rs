@@ -1,6 +1,7 @@
 use super::sheet_common::SheetParseError;
 
 mod broker_tx;
+mod file_detect;
 mod fx_tracker;
 
 // Individual brokers
@@ -16,4 +17,5 @@ pub struct SheetToTxsErr {
 }
 
 pub use broker_tx::*;
+pub use file_detect::*;
 pub use fx_tracker::*;
