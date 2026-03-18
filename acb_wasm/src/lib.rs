@@ -1,3 +1,5 @@
+use regex::Regex;
+
 use acb::util::rw::DescribedReader;
 use wasm_bindgen::prelude::*;
 
@@ -24,7 +26,7 @@ pub fn convert_xl_to_csv(
         XlSource::Data(data),
         &BrokerArg::Questrade,
         sheet_name.as_deref(),
-        None,  // account_filter
+        Some(Regex::new(r".").unwrap()),  // account_filter
         None,  // security_filter
         false, // no_fx
         false, // no_sort (i.e. sort by default)

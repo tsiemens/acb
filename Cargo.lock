@@ -36,6 +36,7 @@ version = "0.0.0"
 dependencies = [
  "acb",
  "async-trait",
+ "regex",
  "serde",
  "serde-wasm-bindgen",
  "wasm-bindgen",
