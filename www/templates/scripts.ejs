@@ -1,11 +1,10 @@
 <script type="module">
    import { init } from '/js/main.js';
 
-   // Call the initialization function when the page loads
-   window.addEventListener('DOMContentLoaded', () => {
-      init().catch(error => {
-         console.error("Failed to initialize application:", error);
-      });
-      console.log("Page scripts initialized");
+   // async module scripts are deferred by spec — the DOM is already parsed when
+   // this runs, so DOMContentLoaded would have already fired. Just init
+   // directly.
+   init().catch(error => {
+      console.error("Failed to initialize application:", error);
    });
 </script>
