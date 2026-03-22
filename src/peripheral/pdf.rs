@@ -2,7 +2,10 @@ use std::{collections::VecDeque, rc::Rc, sync::Arc};
 
 use pdf_extract::Document;
 
-use crate::util::{basic::SError, py::run_python_script_file, rw::StringBuffer};
+use crate::util::{
+    basic::SError, node::run_node_script_file, py::run_python_script_file,
+    rw::StringBuffer,
+};
 
 /// page_num should be one-based
 pub fn parseable_page_marker(page_num: u32) -> String {
@@ -377,6 +380,35 @@ pub fn get_pages_text_from_path_py(
 
     let output = run_python_script_file(
         &crate::util::py::get_python_script_dir().join("pdf_text.py"),
+        args,
+    )?;
+
+    let split_pat = regex::Regex::new(r"PAGE_BREAK<\d+>").unwrap();
+
+    Ok(split_pat
+        .split(&output)
+        .enumerate()
+        .filter(|(i, _)| *i != 0)
+        .map(|(_, s)| s.to_string())
+        .collect())
+}
+
+/// Uses pdfjs-dist (Node.js) as the reading engine.
+pub fn get_pages_text_from_path_js(
+    p: &std::path::PathBuf,
+    page_numbers: Option<&[u32]>,
+) -> Result<Vec<String>, crate::util::basic::SError> {
+    let mut args = vec!["--parsable-page-markers".to_string()];
+    if let Some(pns) = page_numbers {
+        for pn in pns {
+            args.push("-p".to_string());
+            args.push(pn.to_string());
+        }
+    }
+    args.push(p.display().to_string());
+
+    let output = run_node_script_file(
+        &crate::util::node::get_node_script_dir().join("pdf_text.js"),
         args,
     )?;
 
