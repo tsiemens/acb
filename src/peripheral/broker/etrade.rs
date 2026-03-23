@@ -1043,7 +1043,87 @@ mod tests {
                 sell_note: None,
                 filename: s("myrsu.pdf"),
             },
+        );
+
+        // pdfjs-based output
+        if !crate::util::node::node_available() {
+            if std::env::var("ALLOW_NO_NODE").is_ok() {
+                eprintln!("WARNING: node not available, skipping pdfjs RSU test");
+                return;
+            }
+            panic!("node not available. Set ALLOW_NO_NODE=1 to skip pdfjs tests.");
+        }
+        let pdf_text = "Release Summary
+Account Number 11223344
+Tax Payment Method Sell-to-cover
+Company Name (Symbol) FOO SYSTEMS, INC.
+(FOO)
+Award Number R98765
+Award Date 05-08-2020
+Award Type RSU
+Plan 2014
+Release Date 10-20-2023
+Shares Released 1,234.0000
+Market Value Per Share $215.350000
+Award Price Per Share $0.000000
+Sale Price Per Share $213.773300
+Release Details
+Calculation of Gain
+Market Value $26,488.05
+Award Price ($0.00)
+Total Gain $26,488.05
+Stock Distribution
+Award Shares 123.0000
+Shares Sold (67.0000)
+Shares Issued 56.0000
+Registration: Morgan Stanley Smith Barney
+Calculation of Taxes
+Taxable Gain $ Rate % Amount $
+Canada-BC 26,488.05 53.50000 14,171.10
+Total Tax $14,171.10
+Cash Distribution
+Total Sale Price $14,322.81
+Total Tax ($14,171.10)
+Fee ($4.13)
+Total Due Participant $147.58
+EMPLOYEE STOCK PLAN RELEASE CONFIRMATION
+Provided by Foo Inc.
+John Doe
+1234 Main St
+Halifax, NS CA B3D 8
+Employee ID: 1111
+This information was provided by your company to E*TRADE from Morgan Stanley, a registered trademark of Morgan Stanley Smith Barney LLC, Member SIPC.
+Morgan Stanley and its affiliates do not guarantee the accuracy or completeness of the information provided by your company. If a sale is associated with these shares,
+the trade confirmation provided by Morgan Stanley Smith Barney LLC is the accurate record of the sales transaction.
+The data shown on this statement is based on your company's records. The company reserves the right to make corrections to this data. The release shown on this
+statement is subject to the terms of the plan under which the release was made.
+12/01/2025 03:35:23 PM ET Page 1 of1
+";
+
+        let rsu_entry = parse_rsu_entry(
+            pdf_text,
+            &std::path::PathBuf::from("foo/bar/myrsu.pdf"),
         )
+        .unwrap();
+
+        assert_big_struct_eq(
+            rsu_entry,
+            BenefitEntry {
+                security: "FOO".to_string(),
+                acquire_tx_date: date("2023-10-20"),
+                acquire_settle_date: date("2023-10-20"),
+                acquire_share_price: dec!(215.35),
+                acquire_shares: dec!(1234),
+                sell_to_cover_tx_date: None,
+                sell_to_cover_settle_date: None,
+                sell_to_cover_price: Some(dec!(213.7733)),
+                sell_to_cover_shares: Some(dec!(67)),
+                sell_to_cover_fee: Some(dec!(4.13)),
+                plan_note: s("RSU R98765"),
+                sell_note: None,
+                filename: s("myrsu.pdf"),
+            },
+        );
     }
 
     // lopdf-based output
@@ -1236,6 +1316,97 @@ mod tests {
         John Doe
         Employee ID: 1111
         ";
+
+        let espp_entry = parse_espp_entry(
+            pdf_text,
+            &std::path::PathBuf::from("foo/bar/myespp.pdf"),
+        )
+        .unwrap();
+
+        assert_big_struct_eq(
+            espp_entry,
+            BenefitEntry {
+                security: "FOO".to_string(),
+                acquire_tx_date: date("2023-10-20"),
+                acquire_settle_date: date("2023-10-20"),
+                acquire_share_price: dec!(215.35),
+                acquire_shares: dec!(123),
+                sell_to_cover_tx_date: None,
+                sell_to_cover_settle_date: None,
+                sell_to_cover_price: Some(dec!(213.7733)),
+                sell_to_cover_shares: Some(dec!(67)),
+                sell_to_cover_fee: Some(dec!(4.13)),
+                plan_note: s("ESPP"),
+                sell_note: None,
+                filename: s("myespp.pdf"),
+            },
+        );
+
+        // pdfjs-based output
+        if !crate::util::node::node_available() {
+            if std::env::var("ALLOW_NO_NODE").is_ok() {
+                eprintln!("WARNING: node not available, skipping pdfjs ESPP test");
+                return;
+            }
+            panic!("node not available. Set ALLOW_NO_NODE=1 to skip pdfjs tests.");
+        }
+        let pdf_text = "Purchase Summary
+Account Number 11223344
+Company Name (Symbol) Foo Systems,
+INC.(FOO)
+Plan ESP2
+Grant Date 08-01-2022
+Purchase Begin Date 01-01-2023
+Purchase Date 10-20-2023
+Shares Purchased to Date in Current Offering
+Beginning Balance 0.0000
+Shares Purchased 123.0000
+Total shares Purchased for Offering 124.0000
+Shares Deposited in STREETNAME to
+Morgan Stanley Smith Barney
+124.0000
+Shares Sold to Cover Taxes 67.0000
+Purchase Details
+Contributions
+Foreign Contributions 1,000,000.00
+Average Exchange Rate $0.740000
+Previous Carry Forward $0.00
+Current Contributions $0.00
+Total Contributions $0.00*
+Total Price ($5,000.00)
+Carry Forward ($0.00)
+Calculation of Gain
+Total Value $1,000,000.00
+Total Price ($1,000,000.00)
+Taxable Gain $1,000,000.00
+Calculation of Shares Purchased
+Grant Date Market Value $10.990
+Purchase Value per Share $215.350000
+Purchase Price per Share
+(90.000% of $215.350000) $193.81500
+Total Price
+(Shares Purchased x Purchase Price) $1,000,000.00
+Sale Price for Shares Sold to Cover Taxes $213.773300
+Tax Assessment $1,840.84
+Fees ($4.13)
+Adjusted Tax Assessment $1,000,000.00
+Amount in Excess of Tax Due $0.00
+Excess of Taxes Applied To
+Cash Due Participant
+Net Carry Forward $0.00
+EMPLOYEE STOCK PLAN PURCHASE CONFIRMATION
+Provided by Foo Inc.
+John Doe
+1234 Main St
+Halifax, NS CA B3D 8
+Employee ID: 1111
+This information was provided to E*TRADE Securities LLC, a subsidiary of Morgan Stanley, (\"E*TRADE\") by your company. E*TRADE does not guarantee the accuracy
+or completeness of the information provided by your company. If a sale is associated with these shares, the trade confirmation provided by E*TRADE Securities LLC is
+the only accurate record of the sale transaction.
+The data shown on this statement is based on your company's records. The company reserves the right to make corrections to this data. The purchase shown on this
+statement is subject to the terms of the plan under which the purchase was made.
+12/01/2025 03:34:58 PM ET Page 1 of1
+";
 
         let espp_entry = parse_espp_entry(
             pdf_text,
@@ -1582,6 +1753,75 @@ mod tests {
                 amount_per_share: dec!(200.01),
                 num_shares: dec!(123),
                 commission: dec!(3.91),
+                currency: crate::portfolio::Currency::usd(),
+                memo: s(""),
+                exchange_rate: None,
+                affiliate: crate::portfolio::Affiliate::default(),
+                row_num: 1,
+                account: new_account(s("123-XXX123-123")),
+                sort_tiebreak: None,
+                filename: Some(s("tconf.pdf")),
+            },
+        );
+
+        // pdfjs-based output
+        if !crate::util::node::node_available() {
+            if std::env::var("ALLOW_NO_NODE").is_ok() {
+                eprintln!(
+                    "WARNING: node not available, skipping pdfjs trade confirmation test"
+                );
+                return;
+            }
+            panic!("node not available. Set ALLOW_NO_NODE=1 to skip pdfjs tests.");
+        }
+        let pdf_text = "Morgan Stanley Smith Barney LLC. Member SIPC. The transaction(s) may have been executed with Morgan Stanley & Co. LLC, an
+affiliate, which may receive compensation for any such services. E*TRADE is a business of Morgan Stanley.
+1 of 2
+Your Account Number: 123-XXX123-123
+Account Type - Cash
+JOHN DOE
+1234 STREET AVE.
+VANCOUVER BRITISH COLUMBIA H0H 0H0
+CANADA
+E*TRADE from Morgan Stanley
+P.O. BOX 484
+JERSEY CITY, NJ 07303-0484
+(800)-387-2331
+This transaction is confirmed in accordance with the information provided on the Conditions and Disclosures page.
+Trade Date Settlement Date Quantity Price Settlement Amount
+11/01/2023 11/03/2023 123 200.01
+Transaction Type: Sold Short
+Description: FOOSYSTEMS INC
+Symbol / CUSIP / ISIN: FOO / 123456789 / US0123456789
+Principal $24,601.23
+Commission $3.91
+Supplemental
+Transaction Fee $0.21
+Net Amount $24,605.35
+Unsolicited trade
+Sell short exempt
+Morgan Stanley Smith Barney LLC acted as agent.
+2 of 2
+";
+
+        let tx = parse_post_ms_2023_trade_confirmation(
+            pdf_text,
+            &std::path::PathBuf::from("foo/bar/tconf.pdf"),
+        )
+        .unwrap();
+
+        assert_big_struct_eq(
+            tx,
+            BrokerTx {
+                security: s("FOO"),
+                trade_date: date("2023-11-01"),
+                settlement_date: date("2023-11-03"),
+                trade_date_and_time: s("11/01/2023"),
+                settlement_date_and_time: s("11/03/2023"),
+                action: TxAction::Sell,
+                amount_per_share: dec!(200.01),
+                num_shares: dec!(123),
+                commission: dec!(4.12),
                 currency: crate::portfolio::Currency::usd(),
                 memo: s(""),
                 exchange_rate: None,
