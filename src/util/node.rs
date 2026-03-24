@@ -22,8 +22,7 @@ pub fn run_node_script_file(
     })?;
 
     let node_modules = NODE_MODULES_PATH.ok_or_else(|| {
-        "Node modules path not configured. Rebuild with fnm available."
-            .to_string()
+        "Node modules path not configured. Rebuild with fnm available.".to_string()
     })?;
 
     let child = Command::new(node_bin)
@@ -55,8 +54,7 @@ pub fn run_node_script(script: &str) -> Result<String, SError> {
     })?;
 
     let node_modules = NODE_MODULES_PATH.ok_or_else(|| {
-        "Node modules path not configured. Rebuild with fnm available."
-            .to_string()
+        "Node modules path not configured. Rebuild with fnm available.".to_string()
     })?;
 
     let child = Command::new(node_bin)

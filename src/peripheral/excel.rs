@@ -5,7 +5,9 @@ use std::{
     str::FromStr,
 };
 
-use calamine::{open_workbook_auto, open_workbook_auto_from_rs, Data, Range, Reader, Rows};
+use calamine::{
+    open_workbook_auto, open_workbook_auto_from_rs, Data, Range, Reader, Rows,
+};
 use rust_decimal::{prelude::FromPrimitive, Decimal};
 
 use crate::util::basic::SError;
@@ -137,9 +139,7 @@ where
                 Sheet name must be specified"
             ));
         }
-        sheet_names
-            .get(0)
-            .ok_or_else(|| "Workbook has no sheets".to_string())?
+        sheet_names.get(0).ok_or_else(|| "Workbook has no sheets".to_string())?
     };
 
     workbook.worksheet_range(sheet).map_err(|e| format!("{e}"))
