@@ -30,15 +30,24 @@ pub struct FileDetectResult {
 
 impl FileDetectResult {
     fn ok(kind: FileKind) -> Self {
-        FileDetectResult { kind, warning: None }
+        FileDetectResult {
+            kind,
+            warning: None,
+        }
     }
 
     fn unknown(warning: String) -> Self {
-        FileDetectResult { kind: FileKind::Unknown, warning: Some(warning) }
+        FileDetectResult {
+            kind: FileKind::Unknown,
+            warning: Some(warning),
+        }
     }
 
     fn unknown_bare() -> Self {
-        FileDetectResult { kind: FileKind::Unknown, warning: None }
+        FileDetectResult {
+            kind: FileKind::Unknown,
+            warning: None,
+        }
     }
 }
 
@@ -57,22 +66,16 @@ lazy_static! {
         r"STOCK\s+PLAN\s+(RELEASE|EXERCISE)\s+CONFIRMATION|Plan\s*(2014|ESP2)"
     )
     .unwrap();
-    static ref ETRADE_TRADE_CONF_PDF_PATTERN: regex::Regex =
-        regex::Regex::new(
-            r"TRADE\s*CONFIRMATION|This\s+transaction\s+is\s+confirmed"
-        )
-        .unwrap();
+    static ref ETRADE_TRADE_CONF_PDF_PATTERN: regex::Regex = regex::Regex::new(
+        r"TRADE\s*CONFIRMATION|This\s+transaction\s+is\s+confirmed"
+    )
+    .unwrap();
 }
 
 #[cfg(feature = "xlsx_read")]
 /// Questrade header columns we check for to identify a Questrade activities export.
-const QUESTRADE_REQUIRED_HEADERS: &[&str] = &[
-    "Transaction Date",
-    "Action",
-    "Symbol",
-    "Quantity",
-    "Account #",
-];
+const QUESTRADE_REQUIRED_HEADERS: &[&str] =
+    &["Transaction Date", "Action", "Symbol", "Quantity", "Account #"];
 
 /// Detect the kind of broker/ACB file from the given source.
 ///
@@ -85,9 +88,7 @@ pub fn detect_file_kind(
     source: FileDetectSource,
 ) -> Result<FileDetectResult, SError> {
     match source {
-        FileDetectSource::PdfPages(pages) => {
-            Ok(detect_from_pdf_text(pages))
-        }
+        FileDetectSource::PdfPages(pages) => Ok(detect_from_pdf_text(pages)),
         FileDetectSource::Path(path) => detect_from_path(path),
         FileDetectSource::Bytes { data, file_name } => {
             detect_from_bytes(data, file_name)
@@ -96,18 +97,11 @@ pub fn detect_file_kind(
 }
 
 fn file_extension(name: &str) -> &str {
-    Path::new(name)
-        .extension()
-        .and_then(|e| e.to_str())
-        .unwrap_or("")
+    Path::new(name).extension().and_then(|e| e.to_str()).unwrap_or("")
 }
 
 fn detect_from_path(path: &Path) -> Result<FileDetectResult, SError> {
-    let ext = path
-        .extension()
-        .and_then(|e| e.to_str())
-        .unwrap_or("")
-        .to_lowercase();
+    let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
 
     match ext.as_str() {
         "csv" => {
@@ -149,8 +143,7 @@ fn detect_from_bytes(
 }
 
 /// The minimum columns required to identify a CSV as an ACB TX file.
-const ACB_CSV_REQUIRED_COLS: &[&str] =
-    &[CsvCol::SECURITY, CsvCol::ACTION];
+const ACB_CSV_REQUIRED_COLS: &[&str] = &[CsvCol::SECURITY, CsvCol::ACTION];
 /// At least one of these date columns must be present.
 const ACB_CSV_DATE_COLS: &[&str] =
     &[CsvCol::TRADE_DATE, CsvCol::LEGACY_SETTLEMENT_DATE];
@@ -176,8 +169,7 @@ fn detect_csv(data: &[u8]) -> FileDetectResult {
         .copied()
         .collect();
 
-    let has_date_col =
-        ACB_CSV_DATE_COLS.iter().any(|c| headers.contains(*c));
+    let has_date_col = ACB_CSV_DATE_COLS.iter().any(|c| headers.contains(*c));
     if !has_date_col {
         missing.push(CsvCol::TRADE_DATE);
     }
@@ -186,11 +178,8 @@ fn detect_csv(data: &[u8]) -> FileDetectResult {
         return FileDetectResult::ok(FileKind::AcbTxCsv);
     }
 
-    let cols = missing
-        .iter()
-        .map(|c| format!("'{c}'"))
-        .collect::<Vec<_>>()
-        .join(", ");
+    let cols =
+        missing.iter().map(|c| format!("'{c}'")).collect::<Vec<_>>().join(", ");
     FileDetectResult::unknown(format!(
         "CSV is missing required ACB TX column(s): {cols}"
     ))
@@ -198,10 +187,7 @@ fn detect_csv(data: &[u8]) -> FileDetectResult {
 
 #[cfg(feature = "xlsx_read")]
 fn detect_excel(data: &[u8]) -> Result<FileDetectResult, SError> {
-    let sheet = crate::peripheral::excel::read_xl_data(
-        data.to_vec(),
-        None,
-    )?;
+    let sheet = crate::peripheral::excel::read_xl_data(data.to_vec(), None)?;
 
     let mut rows = sheet.rows();
     let first_row = match rows.next() {
@@ -218,9 +204,8 @@ fn detect_excel(data: &[u8]) -> Result<FileDetectResult, SError> {
         .collect();
 
     // Check for Questrade columns
-    let is_questrade = QUESTRADE_REQUIRED_HEADERS
-        .iter()
-        .all(|h| col_names.contains(*h));
+    let is_questrade =
+        QUESTRADE_REQUIRED_HEADERS.iter().all(|h| col_names.contains(*h));
     if is_questrade {
         return Ok(FileDetectResult::ok(FileKind::QuestradeExcel));
     }
@@ -261,18 +246,29 @@ mod tests {
 
     fn assert_ok(result: &FileDetectResult, expected: FileKind) {
         assert_kind(result, expected);
-        assert!(result.warning.is_none(), "unexpected warning: {:?}", result.warning);
+        assert!(
+            result.warning.is_none(),
+            "unexpected warning: {:?}",
+            result.warning
+        );
     }
 
     fn assert_unknown_with_warning(result: &FileDetectResult, substring: &str) {
         assert_kind(result, FileKind::Unknown);
         let w = result.warning.as_ref().expect("expected a warning");
-        assert!(w.contains(substring), "warning {w:?} should contain {substring:?}");
+        assert!(
+            w.contains(substring),
+            "warning {w:?} should contain {substring:?}"
+        );
     }
 
     fn assert_unknown_bare(result: &FileDetectResult) {
         assert_kind(result, FileKind::Unknown);
-        assert!(result.warning.is_none(), "unexpected warning: {:?}", result.warning);
+        assert!(
+            result.warning.is_none(),
+            "unexpected warning: {:?}",
+            result.warning
+        );
     }
 
     // -- CSV via Bytes --
@@ -280,42 +276,61 @@ mod tests {
     #[test]
     fn test_csv_acb_modern_headers() {
         let csv = "security,trade date,settlement date,action,shares,amount/share\nFOO,2024-01-01,,Buy,10,5.00\n";
-        let r = detect(FileDetectSource::Bytes { data: csv.as_bytes(), file_name: "txs.csv" });
+        let r = detect(FileDetectSource::Bytes {
+            data: csv.as_bytes(),
+            file_name: "txs.csv",
+        });
         assert_ok(&r, FileKind::AcbTxCsv);
     }
 
     #[test]
     fn test_csv_acb_legacy_date_header() {
-        let csv = "security,date,action,shares,amount/share\nFOO,2024-01-01,Buy,10,5.00\n";
-        let r = detect(FileDetectSource::Bytes { data: csv.as_bytes(), file_name: "txs.csv" });
+        let csv =
+            "security,date,action,shares,amount/share\nFOO,2024-01-01,Buy,10,5.00\n";
+        let r = detect(FileDetectSource::Bytes {
+            data: csv.as_bytes(),
+            file_name: "txs.csv",
+        });
         assert_ok(&r, FileKind::AcbTxCsv);
     }
 
     #[test]
     fn test_csv_acb_case_insensitive() {
         let csv = "Security,Trade Date,Action,Shares\nFOO,2024-01-01,Buy,10\n";
-        let r = detect(FileDetectSource::Bytes { data: csv.as_bytes(), file_name: "txs.csv" });
+        let r = detect(FileDetectSource::Bytes {
+            data: csv.as_bytes(),
+            file_name: "txs.csv",
+        });
         assert_ok(&r, FileKind::AcbTxCsv);
     }
 
     #[test]
     fn test_csv_missing_action_warns() {
         let csv = "security,trade date,shares\nFOO,2024-01-01,10\n";
-        let r = detect(FileDetectSource::Bytes { data: csv.as_bytes(), file_name: "txs.csv" });
+        let r = detect(FileDetectSource::Bytes {
+            data: csv.as_bytes(),
+            file_name: "txs.csv",
+        });
         assert_unknown_with_warning(&r, "'action'");
     }
 
     #[test]
     fn test_csv_missing_date_warns() {
         let csv = "security,action,shares\nFOO,Buy,10\n";
-        let r = detect(FileDetectSource::Bytes { data: csv.as_bytes(), file_name: "txs.csv" });
+        let r = detect(FileDetectSource::Bytes {
+            data: csv.as_bytes(),
+            file_name: "txs.csv",
+        });
         assert_unknown_with_warning(&r, "'trade date'");
     }
 
     #[test]
     fn test_csv_unrelated_csv_warns_all_missing() {
         let csv = "name,age,city\nAlice,30,Vancouver\n";
-        let r = detect(FileDetectSource::Bytes { data: csv.as_bytes(), file_name: "people.csv" });
+        let r = detect(FileDetectSource::Bytes {
+            data: csv.as_bytes(),
+            file_name: "people.csv",
+        });
         assert_unknown_with_warning(&r, "'security'");
         assert_unknown_with_warning(&r, "'action'");
         assert_unknown_with_warning(&r, "'trade date'");
@@ -323,7 +338,10 @@ mod tests {
 
     #[test]
     fn test_csv_empty() {
-        let r = detect(FileDetectSource::Bytes { data: b"", file_name: "empty.csv" });
+        let r = detect(FileDetectSource::Bytes {
+            data: b"",
+            file_name: "empty.csv",
+        });
         assert_unknown_bare(&r);
     }
 
@@ -332,7 +350,10 @@ mod tests {
     #[test]
     fn test_non_csv_extension_ignored() {
         let csv = "security,trade date,action,shares\nFOO,2024-01-01,Buy,10\n";
-        let r = detect(FileDetectSource::Bytes { data: csv.as_bytes(), file_name: "data.txt" });
+        let r = detect(FileDetectSource::Bytes {
+            data: csv.as_bytes(),
+            file_name: "data.txt",
+        });
         assert_unknown_bare(&r);
     }
 
@@ -349,54 +370,51 @@ mod tests {
 
     #[test]
     fn test_pdf_eso_benefit() {
-        let pages = vec![
-            "Employee ID: 5678\nSTOCK PLAN EXERCISE CONFIRMATION\nsome data".to_string(),
-        ];
+        let pages =
+            vec!["Employee ID: 5678\nSTOCK PLAN EXERCISE CONFIRMATION\nsome data"
+                .to_string()];
         let r = detect(FileDetectSource::PdfPages(&pages));
         assert_ok(&r, FileKind::EtradeBenefitPdf);
     }
 
     #[test]
     fn test_pdf_espp_benefit() {
-        let pages = vec![
-            "Some header\nPlan 2014\nESPP purchase details".to_string(),
-        ];
+        let pages =
+            vec!["Some header\nPlan 2014\nESPP purchase details".to_string()];
         let r = detect(FileDetectSource::PdfPages(&pages));
         assert_ok(&r, FileKind::EtradeBenefitPdf);
     }
 
     #[test]
     fn test_pdf_espp_benefit_esp2() {
-        let pages = vec![
-            "Some header\nPlan ESP2\nESPP purchase details".to_string(),
-        ];
+        let pages =
+            vec!["Some header\nPlan ESP2\nESPP purchase details".to_string()];
         let r = detect(FileDetectSource::PdfPages(&pages));
         assert_ok(&r, FileKind::EtradeBenefitPdf);
     }
 
     #[test]
     fn test_pdf_pre_ms_trade_confirmation() {
-        let pages = vec![
-            "Employee ID: 1111\nTRADE CONFIRMATION\nPage 1 of 2".to_string(),
-        ];
+        let pages =
+            vec!["Employee ID: 1111\nTRADE CONFIRMATION\nPage 1 of 2".to_string()];
         let r = detect(FileDetectSource::PdfPages(&pages));
         assert_ok(&r, FileKind::EtradeTradeConfirmationPdf);
     }
 
     #[test]
     fn test_pdf_post_ms_trade_confirmation() {
-        let pages = vec![
-            "Morgan Stanley\nThis transaction is confirmed\nDetails follow".to_string(),
-        ];
+        let pages =
+            vec!["Morgan Stanley\nThis transaction is confirmed\nDetails follow"
+                .to_string()];
         let r = detect(FileDetectSource::PdfPages(&pages));
         assert_ok(&r, FileKind::EtradeTradeConfirmationPdf);
     }
 
     #[test]
     fn test_pdf_unknown_has_warning() {
-        let pages = vec![
-            "Just some random PDF content\nNothing broker-related here".to_string(),
-        ];
+        let pages =
+            vec!["Just some random PDF content\nNothing broker-related here"
+                .to_string()];
         let r = detect(FileDetectSource::PdfPages(&pages));
         assert_unknown_with_warning(&r, "PDF");
     }
@@ -422,9 +440,8 @@ mod tests {
 
     #[test]
     fn test_pdf_benefit_priority_over_trade_conf() {
-        let pages = vec![
-            "STOCK PLAN RELEASE CONFIRMATION\nTRADE CONFIRMATION".to_string(),
-        ];
+        let pages =
+            vec!["STOCK PLAN RELEASE CONFIRMATION\nTRADE CONFIRMATION".to_string()];
         let r = detect(FileDetectSource::PdfPages(&pages));
         assert_ok(&r, FileKind::EtradeBenefitPdf);
     }

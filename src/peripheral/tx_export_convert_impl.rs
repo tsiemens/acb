@@ -84,9 +84,7 @@ pub fn convert_xl_txs(
     let rg = read_xl_source(source, sheet)?;
 
     let tx_res = match broker {
-        BrokerArg::Questrade => {
-            questrade::sheet_to_txs(&rg, source_path.as_deref())
-        }
+        BrokerArg::Questrade => questrade::sheet_to_txs(&rg, source_path.as_deref()),
     };
 
     let (mut txs, non_fatal_errors) = match tx_res {
