@@ -3,13 +3,14 @@ import { AcbAppRunMode, AppFunctionMode } from "./common/acb_app_types.js";
 import { fileBytesToString, loadFilesAsBytes } from "./file_reader.js";
 import { FileEntry, FileKind, getFileManagerStore, modifyDrawerNotificationForUserAddedFiles } from './vue/file_manager_store.js';
 import { loadTestFile } from "./debug.js";
-import { run_acb, run_acb_summary, detect_file_kind } from './pkg/acb_wasm.js';
+import { run_acb, run_acb_summary, detect_file_kind, detect_file_kind_from_pdf_pages } from './pkg/acb_wasm.js';
 import { Result } from "./result.js";
 import { AppExportResultOk, AppResultOk, AppSummaryResultOk, RenderTable } from "./acb_wasm_types.js";
 import { getOutputStore, setAppFunctionViewMode } from "./vue/output_store.js";
 import { getAppInputStore, getSummaryDate } from "./vue/app_input_store.js";
 import { ErrorBox } from "./vue/error_box_store.js";
 import { downloadCsv, makeZipAndDownload } from "./download_utils.js";
+import { extractPdfPages } from "./pdf_text_util.js";
 
 class CommonRunOptions {
    constructor(
@@ -218,6 +219,35 @@ function detectFileKindFromBytes(data: Uint8Array, fileName: string): FileDetect
    return { kind, warning };
 }
 
+function isPdfFileName(name: string): boolean {
+   return name.toLowerCase().endsWith('.pdf');
+}
+
+async function detectAndUpdatePdfEntry(entry: FileEntry): Promise<void> {
+   try {
+      const pages = await extractPdfPages(entry.data.buffer as ArrayBuffer);
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+      const wasmResult = detect_file_kind_from_pdf_pages(pages);
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+      const kind: FileKind = WASM_FILE_KIND_MAP[wasmResult.kind as string] ?? FileKind.GenericPdf;
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+      const warning: string | undefined = wasmResult.warning as string | undefined;
+
+      entry.kind = kind;
+      entry.pdfPageTexts = pages;
+      entry.useChecked = warning ? false : FileKind.isInput(kind);
+      if (warning) {
+         entry.warning = warning;
+      }
+   } catch (err) {
+      const errMsg = typeof err === 'string' ? err : (err instanceof Error ? err.message : String(err));
+      entry.warning = `PDF extraction failed: ${errMsg}`;
+      entry.useChecked = false;
+   }
+   entry.isDetecting = false;
+   console.debug(`Finished detecting file: ${entry.name}: kind=${entry.kind}, warning=${entry.warning}`);
+}
+
 // NOTE (until refactoring is done): This adds files to the new
 // file manager drawer.
 export function loadAndAddFilesToFileManager(fileList: FileList): void {
@@ -225,18 +255,34 @@ export function loadAndAddFilesToFileManager(fileList: FileList): void {
    loadFilesAsBytes(files, (results) => {
       const store = getFileManagerStore();
       results.forEach((result) => {
-         // Prefer the file-read error if present; otherwise use the
-         // detection warning (e.g. "missing column 'action'").
-         const detectResult = detectFileKindFromBytes(result.data, result.name);
-         const warning = result.error ?? detectResult.warning;
-         store.addFile({
-            name: result.name,
-            kind: detectResult.kind,
-            isDownloadable: false,
-            useChecked: warning ? false : FileKind.isInput(detectResult.kind),
-            data: result.data,
-            warning,
-         });
+         if (isPdfFileName(result.name)) {
+            // Add as GenericPdf immediately, then detect asynchronously.
+            const entry = store.addFile({
+               name: result.name,
+               kind: FileKind.GenericPdf,
+               isDownloadable: false,
+               useChecked: false,
+               data: result.data,
+               warning: result.error,
+               isDetecting: !result.error,
+            });
+            if (!result.error) {
+               detectAndUpdatePdfEntry(entry)
+                  .catch((err: unknown) => { console.error('PDF detect error:', err); });
+            }
+         } else {
+            // Non-PDF: detect synchronously from bytes.
+            const detectResult = detectFileKindFromBytes(result.data, result.name);
+            const warning = result.error ?? detectResult.warning;
+            store.addFile({
+               name: result.name,
+               kind: detectResult.kind,
+               isDownloadable: false,
+               useChecked: warning ? false : FileKind.isInput(detectResult.kind),
+               data: result.data,
+               warning,
+            });
+         }
       });
       modifyDrawerNotificationForUserAddedFiles(store);
    });

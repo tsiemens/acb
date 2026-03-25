@@ -29,7 +29,8 @@ const disabled = computed(() =>
       f.useChecked &&
       !f.warning &&
       props.store.relevantInputKinds.has(f.kind)
-   )
+   ) ||
+   props.store.files.some(f => f.isDetecting)
 );
 
 const primaryOption = RUN_MODE_OPTIONS[0];
