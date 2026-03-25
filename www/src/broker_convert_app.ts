@@ -1,6 +1,6 @@
 import Papa from 'papaparse';
 import { AcbAppRunMode } from './common/acb_app_types.js';
-import { convert_xl_to_csv } from './pkg/acb_wasm.js';
+import { convert_xl_to_csv, convert_etrade_pdfs_to_csv } from './pkg/acb_wasm.js';
 import { fileBaseName, mustGet } from './basic_utils.js';
 import { RenderTable } from './acb_wasm_types.js';
 import { downloadSelectedFiles } from './download_utils.js';
@@ -18,6 +18,19 @@ function xlConvertResultFromJsValue(val: any): XlConvertResult {
    return {
       csvText: mustGet(val, 'csvText'),
       nonFatalErrors: mustGet(val, 'nonFatalErrors'),
+   };
+}
+
+interface EtradeConvertResult {
+   csvText: string;
+   warnings: string[];
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function etradeConvertResultFromJsValue(val: any): EtradeConvertResult {
+   return {
+      csvText: mustGet(val, 'csvText'),
+      warnings: mustGet(val, 'warnings'),
    };
 }
 
@@ -40,11 +53,16 @@ export function runHandler(mode: AcbAppRunMode): void {
    const xlsxFiles = fileStore.files.filter(
       f => f.kind === FileKind.QuestradeXlsx && f.useChecked && !f.warning
    );
+   const etradePdfFiles = fileStore.files.filter(
+      f => (f.kind === FileKind.EtradeTradeConfirmationPdf ||
+            f.kind === FileKind.EtradeBenefitPdf) &&
+           f.useChecked && !f.warning
+   );
 
-   if (xlsxFiles.length === 0) {
+   if (xlsxFiles.length === 0 && etradePdfFiles.length === 0) {
       ErrorBox.getBrokerConvert().showWith({
          title: 'No Valid Files',
-         descPre: 'Please add and select at least one valid xlsx file before running (use the file manager drawer).',
+         descPre: 'Please add and select at least one valid xlsx or E*TRADE PDF file before running (use the file manager drawer).',
       });
       return;
    }
@@ -54,6 +72,7 @@ export function runHandler(mode: AcbAppRunMode): void {
    const namedTables: NamedTable[] = [];
    const allCsvTexts: string[] = [];
 
+   // Process Questrade XLSX files
    for (const entry of xlsxFiles) {
       try {
          // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
@@ -88,6 +107,52 @@ export function runHandler(mode: AcbAppRunMode): void {
          ErrorBox.getBrokerConvert().showWith({
             title: 'Conversion Error',
             descPre: `An error occurred while converting ${entry.name}:`,
+            errorText: errMsg,
+         });
+         return;
+      }
+   }
+
+   // Process E*TRADE PDF files
+   if (etradePdfFiles.length > 0) {
+      try {
+         // pdfPageTexts is always set before run (isDetecting gate on Run button).
+         // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+         const pdfTexts = etradePdfFiles.map(f => f.pdfPageTexts!.join('\n'));
+         const fileNames = etradePdfFiles.map(f => f.name);
+
+         // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+         const jsRet = convert_etrade_pdfs_to_csv(pdfTexts, fileNames, true);
+         const result = etradeConvertResultFromJsValue(jsRet);
+
+         if (result.warnings.length > 0) {
+            allNonFatalErrors.push(
+               ...result.warnings.map(w => `E*TRADE: ${w}`)
+            );
+         }
+
+         const csvName = 'etrade_transactions.csv';
+         namedTables.push({
+            name: csvName,
+            table: csvTextToRenderTable(result.csvText),
+         });
+         allCsvTexts.push(result.csvText);
+
+         const encoder = new TextEncoder();
+         const addedFile = fileStore.addFile({
+            name: csvName,
+            kind: FileKind.AcbTxCsv,
+            isDownloadable: true,
+            useChecked: true,
+            data: encoder.encode(result.csvText),
+         });
+         addedFileIds.push(addedFile.id);
+      } catch (err) {
+         const errMsg = typeof err === 'string' ? err : (err instanceof Error ? err.message : String(err));
+         console.error('convert_etrade_pdfs_to_csv error: ', err);
+         ErrorBox.getBrokerConvert().showWith({
+            title: 'E*TRADE Conversion Error',
+            descPre: 'An error occurred while converting E*TRADE PDFs:',
             errorText: errMsg,
          });
          return;

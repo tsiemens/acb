@@ -20,6 +20,7 @@ export default defineConfig({
         semicolons: false // Insert newlines instead of semicolons
       }
     },
+    chunkSizeWarningLimit: 1500,
     sourcemap: true,
     outDir: 'dist/js',
     assetsDir: 'assets',

@@ -9,6 +9,7 @@ export enum FileKind {
    EtradeBenefitsExcel = 'EtradeBenefitsExcel',
    OutputText  = 'OutputText',
    AcbOutputZip = 'AcbOutputZip',
+   GenericPdf  = 'GenericPdf',
    Other       = 'Other',
 }
 
@@ -26,6 +27,7 @@ const FILE_KIND_META: Record<FileKind, FileKindMeta> = {
    [FileKind.EtradeBenefitsExcel]:        { label: 'E*TRADE Benefits xlsx', isInput: true,  isDownloadableDefault: false },
    [FileKind.OutputText]:                 { label: 'Text',                 isInput: false, isDownloadableDefault: true  },
    [FileKind.AcbOutputZip]:               { label: 'ACB Output',           isInput: false, isDownloadableDefault: true  },
+   [FileKind.GenericPdf]:                 { label: 'PDF',                  isInput: false, isDownloadableDefault: false },
    [FileKind.Other]:                      { label: 'Other',                isInput: false, isDownloadableDefault: false },
 };
 
@@ -52,6 +54,10 @@ export interface FileEntry {
    isSelected: boolean;
    warning?: string;     // Set when an error is detected reading/processing the file
    data: Uint8Array;
+   /** Pre-extracted PDF page texts (set during file load for PDF files). */
+   pdfPageTexts?: string[];
+   /** True while async PDF detection is in progress. */
+   isDetecting?: boolean;
 }
 
 export interface FileManagerState {
@@ -128,11 +134,38 @@ export function modifyDrawerNotificationForUserAddedFiles(store: FileManagerStat
    }
 }
 
+/** If `name` already exists among `existingNames`, return a deduplicated
+ *  version by appending " (N)" before the extension (or at the end if there
+ *  is no extension).  E.g. "foo.csv" → "foo (2).csv", "bar" → "bar (2)".
+ *  Increments N until the result is unique. */
+export function deduplicateFileName(name: string, existingNames: Set<string>): string {
+   if (!existingNames.has(name)) {
+      return name;
+   }
+
+   const dotIdx = name.lastIndexOf('.');
+   const stem = dotIdx > 0 ? name.slice(0, dotIdx) : name;
+   const ext  = dotIdx > 0 ? name.slice(dotIdx) : '';
+
+   for (let n = 2; ; n++) {
+      const candidate = `${stem} (${n})${ext}`;
+      if (!existingNames.has(candidate)) {
+         return candidate;
+      }
+   }
+}
+
 export function addFile(
    state: FileManagerState,
    entry: Omit<FileEntry, 'id' | 'isSelected'>,
 ): FileEntry {
-   const file: FileEntry = { ...entry, id: nextId++, isSelected: false };
+   const existingNames = new Set(state.files.map((f) => f.name));
+   const name = deduplicateFileName(entry.name, existingNames);
+   const file: FileEntry = { ...entry, name, id: nextId++, isSelected: false };
    state.files.push(file);
-   return file;
+   // Return the reactive proxy (last element), not the raw object.
+   // Mutations on the raw object bypass Vue's reactivity tracking.
+   // (Typescript doesn't distinguish between Proxy<T> and T, but the
+   // runtime objects are different.)
+   return state.files[state.files.length - 1];
 }

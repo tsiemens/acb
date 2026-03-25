@@ -74,6 +74,7 @@ const activeInputCount = computed(() =>
 );
 
 const hasWarnings = computed(() => props.store.files.some((f) => f.warning));
+const anyDetecting = computed(() => props.store.files.some((f) => f.isDetecting));
 
 // --- Actions ---
 
@@ -169,6 +170,10 @@ function removeSelected() {
                class="fm-notification-dot"
                title="Files were updated"
             ></span>
+            <span v-if="anyDetecting" class="fm-scanning">
+               <span class="fm-spinner"></span>
+               Scanning files…
+            </span>
          </div>
          <button
             class="fm-toggle-btn"
@@ -318,6 +323,7 @@ function removeSelected() {
                      <td class="fm-col-tags">
                         <span v-if="activeKindFilter === null" class="fm-tag">
                            {{ FileKind.label(file.kind) }}
+                           <span v-if="file.isDetecting" class="fm-detecting" title="Detecting file type...">...</span>
                         </span>
                         <span
                            v-if="file.isDownloadable"
@@ -403,6 +409,29 @@ function removeSelected() {
    background-color: #ffcc00;
    box-shadow: 0 0 4px rgba(255, 204, 0, 0.7);
    margin-left: 2px;
+}
+
+.fm-scanning {
+   display: inline-flex;
+   align-items: center;
+   gap: 4px;
+   font-size: 11px;
+   color: rgba(255, 255, 255, 0.75);
+   margin-left: 6px;
+}
+
+.fm-spinner {
+   display: inline-block;
+   width: 10px;
+   height: 10px;
+   border: 1.5px solid rgba(255, 255, 255, 0.3);
+   border-top-color: rgba(255, 255, 255, 0.85);
+   border-radius: 50%;
+   animation: fm-spin 0.8s linear infinite;
+}
+
+@keyframes fm-spin {
+   to { transform: rotate(360deg); }
 }
 
 .fm-toggle-btn {
