@@ -3,7 +3,7 @@ mod common;
 use std::{fs, io::Read, path::Path};
 
 use acb::{
-    peripheral::etrade_plan_pdf_tx_extract_impl::{run_with_args, Args},
+    peripheral::etrade_plan_pdf_tx_extract_cmd::{run_with_args, Args},
     util::rw::WriteHandle,
 };
 

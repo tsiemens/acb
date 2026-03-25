@@ -90,23 +90,12 @@ fn install_python_venv() {
         }
     }
 
-    // Generate Rust file with constants
-    let venv_constants = format!(
-        r#"
-pub const VENV_PATH: &str = "{}";
-pub const PIP_PATH: &str = "{}";
-pub const PYTHON_BIN_PATH: &str = "{}";
-"#,
-        venv_path.display(),
-        pip_path.display(),
-        python_path.display()
+    write_venv_constants(
+        &out_dir,
+        &venv_path.display().to_string(),
+        &pip_path.display().to_string(),
+        &python_path.display().to_string(),
     );
-
-    fs::write(
-        Path::new(&out_dir).join("venv_constants.rs"),
-        venv_constants,
-    )
-    .expect("Failed to write venv_constants.rs");
 }
 
 /// Get the repo root from OUT_DIR.
@@ -191,17 +180,7 @@ fn install_node_modules(emit_verbose_warnings: bool) {
                  Node.js PDF reader (pdfjs-dist) will not be functional. \
                  Run 'cargo install fnm' to enable it."
             );
-            // Write a constants file indicating node is not available
-            let node_constants = r#"
-pub const NODE_BIN_PATH: Option<&str> = None;
-pub const NODE_MODULES_PATH: Option<&str> = None;
-pub const NODE_REPO_ROOT: Option<&str> = None;
-"#;
-            fs::write(
-                Path::new(&out_dir).join("node_constants.rs"),
-                node_constants,
-            )
-            .expect("Failed to write node_constants.rs");
+            write_node_constants(&out_dir, None, None, None);
             return;
         }
     };
@@ -273,43 +252,63 @@ pub const NODE_REPO_ROOT: Option<&str> = None;
 
     if !status.success() {
         println!("cargo::warning=npm install for pdfjs-dist failed. Node.js PDF reader will not be functional.");
-        let node_constants = r#"
-pub const NODE_BIN_PATH: Option<&str> = None;
-pub const NODE_MODULES_PATH: Option<&str> = None;
-pub const NODE_REPO_ROOT: Option<&str> = None;
-"#;
-        fs::write(
-            Path::new(&out_dir).join("node_constants.rs"),
-            node_constants,
-        )
-        .expect("Failed to write node_constants.rs");
+        write_node_constants(&out_dir, None, None, None);
         return;
     }
 
     let node_modules_path = node_env_dir.join("node_modules");
 
-    // Generate Rust file with constants
-    let node_constants = format!(
-        r#"
-pub const NODE_BIN_PATH: Option<&str> = Some("{}");
-pub const NODE_MODULES_PATH: Option<&str> = Some("{}");
-pub const NODE_REPO_ROOT: Option<&str> = Some("{}");
-"#,
-        node_bin_path.display(),
-        node_modules_path.display(),
-        repo_root.display()
+    write_node_constants(
+        &out_dir,
+        Some(&node_bin_path.display().to_string()),
+        Some(&node_modules_path.display().to_string()),
+        Some(&repo_root.display().to_string()),
     );
+}
 
-    fs::write(
-        Path::new(&out_dir).join("node_constants.rs"),
-        node_constants,
-    )
-    .expect("Failed to write node_constants.rs");
+fn write_venv_constants(out_dir: &str, venv_path: &str, pip_path: &str, python_bin_path: &str) {
+    let content = format!(
+        r#"pub const VENV_PATH: &str = "{venv_path}";
+pub const PIP_PATH: &str = "{pip_path}";
+pub const PYTHON_BIN_PATH: &str = "{python_bin_path}";
+"#
+    );
+    fs::write(Path::new(out_dir).join("venv_constants.rs"), content)
+        .expect("Failed to write venv_constants.rs");
+}
+
+fn write_node_constants(
+    out_dir: &str,
+    node_bin_path: Option<&str>,
+    node_modules_path: Option<&str>,
+    node_repo_root: Option<&str>,
+) {
+    let fmt = |v: Option<&str>| match v {
+        Some(s) => format!("Some(\"{s}\")"),
+        None => "None".to_string(),
+    };
+    let content = format!(
+        r#"pub const NODE_BIN_PATH: Option<&str> = {};
+pub const NODE_MODULES_PATH: Option<&str> = {};
+pub const NODE_REPO_ROOT: Option<&str> = {};
+"#,
+        fmt(node_bin_path),
+        fmt(node_modules_path),
+        fmt(node_repo_root),
+    );
+    fs::write(Path::new(out_dir).join("node_constants.rs"), content)
+        .expect("Failed to write node_constants.rs");
 }
 
 fn main() {
+    let target = env::var("TARGET").unwrap_or_default();
     let emit_verbose_warnings = env::var("BUILD_RS_WARN_VERBOSE").is_ok();
-    install_python_venv();
-    install_node_modules(emit_verbose_warnings);
+
+    // Python venv and node modules are only needed for native builds, not WASM.
+    if !target.contains("wasm") {
+        install_python_venv();
+        install_node_modules(emit_verbose_warnings);
+    }
+
     println!("cargo::rerun-if-changed=build.rs");
 }

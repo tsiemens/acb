@@ -49,22 +49,10 @@ pub fn get_acb_version() -> String {
     acb::app::ACB_APP_VERSION.to_string()
 }
 
-/// Detect the kind of broker/ACB file from raw bytes and a file name.
-///
-/// Returns a `{ kind: string, warning?: string }` object.
-/// `kind` is a tag like "AcbTxCsv", "QuestradeExcel", "Unknown", etc.
-/// `warning` is an optional hint explaining why detection returned Unknown.
-#[wasm_bindgen]
-pub fn detect_file_kind(data: &[u8], file_name: &str) -> JsValue {
-    use acb::peripheral::broker::{
-        detect_file_kind as detect, FileDetectResult, FileDetectSource, FileKind,
-    };
-
-    let result = detect(FileDetectSource::Bytes { data, file_name })
-        .unwrap_or(FileDetectResult {
-            kind: FileKind::Unknown,
-            warning: None,
-        });
+fn file_detect_result_to_js(
+    result: acb::peripheral::broker::FileDetectResult,
+) -> JsValue {
+    use acb::peripheral::broker::FileKind;
 
     let kind_str = match result.kind {
         FileKind::AcbTxCsv => "AcbTxCsv",
@@ -91,6 +79,77 @@ pub fn detect_file_kind(data: &[u8], file_name: &str) -> JsValue {
         .unwrap();
     }
     js_obj.into()
+}
+
+fn run_file_detect(
+    source: acb::peripheral::broker::FileDetectSource,
+) -> JsValue {
+    use acb::peripheral::broker::{
+        detect_file_kind as detect, FileDetectResult, FileKind,
+    };
+
+    let result = detect(source).unwrap_or(FileDetectResult {
+        kind: FileKind::Unknown,
+        warning: None,
+    });
+    file_detect_result_to_js(result)
+}
+
+/// Detect the kind of broker/ACB file from raw bytes and a file name.
+///
+/// Returns a `{ kind: string, warning?: string }` object.
+/// `kind` is a tag like "AcbTxCsv", "QuestradeExcel", "Unknown", etc.
+/// `warning` is an optional hint explaining why detection returned Unknown.
+#[wasm_bindgen]
+pub fn detect_file_kind(data: &[u8], file_name: &str) -> JsValue {
+    use acb::peripheral::broker::FileDetectSource;
+    run_file_detect(FileDetectSource::Bytes { data, file_name })
+}
+
+/// Detect the kind of PDF from pre-extracted page texts.
+///
+/// Returns a `{ kind: string, warning?: string }` object, same shape as
+/// `detect_file_kind`.
+#[wasm_bindgen]
+pub fn detect_file_kind_from_pdf_pages(pages: Vec<String>) -> JsValue {
+    use acb::peripheral::broker::FileDetectSource;
+    run_file_detect(FileDetectSource::PdfPages(&pages))
+}
+
+/// Convert E*TRADE PDF texts to ACB-format CSV.
+///
+/// `pdf_texts` contains the full text of each PDF, `file_names` has
+/// corresponding file names (used for error context).
+///
+/// Returns an `EtradeConvertResult` with `csvText`, `warnings`, and
+/// `nonFatalErrors` fields, or an error string on fatal failure.
+#[wasm_bindgen]
+pub fn convert_etrade_pdfs_to_csv(
+    pdf_texts: Vec<String>,
+    file_names: Vec<String>,
+    generate_fx: bool,
+) -> Result<JsValue, JsValue> {
+    use acb::peripheral::etrade_plan_pdf_tx_extract_impl::convert_etrade_pdf_texts;
+
+    if pdf_texts.len() != file_names.len() {
+        return Err(JsValue::from_str("pdf_texts and file_names must have the same length"));
+    }
+
+    let mut pairs: Vec<(String, String)> = pdf_texts
+        .into_iter()
+        .zip(file_names)
+        .collect();
+    // Sort by filename for deterministic output order.
+    pairs.sort_by(|a, b| a.1.cmp(&b.1));
+
+    let result = convert_etrade_pdf_texts(&pairs, generate_fx)
+        .map_err(|errs| JsValue::from_str(&errs.join("\n")))?;
+
+    let convert_result = app_shim::EtradeConvertResult {
+        csv_text: result.csv_text,
+        warnings: result.warnings,
+    };
+    Ok(serde_wasm_bindgen::to_value(&convert_result)?)
 }
 
 fn get_csv_readers(
