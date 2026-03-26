@@ -18,6 +18,40 @@
         </div>
       </div>
     </div>
+
+    <div v-if="tabStore.activeTab === TabId.BrokerConvert" class="options-section">
+      <h3>Options</h3>
+
+      <div class="option-group">
+        <div class="checkbox-container">
+          <input
+            type="checkbox"
+            id="extractOnlyCheckbox"
+            :checked="appInputStore.extractOnly"
+            @change="onExtractOnlyChange"
+          >
+          <label
+            for="extractOnlyCheckbox"
+            title="Only extract raw data from PDFs without matching benefits to trade confirmations. Only affects E*TRADE benefit PDF extraction."
+          >Raw PDF extract only</label>
+        </div>
+      </div>
+
+      <div class="option-group">
+        <div class="checkbox-container">
+          <input
+            type="checkbox"
+            id="noFxCheckbox"
+            :checked="appInputStore.noFx"
+            @change="onNoFxChange"
+          >
+          <label
+            for="noFxCheckbox"
+            title="Do not generate implicit foreign exchange (eg. USD.FX) transactions from the output."
+          >No FX transactions</label>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -41,7 +75,18 @@ export default defineComponent({
          appInputStore.printFullValues = (event.target as HTMLInputElement).checked;
       }
 
-      return { sidebarInfoStore, appInputStore, tabStore, TabId, onPrintFullChange };
+      function onExtractOnlyChange(event: Event) {
+         appInputStore.extractOnly = (event.target as HTMLInputElement).checked;
+      }
+
+      function onNoFxChange(event: Event) {
+         appInputStore.noFx = (event.target as HTMLInputElement).checked;
+      }
+
+      return {
+         sidebarInfoStore, appInputStore, tabStore, TabId,
+         onPrintFullChange, onExtractOnlyChange, onNoFxChange,
+      };
    },
 });
 </script>

@@ -5,6 +5,7 @@ use rust_decimal::Decimal;
 
 use super::broker::{etrade::BenefitEntry, BrokerTx, FxTracker};
 use crate::peripheral::broker::etrade;
+use crate::portfolio::render::RenderTable;
 use crate::portfolio::{CsvTx, Currency, TxAction};
 use crate::util::basic::SError;
 
@@ -349,6 +350,131 @@ pub(super) fn amend_benefit_sales(
     } else {
         Err(errors)
     }
+}
+
+/// Result of extracting raw E*TRADE PDF data without harmonization.
+pub struct EtradeExtractResult {
+    pub benefits_table: RenderTable,
+    pub trades_table: RenderTable,
+}
+
+fn display_opt<T: std::fmt::Display>(val: &Option<T>) -> String {
+    val.as_ref().map_or("".to_string(), |v| v.to_string())
+}
+
+fn benefits_to_render_table(benefits: &[BenefitEntry]) -> RenderTable {
+    let mut rt = RenderTable::default();
+    rt.header = vec![
+        "security",
+        "acquire_tx_date",
+        "acquire_settle_date",
+        "acquire_share_price",
+        "acquire_shares",
+        "sell_to_cover_tx_date",
+        "sell_to_cover_settle_date",
+        "sell_to_cover_price",
+        "sell_to_cover_shares",
+        "sell_to_cover_fee",
+        "plan_note",
+        "sell_note",
+        "filename",
+    ]
+    .into_iter()
+    .map(String::from)
+    .collect();
+
+    for b in benefits {
+        rt.rows.push(vec![
+            b.security.clone(),
+            b.acquire_tx_date.to_string(),
+            b.acquire_settle_date.to_string(),
+            b.acquire_share_price.to_string(),
+            b.acquire_shares.to_string(),
+            display_opt(&b.sell_to_cover_tx_date),
+            display_opt(&b.sell_to_cover_settle_date),
+            display_opt(&b.sell_to_cover_price),
+            display_opt(&b.sell_to_cover_shares),
+            display_opt(&b.sell_to_cover_fee),
+            b.plan_note.clone(),
+            display_opt(&b.sell_note),
+            b.filename.clone(),
+        ]);
+    }
+    rt
+}
+
+fn trades_to_render_table(trade_confs: &[BrokerTx]) -> RenderTable {
+    let mut rt = RenderTable::default();
+    rt.header = vec![
+        "security",
+        "trade_date",
+        "settlement_date",
+        "action",
+        "amount_per_share",
+        "num_shares",
+        "commission",
+        "currency",
+        "memo",
+        "exchange_rate",
+        "affiliate",
+        "row_num",
+        "account",
+        "sort_tiebreak",
+        "filename",
+    ]
+    .into_iter()
+    .map(String::from)
+    .collect();
+
+    for t in trade_confs {
+        rt.rows.push(vec![
+            t.security.clone(),
+            format!("{} ({})", t.trade_date, t.trade_date_and_time),
+            format!("{} ({})", t.settlement_date, t.settlement_date_and_time),
+            t.action.to_string(),
+            t.amount_per_share.to_string(),
+            t.num_shares.to_string(),
+            t.commission.to_string(),
+            t.currency.to_string(),
+            t.memo.clone(),
+            display_opt(&t.exchange_rate),
+            t.affiliate.name().to_string(),
+            t.row_num.to_string(),
+            t.account.memo_str(),
+            display_opt(&t.sort_tiebreak),
+            display_opt(&t.filename),
+        ]);
+    }
+    rt
+}
+
+/// Extract raw E*TRADE PDF data without harmonizing benefits and trades.
+///
+/// Returns two RenderTables: one for benefits and one for trade confirmations.
+pub fn extract_etrade_pdf_raw_data(
+    pdf_texts: &[(String, String)],
+) -> Result<EtradeExtractResult, Vec<SError>> {
+    let mut benefits: Vec<BenefitEntry> = Vec::new();
+    let mut trade_confs: Vec<BrokerTx> = Vec::new();
+
+    for (text, filename) in pdf_texts {
+        let filepath = PathBuf::from(filename);
+        let pdf_content = etrade::parse_pdf_text(text, &filepath)
+            .map_err(|e| vec![format!("Failed to parse {filename}: {e}")])?;
+        match pdf_content {
+            etrade::EtradePdfContent::BenefitConfirmation(mut bs) => {
+                benefits.append(&mut bs);
+            }
+            etrade::EtradePdfContent::TradeConfirmation(mut txs) => {
+                trade_confs.append(&mut txs);
+            }
+        }
+    }
+
+    Ok(EtradeExtractResult {
+        benefits_table: benefits_to_render_table(&benefits),
+        trades_table: trades_to_render_table(&trade_confs),
+    })
 }
 
 /// Result of converting E*TRADE PDF texts to ACB CSV.

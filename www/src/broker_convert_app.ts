@@ -1,12 +1,13 @@
 import Papa from 'papaparse';
 import { AcbAppRunMode } from './common/acb_app_types.js';
-import { convert_xl_to_csv, convert_etrade_pdfs_to_csv } from './pkg/acb_wasm.js';
+import { convert_xl_to_csv, convert_etrade_pdfs_to_csv, extract_etrade_pdf_data } from './pkg/acb_wasm.js';
 import { fileBaseName, mustGet } from './basic_utils.js';
 import { RenderTable } from './acb_wasm_types.js';
 import { downloadSelectedFiles } from './download_utils.js';
 import { FileKind, getFileManagerStore, modifyDrawerNotificationForUserAddedFiles } from './vue/file_manager_store.js';
 import { getBrokerConvertOutputStore, type NamedTable } from './vue/broker_convert_output_store.js';
 import { ErrorBox } from './vue/error_box_store.js';
+import { getAppInputStore } from './vue/app_input_store.js';
 
 interface XlConvertResult {
    csvText: string;
@@ -34,6 +35,19 @@ function etradeConvertResultFromJsValue(val: any): EtradeConvertResult {
    };
 }
 
+interface EtradeExtractResult {
+   benefitsTable: RenderTable;
+   tradesTable: RenderTable;
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function etradeExtractResultFromJsValue(val: any): EtradeExtractResult {
+   return {
+      benefitsTable: RenderTable.fromJsValue(mustGet(val, 'benefitsTable')),
+      tradesTable: RenderTable.fromJsValue(mustGet(val, 'tradesTable')),
+   };
+}
+
 function csvTextToRenderTable(csvText: string): RenderTable {
    const parsed = Papa.parse<string[]>(csvText, {
       header: false,
@@ -49,6 +63,7 @@ function csvTextToRenderTable(csvText: string): RenderTable {
 export function runHandler(mode: AcbAppRunMode): void {
    const fileStore = getFileManagerStore();
    const outputStore = getBrokerConvertOutputStore();
+   const appInputStore = getAppInputStore();
 
    const xlsxFiles = fileStore.files.filter(
       f => f.kind === FileKind.QuestradeXlsx && f.useChecked && !f.warning
@@ -76,7 +91,7 @@ export function runHandler(mode: AcbAppRunMode): void {
    for (const entry of xlsxFiles) {
       try {
          // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-         const jsRet = convert_xl_to_csv(entry.data, undefined);
+         const jsRet = convert_xl_to_csv(entry.data, undefined, appInputStore.noFx);
          const result = xlConvertResultFromJsValue(jsRet);
 
          if (result.nonFatalErrors.length > 0) {
@@ -121,32 +136,43 @@ export function runHandler(mode: AcbAppRunMode): void {
          const pdfTexts = etradePdfFiles.map(f => f.pdfPageTexts!.join('\n'));
          const fileNames = etradePdfFiles.map(f => f.name);
 
-         // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-         const jsRet = convert_etrade_pdfs_to_csv(pdfTexts, fileNames, true);
-         const result = etradeConvertResultFromJsValue(jsRet);
+         if (appInputStore.extractOnly) {
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+            const jsRet = extract_etrade_pdf_data(pdfTexts, fileNames);
+            const result = etradeExtractResultFromJsValue(jsRet);
 
-         if (result.warnings.length > 0) {
-            allNonFatalErrors.push(
-               ...result.warnings.map(w => `E*TRADE: ${w}`)
+            namedTables.push(
+               { name: 'E*TRADE Benefits (raw)', table: result.benefitsTable },
+               { name: 'E*TRADE Trades (raw)', table: result.tradesTable },
             );
+         } else {
+            // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+            const jsRet = convert_etrade_pdfs_to_csv(pdfTexts, fileNames, !appInputStore.noFx);
+            const result = etradeConvertResultFromJsValue(jsRet);
+
+            if (result.warnings.length > 0) {
+               allNonFatalErrors.push(
+                  ...result.warnings.map(w => `E*TRADE: ${w}`)
+               );
+            }
+
+            const csvName = 'etrade_transactions.csv';
+            allCsvTexts.push(result.csvText);
+
+            const encoder = new TextEncoder();
+            const addedFile = fileStore.addFile({
+               name: csvName,
+               kind: FileKind.AcbTxCsv,
+               isDownloadable: true,
+               useChecked: true,
+               data: encoder.encode(result.csvText),
+            });
+            namedTables.push({
+               name: addedFile.name,
+               table: csvTextToRenderTable(result.csvText),
+            });
+            addedFileIds.push(addedFile.id);
          }
-
-         const csvName = 'etrade_transactions.csv';
-         allCsvTexts.push(result.csvText);
-
-         const encoder = new TextEncoder();
-         const addedFile = fileStore.addFile({
-            name: csvName,
-            kind: FileKind.AcbTxCsv,
-            isDownloadable: true,
-            useChecked: true,
-            data: encoder.encode(result.csvText),
-         });
-         namedTables.push({
-            name: addedFile.name,
-            table: csvTextToRenderTable(result.csvText),
-         });
-         addedFileIds.push(addedFile.id);
       } catch (err) {
          const errMsg = typeof err === 'string' ? err : (err instanceof Error ? err.message : String(err));
          console.error('convert_etrade_pdfs_to_csv error: ', err);
