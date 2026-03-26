@@ -262,6 +262,24 @@ impl serde::ser::Serialize for EtradeConvertResult {
     }
 }
 
+pub struct EtradeExtractResult {
+    pub benefits_table: SerializableRenderTable,
+    pub trades_table: SerializableRenderTable,
+}
+
+impl serde::ser::Serialize for EtradeExtractResult {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::ser::Serializer,
+    {
+        let n_fields = 2;
+        let mut state = serializer.serialize_struct("EtradeExtractResult", n_fields)?;
+        state.serialize_field("benefitsTable", &self.benefits_table)?;
+        state.serialize_field("tradesTable", &self.trades_table)?;
+        state.end()
+    }
+}
+
 pub struct AppSummaryResultOk {
     pub csv_text: String,
     pub summary_table: SerializableRenderTable,

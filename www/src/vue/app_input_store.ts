@@ -27,6 +27,12 @@ export interface AppInputStore {
 
    /** Per-mode saved dates, so switching modes restores the last picked date */
    lastPickedDates: Map<AppFunctionMode, string>;
+
+   // Broker convert options
+   /** Extract raw PDF data without harmonizing benefits/trades (E*TRADE only) */
+   extractOnly: boolean;
+   /** Filter out .FX (foreign exchange) transactions */
+   noFx: boolean;
 }
 
 let _store: AppInputStore | null = null;
@@ -39,6 +45,8 @@ export function getAppInputStore(): AppInputStore {
          summaryDateStr: dateToInputString(getDefaultDate(defaultMode)),
          printFullValues: false,
          lastPickedDates: new Map(),
+         extractOnly: false,
+         noFx: false,
       }) as AppInputStore;
    }
    return _store;

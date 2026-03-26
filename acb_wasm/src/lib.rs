@@ -17,6 +17,7 @@ pub mod http;
 pub fn convert_xl_to_csv(
     data: Vec<u8>,
     sheet_name: Option<String>,
+    no_fx: bool,
 ) -> Result<JsValue, JsValue> {
     use acb::peripheral::excel::XlSource;
     use acb::peripheral::tx_export_convert_impl::{convert_xl_txs, BrokerArg};
@@ -28,7 +29,7 @@ pub fn convert_xl_to_csv(
         sheet_name.as_deref(),
         Some(Regex::new(r".").unwrap()),  // account_filter
         None,  // security_filter
-        false, // no_fx
+        no_fx,
         false, // no_sort (i.e. sort by default)
         None,  // usd_exchange_rate
     )
@@ -150,6 +151,36 @@ pub fn convert_etrade_pdfs_to_csv(
         warnings: result.warnings,
     };
     Ok(serde_wasm_bindgen::to_value(&convert_result)?)
+}
+
+/// Extract raw E*TRADE PDF data without harmonizing benefits and trades.
+///
+/// Returns an object with `benefitsTable` and `tradesTable` RenderTable fields.
+#[wasm_bindgen]
+pub fn extract_etrade_pdf_data(
+    pdf_texts: Vec<String>,
+    file_names: Vec<String>,
+) -> Result<JsValue, JsValue> {
+    use acb::peripheral::etrade_plan_pdf_tx_extract_impl::extract_etrade_pdf_raw_data;
+
+    if pdf_texts.len() != file_names.len() {
+        return Err(JsValue::from_str("pdf_texts and file_names must have the same length"));
+    }
+
+    let mut pairs: Vec<(String, String)> = pdf_texts
+        .into_iter()
+        .zip(file_names)
+        .collect();
+    pairs.sort_by(|a, b| a.1.cmp(&b.1));
+
+    let result = extract_etrade_pdf_raw_data(&pairs)
+        .map_err(|errs| JsValue::from_str(&errs.join("\n")))?;
+
+    let extract_result = app_shim::EtradeExtractResult {
+        benefits_table: app_shim::SerializableRenderTable(result.benefits_table),
+        trades_table: app_shim::SerializableRenderTable(result.trades_table),
+    };
+    Ok(serde_wasm_bindgen::to_value(&extract_result)?)
 }
 
 fn get_csv_readers(
