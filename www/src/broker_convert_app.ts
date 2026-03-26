@@ -86,10 +86,6 @@ export function runHandler(mode: AcbAppRunMode): void {
          }
 
          const csvName = fileBaseName(entry.name) + '.csv';
-         namedTables.push({
-            name: csvName,
-            table: csvTextToRenderTable(result.csvText),
-         });
          allCsvTexts.push(result.csvText);
 
          const encoder = new TextEncoder();
@@ -99,6 +95,10 @@ export function runHandler(mode: AcbAppRunMode): void {
             isDownloadable: true,
             useChecked: true,
             data: encoder.encode(result.csvText),
+         });
+         namedTables.push({
+            name: addedFile.name,
+            table: csvTextToRenderTable(result.csvText),
          });
          addedFileIds.push(addedFile.id);
       } catch (err) {
@@ -132,10 +132,6 @@ export function runHandler(mode: AcbAppRunMode): void {
          }
 
          const csvName = 'etrade_transactions.csv';
-         namedTables.push({
-            name: csvName,
-            table: csvTextToRenderTable(result.csvText),
-         });
          allCsvTexts.push(result.csvText);
 
          const encoder = new TextEncoder();
@@ -145,6 +141,10 @@ export function runHandler(mode: AcbAppRunMode): void {
             isDownloadable: true,
             useChecked: true,
             data: encoder.encode(result.csvText),
+         });
+         namedTables.push({
+            name: addedFile.name,
+            table: csvTextToRenderTable(result.csvText),
          });
          addedFileIds.push(addedFile.id);
       } catch (err) {
