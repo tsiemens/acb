@@ -32,6 +32,10 @@
     <p>ACB does not collect any personal data. All processing is done locally to your browser.</p>
   </InfoDialog>
 
+  <InfoDialog :store="store" dialog-id="dynamicTextInfo" :title="store.dynamicTextTitle">
+    <pre class="dynamic-text-content">{{ store.dynamicTextContent }}</pre>
+  </InfoDialog>
+
   <InfoDialog :store="store" dialog-id="licenseDialog" title="License">
     <p>ACB is open sourced under the MIT License</p>
     <div style="font-family: monospace;">
@@ -88,5 +92,19 @@ export default defineComponent({
 
 .info-list li {
   margin-bottom: 5px;
+}
+
+.dynamic-text-content {
+  margin: 0;
+  padding: 10px 12px;
+  background-color: #f6f8fa;
+  border: 1px solid #e0e0e0;
+  border-radius: 4px;
+  font-size: 12px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: 'Courier New', Courier, monospace;
+  max-height: 60vh;
+  overflow-y: auto;
 }
 </style>

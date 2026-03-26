@@ -2,6 +2,7 @@
 import { ref, computed } from 'vue';
 import { FileKind } from './file_manager_store.js';
 import type { FileManagerState, FileEntry } from './file_manager_store.js';
+import { openDynamicTextDialog } from './info_dialog_store.js';
 
 const props = defineProps<{
    store: FileManagerState;
@@ -139,6 +140,14 @@ function handleFileInputChange(event: Event) {
    }
    // Reset so the same file can be re-selected
    (event.target as HTMLInputElement).value = '';
+}
+
+function showExtractedText(file: FileEntry) {
+   if (!file.pdfPageTexts) return;
+   const content = file.pdfPageTexts
+      .map((text, i) => `── Page ${i + 1} ──\n${text}`)
+      .join('\n\n');
+   openDynamicTextDialog(file.name, content);
 }
 
 function removeSelected() {
@@ -326,7 +335,13 @@ function removeSelected() {
                            <span v-if="file.isDetecting" class="fm-detecting" title="Detecting file type...">...</span>
                         </span>
                         <span
-                           v-if="file.isDownloadable"
+                           v-if="file.pdfPageTexts"
+                           class="fm-tag fm-tag-view-text"
+                           title="View extracted text"
+                           @click.stop="showExtractedText(file)"
+                        >&#x1F4C4;</span>
+                        <span
+                           v-else-if="file.isDownloadable"
                            class="fm-tag fm-tag-download"
                            title="Select to download"
                         >&#x2B07;</span>
@@ -708,6 +723,16 @@ th.fm-col-use > * {
 .fm-tag-download {
    background-color: #d4edda;
    color: #155724;
+}
+
+.fm-tag-view-text {
+   background-color: #d6e4f7;
+   color: #1a4a7a;
+   cursor: pointer;
+}
+
+.fm-tag-view-text:hover {
+   background-color: #c0d4ef;
 }
 
 /* Confirmation modal */
