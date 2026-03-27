@@ -6,7 +6,10 @@
       <div
         v-for="tab in tabs" :key="tab.id"
         class="tab"
-        :class="{ active: tabStore.activeTab === tab.id }"
+        :class="{
+          active: tabStore.activeTab === tab.id,
+          glowing: tabStore.glowingTabs.has(tab.id),
+        }"
         @click="tabStore.activeTab = tab.id"
       >{{ tab.label }}</div>
     </div>
@@ -114,5 +117,14 @@ export default defineComponent({
   display: flex;
   gap: 20px;
   margin-bottom: 20px;
+}
+
+/* Glow pulse for background tabs whose state changed */
+.tab.glowing {
+  animation: tab-pulse 1.5s ease-in-out infinite;
+}
+@keyframes tab-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(74, 111, 165, 0); }
+  50%      { box-shadow: 0 0 8px 2px rgba(74, 111, 165, 0.5); }
 }
 </style>

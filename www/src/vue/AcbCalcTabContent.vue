@@ -9,7 +9,7 @@
       <AppInputControls :store="appInputStore" />
 
       <div class="action-buttons">
-        <SplitRunButton :store="fileManagerStore" :onAction="onRunAction" />
+        <SplitRunButton :tabId="TabId.AcbCalc" :onAction="onRunAction" />
       </div>
 
     </div>
@@ -31,11 +31,11 @@ import SplitRunButton from './SplitRunButton.vue';
 import ErrorBox from './ErrorBox.vue';
 import OutputArea from './OutputArea.vue';
 import { getAppInputStore } from './app_input_store.js';
-import { getFileManagerStore } from './file_manager_store.js';
 import { getOutputStore } from './output_store.js';
 import { getErrorBoxStore } from './error_box_store.js';
 import { ErrorBox as ErrorBoxModel } from './error_box_store.js';
 import { AcbAppRunMode } from '../common/acb_app_types.js';
+import { TabId } from './tab_store.js';
 
 export default defineComponent({
    name: 'AcbCalcTabContent',
@@ -52,11 +52,10 @@ export default defineComponent({
    },
    setup() {
       const appInputStore = getAppInputStore();
-      const fileManagerStore = getFileManagerStore();
       const outputStore = getOutputStore();
       const mainErrorBoxStore = getErrorBoxStore(ErrorBoxModel.MAIN_ERRORS_ID);
 
-      return { appInputStore, fileManagerStore, outputStore, mainErrorBoxStore };
+      return { TabId, appInputStore, outputStore, mainErrorBoxStore };
    },
 });
 </script>

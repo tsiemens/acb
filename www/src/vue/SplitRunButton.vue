@@ -1,8 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue';
 import { AcbAppRunMode } from '../common/acb_app_types.js';
-import { FileKind } from './file_manager_store.js';
-import type { FileManagerState } from './file_manager_store.js';
+import { getTabStore, type TabIdType } from './tab_store.js';
 
 interface RunModeOption {
    mode: AcbAppRunMode;
@@ -16,21 +15,16 @@ const RUN_MODE_OPTIONS: RunModeOption[] = [
 ];
 
 const props = defineProps<{
-   store: FileManagerState;
+   tabId: TabIdType;
    onAction: (mode: AcbAppRunMode) => void;
 }>();
 
 const menuOpen = ref(false);
 const containerRef = ref<HTMLElement | null>(null);
+const tabStore = getTabStore();
 
 const disabled = computed(() =>
-   !props.store.files.some(f =>
-      FileKind.isInput(f.kind) &&
-      f.useChecked &&
-      !f.warning &&
-      props.store.relevantInputKinds.has(f.kind)
-   ) ||
-   props.store.files.some(f => f.isDetecting)
+   !(tabStore.runEnabledByTab.get(props.tabId) ?? false)
 );
 
 const primaryOption = RUN_MODE_OPTIONS[0];

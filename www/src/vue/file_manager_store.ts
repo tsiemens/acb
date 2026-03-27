@@ -1,5 +1,5 @@
 import { reactive, watchEffect } from 'vue';
-import { getTabStore, TabId, type TabIdType } from './tab_store.js';
+import { getTabStore, tabs, TabId, type TabIdType } from './tab_store.js';
 
 export enum FileKind {
    AcbTxCsv    = 'AcbTxCsv',
@@ -120,6 +120,33 @@ export function getFileManagerStore(): FileManagerState {
       const tabStore = getTabStore();
       watchEffect(() => {
          s.relevantInputKinds = relevantInputKindsForTab(tabStore.activeTab);
+      });
+
+      // Update per-tab run-enabled state based purely on file state.
+      watchEffect(() => {
+         const anyDetecting = s.files.some(f => f.isDetecting);
+         for (const tab of tabs) {
+            const kinds = relevantInputKindsForTab(tab.id);
+            const enabled = !anyDetecting && s.files.some(f =>
+               FileKind.isInput(f.kind) &&
+               f.useChecked &&
+               !f.warning &&
+               kinds.has(f.kind)
+            );
+            tabStore.runEnabledByTab.set(tab.id, enabled);
+         }
+      });
+
+      // Glow background tabs when their run button transitions to enabled.
+      const prevEnabled: Partial<Record<TabIdType, boolean>> = {};
+      watchEffect(() => {
+         for (const tab of tabs) {
+            const enabled = tabStore.runEnabledByTab.get(tab.id) ?? false;
+            if (enabled && !prevEnabled[tab.id] && tab.id !== tabStore.activeTab) {
+               tabStore.glowingTabs.add(tab.id);
+            }
+            prevEnabled[tab.id] = enabled;
+         }
       });
    }
    return store;
