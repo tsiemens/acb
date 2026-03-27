@@ -23,18 +23,12 @@
 <script lang="ts">
 import { defineComponent, ref, type PropType } from 'vue';
 import { handleGitUserCaveatIssues } from '../github.js';
+import { isDebugModeEnabled } from '../debug.js';
 import {
    getFileManagerStore,
    FileKind,
    modifyDrawerNotificationForUserAddedFiles,
 } from './file_manager_store.js';
-
-function isDebugModeEnabled(): boolean {
-   const hostIsDebug = window.location.hostname === "localhost" ||
-      window.location.hostname.match(/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/) !== null;
-   const debugModeDisabled = window.location.search.includes("debug=false");
-   return hostIsDebug && !debugModeDisabled;
-}
 
 export default defineComponent({
    name: 'DebugPanel',
