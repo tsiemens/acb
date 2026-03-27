@@ -37,7 +37,7 @@
         </div>
       </div>
 
-      <div class="option-group">
+      <div v-if="isDebugMode" class="option-group">
         <div class="checkbox-container">
           <input
             type="checkbox"
@@ -77,6 +77,7 @@ import SidebarInfoItems from './SidebarInfoItems.vue';
 import { getSidebarInfoStore } from './sidebar_info_store.js';
 import { getAppInputStore } from './app_input_store.js';
 import { getTabStore, TabId } from './tab_store.js';
+import { isDebugModeEnabled } from '../debug.js';
 
 export default defineComponent({
    name: 'Sidebar',
@@ -85,6 +86,7 @@ export default defineComponent({
       const sidebarInfoStore = getSidebarInfoStore();
       const appInputStore = getAppInputStore();
       const tabStore = getTabStore();
+      const isDebugMode = isDebugModeEnabled();
 
       function onPrintFullChange(event: Event) {
          appInputStore.printFullValues = (event.target as HTMLInputElement).checked;
@@ -103,7 +105,7 @@ export default defineComponent({
       }
 
       return {
-         sidebarInfoStore, appInputStore, tabStore, TabId,
+         sidebarInfoStore, appInputStore, tabStore, TabId, isDebugMode,
          onPrintFullChange, onPairStcChange, onExtractOnlyChange, onNoFxChange,
       };
    },
