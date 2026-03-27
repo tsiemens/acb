@@ -22,6 +22,7 @@ pub(super) struct PdfData {
 pub(super) fn txs_from_data(
     trade_data: &BenefitsAndTrades,
     generate_fx: bool,
+    no_sell_to_cover_pair: bool,
 ) -> Result<Vec<crate::portfolio::CsvTx>, SError> {
     let mut csv_txs = Vec::new();
     let mut fx_tracker = FxTracker::new();
@@ -76,22 +77,26 @@ pub(super) fn txs_from_data(
         }
     }
 
-    // Remaining trades (manual trades)
+    // Remaining trades (manual trades, or all trades if no_sell_to_cover_pair)
     let read_index_base = csv_txs.len();
     for (i, trade) in trade_data.other_trades.iter().enumerate() {
         let mut tx: CsvTx = trade.clone().into();
-        tx.memo = Some(
-            match tx.memo {
-                Some(memo) => {
-                    if memo.is_empty() {
-                        memo
-                    } else {
-                        memo + " "
+        if no_sell_to_cover_pair {
+            tx.memo = Some("E*TRADE transaction".to_string());
+        } else {
+            tx.memo = Some(
+                match tx.memo {
+                    Some(memo) => {
+                        if memo.is_empty() {
+                            memo
+                        } else {
+                            memo + " "
+                        }
                     }
-                }
-                None => String::new(),
-            } + "(manual trade)",
-        );
+                    None => String::new(),
+                } + "(E*TRADE manual trade)",
+            );
+        }
         tx.read_index = (read_index_base + i).try_into().unwrap();
         csv_txs.push(tx);
 
@@ -268,7 +273,7 @@ pub(super) struct AmendBenefitsRes {
 /// Entries in trade_confs are "consumed" when this match occurs.
 /// A new BenefitsAndTrades is returned.
 /// Consumes the pdf_data, as it moves much of its contents into the output.
-pub(super) fn amend_benefit_sales(
+pub(super) fn amend_paired_benefit_sales(
     pdf_data: PdfData,
 ) -> Result<AmendBenefitsRes, Vec<SError>> {
     let trade_confs = pdf_data.trade_confs;
@@ -349,6 +354,35 @@ pub(super) fn amend_benefit_sales(
         })
     } else {
         Err(errors)
+    }
+}
+
+/// Processes parsed PDF data, either pairing sell-to-cover trades with benefits
+/// (normal mode) or skipping pairing entirely (no_sell_to_cover_pair mode).
+///
+/// When `no_sell_to_cover_pair` is true, sell-to-cover data is stripped from
+/// benefits and all trade confirmations become standalone sells.
+pub(super) fn amend_benefit_sales(
+    mut pdf_data: PdfData,
+    no_sell_to_cover_pair: bool,
+) -> Result<AmendBenefitsRes, Vec<SError>> {
+    if no_sell_to_cover_pair {
+        for b in &mut pdf_data.benefits {
+            b.sell_to_cover_tx_date = None;
+            b.sell_to_cover_settle_date = None;
+            b.sell_to_cover_price = None;
+            b.sell_to_cover_shares = None;
+            b.sell_to_cover_fee = None;
+        }
+        Ok(AmendBenefitsRes {
+            benefits_and_trades: BenefitsAndTrades {
+                benefits: pdf_data.benefits,
+                other_trades: pdf_data.trade_confs,
+            },
+            warnings: Vec::new(),
+        })
+    } else {
+        amend_paired_benefit_sales(pdf_data)
     }
 }
 
@@ -490,6 +524,7 @@ pub struct EtradeConvertResult {
 pub fn convert_etrade_pdf_texts(
     pdf_texts: &[(String, String)],
     generate_fx: bool,
+    no_sell_to_cover_pair: bool,
 ) -> Result<EtradeConvertResult, Vec<SError>> {
     let mut benefits: Vec<BenefitEntry> = Vec::new();
     let mut trade_confs: Vec<BrokerTx> = Vec::new();
@@ -513,11 +548,12 @@ pub fn convert_etrade_pdf_texts(
         trade_confs,
     };
 
-    let amend_res = amend_benefit_sales(pdf_data)?;
+    let amend_res = amend_benefit_sales(pdf_data, no_sell_to_cover_pair)?;
     let benefits_and_trades = amend_res.benefits_and_trades;
 
     let txs =
-        txs_from_data(&benefits_and_trades, generate_fx).map_err(|e| vec![e])?;
+        txs_from_data(&benefits_and_trades, generate_fx, no_sell_to_cover_pair)
+            .map_err(|e| vec![e])?;
 
     let mut buf: Vec<u8> = Vec::new();
     crate::portfolio::io::tx_csv::write_txs_to_csv(&txs, &mut buf)
@@ -539,7 +575,7 @@ mod tests {
 
     use crate::peripheral::broker::{etrade::BenefitEntry, BrokerTx};
     use crate::peripheral::etrade_plan_pdf_tx_extract_impl::{
-        amend_benefit_sales, PdfData,
+        amend_paired_benefit_sales, PdfData,
     };
     use crate::portfolio::testlib::MAGIC_DEFAULT_DATE;
     use crate::portfolio::{CsvTx, Currency, TxAction};
@@ -829,7 +865,7 @@ mod tests {
 
     #[rustfmt::skip]
     #[test]
-    fn test_amend_benefit_sales() {
+    fn test_amend_paired_benefit_sales() {
         // Cases:
         // - With non-sell-to-cover benefit (and no available trades for it)
         // - Benefit with trades exactly 5 days after (and 6 days after, and before,
@@ -842,7 +878,7 @@ mod tests {
         // Case: With non-sell-to-cover benefit (and no available trades for it)
         let benefits = vec![TBen{tdate: dt(20), n_sh: 2, n_stc: None, ..dflt()}.x()];
         let trade_confs = vec![TTx{tdate: dt(20), n_sh: 1, ..dflt()}.x()];
-        let amend_res = amend_benefit_sales(PdfData{benefits, trade_confs}).unwrap();
+        let amend_res = amend_paired_benefit_sales(PdfData{benefits, trade_confs}).unwrap();
         assert_eq!(amend_res.benefits_and_trades.benefits[0].sell_to_cover_tx_date,
                    None);
         assert_eq!(amend_res.benefits_and_trades.other_trades.len(), 1);
@@ -851,7 +887,7 @@ mod tests {
         // Case: Benefit with trades exactly 5 days after
         let benefits = vec![TBen{tdate: dt(20), n_stc: Some(5), ..dflt()}.x()];
         let trade_confs = vec![TTx{tdate: dt(25), n_sh: 5, ..dflt()}.x()];
-        let amend_res = amend_benefit_sales(PdfData{benefits, trade_confs}).unwrap();
+        let amend_res = amend_paired_benefit_sales(PdfData{benefits, trade_confs}).unwrap();
         let amended_benefits = amend_res.benefits_and_trades.benefits;
         assert_eq!(amended_benefits[0].sell_to_cover_tx_date, Some(dt(25)));
         assert_eq!(amended_benefits[0].sell_to_cover_settle_date, Some(dt(27)));
@@ -861,7 +897,7 @@ mod tests {
         // Case: Benefit with trades exactly 6 days after, creating error
         let benefits = vec![TBen{tdate: dt(20), n_stc: Some(5), ..dflt()}.x()];
         let trade_confs = vec![TTx{tdate: dt(26), n_sh: 5, ..dflt()}.x()];
-        let errs = amend_benefit_sales(PdfData{benefits, trade_confs})
+        let errs = amend_paired_benefit_sales(PdfData{benefits, trade_confs})
             .unwrap_err();
         assert_eq!(errs.len(), 1);
         assert_re("Found no trades matching the sell-to-cover for", &errs[0]);
@@ -869,7 +905,7 @@ mod tests {
         // Case: Benefit with trade 1 day before, creating error
         let benefits = vec![TBen{tdate: dt(20), n_stc: Some(5), ..dflt()}.x()];
         let trade_confs = vec![TTx{tdate: dt(19), n_sh: 5, ..dflt()}.x()];
-        let errs = amend_benefit_sales(PdfData{benefits, trade_confs})
+        let errs = amend_paired_benefit_sales(PdfData{benefits, trade_confs})
             .unwrap_err();
         assert_eq!(errs.len(), 1);
         assert_re("Found no trades matching the sell-to-cover for", &errs[0]);
@@ -882,7 +918,7 @@ mod tests {
             TTx{tdate: dt(21), n_sh: 3, ..dflt()}.x(),
             TTx{tdate: dt(1), n_sh: 3, ..dflt()}.x(),
         ];
-        let amend_res = amend_benefit_sales(PdfData{benefits, trade_confs}).unwrap();
+        let amend_res = amend_paired_benefit_sales(PdfData{benefits, trade_confs}).unwrap();
         let amended_benefits = amend_res.benefits_and_trades.benefits;
         if amended_benefits[0].sell_to_cover_tx_date != Some(dt(20)) &&
            amended_benefits[0].sell_to_cover_tx_date != Some(dt(21)) {
@@ -909,7 +945,7 @@ mod tests {
             TTx{tdate: dt(23), n_sh: 5, ..dflt()}.x(),
             TTx{tdate: dt(23), n_sh: 2, ..dflt()}.x(),
         ];
-        let amend_res = amend_benefit_sales(
+        let amend_res = amend_paired_benefit_sales(
             PdfData{benefits: benefits.clone(), trade_confs: trade_confs.clone()})
             .unwrap();
         let amended_benefits = amend_res.benefits_and_trades.benefits;
@@ -918,7 +954,7 @@ mod tests {
         assert_eq!(amended_benefits[1].sell_to_cover_tx_date, Some(dt(23)));
 
         benefits.reverse();
-        let errs = amend_benefit_sales(PdfData{benefits: benefits, trade_confs})
+        let errs = amend_paired_benefit_sales(PdfData{benefits: benefits, trade_confs})
             .unwrap_err();
         assert_eq!(errs.len(), 1);
         assert_re("Found no trades matching", &errs[0]);
@@ -934,7 +970,7 @@ mod tests {
             TTx{tdate: dt(23), n_sh: 1, act: TxAction::Buy,
                 ..dflt()}.x(),
         ];
-        let amend_res = amend_benefit_sales(
+        let amend_res = amend_paired_benefit_sales(
             PdfData{benefits: benefits.clone(), trade_confs: trade_confs.clone()})
             .unwrap();
         let amended_benefits = amend_res.benefits_and_trades.benefits;
@@ -961,7 +997,7 @@ mod tests {
                 TTx{tdate: dt(19), n_sh: 2, act: TxAction::Buy,
                     ..dflt()}.x(),
             ]
-        }, false).unwrap();
+        }, false, false).unwrap();
 
         assert_vec_eq(txs, vec![
             // Vest without Stc
@@ -998,7 +1034,7 @@ mod tests {
                 tx_curr_to_local_exchange_rate: None,
                 commission_currency: None,
                 commission_curr_to_local_exchange_rate: None,
-                memo: Some("test trade conf (manual trade)".to_string()),
+                memo: Some("test trade conf (E*TRADE manual trade)".to_string()),
                 affiliate: Some(crate::portfolio::Affiliate::default()),
                 specified_superficial_loss: None,
                 stock_split_ratio: None,
@@ -1018,7 +1054,7 @@ mod tests {
                 tx_curr_to_local_exchange_rate: None,
                 commission_currency: None,
                 commission_curr_to_local_exchange_rate: None,
-                memo: Some("test trade conf (manual trade)".to_string()),
+                memo: Some("test trade conf (E*TRADE manual trade)".to_string()),
                 affiliate: Some(crate::portfolio::Affiliate::default()),
                 specified_superficial_loss: None,
                 stock_split_ratio: None,
@@ -1080,7 +1116,7 @@ mod tests {
         };
 
         // With FX generation enabled
-        let txs_with_fx = super::txs_from_data(&data, true).unwrap();
+        let txs_with_fx = super::txs_from_data(&data, true, false).unwrap();
         // Should have: 1 benefit buy + 1 sell-to-cover + 1 manual sell + 1 FX tx
         assert_eq!(txs_with_fx.len(), 4);
 
@@ -1096,7 +1132,7 @@ mod tests {
         assert_eq!(fx_tx.shares, Some(dec!(8.01)));
 
         // With FX generation disabled
-        let txs_no_fx = super::txs_from_data(&data, false).unwrap();
+        let txs_no_fx = super::txs_from_data(&data, false, false).unwrap();
         // Should have: 1 benefit buy + 1 sell-to-cover + 1 manual sell (no FX)
         assert_eq!(txs_no_fx.len(), 3);
         let fx_txs: Vec<_> = txs_no_fx.iter()
@@ -1117,7 +1153,7 @@ mod tests {
             other_trades: vec![],
         };
 
-        let txs = super::txs_from_data(&data, true).unwrap();
+        let txs = super::txs_from_data(&data, true, false).unwrap();
         // Should have: 1 benefit buy + 1 sell-to-cover, NO FX
         assert_eq!(txs.len(), 2);
         let fx_txs: Vec<_> = txs.iter()
@@ -1137,7 +1173,7 @@ mod tests {
             ],
         };
 
-        let txs = super::txs_from_data(&data, true).unwrap();
+        let txs = super::txs_from_data(&data, true, false).unwrap();
         assert_eq!(txs.len(), 2);
 
         let fx_tx = txs.iter()
@@ -1146,5 +1182,100 @@ mod tests {
         assert_eq!(fx_tx.action, Some(TxAction::Sell));
         // Buy 10 shares @ 1.40 + 5.99 commission = 14 + 5.99 = 19.99 USD spent
         assert_eq!(fx_tx.shares, Some(dec!(19.99)));
+    }
+
+    #[rustfmt::skip]
+    #[test]
+    fn test_amend_benefit_sales_no_sell_to_cover_pair() {
+        // Benefits have STC data, trades present — but with no_sell_to_cover_pair,
+        // STC data is stripped and all trades remain in other_trades.
+        let benefits = vec![
+            TBen{tdate: dt(10), n_stc: Some(50), ..dflt()}.x(),
+        ];
+        let trade_confs = vec![
+            TTx{tdate: dt(10), n_sh: 50, ..dflt()}.x(),
+            TTx{tdate: dt(15), n_sh: 10, ..dflt()}.x(),
+        ];
+
+        let res = super::amend_benefit_sales(
+            PdfData { benefits, trade_confs }, true,
+        ).unwrap();
+
+        assert!(res.warnings.is_empty());
+        let bat = res.benefits_and_trades;
+
+        // Benefit STC fields should all be stripped
+        assert_eq!(bat.benefits.len(), 1);
+        let b = &bat.benefits[0];
+        assert_eq!(b.sell_to_cover_tx_date, None);
+        assert_eq!(b.sell_to_cover_settle_date, None);
+        assert_eq!(b.sell_to_cover_price, None);
+        assert_eq!(b.sell_to_cover_shares, None);
+        assert_eq!(b.sell_to_cover_fee, None);
+
+        // All trade confs should remain as other_trades (nothing consumed)
+        assert_eq!(bat.other_trades.len(), 2);
+    }
+
+    #[rustfmt::skip]
+    #[test]
+    fn test_txs_from_data_no_sell_to_cover_pair() {
+        // With no_sell_to_cover_pair, benefits produce only buys (no STC sells),
+        // and other_trades get "E*TRADE transaction" memo.
+        let data = super::BenefitsAndTrades {
+            benefits: vec![
+                // STC fields are already stripped (as amend_benefit_sales would do)
+                TBen{tdate: dt(10), n_stc: None, ..dflt()}.x(),
+            ],
+            other_trades: vec![
+                TTx{tdate: dt(10), n_sh: 50, ..dflt()}.x(),
+                TTx{tdate: dt(15), n_sh: 10, ..dflt()}.x(),
+            ],
+        };
+
+        let txs = super::txs_from_data(&data, false, true).unwrap();
+
+        // 1 benefit buy + 2 trades (no STC sell, no FX)
+        assert_eq!(txs.len(), 3);
+
+        let buys: Vec<_> = txs.iter()
+            .filter(|t| t.action == Some(TxAction::Buy))
+            .collect();
+        assert_eq!(buys.len(), 1);
+        assert_eq!(buys[0].memo, Some("XXXX Vest".to_string()));
+
+        let sells: Vec<_> = txs.iter()
+            .filter(|t| t.action == Some(TxAction::Sell))
+            .collect();
+        assert_eq!(sells.len(), 2);
+        for sell in &sells {
+            assert_eq!(sell.memo, Some("E*TRADE transaction".to_string()));
+        }
+    }
+
+    #[rustfmt::skip]
+    #[test]
+    fn test_txs_from_data_no_sell_to_cover_pair_with_fx() {
+        // Verify FX transactions are still generated in no_sell_to_cover_pair mode
+        let data = super::BenefitsAndTrades {
+            benefits: vec![],
+            other_trades: vec![
+                TTx{tdate: dt(15), n_sh: 10, ..dflt()}.x(),
+            ],
+        };
+
+        let txs = super::txs_from_data(&data, true, true).unwrap();
+        // 1 sell + 1 FX
+        assert_eq!(txs.len(), 2);
+
+        let fx_txs: Vec<_> = txs.iter()
+            .filter(|tx| tx.security.as_ref().map_or(false, |s| s.ends_with(".FX")))
+            .collect();
+        assert_eq!(fx_txs.len(), 1);
+
+        let sell = txs.iter()
+            .find(|t| t.action == Some(TxAction::Sell) && !t.security.as_ref().unwrap().ends_with(".FX"))
+            .unwrap();
+        assert_eq!(sell.memo, Some("E*TRADE transaction".to_string()));
     }
 }
