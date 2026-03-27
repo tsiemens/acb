@@ -8,7 +8,7 @@
       />
 
       <div class="action-buttons">
-        <SplitRunButton :store="fileManagerStore" :onAction="onRunAction" />
+        <SplitRunButton :tabId="TabId.BrokerConvert" :onAction="onRunAction" />
       </div>
 
     </div>
@@ -28,11 +28,11 @@ import FileDropArea from './FileDropArea.vue';
 import SplitRunButton from './SplitRunButton.vue';
 import ErrorBox from './ErrorBox.vue';
 import BrokerConvertOutputArea from './BrokerConvertOutputArea.vue';
-import { getFileManagerStore } from './file_manager_store.js';
 import { getBrokerConvertOutputStore } from './broker_convert_output_store.js';
 import { getErrorBoxStore } from './error_box_store.js';
 import { ErrorBox as ErrorBoxModel } from './error_box_store.js';
 import { AcbAppRunMode } from '../common/acb_app_types.js';
+import { TabId } from './tab_store.js';
 
 export default defineComponent({
    name: 'BrokerConvertTabContent',
@@ -48,11 +48,10 @@ export default defineComponent({
       },
    },
    setup() {
-      const fileManagerStore = getFileManagerStore();
       const outputStore = getBrokerConvertOutputStore();
       const errorBoxStore = getErrorBoxStore(ErrorBoxModel.BROKER_CONVERT_ERRORS_ID);
 
-      return { fileManagerStore, outputStore, errorBoxStore };
+      return { TabId, outputStore, errorBoxStore };
    },
 });
 </script>
