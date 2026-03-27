@@ -190,11 +190,13 @@ fn render_txs_from_data(
     trade_data: &super::etrade_plan_pdf_tx_extract_impl::BenefitsAndTrades,
     pretty: bool,
     generate_fx: bool,
+    no_sell_to_cover_pair: bool,
     out_w: WriteHandle,
 ) -> Result<(), SError> {
     let txs = super::etrade_plan_pdf_tx_extract_impl::txs_from_data(
         trade_data,
         generate_fx,
+        no_sell_to_cover_pair,
     )?;
 
     let mut printer: Box<dyn AcbWriter> = if pretty {
@@ -254,6 +256,12 @@ pub struct Args {
     /// Do not generate FX transactions for manual trades
     #[arg(long)]
     pub no_fx: bool,
+
+    /// Do not try to pair sell-to-cover data from benefit confirmations
+    /// with trade confirmations. All trade confirmations become standalone
+    /// sell transactions, and benefit sell-to-cover data is ignored.
+    #[arg(long)]
+    pub no_sell_to_cover_pair: bool,
 }
 
 pub fn run() -> Result<(), ()> {
@@ -292,7 +300,7 @@ pub fn run_with_args(
         return Ok(());
     }
 
-    let amend_res = amend_benefit_sales(pdf_data);
+    let amend_res = amend_benefit_sales(pdf_data, args.no_sell_to_cover_pair);
     let benefits_and_trades = match amend_res {
         Ok(r) => {
             for w in r.warnings {
@@ -320,7 +328,13 @@ pub fn run_with_args(
         }
     }
 
-    render_txs_from_data(&benefits_and_trades, args.pretty, !args.no_fx, out_w)
+    render_txs_from_data(
+        &benefits_and_trades,
+        args.pretty,
+        !args.no_fx,
+        args.no_sell_to_cover_pair,
+        out_w,
+    )
         .map_err(|e| write_errln!(err_w, "Error: {e}"))?;
 
     Ok(())

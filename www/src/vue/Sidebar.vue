@@ -26,13 +26,28 @@
         <div class="checkbox-container">
           <input
             type="checkbox"
+            id="pairStcCheckbox"
+            :checked="!appInputStore.noSellToCoverPair"
+            @change="onPairStcChange"
+          >
+          <label
+            for="pairStcCheckbox"
+            title="Match sell-to-cover entries from benefit confirmations with trade confirmations (paired sales will not generate USD.FX buy transactions). Only affects E*TRADE benefit extraction."
+          >Pair Benefit Sell-to-Covers</label>
+        </div>
+      </div>
+
+      <div class="option-group">
+        <div class="checkbox-container">
+          <input
+            type="checkbox"
             id="extractOnlyCheckbox"
             :checked="appInputStore.extractOnly"
             @change="onExtractOnlyChange"
           >
           <label
             for="extractOnlyCheckbox"
-            title="Only extract raw data from PDFs without matching benefits to trade confirmations. Only affects E*TRADE benefit PDF extraction."
+            title="Only extract raw data from PDFs without matching benefits to trade confirmations. Only affects E*TRADE benefit extraction."
           >Raw PDF extract only</label>
         </div>
       </div>
@@ -75,6 +90,10 @@ export default defineComponent({
          appInputStore.printFullValues = (event.target as HTMLInputElement).checked;
       }
 
+      function onPairStcChange(event: Event) {
+         appInputStore.noSellToCoverPair = !(event.target as HTMLInputElement).checked;
+      }
+
       function onExtractOnlyChange(event: Event) {
          appInputStore.extractOnly = (event.target as HTMLInputElement).checked;
       }
@@ -85,7 +104,7 @@ export default defineComponent({
 
       return {
          sidebarInfoStore, appInputStore, tabStore, TabId,
-         onPrintFullChange, onExtractOnlyChange, onNoFxChange,
+         onPrintFullChange, onPairStcChange, onExtractOnlyChange, onNoFxChange,
       };
    },
 });

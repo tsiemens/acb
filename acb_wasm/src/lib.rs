@@ -129,6 +129,7 @@ pub fn convert_etrade_pdfs_to_csv(
     pdf_texts: Vec<String>,
     file_names: Vec<String>,
     generate_fx: bool,
+    no_sell_to_cover_pair: bool,
 ) -> Result<JsValue, JsValue> {
     use acb::peripheral::etrade_plan_pdf_tx_extract_impl::convert_etrade_pdf_texts;
 
@@ -143,7 +144,7 @@ pub fn convert_etrade_pdfs_to_csv(
     // Sort by filename for deterministic output order.
     pairs.sort_by(|a, b| a.1.cmp(&b.1));
 
-    let result = convert_etrade_pdf_texts(&pairs, generate_fx)
+    let result = convert_etrade_pdf_texts(&pairs, generate_fx, no_sell_to_cover_pair)
         .map_err(|errs| JsValue::from_str(&errs.join("\n")))?;
 
     let convert_result = app_shim::EtradeConvertResult {

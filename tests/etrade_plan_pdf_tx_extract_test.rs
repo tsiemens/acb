@@ -35,6 +35,7 @@ fn do_test_scenario(scenario_variant_dir: &Path) {
         extract_only: false,
         debug: false,
         no_fx: true,
+        no_sell_to_cover_pair: false,
     };
     let (res, out, err) = run_and_get_output(args);
     assert!(res.is_ok(), "res={:?} output={}, err={}", res, out, err);

@@ -33,6 +33,8 @@ export interface AppInputStore {
    extractOnly: boolean;
    /** Filter out .FX (foreign exchange) transactions */
    noFx: boolean;
+   /** Do not pair sell-to-cover data with trade confirmations (E*TRADE only) */
+   noSellToCoverPair: boolean;
 }
 
 let _store: AppInputStore | null = null;
@@ -47,6 +49,7 @@ export function getAppInputStore(): AppInputStore {
          lastPickedDates: new Map(),
          extractOnly: false,
          noFx: false,
+         noSellToCoverPair: false,
       }) as AppInputStore;
    }
    return _store;

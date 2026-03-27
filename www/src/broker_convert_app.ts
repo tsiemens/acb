@@ -147,7 +147,7 @@ export function runHandler(mode: AcbAppRunMode): void {
             );
          } else {
             // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-            const jsRet = convert_etrade_pdfs_to_csv(pdfTexts, fileNames, !appInputStore.noFx);
+            const jsRet = convert_etrade_pdfs_to_csv(pdfTexts, fileNames, !appInputStore.noFx, appInputStore.noSellToCoverPair);
             const result = etradeConvertResultFromJsValue(jsRet);
 
             if (result.warnings.length > 0) {
