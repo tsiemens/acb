@@ -14,6 +14,13 @@ use crate::util::basic::SError;
 
 use super::sheet_common::SheetParseError;
 
+/// Removes all whitespace from a string, used to normalize column names
+/// so that extra spaces in xlsx headers (e.g. "Tax  Collection  Shares")
+/// still match the expected key ("Tax Collection Shares").
+fn strip_whitespace(s: &str) -> String {
+    s.chars().filter(|c| !c.is_whitespace()).collect()
+}
+
 pub struct SheetReader<'a> {
     col_name_to_index: HashMap<String, usize>,
     row: Option<&'a [Data]>,
@@ -41,8 +48,15 @@ impl<'a> SheetReader<'a> {
     }
 
     pub fn get(&self, name: &str) -> Result<&Data, SheetParseError> {
-        let col = self.col_name_to_index.get(name).ok_or_else(|| {
-            self.err(format!("Sheet contained no column '{name}'"))
+        let key = strip_whitespace(name);
+        let col = self.col_name_to_index.get(&key).ok_or_else(|| {
+            let mut available: Vec<&str> =
+                self.col_name_to_index.keys().map(|s| s.as_str()).collect();
+            available.sort();
+            self.err(format!(
+                "Sheet contained no column '{name}'. \
+                 Available columns: {available:?}"
+            ))
         })?;
         let v: &Data = self.row.unwrap().get(*col).unwrap();
         Ok(v)
@@ -170,6 +184,27 @@ pub fn read_xl_data(
     worksheet_from_workbook(&mut workbook, sheet_name)
 }
 
+/// Opens a workbook from raw in-memory bytes and reads the specified sheets.
+/// Sheets that do not exist in the workbook are silently omitted from the result.
+pub fn read_xl_data_sheets(
+    data: Vec<u8>,
+    sheet_names: &[&str],
+) -> Result<HashMap<String, Range<Data>>, SError> {
+    let cursor = Cursor::new(data);
+    let mut workbook =
+        open_workbook_auto_from_rs(cursor).map_err(|e| format!("{e}"))?;
+    let available: Vec<String> = workbook.sheet_names();
+    let mut result = HashMap::new();
+    for &name in sheet_names {
+        if available.iter().any(|s| s == name) {
+            let range =
+                workbook.worksheet_range(name).map_err(|e| format!("{e}"))?;
+            result.insert(name.to_string(), range);
+        }
+    }
+    Ok(result)
+}
+
 /// Source of an Excel workbook: either a file path or raw in-memory bytes.
 pub enum XlSource {
     Path(PathBuf),
@@ -211,6 +246,57 @@ fn read_sheet_header(
         .collect();
 
     Ok(HashMap::from_iter(
-        row_strs.into_iter().enumerate().map(|(i, v)| (v, i)),
+        row_strs.into_iter().enumerate().map(|(i, v)| (strip_whitespace(&v), i)),
     ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_strip_whitespace() {
+        assert_eq!(
+            strip_whitespace("Tax Collection Shares"),
+            "TaxCollectionShares"
+        );
+        assert_eq!(
+            strip_whitespace("Tax  Collection  Shares"),
+            "TaxCollectionShares"
+        );
+        assert_eq!(strip_whitespace("NoSpaces"), "NoSpaces");
+        assert_eq!(strip_whitespace(" leading"), "leading");
+    }
+
+    #[cfg(feature = "xlsx_write")]
+    #[test]
+    fn test_sheet_reader_normalizes_whitespace() {
+        use rust_xlsxwriter::Workbook;
+
+        let mut wb = Workbook::new();
+        let sheet = wb.add_worksheet();
+        // Header with extra spaces
+        sheet.write(0, 0, "Name").unwrap();
+        sheet.write(0, 1, "Tax  Collection  Shares").unwrap();
+        sheet.write(0, 2, "Amount").unwrap();
+        // Data row
+        sheet.write(1, 0, "FOO").unwrap();
+        sheet.write(1, 1, 21.0).unwrap();
+        sheet.write(1, 2, 100.5).unwrap();
+
+        let data = wb.save_to_buffer().unwrap();
+        let range = read_xl_data(data, None).unwrap();
+        let mut rows = range.rows();
+        let mut reader = SheetReader::new(&mut rows).unwrap();
+
+        let data_row = rows.next().unwrap();
+        reader.set_row(data_row, 2);
+
+        // Normal key matches header with extra spaces
+        assert_eq!(reader.get_str("Tax Collection Shares").unwrap(), "21");
+        // Key with no spaces also works
+        assert_eq!(reader.get_str("TaxCollectionShares").unwrap(), "21");
+        // Regular columns still work
+        assert_eq!(reader.get_str("Name").unwrap(), "FOO");
+    }
 }

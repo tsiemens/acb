@@ -117,6 +117,32 @@ pub fn local_utc_offset() -> Result<UtcOffset, time::error::ComponentRange> {
     UtcOffset::from_whole_seconds(-1 * offset.utc_minus_local())
 }
 
+/// An inclusive date range used for filtering.
+#[derive(Clone, Debug)]
+pub struct DateRange {
+    pub start: Date,
+    pub end: Date,
+}
+
+impl DateRange {
+    pub fn new(start: Date, end: Date) -> Self {
+        assert!(start <= end);
+        DateRange { start, end }
+    }
+
+    /// Creates a DateRange covering the entire given year.
+    pub fn for_year(year: i32) -> Self {
+        DateRange {
+            start: Date::from_calendar_date(year, Month::January, 1).unwrap(),
+            end: Date::from_calendar_date(year, Month::December, 31).unwrap(),
+        }
+    }
+
+    pub fn contains(&self, date: &Date) -> bool {
+        &self.start <= date && date <= &self.end
+    }
+}
+
 // Used by both unit and integration tests
 pub mod pub_testlib {
     use time::{Date, Duration, Month};

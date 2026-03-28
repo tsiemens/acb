@@ -10,13 +10,29 @@ use crate::peripheral::broker::etrade;
 use crate::peripheral::pdf;
 use crate::portfolio::render::RenderTable;
 use crate::util::basic::SError;
+use crate::util::date::DateRange;
 use crate::util::rw::WriteHandle;
 use crate::write_errln;
 
 use super::etrade_plan_pdf_tx_extract_impl::PdfData;
 
-pub(super) fn parse_pdfs(
+fn get_filename(fpath: &PathBuf) -> String {
+    fpath
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_else(|| "<unnamed>".to_string())
+}
+
+fn is_xlsx(fpath: &PathBuf) -> bool {
+    matches!(
+        fpath.extension().and_then(|e| e.to_str()),
+        Some("xlsx" | "xls")
+    )
+}
+
+pub(super) fn parse_files(
     files: &Vec<PathBuf>,
+    date_range: Option<&DateRange>,
     debug: bool,
 ) -> Result<PdfData, SError> {
     let mut benefits = Vec::new();
@@ -31,6 +47,22 @@ pub(super) fn parse_pdfs(
         }
         if debug {
             eprintln!("Parsing {fpath:?}");
+        }
+
+        if is_xlsx(fpath) {
+            let data = std::fs::read(fpath)
+                .map_err(|e| format!("Failed to read {fpath:?}: {e}"))?;
+            let mut xl_benefits = etrade::parse_benefit_history_xlsx(
+                data,
+                &get_filename(fpath),
+                date_range,
+            )
+            .map_err(|e| format!("Failed to parse {fpath:?}: {e}"))?;
+            if debug {
+                eprintln!("{xl_benefits:#?}");
+            }
+            benefits.append(&mut xl_benefits);
+            continue;
         }
 
         let pdf_text = if fpath.extension().unwrap_or_default().to_string_lossy()
@@ -68,6 +100,11 @@ pub(super) fn parse_pdfs(
                 trade_confs.append(&mut txs);
             }
         }
+    }
+
+    if let Some(range) = date_range {
+        etrade::filter_benefits_by_date(&mut benefits, range);
+        trade_confs.retain(|t| range.contains(&t.trade_date));
     }
 
     Ok(PdfData {
@@ -228,13 +265,23 @@ fn render_txs_from_data(
 /// for both sales is to the same document, so only one needs to be downloaded.
 ///
 /// Run this script, giving the name of all PDFs as arguments.
+///
+/// Alternatively, you can export the BenefitHistory xlsx from E*TRADE and pass
+/// it in place of the benefit confirmation PDFs. However, note that the xlsx
+/// does not contain enough information to pair RSU sell-to-cover trades with
+/// trade confirmations. RSU entries from xlsx will behave as if
+/// --no-sell-to-cover-pair was passed (ESPP entries are unaffected).
+/// For best results with RSUs, use the individual benefit confirmation PDFs.
 #[derive(Parser, Debug)]
 #[command(author, about, long_about)]
 pub struct Args {
-    /// ETRADE statement PDFs
+    /// ETRADE statement PDFs, BenefitHistory xlsx files, or plain .txt files.
     ///
-    /// These can also be plain .txt files, and will not be interpreted as actual
-    /// PDFs, but just the text emitted by a tool like pdf-text.
+    /// .xlsx files are parsed as BenefitHistory exports (ESPP/RSU benefit data).
+    /// Note: xlsx does not provide RSU sell-to-cover share counts, so RSU
+    /// sell-to-cover pairing will not work from xlsx. Recommended to use PDFs only.
+    /// .txt files are treated as pre-extracted PDF text (for testing).
+    /// All other files are treated as PDFs.
     #[arg(required = true)]
     pub files: Vec<PathBuf>,
 
@@ -262,6 +309,11 @@ pub struct Args {
     /// sell transactions, and benefit sell-to-cover data is ignored.
     #[arg(long)]
     pub no_sell_to_cover_pair: bool,
+
+    /// Only include benefits whose acquisition date falls in this year.
+    /// Useful when processing a BenefitHistory xlsx that spans many years.
+    #[arg(long)]
+    pub year: Option<i32>,
 }
 
 pub fn run() -> Result<(), ()> {
@@ -288,11 +340,13 @@ pub fn run_with_args(
     }
     crate::tracing::setup_tracing();
 
+    let date_range = args.year.map(DateRange::for_year);
+
     // Sort the files, so that we can deterministically output them in the same
     // order. This affects tie-breaks when we have multiple TXs on the same day.
     args.files.sort();
 
-    let pdf_data = parse_pdfs(&args.files, args.debug)
+    let pdf_data = parse_files(&args.files, date_range.as_ref(), args.debug)
         .map_err(|e| write_errln!(err_w, "{}", e))?;
 
     if args.extract_only {
@@ -335,7 +389,7 @@ pub fn run_with_args(
         args.no_sell_to_cover_pair,
         out_w,
     )
-        .map_err(|e| write_errln!(err_w, "Error: {e}"))?;
+    .map_err(|e| write_errln!(err_w, "Error: {e}"))?;
 
     Ok(())
 }
