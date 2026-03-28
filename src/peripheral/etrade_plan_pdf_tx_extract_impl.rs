@@ -326,6 +326,22 @@ pub(super) fn amend_paired_benefit_sales(
                 benefit.sell_to_cover_tx_date = Some(t0.trade_date);
                 benefit.sell_to_cover_settle_date = Some(t0.settlement_date);
 
+                // Populate price and fee from matched trades when not
+                // already set (e.g. xlsx-sourced benefits lack these).
+                if benefit.sell_to_cover_price.is_none() {
+                    let total_val: Decimal = matched_trades
+                        .iter()
+                        .map(|t| t.amount_per_share * t.num_shares)
+                        .sum();
+                    let total_shares: Decimal =
+                        matched_trades.iter().map(|t| t.num_shares).sum();
+                    benefit.sell_to_cover_price = Some(total_val / total_shares);
+                }
+                if benefit.sell_to_cover_fee.is_none() {
+                    benefit.sell_to_cover_fee =
+                        Some(matched_trades.iter().map(|t| t.commission).sum());
+                }
+
                 // Remove matches from leftover trades
                 let mut indexes = Vec::<usize>::with_capacity(matched_trades.len());
                 for t in matched_trades {
