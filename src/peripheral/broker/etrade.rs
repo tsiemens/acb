@@ -1201,19 +1201,19 @@ pub fn parse_benefit_history_xlsx(
     }
 
     if let Some(range) = date_range {
-        benefits.retain(|b| range.contains(&b.acquire_tx_date));
+        benefits.retain(|b| range.contains(&b.acquire_settle_date));
     }
 
     Ok(benefits)
 }
 
-/// Filters benefits to only those whose acquire_tx_date falls within the
+/// Filters benefits to only those whose acquire_settle_date falls within the
 /// given date range.
 pub fn filter_benefits_by_date(
     benefits: &mut Vec<BenefitEntry>,
     date_range: &DateRange,
 ) {
-    benefits.retain(|b| date_range.contains(&b.acquire_tx_date));
+    benefits.retain(|b| date_range.contains(&b.acquire_settle_date));
 }
 
 // MARK: tests
@@ -2443,9 +2443,26 @@ Morgan Stanley Smith Barney LLC acted as agent.
                 BenefitEntry {
                     security: "FOO".to_string(),
                     acquire_tx_date: date("2021-03-15"),
-                    acquire_settle_date: date("2021-03-15"),
+                    acquire_settle_date: date("2021-03-17"),
                     acquire_share_price: dec!(50),
                     acquire_shares: dec!(10),
+                    sell_to_cover_tx_date: None,
+                    sell_to_cover_settle_date: None,
+                    sell_to_cover_price: None,
+                    sell_to_cover_shares: None,
+                    sell_to_cover_fee: None,
+                    plan_note: "ESPP".to_string(),
+                    sell_note: None,
+                    filename: "test".to_string(),
+                },
+                // tx_date in 2021, but settle_date in 2022 — should be
+                // included when filtering for 2022
+                BenefitEntry {
+                    security: "FOO".to_string(),
+                    acquire_tx_date: date("2021-12-30"),
+                    acquire_settle_date: date("2022-01-03"),
+                    acquire_share_price: dec!(55),
+                    acquire_shares: dec!(15),
                     sell_to_cover_tx_date: None,
                     sell_to_cover_settle_date: None,
                     sell_to_cover_price: None,
@@ -2458,7 +2475,7 @@ Morgan Stanley Smith Barney LLC acted as agent.
                 BenefitEntry {
                     security: "FOO".to_string(),
                     acquire_tx_date: date("2022-06-15"),
-                    acquire_settle_date: date("2022-06-15"),
+                    acquire_settle_date: date("2022-06-17"),
                     acquire_share_price: dec!(60),
                     acquire_shares: dec!(20),
                     sell_to_cover_tx_date: None,
@@ -2473,8 +2490,10 @@ Morgan Stanley Smith Barney LLC acted as agent.
             ];
             let range = DateRange::for_year(2022);
             filter_benefits_by_date(&mut benefits, &range);
-            assert_eq!(benefits.len(), 1);
-            assert_eq!(benefits[0].acquire_tx_date, date("2022-06-15"));
+            assert_eq!(benefits.len(), 2);
+            // Cross-year entry included based on settle date, not tx date
+            assert_eq!(benefits[0].acquire_settle_date, date("2022-01-03"));
+            assert_eq!(benefits[1].acquire_settle_date, date("2022-06-17"));
         }
 
         #[test]
