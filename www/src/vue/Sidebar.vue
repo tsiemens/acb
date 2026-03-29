@@ -66,6 +66,24 @@
           >No FX transactions</label>
         </div>
       </div>
+
+      <div class="option-group">
+        <label
+          class="option-label"
+          for="filterYearInput"
+          title="Only include entries whose settlement date falls in this year. Leave blank to include all years."
+        >Filter year</label>
+        <input
+          type="number"
+          id="filterYearInput"
+          class="option-input"
+          placeholder="All years"
+          :value="appInputStore.filterYear"
+          @input="onFilterYearInput"
+          min="2000"
+          max="2099"
+        >
+      </div>
     </div>
   </div>
 </template>
@@ -104,9 +122,14 @@ export default defineComponent({
          appInputStore.noFx = (event.target as HTMLInputElement).checked;
       }
 
+      function onFilterYearInput(event: Event) {
+         appInputStore.filterYear = (event.target as HTMLInputElement).value;
+      }
+
       return {
          sidebarInfoStore, appInputStore, tabStore, TabId, isDebugMode,
          onPrintFullChange, onPairStcChange, onExtractOnlyChange, onNoFxChange,
+         onFilterYearInput,
       };
    },
 });

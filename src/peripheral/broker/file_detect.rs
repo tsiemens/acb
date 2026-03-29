@@ -186,7 +186,19 @@ fn detect_csv(data: &[u8]) -> FileDetectResult {
 }
 
 #[cfg(feature = "xlsx_read")]
+const ETRADE_BENEFIT_SHEET_NAMES: &[&str] = &["ESPP", "Restricted Stock"];
+
+#[cfg(feature = "xlsx_read")]
 fn detect_excel(data: &[u8]) -> Result<FileDetectResult, SError> {
+    // Check sheet names first for multi-sheet workbooks (E*TRADE BenefitHistory).
+    let sheet_names = crate::peripheral::excel::xl_data_sheet_names(data)?;
+    let has_etrade_sheet = ETRADE_BENEFIT_SHEET_NAMES
+        .iter()
+        .any(|name| sheet_names.iter().any(|s| s == name));
+    if has_etrade_sheet {
+        return Ok(FileDetectResult::ok(FileKind::EtradeBenefitsExcel));
+    }
+
     let sheet = crate::peripheral::excel::read_xl_data(data.to_vec(), None)?;
 
     let mut rows = sheet.rows();
@@ -209,9 +221,6 @@ fn detect_excel(data: &[u8]) -> Result<FileDetectResult, SError> {
     if is_questrade {
         return Ok(FileDetectResult::ok(FileKind::QuestradeExcel));
     }
-
-    // TODO: Add EtradeBenefitsExcel detection when its column
-    // structure is defined.
 
     Ok(FileDetectResult::unknown(
         "Excel file does not match any known broker format".to_string(),
@@ -444,5 +453,51 @@ mod tests {
             vec!["STOCK PLAN RELEASE CONFIRMATION\nTRADE CONFIRMATION".to_string()];
         let r = detect(FileDetectSource::PdfPages(&pages));
         assert_ok(&r, FileKind::EtradeBenefitPdf);
+    }
+
+    // -- Excel detection --
+
+    #[cfg(feature = "xlsx_write")]
+    #[test]
+    fn test_xlsx_etrade_benefits_espp_sheet() {
+        use rust_xlsxwriter::Workbook;
+        let mut wb = Workbook::new();
+        wb.add_worksheet().set_name("ESPP").unwrap();
+        let data = wb.save_to_buffer().unwrap();
+        let r = detect(FileDetectSource::Bytes {
+            data: &data,
+            file_name: "BenefitHistory.xlsx",
+        });
+        assert_ok(&r, FileKind::EtradeBenefitsExcel);
+    }
+
+    #[cfg(feature = "xlsx_write")]
+    #[test]
+    fn test_xlsx_etrade_benefits_restricted_stock_sheet() {
+        use rust_xlsxwriter::Workbook;
+        let mut wb = Workbook::new();
+        wb.add_worksheet().set_name("Restricted Stock").unwrap();
+        let data = wb.save_to_buffer().unwrap();
+        let r = detect(FileDetectSource::Bytes {
+            data: &data,
+            file_name: "BenefitHistory.xlsx",
+        });
+        assert_ok(&r, FileKind::EtradeBenefitsExcel);
+    }
+
+    #[cfg(feature = "xlsx_write")]
+    #[test]
+    fn test_xlsx_unknown_with_headers() {
+        use rust_xlsxwriter::Workbook;
+        let mut wb = Workbook::new();
+        let sheet = wb.add_worksheet().set_name("Data").unwrap();
+        sheet.write(0, 0, "Name").unwrap();
+        sheet.write(0, 1, "Value").unwrap();
+        let data = wb.save_to_buffer().unwrap();
+        let r = detect(FileDetectSource::Bytes {
+            data: &data,
+            file_name: "unknown.xlsx",
+        });
+        assert_unknown_with_warning(&r, "does not match");
     }
 }

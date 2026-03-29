@@ -8,8 +8,9 @@ use crate::peripheral::broker::etrade;
 use crate::portfolio::render::RenderTable;
 use crate::portfolio::{CsvTx, Currency, TxAction};
 use crate::util::basic::SError;
+use crate::util::date::DateRange;
 
-pub(super) struct PdfData {
+pub(super) struct EtradeData {
     pub benefits: Vec<BenefitEntry>,
     pub trade_confs: Vec<BrokerTx>,
 }
@@ -274,7 +275,7 @@ pub(super) struct AmendBenefitsRes {
 /// A new BenefitsAndTrades is returned.
 /// Consumes the pdf_data, as it moves much of its contents into the output.
 pub(super) fn amend_paired_benefit_sales(
-    pdf_data: PdfData,
+    pdf_data: EtradeData,
 ) -> Result<AmendBenefitsRes, Vec<SError>> {
     let trade_confs = pdf_data.trade_confs;
     let mut benefits = pdf_data.benefits;
@@ -379,7 +380,7 @@ pub(super) fn amend_paired_benefit_sales(
 /// When `no_sell_to_cover_pair` is true, sell-to-cover data is stripped from
 /// benefits and all trade confirmations become standalone sells.
 pub(super) fn amend_benefit_sales(
-    mut pdf_data: PdfData,
+    mut pdf_data: EtradeData,
     no_sell_to_cover_pair: bool,
 ) -> Result<AmendBenefitsRes, Vec<SError>> {
     if no_sell_to_cover_pair {
@@ -498,12 +499,16 @@ fn trades_to_render_table(trade_confs: &[BrokerTx]) -> RenderTable {
     rt
 }
 
-/// Extract raw E*TRADE PDF data without harmonizing benefits and trades.
-///
-/// Returns two RenderTables: one for benefits and one for trade confirmations.
-pub fn extract_etrade_pdf_raw_data(
+/// Xlsx file data for E*TRADE BenefitHistory parsing: (raw_bytes, filename).
+pub type EtradeXlsxFile = (Vec<u8>, String);
+
+/// Parse PDFs and optional xlsx files into benefits and trade confirmations,
+/// applying an optional date range filter.
+fn extract_etrade_file_data(
     pdf_texts: &[(String, String)],
-) -> Result<EtradeExtractResult, Vec<SError>> {
+    xlsx_files: &[EtradeXlsxFile],
+    date_range: Option<&DateRange>,
+) -> Result<EtradeData, Vec<SError>> {
     let mut benefits: Vec<BenefitEntry> = Vec::new();
     let mut trade_confs: Vec<BrokerTx> = Vec::new();
 
@@ -521,9 +526,39 @@ pub fn extract_etrade_pdf_raw_data(
         }
     }
 
+    for (data, filename) in xlsx_files {
+        let mut xl_benefits =
+            etrade::parse_benefit_history_xlsx(data.clone(), filename, date_range)
+                .map_err(|e| vec![format!("Failed to parse {filename}: {e}")])?;
+        benefits.append(&mut xl_benefits);
+    }
+
+    if let Some(range) = date_range {
+        etrade::filter_benefits_by_date(&mut benefits, range);
+        trade_confs.retain(|t| range.contains(&t.settlement_date));
+    }
+
+    Ok(EtradeData {
+        benefits,
+        trade_confs,
+    })
+}
+
+/// Extract raw E*TRADE PDF/xlsx data without harmonizing benefits and trades.
+///
+/// Returns two RenderTables: one for benefits and one for trade confirmations.
+pub fn extract_etrade_file_data_to_render_tables(
+    pdf_texts: &[(String, String)],
+    xlsx_files: &[EtradeXlsxFile],
+    year: Option<i32>,
+) -> Result<EtradeExtractResult, Vec<SError>> {
+    let date_range = year.map(DateRange::for_year);
+    let pdf_data =
+        extract_etrade_file_data(pdf_texts, xlsx_files, date_range.as_ref())?;
+
     Ok(EtradeExtractResult {
-        benefits_table: benefits_to_render_table(&benefits),
-        trades_table: trades_to_render_table(&trade_confs),
+        benefits_table: benefits_to_render_table(&pdf_data.benefits),
+        trades_table: trades_to_render_table(&pdf_data.trade_confs),
     })
 }
 
@@ -533,36 +568,21 @@ pub struct EtradeConvertResult {
     pub warnings: Vec<String>,
 }
 
-/// Process E*TRADE PDFs from pre-extracted text.
+/// Process E*TRADE PDFs and optional xlsx files from pre-extracted text.
 ///
 /// `pdf_texts` is a slice of (text, filename) pairs.
+/// `xlsx_files` is a slice of (raw_bytes, filename) pairs.
 /// Returns the ACB-format CSV text plus any warnings.
-pub fn convert_etrade_pdf_texts(
+pub fn convert_etrade_file_data(
     pdf_texts: &[(String, String)],
+    xlsx_files: &[EtradeXlsxFile],
     generate_fx: bool,
     no_sell_to_cover_pair: bool,
+    year: Option<i32>,
 ) -> Result<EtradeConvertResult, Vec<SError>> {
-    let mut benefits: Vec<BenefitEntry> = Vec::new();
-    let mut trade_confs: Vec<BrokerTx> = Vec::new();
-
-    for (text, filename) in pdf_texts {
-        let filepath = PathBuf::from(filename);
-        let pdf_content = etrade::parse_pdf_text(text, &filepath)
-            .map_err(|e| vec![format!("Failed to parse {filename}: {e}")])?;
-        match pdf_content {
-            etrade::EtradePdfContent::BenefitConfirmation(mut bs) => {
-                benefits.append(&mut bs);
-            }
-            etrade::EtradePdfContent::TradeConfirmation(mut txs) => {
-                trade_confs.append(&mut txs);
-            }
-        }
-    }
-
-    let pdf_data = PdfData {
-        benefits,
-        trade_confs,
-    };
+    let date_range = year.map(DateRange::for_year);
+    let pdf_data =
+        extract_etrade_file_data(pdf_texts, xlsx_files, date_range.as_ref())?;
 
     let amend_res = amend_benefit_sales(pdf_data, no_sell_to_cover_pair)?;
     let benefits_and_trades = amend_res.benefits_and_trades;
@@ -591,7 +611,7 @@ mod tests {
 
     use crate::peripheral::broker::{etrade::BenefitEntry, BrokerTx};
     use crate::peripheral::etrade_plan_pdf_tx_extract_impl::{
-        amend_paired_benefit_sales, PdfData,
+        amend_paired_benefit_sales, EtradeData,
     };
     use crate::portfolio::testlib::MAGIC_DEFAULT_DATE;
     use crate::portfolio::{CsvTx, Currency, TxAction};
@@ -894,7 +914,7 @@ mod tests {
         // Case: With non-sell-to-cover benefit (and no available trades for it)
         let benefits = vec![TBen{tdate: dt(20), n_sh: 2, n_stc: None, ..dflt()}.x()];
         let trade_confs = vec![TTx{tdate: dt(20), n_sh: 1, ..dflt()}.x()];
-        let amend_res = amend_paired_benefit_sales(PdfData{benefits, trade_confs}).unwrap();
+        let amend_res = amend_paired_benefit_sales(EtradeData{benefits, trade_confs}).unwrap();
         assert_eq!(amend_res.benefits_and_trades.benefits[0].sell_to_cover_tx_date,
                    None);
         assert_eq!(amend_res.benefits_and_trades.other_trades.len(), 1);
@@ -903,7 +923,7 @@ mod tests {
         // Case: Benefit with trades exactly 5 days after
         let benefits = vec![TBen{tdate: dt(20), n_stc: Some(5), ..dflt()}.x()];
         let trade_confs = vec![TTx{tdate: dt(25), n_sh: 5, ..dflt()}.x()];
-        let amend_res = amend_paired_benefit_sales(PdfData{benefits, trade_confs}).unwrap();
+        let amend_res = amend_paired_benefit_sales(EtradeData{benefits, trade_confs}).unwrap();
         let amended_benefits = amend_res.benefits_and_trades.benefits;
         assert_eq!(amended_benefits[0].sell_to_cover_tx_date, Some(dt(25)));
         assert_eq!(amended_benefits[0].sell_to_cover_settle_date, Some(dt(27)));
@@ -913,7 +933,7 @@ mod tests {
         // Case: Benefit with trades exactly 6 days after, creating error
         let benefits = vec![TBen{tdate: dt(20), n_stc: Some(5), ..dflt()}.x()];
         let trade_confs = vec![TTx{tdate: dt(26), n_sh: 5, ..dflt()}.x()];
-        let errs = amend_paired_benefit_sales(PdfData{benefits, trade_confs})
+        let errs = amend_paired_benefit_sales(EtradeData{benefits, trade_confs})
             .unwrap_err();
         assert_eq!(errs.len(), 1);
         assert_re("Found no trades matching the sell-to-cover for", &errs[0]);
@@ -921,7 +941,7 @@ mod tests {
         // Case: Benefit with trade 1 day before, creating error
         let benefits = vec![TBen{tdate: dt(20), n_stc: Some(5), ..dflt()}.x()];
         let trade_confs = vec![TTx{tdate: dt(19), n_sh: 5, ..dflt()}.x()];
-        let errs = amend_paired_benefit_sales(PdfData{benefits, trade_confs})
+        let errs = amend_paired_benefit_sales(EtradeData{benefits, trade_confs})
             .unwrap_err();
         assert_eq!(errs.len(), 1);
         assert_re("Found no trades matching the sell-to-cover for", &errs[0]);
@@ -934,7 +954,7 @@ mod tests {
             TTx{tdate: dt(21), n_sh: 3, ..dflt()}.x(),
             TTx{tdate: dt(1), n_sh: 3, ..dflt()}.x(),
         ];
-        let amend_res = amend_paired_benefit_sales(PdfData{benefits, trade_confs}).unwrap();
+        let amend_res = amend_paired_benefit_sales(EtradeData{benefits, trade_confs}).unwrap();
         let amended_benefits = amend_res.benefits_and_trades.benefits;
         if amended_benefits[0].sell_to_cover_tx_date != Some(dt(20)) &&
            amended_benefits[0].sell_to_cover_tx_date != Some(dt(21)) {
@@ -962,7 +982,7 @@ mod tests {
             TTx{tdate: dt(23), n_sh: 2, ..dflt()}.x(),
         ];
         let amend_res = amend_paired_benefit_sales(
-            PdfData{benefits: benefits.clone(), trade_confs: trade_confs.clone()})
+            EtradeData{benefits: benefits.clone(), trade_confs: trade_confs.clone()})
             .unwrap();
         let amended_benefits = amend_res.benefits_and_trades.benefits;
         assert_eq!(amend_res.warnings.len(), 0);
@@ -970,7 +990,7 @@ mod tests {
         assert_eq!(amended_benefits[1].sell_to_cover_tx_date, Some(dt(23)));
 
         benefits.reverse();
-        let errs = amend_paired_benefit_sales(PdfData{benefits: benefits, trade_confs})
+        let errs = amend_paired_benefit_sales(EtradeData{benefits: benefits, trade_confs})
             .unwrap_err();
         assert_eq!(errs.len(), 1);
         assert_re("Found no trades matching", &errs[0]);
@@ -987,7 +1007,7 @@ mod tests {
                 ..dflt()}.x(),
         ];
         let amend_res = amend_paired_benefit_sales(
-            PdfData{benefits: benefits.clone(), trade_confs: trade_confs.clone()})
+            EtradeData{benefits: benefits.clone(), trade_confs: trade_confs.clone()})
             .unwrap();
         let amended_benefits = amend_res.benefits_and_trades.benefits;
         assert_eq!(amend_res.warnings.len(), 0);
@@ -1214,7 +1234,7 @@ mod tests {
         ];
 
         let res = super::amend_benefit_sales(
-            PdfData { benefits, trade_confs }, true,
+            EtradeData { benefits, trade_confs }, true,
         ).unwrap();
 
         assert!(res.warnings.is_empty());

@@ -117,6 +117,26 @@ pub fn detect_file_kind_from_pdf_pages(pages: Vec<String>) -> JsValue {
     run_file_detect(FileDetectSource::PdfPages(&pages))
 }
 
+/// Convert Uint8Array JS array items into Vec<(Vec<u8>, String)>
+/// (Pairs of (xlsx data, xlsx name))
+fn unpack_xlsx_args(
+    xlsx_datas: Vec<web_sys::js_sys::Uint8Array>,
+    xlsx_names: Vec<String>,
+) -> Result<Vec<(Vec<u8>, String)>, JsValue> {
+    if xlsx_datas.len() != xlsx_names.len() {
+        return Err(JsValue::from_str(
+            "xlsx_datas and xlsx_names must have the same length",
+        ));
+    }
+    let mut files: Vec<(Vec<u8>, String)> = xlsx_datas
+        .into_iter()
+        .zip(xlsx_names)
+        .map(|(data, name)| (data.to_vec(), name))
+        .collect();
+    files.sort_by(|a, b| a.1.cmp(&b.1));
+    Ok(files)
+}
+
 /// Convert E*TRADE PDF texts to ACB-format CSV.
 ///
 /// `pdf_texts` contains the full text of each PDF, `file_names` has
@@ -128,10 +148,13 @@ pub fn detect_file_kind_from_pdf_pages(pages: Vec<String>) -> JsValue {
 pub fn convert_etrade_pdfs_to_csv(
     pdf_texts: Vec<String>,
     file_names: Vec<String>,
+    xlsx_datas: Vec<web_sys::js_sys::Uint8Array>,
+    xlsx_names: Vec<String>,
     generate_fx: bool,
     no_sell_to_cover_pair: bool,
+    year: Option<i32>,
 ) -> Result<JsValue, JsValue> {
-    use acb::peripheral::etrade_plan_pdf_tx_extract_impl::convert_etrade_pdf_texts;
+    use acb::peripheral::etrade_plan_pdf_tx_extract_impl::convert_etrade_file_data;
 
     if pdf_texts.len() != file_names.len() {
         return Err(JsValue::from_str("pdf_texts and file_names must have the same length"));
@@ -141,10 +164,11 @@ pub fn convert_etrade_pdfs_to_csv(
         .into_iter()
         .zip(file_names)
         .collect();
-    // Sort by filename for deterministic output order.
     pairs.sort_by(|a, b| a.1.cmp(&b.1));
 
-    let result = convert_etrade_pdf_texts(&pairs, generate_fx, no_sell_to_cover_pair)
+    let xlsx_files = unpack_xlsx_args(xlsx_datas, xlsx_names)?;
+
+    let result = convert_etrade_file_data(&pairs, &xlsx_files, generate_fx, no_sell_to_cover_pair, year)
         .map_err(|errs| JsValue::from_str(&errs.join("\n")))?;
 
     let convert_result = app_shim::EtradeConvertResult {
@@ -154,27 +178,32 @@ pub fn convert_etrade_pdfs_to_csv(
     Ok(serde_wasm_bindgen::to_value(&convert_result)?)
 }
 
-/// Extract raw E*TRADE PDF data without harmonizing benefits and trades.
+/// Extract raw E*TRADE PDF/xlsx data without harmonizing benefits and trades.
 ///
 /// Returns an object with `benefitsTable` and `tradesTable` RenderTable fields.
 #[wasm_bindgen]
 pub fn extract_etrade_pdf_data(
     pdf_texts: Vec<String>,
-    file_names: Vec<String>,
+    pdf_names: Vec<String>,
+    xlsx_datas: Vec<web_sys::js_sys::Uint8Array>,
+    xlsx_names: Vec<String>,
+    year: Option<i32>,
 ) -> Result<JsValue, JsValue> {
-    use acb::peripheral::etrade_plan_pdf_tx_extract_impl::extract_etrade_pdf_raw_data;
+    use acb::peripheral::etrade_plan_pdf_tx_extract_impl::extract_etrade_file_data_to_render_tables;
 
-    if pdf_texts.len() != file_names.len() {
+    if pdf_texts.len() != pdf_names.len() {
         return Err(JsValue::from_str("pdf_texts and file_names must have the same length"));
     }
 
     let mut pairs: Vec<(String, String)> = pdf_texts
         .into_iter()
-        .zip(file_names)
+        .zip(pdf_names)
         .collect();
     pairs.sort_by(|a, b| a.1.cmp(&b.1));
 
-    let result = extract_etrade_pdf_raw_data(&pairs)
+    let xlsx_files = unpack_xlsx_args(xlsx_datas, xlsx_names)?;
+
+    let result = extract_etrade_file_data_to_render_tables(&pairs, &xlsx_files, year)
         .map_err(|errs| JsValue::from_str(&errs.join("\n")))?;
 
     let extract_result = app_shim::EtradeExtractResult {
