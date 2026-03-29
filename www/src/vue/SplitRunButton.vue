@@ -2,6 +2,7 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue';
 import { AcbAppRunMode } from '../common/acb_app_types.js';
 import { getTabStore, type TabIdType } from './tab_store.js';
+import { getFileManagerStore, FileKind, relevantInputKindsForTab } from './file_manager_store.js';
 
 interface RunModeOption {
    mode: AcbAppRunMode;
@@ -22,6 +23,7 @@ const props = defineProps<{
 const menuOpen = ref(false);
 const containerRef = ref<HTMLElement | null>(null);
 const tabStore = getTabStore();
+const fileManagerStore = getFileManagerStore();
 
 const disabled = computed(() =>
    !(tabStore.runEnabledByTab.get(props.tabId) ?? false)
@@ -29,6 +31,16 @@ const disabled = computed(() =>
 
 const primaryOption = RUN_MODE_OPTIONS[0];
 const dropdownOptions = RUN_MODE_OPTIONS.slice(1);
+
+const selectedFilesLabel = computed(() => {
+   const kinds = relevantInputKindsForTab(props.tabId);
+   const usedFiles = fileManagerStore.files.filter(f =>
+      FileKind.isInput(f.kind) && f.useChecked && !f.warning && kinds.has(f.kind)
+   );
+   if (usedFiles.length === 0) return '';
+   if (usedFiles.length === 1) return `${usedFiles[0].name} selected`;
+   return `${usedFiles[0].name} and ${usedFiles.length - 1} other file${usedFiles.length - 1 > 1 ? 's' : ''} selected`;
+});
 
 function handlePrimaryClick() {
    if (disabled.value) return;
@@ -74,6 +86,7 @@ onUnmounted(() => document.removeEventListener('click', handleClickOutside));
             <span class="split-btn-arrow" :class="{ open: menuOpen }">&#x25BC;</span>
          </button>
       </div>
+      <span v-if="selectedFilesLabel" class="selected-files-label">{{ selectedFilesLabel }}</span>
       <ul v-if="menuOpen" class="split-btn-menu">
          <li
             v-for="opt in dropdownOptions"
@@ -91,7 +104,14 @@ onUnmounted(() => document.removeEventListener('click', handleClickOutside));
 <style scoped>
 .split-btn-container {
    position: relative;
-   display: inline-block;
+   display: inline-flex;
+   align-items: center;
+   gap: 10px;
+}
+
+.selected-files-label {
+   font-size: 13px;
+   color: #9ca3af;
 }
 
 .split-btn {

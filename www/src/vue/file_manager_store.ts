@@ -74,7 +74,7 @@ export interface FileManagerState {
    setSelectedByIds(ids: Set<number>): void;
 }
 
-function relevantInputKindsForTab(tabId: TabIdType): Set<FileKind> {
+export function relevantInputKindsForTab(tabId: TabIdType): Set<FileKind> {
    switch (tabId) {
       case TabId.AcbCalc:
          return new Set([FileKind.AcbTxCsv]);
@@ -175,7 +175,7 @@ export function deduplicateFileName(name: string, existingNames: Set<string>): s
    const ext  = dotIdx > 0 ? name.slice(dotIdx) : '';
 
    for (let n = 2; ; n++) {
-      const candidate = `${stem} (${n})${ext}`;
+      const candidate = `${stem} (${String(n)})${ext}`;
       if (!existingNames.has(candidate)) {
          return candidate;
       }

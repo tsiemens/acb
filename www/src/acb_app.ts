@@ -245,7 +245,7 @@ async function detectAndUpdatePdfEntry(entry: FileEntry): Promise<void> {
       entry.useChecked = false;
    }
    entry.isDetecting = false;
-   console.debug(`Finished detecting file: ${entry.name}: kind=${entry.kind}, warning=${entry.warning}`);
+   console.debug(`Finished detecting file: ${entry.name}: kind=${entry.kind}, warning=${entry.warning ?? ''}`);
 }
 
 // NOTE (until refactoring is done): This adds files to the new
