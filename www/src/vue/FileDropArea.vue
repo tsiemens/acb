@@ -69,6 +69,7 @@ function handleFileInputChange(event: Event) {
          class="file-input-hidden"
          @change="handleFileInputChange"
       >
+      <p class="local-disclaimer">All processing is done locally in your browser - no data leaves your computer</p>
    </div>
 </template>
 
@@ -98,5 +99,11 @@ function handleFileInputChange(event: Event) {
 
 .file-input-hidden {
    display: none;
+}
+
+.local-disclaimer {
+   margin-top: 12px;
+   font-size: 0.85em;
+   opacity: 0.5;
 }
 </style>

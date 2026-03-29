@@ -29,7 +29,7 @@
   </InfoDialog>
 
   <InfoDialog :store="store" dialog-id="dataPolicyDialog" title="Data Policy">
-    <p>ACB does not collect any personal data. All processing is done locally to your browser.</p>
+    <p>ACB does not collect any personal data. All processing is done locally in your browser. No data leaves your computer.</p>
   </InfoDialog>
 
   <InfoDialog :store="store" dialog-id="dynamicTextInfo" :title="store.dynamicTextTitle">
