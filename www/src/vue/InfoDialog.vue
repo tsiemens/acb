@@ -54,15 +54,18 @@ export default defineComponent({
   transform: translate(-50%, -50%);
   width: 90%;
   max-width: 600px;
+  max-height: calc(100vh - 60px);
   background-color: white;
   border-radius: var(--border-radius);
   padding: 25px;
   box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
   z-index: 100;
+  display: none;
+  flex-direction: column;
 }
 
 .info-dialog.active {
-  display: block;
+  display: flex;
 }
 
 .info-dialog-header {
@@ -90,6 +93,8 @@ export default defineComponent({
 
 .info-dialog-content {
   line-height: 1.6;
+  overflow-y: auto;
+  min-height: 0;
 }
 
 .info-dialog-content :deep(p) {
