@@ -21,17 +21,13 @@ export async function extractPdfPages(data: ArrayBuffer): Promise<string[]> {
       let lastY: number | null = null;
       let text = '';
       for (const item of content.items) {
-         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-         const ti = item as any;
-         // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+         const ti = item as { str?: string; transform?: number[] };
          if (!ti.str && ti.str !== '') continue;
-         // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-         const y: number | null = ti.transform ? (ti.transform[5] as number) : null;
+         const y: number | null = ti.transform ? ti.transform[5] : null;
          if (lastY !== null && y !== null && Math.abs(y - lastY) > 1) {
             text += '\n';
          }
-         // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-         text += ti.str as string;
+         text += ti.str;
          lastY = y;
       }
       pages.push(text);
