@@ -73,8 +73,12 @@ export function runHandler(mode: AcbAppRunMode): void {
             f.kind === FileKind.EtradeBenefitPdf) &&
            f.useChecked && !f.warning
    );
+   const etradeXlsxFiles = fileStore.files.filter(
+      f => f.kind === FileKind.EtradeBenefitsExcel &&
+           f.useChecked && !f.warning
+   );
 
-   if (xlsxFiles.length === 0 && etradePdfFiles.length === 0) {
+   if (xlsxFiles.length === 0 && etradePdfFiles.length === 0 && etradeXlsxFiles.length === 0) {
       ErrorBox.getBrokerConvert().showWith({
          title: 'No Valid Files',
          descPre: 'Please add and select at least one valid xlsx or E*TRADE PDF file before running (use the file manager drawer).',
@@ -128,17 +132,20 @@ export function runHandler(mode: AcbAppRunMode): void {
       }
    }
 
-   // Process E*TRADE PDF files
-   if (etradePdfFiles.length > 0) {
+   // Process E*TRADE PDF and xlsx files
+   if (etradePdfFiles.length > 0 || etradeXlsxFiles.length > 0) {
       try {
          // pdfPageTexts is always set before run (isDetecting gate on Run button).
          // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
          const pdfTexts = etradePdfFiles.map(f => f.pdfPageTexts!.join('\n'));
-         const fileNames = etradePdfFiles.map(f => f.name);
+         const pdfFileNames = etradePdfFiles.map(f => f.name);
+         const xlsxDatas = etradeXlsxFiles.map(f => new Uint8Array(f.data));
+         const xlsxNames = etradeXlsxFiles.map(f => f.name);
+         const filterYear = appInputStore.filterYear ? parseInt(appInputStore.filterYear, 10) : undefined;
 
          if (appInputStore.extractOnly) {
             // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-            const jsRet = extract_etrade_pdf_data(pdfTexts, fileNames);
+            const jsRet = extract_etrade_pdf_data(pdfTexts, pdfFileNames, xlsxDatas, xlsxNames, filterYear);
             const result = etradeExtractResultFromJsValue(jsRet);
 
             namedTables.push(
@@ -147,7 +154,7 @@ export function runHandler(mode: AcbAppRunMode): void {
             );
          } else {
             // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-            const jsRet = convert_etrade_pdfs_to_csv(pdfTexts, fileNames, !appInputStore.noFx, appInputStore.noSellToCoverPair);
+            const jsRet = convert_etrade_pdfs_to_csv(pdfTexts, pdfFileNames, xlsxDatas, xlsxNames, !appInputStore.noFx, appInputStore.noSellToCoverPair, filterYear);
             const result = etradeConvertResultFromJsValue(jsRet);
 
             if (result.warnings.length > 0) {
@@ -178,7 +185,7 @@ export function runHandler(mode: AcbAppRunMode): void {
          console.error('convert_etrade_pdfs_to_csv error: ', err);
          ErrorBox.getBrokerConvert().showWith({
             title: 'E*TRADE Conversion Error',
-            descPre: 'An error occurred while converting E*TRADE PDFs:',
+            descPre: 'An error occurred while converting E*TRADE files:',
             errorText: errMsg,
          });
          return;

@@ -14,7 +14,7 @@ use crate::util::date::DateRange;
 use crate::util::rw::WriteHandle;
 use crate::write_errln;
 
-use super::etrade_plan_pdf_tx_extract_impl::PdfData;
+use super::etrade_plan_pdf_tx_extract_impl::EtradeData;
 
 fn get_filename(fpath: &PathBuf) -> String {
     fpath
@@ -34,7 +34,7 @@ pub(super) fn parse_files(
     files: &Vec<PathBuf>,
     date_range: Option<&DateRange>,
     debug: bool,
-) -> Result<PdfData, SError> {
+) -> Result<EtradeData, SError> {
     let mut benefits = Vec::new();
     let mut trade_confs = Vec::new();
 
@@ -104,10 +104,10 @@ pub(super) fn parse_files(
 
     if let Some(range) = date_range {
         etrade::filter_benefits_by_date(&mut benefits, range);
-        trade_confs.retain(|t| range.contains(&t.settlement_date));
+        trade_confs.retain(|t| range.contains(&t.trade_date));
     }
 
-    Ok(PdfData {
+    Ok(EtradeData {
         benefits,
         trade_confs,
     })
@@ -118,7 +118,7 @@ fn display_opt<T: std::fmt::Display>(val: &Option<T>) -> String {
 }
 
 fn dump_extracted_data(
-    pdf_data: &PdfData,
+    pdf_data: &EtradeData,
     pretty: bool,
     mut out_w: WriteHandle,
     mut err_w: WriteHandle,
@@ -310,7 +310,7 @@ pub struct Args {
     #[arg(long)]
     pub no_sell_to_cover_pair: bool,
 
-    /// Only include entries whose settlement date falls in this year.
+    /// Only include benefits whose acquisition date falls in this year.
     /// Useful when processing a BenefitHistory xlsx that spans many years.
     #[arg(long)]
     pub year: Option<i32>,

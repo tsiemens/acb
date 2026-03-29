@@ -173,6 +173,13 @@ pub fn read_xl_file(
     worksheet_from_workbook(&mut workbook, sheet_name)
 }
 
+/// Returns the sheet names from an in-memory workbook without reading any data.
+pub fn xl_data_sheet_names(data: &[u8]) -> Result<Vec<String>, SError> {
+    let cursor = Cursor::new(data);
+    let workbook = open_workbook_auto_from_rs(cursor).map_err(|e| format!("{e}"))?;
+    Ok(workbook.sheet_names())
+}
+
 /// Reads the named sheet (or the only sheet) from raw in-memory workbook bytes.
 pub fn read_xl_data(
     data: Vec<u8>,

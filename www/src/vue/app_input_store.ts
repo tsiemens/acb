@@ -35,6 +35,8 @@ export interface AppInputStore {
    noFx: boolean;
    /** Do not pair sell-to-cover data with trade confirmations (E*TRADE only) */
    noSellToCoverPair: boolean;
+   /** Filter to only include entries whose settlement date falls in this year */
+   filterYear: string;
 }
 
 let _store: AppInputStore | null = null;
@@ -50,6 +52,7 @@ export function getAppInputStore(): AppInputStore {
          extractOnly: false,
          noFx: false,
          noSellToCoverPair: false,
+         filterYear: '',
       }) as AppInputStore;
    }
    return _store;

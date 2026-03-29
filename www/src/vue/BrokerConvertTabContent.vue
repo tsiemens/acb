@@ -4,7 +4,7 @@
 
       <FileDropArea
         :onFilesDropped="onFilesDropped"
-        dropMessage="Drop XLS, XLSX, or PDF Files Here"
+        dropMessage="Drop XLSX or PDF Files Here"
       />
 
       <div class="action-buttons">
