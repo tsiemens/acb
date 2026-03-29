@@ -45,15 +45,15 @@ export default defineComponent({
 
 <style scoped>
 .info-warnings-section {
-  background-color: #fff3cd;
-  border: 1px solid #ffeeba;
+  background-color: var(--warning-bg);
+  border: 1px solid var(--warning-border);
   padding: 15px;
   border-radius: var(--border-radius);
   margin-bottom: 20px;
 }
 
 .info-warnings-section h3 {
-  color: #856404;
+  color: var(--warning-text);
 }
 
 .info-secondary {
