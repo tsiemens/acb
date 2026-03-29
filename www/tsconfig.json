@@ -7,7 +7,8 @@
     "outDir": "./dist/js/",
     "esModuleInterop": true,
     "skipLibCheck": true,
-    "forceConsistentCasingInFileNames": true
+    "forceConsistentCasingInFileNames": true,
+    "types": ["vite-svg-loader"]
   },
   "include": ["src/**/*"],
   "exclude": ["node_modules"]
