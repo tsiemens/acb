@@ -104,7 +104,7 @@ pub(super) fn parse_files(
 
     if let Some(range) = date_range {
         etrade::filter_benefits_by_date(&mut benefits, range);
-        trade_confs.retain(|t| range.contains(&t.trade_date));
+        trade_confs.retain(|t| range.contains(&t.settlement_date));
     }
 
     Ok(PdfData {
@@ -310,7 +310,7 @@ pub struct Args {
     #[arg(long)]
     pub no_sell_to_cover_pair: bool,
 
-    /// Only include benefits whose acquisition date falls in this year.
+    /// Only include entries whose settlement date falls in this year.
     /// Useful when processing a BenefitHistory xlsx that spans many years.
     #[arg(long)]
     pub year: Option<i32>,

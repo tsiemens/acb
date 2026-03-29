@@ -13,6 +13,7 @@ use crate::peripheral::broker::Account;
 use crate::portfolio::CsvTx;
 use crate::portfolio::Currency;
 use crate::util::basic::SError;
+use crate::util::date::DateRange;
 use crate::util::rw::WriteHandle;
 use crate::write_errln;
 
@@ -174,6 +175,10 @@ pub struct Args {
     /// Select which sheet (by name) in the spreadsheet file to use.
     #[arg(long)]
     pub sheet: Option<String>,
+
+    /// Only include transactions whose settlement date falls in this year.
+    #[arg(long)]
+    pub year: Option<i32>,
 }
 
 pub fn run() -> Result<(), ()> {
@@ -190,6 +195,8 @@ pub fn run_with_args(
     out_w: WriteHandle,
     mut err_w: WriteHandle,
 ) -> Result<(), ()> {
+    let date_range = args.year.map(DateRange::for_year);
+
     let (csv_txs, non_fatal_errors) = match convert_xl_txs(
         XlSource::Path(args.export_file.clone()),
         &args.broker,
@@ -205,6 +212,15 @@ pub fn run_with_args(
             write_errln!(err_w, "{e}");
             return Err(());
         }
+    };
+
+    let csv_txs = if let Some(ref range) = date_range {
+        csv_txs
+            .into_iter()
+            .filter(|tx| tx.settlement_date.map_or(false, |d| range.contains(&d)))
+            .collect()
+    } else {
+        csv_txs
     };
 
     let mut printer: Box<dyn AcbWriter> = if args.pretty {
