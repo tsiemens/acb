@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { ref } from 'vue';
+// Special import for vite-svg-loader
+import FolderIcon from '../../static/images/folder.svg?component';
 
 const props = withDefaults(defineProps<{
    onFilesDropped: (fileList: FileList) => void;
@@ -57,7 +59,7 @@ function handleFileInputChange(event: Event) {
       @drop="handleDrop"
       @click="handleClick"
    >
-      <div class="file-drop-icon">&#x1F4C1;</div>
+      <FolderIcon class="file-drop-icon" />
       <h3>{{ dropMessage }}</h3>
       <p>or click to browse files</p>
       <input
@@ -87,8 +89,10 @@ function handleFileInputChange(event: Event) {
 }
 
 .file-drop-icon {
-   font-size: 40px;
-   margin-bottom: 10px;
+   display: block;
+   width: 40px;
+   height: 40px;
+   margin: 0 auto 10px;
    color: var(--secondary-color);
 }
 

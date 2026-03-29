@@ -1,9 +1,10 @@
 import { defineConfig } from 'vite';
 import vue from '@vitejs/plugin-vue';
+import svgLoader from 'vite-svg-loader';
 import packageJson from './package.json';
 
 export default defineConfig({
-  plugins: [vue()],
+  plugins: [vue(), svgLoader()],
   build: {
     minify: 'terser',
     terserOptions: {
