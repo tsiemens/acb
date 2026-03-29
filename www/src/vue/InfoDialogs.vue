@@ -40,7 +40,7 @@
     <p>ACB is open sourced under the MIT License</p>
     <div style="font-family: monospace;">
       <p>MIT License</p>
-      <p>Copyright (c) 2018 Trevor Siemens</p>
+      <p>Copyright (c) {{ copyrightYears }} Trevor Siemens</p>
       <p>
         Permission is hereby granted, free of charge, to any person obtaining a copy
         of this software and associated documentation files (the "Software"), to deal
@@ -71,6 +71,7 @@ import { defineComponent, type PropType } from 'vue';
 import type { InfoDialogStore } from './info_dialog_store.js';
 import InfoDialog from './InfoDialog.vue';
 import InfoDialogBackdrop from './InfoDialogBackdrop.vue';
+import { copyrightYears } from './copyright.js';
 
 export default defineComponent({
    name: 'InfoDialogs',
@@ -80,6 +81,9 @@ export default defineComponent({
          type: Object as PropType<InfoDialogStore>,
          required: true,
       },
+   },
+   setup() {
+      return { copyrightYears: copyrightYears() };
    },
 });
 </script>
