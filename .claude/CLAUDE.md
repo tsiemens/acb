@@ -57,7 +57,7 @@ make test-py      # runs pytest in py/
   - `outfmt/` — Output formatters implementing `AcbWriter` trait: `TextWriter` (console tables), `CsvWriter`/`CsvZipWriter` (CSV output)
 
 - **`src/peripheral/`** — Broker-specific integrations and file format adapters
-  - `broker/etrade.rs`, `broker/questrade.rs` — Broker transaction parsers
+  - `broker/etrade.rs`, `broker/questrade.rs`, `broker/rbc_di.rs` — Broker transaction parsers
   - `excel.rs`, `tx_export_convert_impl.rs` — Excel/.xlsx import
   - `etrade_plan_pdf_tx_extract_impl.rs`, `questrade_statement_fmv_impl.rs` — PDF extraction
 

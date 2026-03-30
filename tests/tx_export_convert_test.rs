@@ -296,3 +296,92 @@ fn test_sort() {
 
     verify_csv(&out, &exp_csv);
 }
+
+// ---- RBC Direct Investing tests ----
+
+fn parse_rbc_args(mut flags: Vec<&str>) -> Args {
+    let mut args = vec!["tx-export-convert", "-b", "rbc-di"];
+    args.append(&mut flags);
+    args.push("./tests/data/RBC_DI_Test_Export.csv");
+    Args::parse_from(args)
+}
+
+#[test]
+fn test_rbc_di_basic_buy_sell() {
+    let (res, out, err) = run_and_get_output(parse_rbc_args(vec![]));
+
+    // Should have warnings (not errors) for RoC and Reorganization
+    res.unwrap();
+    assert!(err.contains("Warnings:"));
+    assert!(!err.contains("Errors:"));
+    assert!(err.contains("Return of Capital"));
+    assert!(err.contains("Reorganization"));
+    assert!(err.contains("not automatically converted"));
+
+    // Verify the actual buy/sell transactions
+    let exp_csv = "\
+    security  ,trade date ,settlement date,action,shares,amount/share,commission,currency,affiliate  ,memo
+    XEQT      ,2025-01-10 ,2025-01-14     ,Buy   ,10    ,40.00       ,9.95      ,CAD     ,Default (R),RBC Direct Investing TFSA 12345678
+    ZNQ       ,2025-02-05 ,2025-02-07     ,Buy   ,5     ,100.00      ,0.00      ,CAD     ,Default (R),RBC Direct Investing TFSA 12345678
+    XEQT      ,2025-03-15 ,2025-03-18     ,Sell  ,4     ,42.50       ,9.95      ,CAD     ,Default (R),RBC Direct Investing TFSA 12345678
+    XEQT      ,2025-09-10 ,2025-09-12     ,Buy   ,8     ,41.25       ,0.00      ,CAD     ,Default (R),RBC Direct Investing TFSA 12345678
+    ZNQ       ,2025-10-05 ,2025-10-08     ,Sell  ,3     ,55.00       ,9.90      ,CAD     ,Default (R),RBC Direct Investing TFSA 12345678
+    VFV       ,2025-11-20 ,2025-11-24     ,Buy   ,20    ,120.00      ,9.95      ,CAD     ,Default (R),RBC Direct Investing TFSA 12345678
+    VFV       ,2025-12-15 ,2025-12-17     ,Sell  ,10    ,122.50      ,9.95      ,CAD     ,Default (R),RBC Direct Investing TFSA 12345678\
+    ";
+
+    verify_csv(&out, &exp_csv);
+}
+
+#[test]
+fn test_rbc_di_security_filter() {
+    let (res, out, err) =
+        run_and_get_output(parse_rbc_args(vec!["--security", "XEQT"]));
+
+    assert_ne!("", &err);
+    // Still has warnings for RoC/Reorg, but they are for different securities
+    res.unwrap();
+
+    let exp_csv = "\
+    security,trade date ,settlement date,action,shares,amount/share,commission,currency,affiliate  ,memo
+    XEQT    ,2025-01-10 ,2025-01-14     ,Buy   ,10    ,40.00       ,9.95      ,CAD     ,Default (R),RBC Direct Investing TFSA 12345678
+    XEQT    ,2025-03-15 ,2025-03-18     ,Sell  ,4     ,42.50       ,9.95      ,CAD     ,Default (R),RBC Direct Investing TFSA 12345678
+    XEQT    ,2025-09-10 ,2025-09-12     ,Buy   ,8     ,41.25       ,0.00      ,CAD     ,Default (R),RBC Direct Investing TFSA 12345678\
+    ";
+
+    verify_csv(&out, &exp_csv);
+}
+
+#[test]
+fn test_rbc_di_year_filter() {
+    // Filter to only 2025 Jan-Mar by using a custom date range via the year flag.
+    // The year flag filters by settlement date year, so all 2025 txs should match.
+    let (res, out, err) = run_and_get_output(parse_rbc_args(vec!["--year", "2025"]));
+
+    assert_ne!("", &err);
+    // Should still have the same transactions since all are in 2025
+    res.unwrap(); // warnings still present but not errors
+
+    // Just verify the output contains buy/sell transactions
+    assert!(out.contains("XEQT"));
+    assert!(out.contains("ZNQ"));
+    assert!(out.contains("VFV"));
+}
+
+#[test]
+fn test_rbc_di_sorted_by_settlement_date() {
+    let (res, out, _err) = run_and_get_output(parse_rbc_args(vec![]));
+    res.unwrap(); // warnings only, no errors
+
+    // Parse dates from output and verify they're sorted
+    let r = StrReader::from(out.as_str());
+    let mut csv_r = csv::ReaderBuilder::new().from_reader(r);
+    let mut settlement_dates: Vec<String> = Vec::new();
+    for rec_res in csv_r.records() {
+        let rec = rec_res.unwrap();
+        settlement_dates.push(rec[2].to_string());
+    }
+    let mut sorted = settlement_dates.clone();
+    sorted.sort();
+    assert_eq!(settlement_dates, sorted);
+}

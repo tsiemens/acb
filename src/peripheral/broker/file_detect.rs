@@ -12,6 +12,8 @@ pub enum FileKind {
     AcbTxCsv,
     // Any Questrade xls, xlsx (Excel parsable) activities file.
     QuestradeExcel,
+    // RBC Direct Investing CSV activities export.
+    RbcDiCsv,
     // Etrade
     EtradeTradeConfirmationPdf,
     EtradeBenefitPdf,
@@ -178,11 +180,38 @@ fn detect_csv(data: &[u8]) -> FileDetectResult {
         return FileDetectResult::ok(FileKind::AcbTxCsv);
     }
 
+    // Check for RBC DI CSV (header is not on the first line due to preamble).
+    // Scan the first ~15 lines for the RBC DI header row.
+    if detect_rbc_di_csv(text) {
+        return FileDetectResult::ok(FileKind::RbcDiCsv);
+    }
+
     let cols =
         missing.iter().map(|c| format!("'{c}'")).collect::<Vec<_>>().join(", ");
     FileDetectResult::unknown(format!(
         "CSV is missing required ACB TX column(s): {cols}"
     ))
+}
+
+fn detect_rbc_di_csv(text: &str) -> bool {
+    use super::rbc_di::REQUIRED_HEADERS;
+    let required: HashSet<String> =
+        REQUIRED_HEADERS.iter().map(|h| h.to_lowercase()).collect();
+
+    for line in text.lines().take(15) {
+        // Parse as CSV to handle quoted fields
+        let mut rdr = csv::ReaderBuilder::new()
+            .has_headers(false)
+            .from_reader(line.as_bytes());
+        if let Some(Ok(record)) = rdr.records().next() {
+            let cols: HashSet<String> =
+                record.iter().map(|c| c.trim().to_lowercase()).collect();
+            if required.iter().all(|h| cols.contains(h)) {
+                return true;
+            }
+        }
+    }
+    false
 }
 
 #[cfg(feature = "xlsx_read")]
@@ -199,7 +228,13 @@ fn detect_excel(data: &[u8]) -> Result<FileDetectResult, SError> {
         return Ok(FileDetectResult::ok(FileKind::EtradeBenefitsExcel));
     }
 
-    let sheet = crate::peripheral::excel::read_xl_data(data.to_vec(), None)?;
+    let sheet_names = &sheet_names; // reuse from above
+    let first_sheet_name =
+        sheet_names.first().ok_or_else(|| "Workbook has no sheets".to_string())?;
+    let sheet = crate::peripheral::excel::read_xl_data(
+        data.to_vec(),
+        Some(first_sheet_name),
+    )?;
 
     let mut rows = sheet.rows();
     let first_row = match rows.next() {
@@ -352,6 +387,42 @@ mod tests {
             file_name: "empty.csv",
         });
         assert_unknown_bare(&r);
+    }
+
+    // -- RBC DI CSV detection --
+
+    #[test]
+    fn test_csv_rbc_di_with_preamble() {
+        let csv = "\
+\"Activity Export as of Mar 29, 2026 at 10:51:18 pm ET\"
+
+\"Account: 12345 - RRSP\"
+
+\"Trades this month: 0\"
+
+\"5 Activities\"
+
+\"Date\",\"Activity\",\"Symbol\",\"Symbol Description\",\"Quantity\",\"Price\",\"Settlement Date\",\"Account\",\"Value\",\"Currency\",\"Description\"
+\"December 24, 2025\",\"Buy\",\"XEQT\",\"ISHARES\",\"6\",\"40.37\",\"December 29, 2025\",\"12345\",\"-242.22\",\"CAD\",\"desc\"
+";
+        let r = detect(FileDetectSource::Bytes {
+            data: csv.as_bytes(),
+            file_name: "activity.csv",
+        });
+        assert_ok(&r, FileKind::RbcDiCsv);
+    }
+
+    #[test]
+    fn test_csv_rbc_di_header_on_first_line() {
+        // If someone strips the preamble, it should still detect as RBC DI
+        // (but actually this would look like an unknown CSV since the first-line
+        // check for ACB columns runs first and fails, then the RBC scan finds it).
+        let csv = "\"Date\",\"Activity\",\"Symbol\",\"Symbol Description\",\"Quantity\",\"Price\",\"Settlement Date\",\"Account\",\"Value\",\"Currency\",\"Description\"\n\"January 3, 2025\",\"Buy\",\"FOO\",\"desc\",\"10\",\"5.00\",\"January 5, 2025\",\"12345\",\"-50\",\"CAD\",\"desc\"\n";
+        let r = detect(FileDetectSource::Bytes {
+            data: csv.as_bytes(),
+            file_name: "activity.csv",
+        });
+        assert_ok(&r, FileKind::RbcDiCsv);
     }
 
     // -- Non-CSV extension with CSV content should be Unknown --

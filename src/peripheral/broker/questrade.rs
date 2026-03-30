@@ -56,6 +56,7 @@ pub fn sheet_to_txs(
             SheetToTxsErr {
                 txs: None,
                 errors: vec![e],
+                warnings: vec![],
             }
         })?;
 
@@ -241,6 +242,7 @@ pub fn sheet_to_txs(
         Err(SheetToTxsErr {
             txs: Some(txs),
             errors: errors,
+            warnings: vec![],
         })
     } else {
         Ok(txs)
