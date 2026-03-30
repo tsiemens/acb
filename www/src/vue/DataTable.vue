@@ -1,6 +1,9 @@
 <template>
   <div>
-    <div v-if="title" class="table-title">{{ title }}</div>
+    <div v-if="title" class="table-title">
+      {{ title }}
+      <span v-if="titleBadge" class="title-badge">{{ titleBadge }}</span>
+    </div>
 
     <div v-if="errors.length > 0" class="security-errors">
       <p v-for="(err, i) in errors" :key="i">{{ err }}</p>
@@ -64,6 +67,10 @@ export default defineComponent({
          type: String,
          default: '',
       },
+      titleBadge: {
+         type: String,
+         default: '',
+      },
       errorSuffix: {
          type: String,
          default: '',
@@ -115,6 +122,18 @@ export default defineComponent({
   margin-bottom: 5px;
   margin-top: 20px;
   font-weight: bold;
+}
+
+.title-badge {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 0px 8px;
+  border-radius: 5px;
+  font-size: 8pt;
+  font-weight: 600;
+  background: #d1fae5;
+  color: #065f46;
+  vertical-align: middle;
 }
 
 .security-errors {

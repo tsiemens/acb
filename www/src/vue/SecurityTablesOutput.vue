@@ -6,12 +6,14 @@
       v-show="shouldShowSecurity(symbol)"
       :table="getTable(symbol)"
       :title="symbol"
+      :titleBadge="isNewSecurity(symbol) ? 'NEW' : ''"
       :rowClassFn="rowClassFn"
       :cellClassFn="cellClassFn"
       :cellTagClassFn="cellTagClassFn"
       :cellHtmlFn="cellHtmlFn"
       errorSuffix="Information is of parsed state only, and may not be fully correct."
     />
+
   </div>
 </template>
 
@@ -32,6 +34,23 @@ const MEMO_COL = 15;
 
 const BREAK_BEFORE_PAREN_COLS = new Set([AMOUNT_COL, AMT_PER_SHARE_COL, COMMISSION_COL]);
 
+// Canadian personal tax deadline is April 30.
+// Before the deadline, the "current" tax year is last year.
+// After the deadline, the "current" tax year is this year.
+const TAX_DEADLINE_MONTH = 4; // April (1-indexed)
+const TAX_DEADLINE_DAY = 30;
+
+function getCurrentTaxYear(): number {
+   const now = new Date();
+   const year = now.getFullYear();
+   const month = now.getMonth() + 1;
+   const day = now.getDate();
+   if (month < TAX_DEADLINE_MONTH || (month === TAX_DEADLINE_MONTH && day <= TAX_DEADLINE_DAY)) {
+      return year - 1;
+   }
+   return year;
+}
+
 export default defineComponent({
    name: 'SecurityTablesOutput',
    components: { DataTable },
@@ -51,6 +70,8 @@ export default defineComponent({
          return props.store.securityTables!.get(symbol)!;
       }
 
+      const currentTaxYear = getCurrentTaxYear();
+
       function getYearsForSymbol(symbol: string): Set<string> {
          const years = new Set<string>();
          for (const row of getTable(symbol).rows) {
@@ -58,6 +79,16 @@ export default defineComponent({
             if (year) years.add(year);
          }
          return years;
+      }
+
+      function isNewSecurity(symbol: string): boolean {
+         const years = getYearsForSymbol(symbol);
+         if (years.size === 0) return false;
+         for (const year of years) {
+            const y = parseInt(year, 10);
+            if (y < currentTaxYear) return false;
+         }
+         return true;
       }
 
       function shouldShowSecurity(symbol: string): boolean {
@@ -137,7 +168,7 @@ export default defineComponent({
          return null;
       }
 
-      return { sortedSymbols, getTable, shouldShowSecurity, rowClassFn, cellClassFn, cellTagClassFn, cellHtmlFn };
+      return { sortedSymbols, getTable, shouldShowSecurity, isNewSecurity, rowClassFn, cellClassFn, cellTagClassFn, cellHtmlFn };
    },
 });
 </script>
@@ -208,4 +239,5 @@ export default defineComponent({
   background: #f3f4f6;
   color: #374151;
 }
+
 </style>
