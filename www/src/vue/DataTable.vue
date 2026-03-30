@@ -20,10 +20,24 @@
             :key="ri"
             :class="rowClassFn ? rowClassFn(row) : ''"
           >
-            <td v-for="(cell, ci) in row" :key="ci">{{ cell }}</td>
+            <td
+              v-for="(cell, ci) in row"
+              :key="ci"
+              :class="cellClassFn ? cellClassFn(row, ci) : ''"
+            >
+              <span
+                v-if="cellTagClassFn && cellTagClassFn(row, ci)"
+                :class="['cell-tag', cellTagClassFn(row, ci)]"
+              >{{ cell }}</span>
+              <span
+                v-else-if="cellHtmlFn && cellHtmlFn(cell, ci)"
+                v-html="cellHtmlFn(cell, ci)"
+              ></span>
+              <span v-else v-html="formatCell(cell)"></span>
+            </td>
           </tr>
           <tr v-if="table.footer">
-            <td v-for="(cell, ci) in table.footer" :key="ci">{{ cell }}</td>
+            <td v-for="(cell, ci) in table.footer" :key="ci"><span v-html="formatCell(cell)"></span></td>
           </tr>
         </tbody>
       </table>
@@ -58,11 +72,32 @@ export default defineComponent({
          type: Function as PropType<(row: string[]) => string | string[]>,
          default: null,
       },
+      cellClassFn: {
+         type: Function as PropType<(row: string[], colIndex: number) => string | string[] | null>,
+         default: null,
+      },
+      cellTagClassFn: {
+         type: Function as PropType<(row: string[], colIndex: number) => string | null>,
+         default: null,
+      },
+      cellHtmlFn: {
+         type: Function as PropType<(cell: string, colIndex: number) => string | null>,
+         default: null,
+      },
    },
    setup(props) {
       const errors = computed(() => props.table.errors || []);
       const notes = computed(() => props.table.notes || []);
-      return { errors, notes };
+
+      function escapeHtml(s: string): string {
+         return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      }
+
+      function formatCell(cell: string): string {
+         return escapeHtml(cell).replace(/\n/g, '<br>');
+      }
+
+      return { errors, notes, formatCell };
    },
 });
 </script>
@@ -70,8 +105,12 @@ export default defineComponent({
 <style scoped>
 .table-title {
   padding-left: 8px;
-  background: var(--dark-color);
-  color: white;
+  background: var(--primary-color-much-lighter);
+  border-color: var(--primary-color-lighter);
+  border-style: solid;
+  border-width: thin;
+  color: var(--dark-color);
+
   border-radius: 5px;
   margin-bottom: 5px;
   margin-top: 20px;
@@ -108,7 +147,7 @@ export default defineComponent({
 }
 .table-fixed-head th,
 .table-fixed-head td {
-  padding: 8px 16px;
+  padding: 4px 10px;
   font-size: 9pt;
 }
 .table-fixed-head th {
@@ -117,17 +156,33 @@ export default defineComponent({
   z-index: 1;
 }
 .table-fixed-head td {
-  box-shadow: inset 1px 1px #999;
+  background: white;
+  box-shadow: inset 1px 1px #d0d0d0;
 }
 .table-fixed-head th {
-  box-shadow: inset 1px 1px #999;
+  box-shadow: inset 1px 1px #d0d0d0;
 }
 .table-fixed-head thead {
-  box-shadow: inset 0px -1px #999;
+  box-shadow: inset 0px -1px #d0d0d0;
 }
 .table-fixed-head table {
-  border-right: solid 1px #999;
-  border-bottom: solid 1px #999;
+  border-right: solid 1px #d0d0d0;
+  border-bottom: solid 1px #d0d0d0;
+}
+
+.table-fixed-head tbody tr:hover td {
+  filter: brightness(0.95);
+}
+
+.cell-tag {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 5px;
+  font-size: 8pt;
+  font-weight: 500;
+  min-width: 12ch;
+  max-width: 12ch;
+  text-align: center;
 }
 
 </style>

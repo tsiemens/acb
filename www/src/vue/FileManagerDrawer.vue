@@ -366,7 +366,7 @@ function removeSelected() {
    border-radius: 8px 8px 0 0;
    box-shadow: 0 -3px 16px rgba(0, 0, 0, 0.18);
    z-index: 200;
-   font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+   font-family: Verdana, Geneva, sans-serif;
    font-size: 14px;
    color: #333;
    user-select: none;
