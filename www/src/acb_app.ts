@@ -2,7 +2,6 @@ import { Unit } from "./basic_utils.js";
 import { AcbAppRunMode, AppFunctionMode } from "./common/acb_app_types.js";
 import { fileBytesToString, loadFilesAsBytes } from "./file_reader.js";
 import { FileEntry, FileKind, getFileManagerStore, modifyDrawerNotificationForUserAddedFiles } from './vue/file_manager_store.js';
-import { loadTestFile } from "./debug.js";
 import { run_acb, run_acb_summary, detect_file_kind, detect_file_kind_from_pdf_pages } from './pkg/acb_wasm.js';
 import { Result } from "./result.js";
 import { AppExportResultOk, AppResultOk, AppSummaryResultOk, RenderTable } from "./acb_wasm_types.js";
@@ -210,7 +209,7 @@ interface FileDetectResult {
    warning?: string;
 }
 
-function detectFileKindFromBytes(data: Uint8Array, fileName: string): FileDetectResult {
+export function detectFileKindFromBytes(data: Uint8Array, fileName: string): FileDetectResult {
    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
    const wasmResult = detect_file_kind(data, fileName);
    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
@@ -308,21 +307,6 @@ function fileEntiesToNamesAndStringContents(entries: FileEntry[]
       contents.push(contentStr);
    }
    return [filenames, contents];
-}
-
-export function autoRunHandler(): void {
-   loadTestFile((testFile) => {
-      const store = getFileManagerStore();
-      const encoder = new TextEncoder();
-      store.addFile({
-         name: testFile.name,
-         kind: FileKind.AcbTxCsv,
-         isDownloadable: false,
-         useChecked: true,
-         data: encoder.encode(testFile.contents),
-      });
-      runHandler(AcbAppRunMode.Run);
-   });
 }
 
 export function runHandler(acbRunMode: AcbAppRunMode = AcbAppRunMode.Run) {
