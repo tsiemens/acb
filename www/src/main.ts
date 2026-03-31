@@ -1,8 +1,5 @@
 import { createApp } from 'vue';
-import {
-   autoRunHandler as debugAutoRunHandler,
-   loadAndAddFilesToFileManager,
-   runHandler as acbRunHandler } from './acb_app.js';
+import { loadAndAddFilesToFileManager, runHandler as acbRunHandler } from './acb_app.js';
 import { runHandler as brokerConvertRunHandler } from './broker_convert_app.js';
 import { AcbAppRunMode } from "./common/acb_app_types.js";
 import { loadGitUserCaveatIssues } from './github.js';
@@ -26,7 +23,6 @@ function createVueApp(): void {
                break;
          }
       },
-      onAutoRun: debugAutoRunHandler,
    }).mount('#app');
 }
 

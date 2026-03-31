@@ -1,6 +1,6 @@
 <template>
   <div class="container">
-    <AppHeader :onAutoRun="onAutoRun" />
+    <AppHeader />
 
     <div class="tab-navigation">
       <div
@@ -79,10 +79,6 @@ export default defineComponent({
       onRunAction: {
          type: Function as PropType<(mode: AcbAppRunMode) => void>,
          required: true,
-      },
-      onAutoRun: {
-         type: Function as PropType<() => void>,
-         required: false,
       },
    },
    setup() {
