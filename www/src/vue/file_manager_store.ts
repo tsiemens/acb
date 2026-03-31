@@ -7,6 +7,7 @@ export enum FileKind {
    EtradeTradeConfirmationPdf = 'EtradeTradeConfirmationPdf',
    EtradeBenefitPdf = 'EtradeBenefitPdf',
    EtradeBenefitsExcel = 'EtradeBenefitsExcel',
+   RbcDiCsv    = 'RbcDiCsv',
    OutputText  = 'OutputText',
    AcbOutputZip = 'AcbOutputZip',
    GenericPdf  = 'GenericPdf',
@@ -25,6 +26,7 @@ const FILE_KIND_META: Record<FileKind, FileKindMeta> = {
    [FileKind.EtradeTradeConfirmationPdf]: { label: 'E*TRADE Trade pdf',   isInput: true,  isDownloadableDefault: false },
    [FileKind.EtradeBenefitPdf]:           { label: 'E*TRADE Benefit pdf',  isInput: true,  isDownloadableDefault: false },
    [FileKind.EtradeBenefitsExcel]:        { label: 'E*TRADE Benefits xlsx', isInput: true,  isDownloadableDefault: false },
+   [FileKind.RbcDiCsv]:                   { label: 'RBC DI csv',           isInput: true,  isDownloadableDefault: false },
    [FileKind.OutputText]:                 { label: 'Text',                 isInput: false, isDownloadableDefault: true  },
    [FileKind.AcbOutputZip]:               { label: 'ACB Output',           isInput: false, isDownloadableDefault: true  },
    [FileKind.GenericPdf]:                 { label: 'PDF',                  isInput: false, isDownloadableDefault: false },
@@ -84,6 +86,7 @@ export function relevantInputKindsForTab(tabId: TabIdType): Set<FileKind> {
             FileKind.EtradeTradeConfirmationPdf,
             FileKind.EtradeBenefitPdf,
             FileKind.EtradeBenefitsExcel,
+            FileKind.RbcDiCsv,
          ]);
    }
 }

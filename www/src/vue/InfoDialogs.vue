@@ -75,6 +75,17 @@
     </ol>
   </InfoDialog>
 
+  <InfoDialog :store="store" dialog-id="rbcDiInstructionsDialog" title="RBC Direct Investing — How to Download Your Data">
+    <h4>Activity CSV export</h4>
+    <ol>
+      <li>Go to RBC Direct Investing</li>
+      <li>Navigate to Trade &amp; Transfer &rarr; Transactions &rarr; View Activity</li>
+      <li>Filter to the desired date range</li>
+      <li>Click "Export"</li>
+      <li>Drop the downloaded CSV file here</li>
+    </ol>
+  </InfoDialog>
+
   <InfoDialog :store="store" dialog-id="dynamicTextInfo" :title="store.dynamicTextTitle">
     <pre class="dynamic-text-content">{{ store.dynamicTextContent }}</pre>
   </InfoDialog>

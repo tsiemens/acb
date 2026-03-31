@@ -244,6 +244,26 @@ impl serde::ser::Serialize for XlConvertResult {
     }
 }
 
+pub struct CsvBrokerConvertResult {
+    pub csv_text: String,
+    pub non_fatal_errors: Vec<String>,
+    pub warnings: Vec<String>,
+}
+
+impl serde::ser::Serialize for CsvBrokerConvertResult {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::ser::Serializer,
+    {
+        let n_fields = 3;
+        let mut state = serializer.serialize_struct("CsvBrokerConvertResult", n_fields)?;
+        state.serialize_field("csvText", &self.csv_text)?;
+        state.serialize_field("nonFatalErrors", &self.non_fatal_errors)?;
+        state.serialize_field("warnings", &self.warnings)?;
+        state.end()
+    }
+}
+
 pub struct EtradeConvertResult {
     pub csv_text: String,
     pub warnings: Vec<String>,

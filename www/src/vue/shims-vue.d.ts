@@ -5,3 +5,10 @@ declare module '*.vue' {
    const component: DefineComponent;
    export default component;
 }
+
+// vite-svg-loader imports SVGs as Vue components by default.
+declare module '*.svg' {
+   import type { DefineComponent } from 'vue';
+   const component: DefineComponent;
+   export default component;
+}
