@@ -63,6 +63,7 @@ const generalItems = [
 const brokerageItems = [
    { dialogId: 'etradeInstructionsDialog', label: 'E*TRADE' },
    { dialogId: 'questradeInstructionsDialog', label: 'Questrade' },
+   { dialogId: 'rbcDiInstructionsDialog', label: 'RBC Direct Investing' },
 ];
 
 const moreItems = [

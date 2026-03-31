@@ -23,7 +23,7 @@ pub fn convert_xl_to_csv(
     use acb::peripheral::tx_export_convert_impl::{convert_xl_txs, BrokerArg};
     use acb::portfolio::io::tx_csv::write_txs_to_csv;
 
-    let (csv_txs, non_fatal_errors) = convert_xl_txs(
+    let convert_result = convert_xl_txs(
         XlSource::Data(data),
         &BrokerArg::Questrade,
         sheet_name.as_deref(),
@@ -36,13 +36,50 @@ pub fn convert_xl_to_csv(
     .map_err(|e| JsValue::from_str(&e))?;
 
     let mut buf: Vec<u8> = Vec::new();
-    write_txs_to_csv(&csv_txs, &mut buf)
+    write_txs_to_csv(&convert_result.csv_txs, &mut buf)
         .map_err(|e| JsValue::from_str(&format!("{e}")))?;
     let csv_text =
         String::from_utf8(buf).map_err(|e| JsValue::from_str(&format!("{e}")))?;
 
-    let result = app_shim::XlConvertResult { csv_text, non_fatal_errors };
+    let result = app_shim::XlConvertResult { csv_text, non_fatal_errors: convert_result.non_fatal_errors };
     Ok(serde_wasm_bindgen::to_value(&result)?)
+}
+
+/// Convert an RBC Direct Investing CSV export to ACB-format CSV text.
+///
+/// Returns a `CsvBrokerConvertResult` with `csvText`, `nonFatalErrors`, and
+/// `warnings` fields, or an error string on fatal failure.
+#[wasm_bindgen]
+pub fn convert_rbc_di_csv(
+    data: Vec<u8>,
+    no_fx: bool,
+) -> Result<JsValue, JsValue> {
+    use acb::peripheral::tx_export_convert_impl::convert_csv_broker_txs;
+    use acb::portfolio::io::tx_csv::write_txs_to_csv;
+
+    let result = convert_csv_broker_txs(
+        &data,
+        None,  // fpath
+        Some(Regex::new(r".").unwrap()),  // account_filter
+        None,  // security_filter
+        no_fx,
+        false, // no_sort
+        None,  // usd_exchange_rate
+    )
+    .map_err(|e| JsValue::from_str(&e))?;
+
+    let mut buf: Vec<u8> = Vec::new();
+    write_txs_to_csv(&result.csv_txs, &mut buf)
+        .map_err(|e| JsValue::from_str(&format!("{e}")))?;
+    let csv_text =
+        String::from_utf8(buf).map_err(|e| JsValue::from_str(&format!("{e}")))?;
+
+    let convert_result = app_shim::CsvBrokerConvertResult {
+        csv_text,
+        non_fatal_errors: result.non_fatal_errors,
+        warnings: result.warnings,
+    };
+    Ok(serde_wasm_bindgen::to_value(&convert_result)?)
 }
 
 #[wasm_bindgen]
@@ -58,6 +95,7 @@ fn file_detect_result_to_js(
     let kind_str = match result.kind {
         FileKind::AcbTxCsv => "AcbTxCsv",
         FileKind::QuestradeExcel => "QuestradeExcel",
+        FileKind::RbcDiCsv => "RbcDiCsv",
         FileKind::EtradeTradeConfirmationPdf => "EtradeTradeConfirmationPdf",
         FileKind::EtradeBenefitPdf => "EtradeBenefitPdf",
         FileKind::EtradeBenefitsExcel => "EtradeBenefitsExcel",

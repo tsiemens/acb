@@ -1,6 +1,6 @@
 import Papa from 'papaparse';
 import { AcbAppRunMode } from './common/acb_app_types.js';
-import { convert_xl_to_csv, convert_etrade_pdfs_to_csv, extract_etrade_pdf_data } from './pkg/acb_wasm.js';
+import { convert_xl_to_csv, convert_rbc_di_csv, convert_etrade_pdfs_to_csv, extract_etrade_pdf_data } from './pkg/acb_wasm.js';
 import { fileBaseName, mustGet } from './basic_utils.js';
 import { RenderTable } from './acb_wasm_types.js';
 import { downloadSelectedFiles } from './download_utils.js';
@@ -19,6 +19,21 @@ function xlConvertResultFromJsValue(val: any): XlConvertResult {
    return {
       csvText: mustGet(val, 'csvText'),
       nonFatalErrors: mustGet(val, 'nonFatalErrors'),
+   };
+}
+
+interface CsvBrokerConvertResult {
+   csvText: string;
+   nonFatalErrors: string[];
+   warnings: string[];
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function csvBrokerConvertResultFromJsValue(val: any): CsvBrokerConvertResult {
+   return {
+      csvText: mustGet(val, 'csvText'),
+      nonFatalErrors: mustGet(val, 'nonFatalErrors'),
+      warnings: mustGet(val, 'warnings'),
    };
 }
 
@@ -77,16 +92,21 @@ export function runHandler(mode: AcbAppRunMode): void {
       f => f.kind === FileKind.EtradeBenefitsExcel &&
            f.useChecked && !f.warning
    );
+   const rbcDiCsvFiles = fileStore.files.filter(
+      f => f.kind === FileKind.RbcDiCsv && f.useChecked && !f.warning
+   );
 
-   if (xlsxFiles.length === 0 && etradePdfFiles.length === 0 && etradeXlsxFiles.length === 0) {
+   if (xlsxFiles.length === 0 && etradePdfFiles.length === 0 && etradeXlsxFiles.length === 0 && rbcDiCsvFiles.length === 0) {
       ErrorBox.getBrokerConvert().showWith({
          title: 'No Valid Files',
-         descPre: 'Please add and select at least one valid xlsx or E*TRADE PDF file before running (use the file manager drawer).',
+         descPre: 'Please add and select at least one valid broker file before running (use the file manager drawer).',
       });
+      ErrorBox.getBrokerConvertWarnings().hide();
       return;
    }
 
    const allNonFatalErrors: string[] = [];
+   const allWarnings: string[] = [];
    const addedFileIds: number[] = [];
    const namedTables: NamedTable[] = [];
    const allCsvTexts: string[] = [];
@@ -158,7 +178,7 @@ export function runHandler(mode: AcbAppRunMode): void {
             const result = etradeConvertResultFromJsValue(jsRet);
 
             if (result.warnings.length > 0) {
-               allNonFatalErrors.push(
+               allWarnings.push(
                   ...result.warnings.map(w => `E*TRADE: ${w}`)
                );
             }
@@ -192,6 +212,52 @@ export function runHandler(mode: AcbAppRunMode): void {
       }
    }
 
+   // Process RBC Direct Investing CSV files
+   for (const entry of rbcDiCsvFiles) {
+      try {
+         // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+         const jsRet = convert_rbc_di_csv(entry.data, appInputStore.noFx);
+         const result = csvBrokerConvertResultFromJsValue(jsRet);
+
+         if (result.nonFatalErrors.length > 0) {
+            allNonFatalErrors.push(
+               ...result.nonFatalErrors.map(e => `${entry.name}: ${e}`)
+            );
+         }
+         if (result.warnings.length > 0) {
+            allWarnings.push(
+               ...result.warnings.map(w => `${entry.name}: ${w}`)
+            );
+         }
+
+         const csvName = fileBaseName(entry.name) + '_acb.csv';
+         allCsvTexts.push(result.csvText);
+
+         const encoder = new TextEncoder();
+         const addedFile = fileStore.addFile({
+            name: csvName,
+            kind: FileKind.AcbTxCsv,
+            isDownloadable: true,
+            useChecked: true,
+            data: encoder.encode(result.csvText),
+         });
+         namedTables.push({
+            name: addedFile.name,
+            table: csvTextToRenderTable(result.csvText),
+         });
+         addedFileIds.push(addedFile.id);
+      } catch (err) {
+         const errMsg = typeof err === 'string' ? err : (err instanceof Error ? err.message : String(err));
+         console.error(`convert_rbc_di_csv error for ${entry.name}: `, err);
+         ErrorBox.getBrokerConvert().showWith({
+            title: 'RBC DI Conversion Error',
+            descPre: `An error occurred while converting ${entry.name}:`,
+            errorText: errMsg,
+         });
+         return;
+      }
+   }
+
    // Populate the output area.
    outputStore.transactionsTables = namedTables;
    outputStore.textOutput = allCsvTexts.join('\n\n');
@@ -207,11 +273,21 @@ export function runHandler(mode: AcbAppRunMode): void {
 
    if (allNonFatalErrors.length > 0) {
       ErrorBox.getBrokerConvert().showWith({
-         title: 'Conversion Warning(s)',
-         descPre: 'The conversion completed with the following warnings:',
+         title: 'Conversion Issue(s)',
+         descPre: 'The conversion completed with the following issues:',
          errorText: allNonFatalErrors.join('\n'),
       });
    } else {
       ErrorBox.getBrokerConvert().hide();
+   }
+
+   if (allWarnings.length > 0) {
+      ErrorBox.getBrokerConvertWarnings().showWith({
+         title: 'Conversion Warning(s)',
+         descPre: 'The conversion completed with the following warnings:',
+         errorText: allWarnings.join('\n'),
+      });
+   } else {
+      ErrorBox.getBrokerConvertWarnings().hide();
    }
 }

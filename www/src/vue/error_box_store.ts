@@ -32,6 +32,7 @@ export function getErrorBoxStore(id: string): ErrorBoxState {
 export class ErrorBox {
    public static readonly MAIN_ERRORS_ID: string = "mainErrorContainer";
    public static readonly BROKER_CONVERT_ERRORS_ID: string = "brokerConvertErrorContainer";
+   public static readonly BROKER_CONVERT_WARNINGS_ID: string = "brokerConvertWarningContainer";
    public static readonly GIT_ERRORS_ID: string = "gitIssuesErrorContainer";
 
    private constructor(private id: string) {}
@@ -42,6 +43,10 @@ export class ErrorBox {
 
    public static getBrokerConvert(): ErrorBox {
       return new ErrorBox(ErrorBox.BROKER_CONVERT_ERRORS_ID);
+   }
+
+   public static getBrokerConvertWarnings(): ErrorBox {
+      return new ErrorBox(ErrorBox.BROKER_CONVERT_WARNINGS_ID);
    }
 
    public static getGitIssues(): ErrorBox {

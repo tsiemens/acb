@@ -199,6 +199,7 @@ async function asyncRunAcbShareTally(filenames: string[], contents: string[], la
 const WASM_FILE_KIND_MAP: Record<string, FileKind> = {
    'AcbTxCsv': FileKind.AcbTxCsv,
    'QuestradeExcel': FileKind.QuestradeXlsx,
+   'RbcDiCsv': FileKind.RbcDiCsv,
    'EtradeTradeConfirmationPdf': FileKind.EtradeTradeConfirmationPdf,
    'EtradeBenefitPdf': FileKind.EtradeBenefitPdf,
    'EtradeBenefitsExcel': FileKind.EtradeBenefitsExcel,

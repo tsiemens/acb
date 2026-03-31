@@ -4,7 +4,7 @@
 
       <FileDropArea
         :onFilesDropped="onFilesDropped"
-        dropMessage="Drop XLSX or PDF Files Here"
+        dropMessage="Drop XLSX, PDF or CSV Files Here"
       />
 
       <div class="action-buttons">
@@ -16,6 +16,7 @@
     <div class="content-separator"></div>
 
     <ErrorBox :store="errorBoxStore" />
+    <ErrorBox :store="warningBoxStore" severity="warning" />
 
     <BrokerConvertOutputArea :store="outputStore" />
   </TabContent>
@@ -50,8 +51,9 @@ export default defineComponent({
    setup() {
       const outputStore = getBrokerConvertOutputStore();
       const errorBoxStore = getErrorBoxStore(ErrorBoxModel.BROKER_CONVERT_ERRORS_ID);
+      const warningBoxStore = getErrorBoxStore(ErrorBoxModel.BROKER_CONVERT_WARNINGS_ID);
 
-      return { TabId, outputStore, errorBoxStore };
+      return { TabId, outputStore, errorBoxStore, warningBoxStore };
    },
 });
 </script>
