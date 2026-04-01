@@ -23,7 +23,6 @@ SAMPLES_DIR = SCRIPT_DIR.parent / "dist" / "samples"
 # Files (and directories) to exclude by exact name or glob pattern.
 EXCLUDE_PATTERNS: list[str] = [
     "expected_output.csv",
-    "QT_Test_Export.xlsx",
     "manifest.json",
     "*.test",   # e.g. pdfs.test test-helper dirs
 ]
