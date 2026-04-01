@@ -16,10 +16,12 @@ fn run_and_get_output(args: Args) -> (Result<(), ()>, String, String) {
     (res, out_b_.export_string(), err_b_.export_string())
 }
 
-fn parse_args(mut flags: Vec<&str>) -> Args {
-    let mut args = vec!["tx-export-convert"];
-    args.append(&mut flags);
-    args.push("./tests/data/QT_Test_Export.xlsx");
+fn parse_qt_args(scenario: &str, flags: Vec<&str>) -> Args {
+    let path =
+        format!("./tests/data/questrade_scenarios/{}/Activities_{}.xlsx", scenario, scenario);
+    let mut args: Vec<String> = vec!["tx-export-convert".to_string()];
+    args.extend(flags.iter().map(|s| s.to_string()));
+    args.push(path);
     Args::parse_from(args)
 }
 
@@ -95,7 +97,7 @@ fn verify_csv(csv_str: &str, exp_csv_str: &str) {
 #[test]
 fn test_txs_basic_and_ignored_actions() {
     let (res, out, err) =
-        run_and_get_output(parse_args(vec!["--account", ".", "--sheet", "TXs"]));
+        run_and_get_output(parse_qt_args("basic", vec!["--account", "."]));
 
     assert_eq!("", &err);
     res.unwrap();
@@ -127,12 +129,10 @@ fn test_txs_basic_and_ignored_actions() {
     verify_csv(&out, &exp_csv);
 
     // Test filters
-    let (res, out, err) = run_and_get_output(parse_args(vec![
-        "--account",
-        "margin",
-        "--sheet",
-        "TXs",
-    ]));
+    let (res, out, err) = run_and_get_output(parse_qt_args(
+        "basic",
+        vec!["--account", "margin"],
+    ));
     assert_eq!("", &err);
     res.unwrap();
     verify_csv(
@@ -140,14 +140,10 @@ fn test_txs_basic_and_ignored_actions() {
         &remove_columns(&include_lines(&exp_csv, "margin"), &vec![AFFIL_COL]),
     );
 
-    let (res, out, err) = run_and_get_output(parse_args(vec![
-        "--account",
-        "margin",
-        "--security",
-        "UCO",
-        "--sheet",
-        "TXs",
-    ]));
+    let (res, out, err) = run_and_get_output(parse_qt_args(
+        "basic",
+        vec!["--account", "margin", "--security", "UCO"],
+    ));
     assert_eq!("", &err);
     res.unwrap();
     const AFFIL_COL: usize = 8;
@@ -156,13 +152,10 @@ fn test_txs_basic_and_ignored_actions() {
         &remove_columns(&include_lines(&exp_csv, r"UCO.*margin"), &vec![AFFIL_COL]),
     );
 
-    let (res, out, err) = run_and_get_output(parse_args(vec![
-        "--account",
-        ".",
-        "--no-fx",
-        "--sheet",
-        "TXs",
-    ]));
+    let (res, out, err) = run_and_get_output(parse_qt_args(
+        "basic",
+        vec!["--account", ".", "--no-fx"],
+    ));
     assert_eq!("", &err);
     res.unwrap();
     verify_csv(&out, &exclude_lines(&exp_csv, r"USD\.FX"));
@@ -177,7 +170,7 @@ const BASIC_HEADER: &str =
 #[test]
 fn test_fxt_basic() {
     let (res, out, err) =
-        run_and_get_output(parse_args(vec!["--account", ".", "--sheet", "FXTs"]));
+        run_and_get_output(parse_qt_args("fxt", vec!["--account", "."]));
 
     assert_eq!("", &err);
     res.unwrap();
@@ -190,13 +183,10 @@ fn test_fxt_basic() {
     verify_csv(&out, &exp_csv);
 
     // Filter all FXTs
-    let (res, out, err) = run_and_get_output(parse_args(vec![
-        "--account",
-        ".",
-        "--no-fx",
-        "--sheet",
-        "FXTs",
-    ]));
+    let (res, out, err) = run_and_get_output(parse_qt_args(
+        "fxt",
+        vec!["--account", ".", "--no-fx"],
+    ));
     assert_eq!("", &err);
     res.unwrap();
     verify_csv(&out, BASIC_HEADER);
@@ -204,12 +194,8 @@ fn test_fxt_basic() {
 
 #[test]
 fn test_tx_errors() {
-    let (res, out, err) = run_and_get_output(parse_args(vec![
-        "--account",
-        ".",
-        "--sheet",
-        "TX Errors",
-    ]));
+    let (res, out, err) =
+        run_and_get_output(parse_qt_args("tx_errors", vec!["--account", "."]));
 
     res.unwrap_err();
     // Partial shares are allowed
@@ -243,12 +229,8 @@ Errors: - Row 2: Unable to parse date \"2023-1-7\"
 
 #[test]
 fn test_fxt_errors() {
-    let (res, out, err) = run_and_get_output(parse_args(vec![
-        "--account",
-        ".",
-        "--sheet",
-        "FXT Errors",
-    ]));
+    let (res, out, err) =
+        run_and_get_output(parse_qt_args("fxt_errors", vec!["--account", "."]));
 
     res.unwrap_err();
     verify_csv(&out, "\
@@ -274,7 +256,7 @@ Errors: - Row 5: Both FXTs have positive amounts
 #[test]
 fn test_sort() {
     let (res, out, err) =
-        run_and_get_output(parse_args(vec!["--account", ".", "--sheet", "Sorting"]));
+        run_and_get_output(parse_qt_args("sorting", vec!["--account", "."]));
 
     assert_eq!("", &err);
     res.unwrap();
