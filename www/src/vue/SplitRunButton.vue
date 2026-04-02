@@ -69,44 +69,49 @@ onUnmounted(() => document.removeEventListener('click', handleClickOutside));
 
 <template>
    <div ref="containerRef" class="split-btn-container">
-      <div class="split-btn" :class="{ disabled }">
-         <button
-            class="split-btn-primary"
-            :disabled="disabled"
-            @click="handlePrimaryClick"
-         >
-            {{ primaryOption.label }}
-         </button>
-         <button
-            class="split-btn-toggle"
-            :disabled="disabled"
-            @click.stop="handleToggleClick"
-            aria-label="Select action"
-         >
-            <span class="split-btn-arrow" :class="{ open: menuOpen }">&#x25BC;</span>
-         </button>
+      <div class="split-btn-wrapper">
+         <div class="split-btn" :class="{ disabled }">
+            <button
+               class="split-btn-primary"
+               :disabled="disabled"
+               @click="handlePrimaryClick"
+            >
+               {{ primaryOption.label }}
+            </button>
+            <button
+               class="split-btn-toggle"
+               :disabled="disabled"
+               @click.stop="handleToggleClick"
+               aria-label="Select action"
+            >
+               <span class="split-btn-arrow" :class="{ open: menuOpen }">&#x25BC;</span>
+            </button>
+         </div>
+         <ul v-if="menuOpen" class="split-btn-menu">
+            <li
+               v-for="opt in dropdownOptions"
+               :key="opt.mode"
+               class="split-btn-menu-item"
+               @click="handleSelectMode(opt.mode)"
+            >
+               <img v-if="opt.icon" :src="opt.icon" class="split-btn-menu-icon">
+               {{ opt.label }}
+            </li>
+         </ul>
       </div>
       <span v-if="selectedFilesLabel" class="selected-files-label">{{ selectedFilesLabel }}</span>
-      <ul v-if="menuOpen" class="split-btn-menu">
-         <li
-            v-for="opt in dropdownOptions"
-            :key="opt.mode"
-            class="split-btn-menu-item"
-            @click="handleSelectMode(opt.mode)"
-         >
-            <img v-if="opt.icon" :src="opt.icon" class="split-btn-menu-icon">
-            {{ opt.label }}
-         </li>
-      </ul>
    </div>
 </template>
 
 <style scoped>
 .split-btn-container {
-   position: relative;
    display: inline-flex;
    align-items: center;
    gap: 10px;
+}
+
+.split-btn-wrapper {
+   position: relative;
 }
 
 .selected-files-label {
