@@ -50,11 +50,11 @@ const sev = props.severity ?? 'error';
 
 .error-header {
    color: white;
-   padding: 10px 16px;
+   padding: 8px 10px;
    font-weight: 600;
    display: flex;
    align-items: center;
-   gap: 10px;
+   gap: 10px; /* Gap between text and warning icon */
 }
 
 .error-header--error {
@@ -72,7 +72,7 @@ const sev = props.severity ?? 'error';
 }
 
 .error-content {
-   padding: 14px 16px;
+   padding: 12px 12px;
    color: #333;
    line-height: 1.5;
 }

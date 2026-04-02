@@ -2,8 +2,9 @@ import { createApp } from 'vue';
 import { loadAndAddFilesToFileManager, runHandler as acbRunHandler } from './acb_app.js';
 import { runHandler as brokerConvertRunHandler } from './broker_convert_app.js';
 import { AcbAppRunMode } from "./common/acb_app_types.js";
-import { loadGitUserCaveatIssues } from './github.js';
+import { loadGitUserCaveatIssues, loadAndCheckVersions } from './github.js';
 import wasm_init, { get_acb_version } from './pkg/acb_wasm.js';
+import { webappVersion } from './versions.js';
 import { getSidebarInfoStore } from './vue/sidebar_info_store.js';
 import { getTabStore, TabId } from './vue/tab_store.js';
 import App from './vue/App.vue';
@@ -46,10 +47,12 @@ export async function init(): Promise<void> {
    console.log("Starting application initialization");
    try {
       await initWasmLib();
-      getSidebarInfoStore().acbVersion = `v${get_acb_version()}`;
+      const acbVersion = get_acb_version();
+      getSidebarInfoStore().acbVersion = `v${acbVersion}`;
 
       createVueApp();
       loadGitUserCaveatIssues();
+      loadAndCheckVersions(acbVersion, webappVersion);
 
       console.log("Application initialization complete");
    } catch (error) {

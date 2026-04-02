@@ -34,6 +34,7 @@ export class ErrorBox {
    public static readonly BROKER_CONVERT_ERRORS_ID: string = "brokerConvertErrorContainer";
    public static readonly BROKER_CONVERT_WARNINGS_ID: string = "brokerConvertWarningContainer";
    public static readonly GIT_ERRORS_ID: string = "gitIssuesErrorContainer";
+   public static readonly VERSION_WARNING_ID: string = "versionWarningContainer";
 
    private constructor(private id: string) {}
 
@@ -51,6 +52,10 @@ export class ErrorBox {
 
    public static getGitIssues(): ErrorBox {
       return new ErrorBox(ErrorBox.GIT_ERRORS_ID);
+   }
+
+   public static getVersionWarning(): ErrorBox {
+      return new ErrorBox(ErrorBox.VERSION_WARNING_ID);
    }
 
    public hide(): void {
