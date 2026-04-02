@@ -1,17 +1,23 @@
 import * as pdfjsLib from 'pdfjs-dist';
 
-let workerInitialized = false;
+let sharedWorker: pdfjsLib.PDFWorker | null = null;
 
-async function ensureWorker(): Promise<void> {
-   if (workerInitialized) return;
-   const mod = await import('pdfjs-dist/build/pdf.worker.min.mjs?url');
-   pdfjsLib.GlobalWorkerOptions.workerSrc = mod.default;
-   workerInitialized = true;
+let workerReady: Promise<pdfjsLib.PDFWorker> | null = null;
+
+function ensureWorker(): Promise<pdfjsLib.PDFWorker> {
+   if (!workerReady) {
+      workerReady = import('pdfjs-dist/build/pdf.worker.min.mjs?url').then((mod) => {
+         pdfjsLib.GlobalWorkerOptions.workerSrc = mod.default;
+         sharedWorker = new pdfjsLib.PDFWorker();
+         return sharedWorker;
+      });
+   }
+   return workerReady;
 }
 
 export async function extractPdfPages(data: ArrayBuffer): Promise<string[]> {
-   await ensureWorker();
-   const pdf = await pdfjsLib.getDocument({ data }).promise;
+   const worker = await ensureWorker();
+   const pdf = await pdfjsLib.getDocument({ data, worker }).promise;
    const pages: string[] = [];
    for (let i = 1; i <= pdf.numPages; i++) {
       const page = await pdf.getPage(i);
