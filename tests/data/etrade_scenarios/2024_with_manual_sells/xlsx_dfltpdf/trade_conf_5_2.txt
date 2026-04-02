@@ -1,0 +1,26 @@
+Morgan Stanley Smith Barney LLC. Member SIPC. The transaction(s) may have been executed with Morgan Stanley & Co. LLC, an
+affiliate, which may receive compensation for any such services. E*TRADE is a business of Morgan Stanley.
+1 of 2Your Account Number: 123-XXX789-111
+Account Type - Cash
+JOHN DOE
+1 BLAH DR
+VANCOUVER BC HOH OHO CANADA
+E*TRADE from Morgan Stanley
+P.O. BOX 484
+JERSEY CITY, NJ 07303-0484
+(800)-387-2331
+This transaction is confirmed in accordance with the information provided on the Conditions and Disclosures page.
+Trade Date Settlement Date Quantity Price Settlement Amount
+02/26/2024 02/28/2024 9 150.1198
+Transaction Type: Sold
+Description: FOO SYSTEMS INC
+Symbol / CUSIP / ISIN: FOO / 040413106 / US0404131064Principal $1,000.00
+Commission $4.95
+Supplemental
+Transaction Fee $0.08
+Net Amount $1,000.00
+Unsolicited trade
+Morgan Stanley Smith Barney LLC acted as agent.
+
+2 of 2
+

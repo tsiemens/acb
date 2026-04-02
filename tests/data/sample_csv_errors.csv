@@ -1,0 +1,2 @@
+security,trade date,settlement date,action,shares,amount/share,commission,currency
+FOO,2024-01-03,2024-01-05,InvalidAction,10,100.00,5.00,CAD
