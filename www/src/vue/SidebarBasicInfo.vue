@@ -7,6 +7,7 @@
     </p>
 
     <ErrorBox :store="gitErrorBoxStore" width="100%" />
+    <ErrorBox :store="versionWarningBoxStore" width="100%" severity="warning" />
   </SidebarInfoSection>
 
   <SidebarInfoSection>
@@ -33,12 +34,13 @@ export default defineComponent({
    },
    setup(props) {
       const gitErrorBoxStore = getErrorBoxStore(ErrorBoxModel.GIT_ERRORS_ID);
+      const versionWarningBoxStore = getErrorBoxStore(ErrorBoxModel.VERSION_WARNING_ID);
 
       const versionText = computed(() =>
          `acb ${props.store.acbVersion}, acb-web v${webappVersion}`
       );
 
-      return { versionText, gitErrorBoxStore };
+      return { versionText, gitErrorBoxStore, versionWarningBoxStore };
    },
 });
 </script>
