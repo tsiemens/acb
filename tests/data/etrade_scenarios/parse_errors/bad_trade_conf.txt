@@ -1,0 +1,2 @@
+This is some random text that does not match any E*TRADE PDF pattern.
+It should cause a parse error when passed to the etrade extractor.

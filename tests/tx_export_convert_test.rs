@@ -367,3 +367,32 @@ fn test_rbc_di_sorted_by_settlement_date() {
     sorted.sort();
     assert_eq!(settlement_dates, sorted);
 }
+
+fn parse_rbc_error_args(mut flags: Vec<&str>) -> Args {
+    let mut args = vec!["tx-export-convert", "-b", "rbc-di"];
+    args.append(&mut flags);
+    args.push("./tests/data/RBC_DI_Test_Export_Errors.csv");
+    Args::parse_from(args)
+}
+
+#[test]
+fn test_rbc_di_errors() {
+    let (res, out, err) = run_and_get_output(parse_rbc_error_args(vec![]));
+
+    res.unwrap_err();
+    assert!(err.contains("Errors:"), "err: {}", err);
+    assert!(
+        err.contains("Unrecognized activity type \"UnknownActivity\""),
+        "err: {}",
+        err
+    );
+
+    // The valid buy row before the error row should still appear in output
+    verify_csv(
+        &out,
+        "\
+    security,trade date,settlement date,action,shares,amount/share,commission,currency,affiliate,memo
+    XEQT,2025-01-10,2025-01-14,Buy,10,40.00,9.95,CAD,Default (R),RBC Direct Investing TFSA 11111111\
+    ",
+    );
+}
