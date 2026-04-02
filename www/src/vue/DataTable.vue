@@ -26,7 +26,7 @@
             <td
               v-for="(cell, ci) in row"
               :key="ci"
-              :class="cellClassFn ? cellClassFn(row, ci) : ''"
+              :class="[cellClassFn ? cellClassFn(row, ci) : '', (cellTagClassFn && cellTagClassFn(row, ci)) ? 'cell-tag-td' : '']"
             >
               <span
                 v-if="cellTagClassFn && cellTagClassFn(row, ci)"
@@ -191,6 +191,10 @@ export default defineComponent({
 
 .table-fixed-head tbody tr:hover td {
   filter: brightness(0.95);
+}
+
+.cell-tag-td {
+  text-align: center;
 }
 
 .cell-tag {

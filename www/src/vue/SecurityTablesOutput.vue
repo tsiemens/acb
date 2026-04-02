@@ -143,8 +143,7 @@ export default defineComponent({
          if (/sell/i.test(action)) return 'tag-sell';
          if (/sprf|sfla/i.test(action)) return 'tag-sfla';
          if (/split/i.test(action)) return 'tag-split';
-         if (/roc/i.test(action)) return 'tag-roc';
-         if (/div/i.test(action)) return 'tag-div';
+         if (/ret\.|reinv\.|cap\. gains div/i.test(action)) return 'tag-dist';
          return 'tag-other';
       }
 
@@ -225,14 +224,9 @@ export default defineComponent({
   color: #065f46;
 }
 
-:deep(.tag-roc) {
+:deep(.tag-dist) {
   background: #ede9fe;
   color: #5b21b6;
-}
-
-:deep(.tag-div) {
-  background: #e0e7ff;
-  color: #3730a3;
 }
 
 :deep(.tag-other) {
