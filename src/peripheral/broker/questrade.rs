@@ -104,7 +104,7 @@ pub fn sheet_to_txs(
                 account_num,
             };
 
-            let affiliate = if regex::RegexBuilder::new(r"rrsp|tfsa|resp")
+            let affiliate = if regex::RegexBuilder::new(r"rrsp|tfsa|resp|fhsa")
                 .case_insensitive(true)
                 .build()
                 .unwrap()
