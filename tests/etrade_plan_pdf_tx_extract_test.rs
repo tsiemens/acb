@@ -33,8 +33,7 @@ fn do_test_scenario(scenario_variant_dir: &Path) {
         .map(|rd| rd.unwrap().path())
         .filter(|p| {
             let s = p.display().to_string();
-            s.ends_with(".txt")
-                || (is_xlsx_variant && s.ends_with(".xlsx"))
+            s.ends_with(".txt") || (is_xlsx_variant && s.ends_with(".xlsx"))
         })
         .collect();
     files.sort();
@@ -61,10 +60,7 @@ fn do_test_scenario(scenario_variant_dir: &Path) {
         scenario_variant_dir.join("../expected_output.csv")
     };
     let mut exp_out = String::new();
-    fs::File::open(&exp_path)
-        .unwrap()
-        .read_to_string(&mut exp_out)
-        .unwrap();
+    fs::File::open(&exp_path).unwrap().read_to_string(&mut exp_out).unwrap();
 
     acb::testlib::assert_vec_eq(
         out.split("\n").collect(),
@@ -75,8 +71,14 @@ fn do_test_scenario(scenario_variant_dir: &Path) {
 #[test]
 fn test_etrade_scenarios() {
     common::test_init_tracing();
-    let potential_variants =
-        vec!["dfltpdf", "lopdf", "pypdf", "xlsx_dfltpdf", "xlsx_lopdf", "xlsx_pypdf"];
+    let potential_variants = vec![
+        "dfltpdf",
+        "lopdf",
+        "pypdf",
+        "xlsx_dfltpdf",
+        "xlsx_lopdf",
+        "xlsx_pypdf",
+    ];
 
     for sdr in fs::read_dir(Path::new("./tests/data/etrade_scenarios")).unwrap() {
         let scenario_dir = sdr.unwrap().path();

@@ -17,8 +17,10 @@ fn run_and_get_output(args: Args) -> (Result<(), ()>, String, String) {
 }
 
 fn parse_qt_args(scenario: &str, flags: Vec<&str>) -> Args {
-    let path =
-        format!("./tests/data/questrade_scenarios/{}/Activities_{}.xlsx", scenario, scenario);
+    let path = format!(
+        "./tests/data/questrade_scenarios/{}/Activities_{}.xlsx",
+        scenario, scenario
+    );
     let mut args: Vec<String> = vec!["tx-export-convert".to_string()];
     args.extend(flags.iter().map(|s| s.to_string()));
     args.push(path);
@@ -129,10 +131,8 @@ fn test_txs_basic_and_ignored_actions() {
     verify_csv(&out, &exp_csv);
 
     // Test filters
-    let (res, out, err) = run_and_get_output(parse_qt_args(
-        "basic",
-        vec!["--account", "margin"],
-    ));
+    let (res, out, err) =
+        run_and_get_output(parse_qt_args("basic", vec!["--account", "margin"]));
     assert_eq!("", &err);
     res.unwrap();
     verify_csv(
@@ -183,10 +183,8 @@ fn test_fxt_basic() {
     verify_csv(&out, &exp_csv);
 
     // Filter all FXTs
-    let (res, out, err) = run_and_get_output(parse_qt_args(
-        "fxt",
-        vec!["--account", ".", "--no-fx"],
-    ));
+    let (res, out, err) =
+        run_and_get_output(parse_qt_args("fxt", vec!["--account", ".", "--no-fx"]));
     assert_eq!("", &err);
     res.unwrap();
     verify_csv(&out, BASIC_HEADER);

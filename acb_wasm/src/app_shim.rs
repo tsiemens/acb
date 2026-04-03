@@ -5,10 +5,7 @@ use serde::ser::SerializeStruct;
 use acb::{
     app::{outfmt::text::TextWriter, run_acb_app_to_writer},
     fx::io::{InMemoryRatesCache, JsonRemoteRateLoader, RateLoader},
-    portfolio::{
-        io::tx_csv::TxCsvParseOptions, render::RenderTable,
-        Security,
-    },
+    portfolio::{io::tx_csv::TxCsvParseOptions, render::RenderTable, Security},
     util::{
         basic::SError,
         rw::{DescribedReader, WriteHandle},
@@ -175,7 +172,8 @@ impl serde::ser::Serialize for AppExportResultOk {
         // https://serde.rs/impl-serialize.html
 
         let n_fields = 1;
-        let mut state = serializer.serialize_struct("AppExportResultOk", n_fields)?;
+        let mut state =
+            serializer.serialize_struct("AppExportResultOk", n_fields)?;
         state.serialize_field("csvFiles", &self.csv_files)?;
         state.end()
     }
@@ -191,7 +189,8 @@ pub async fn run_acb_app_for_export(
     let csv_coll = acb::util::rc::RcRefCellT::new(Vec::new());
 
     let writer = Box::new(acb::app::outfmt::csv::CsvWriter::new_to_collection(
-        csv_coll.clone()));
+        csv_coll.clone(),
+    ));
 
     let rate_loader = make_rate_loader(err_write_handle.clone());
 
@@ -207,13 +206,9 @@ pub async fn run_acb_app_for_export(
     .await;
 
     match result {
-        Ok(_) => {
-            Ok(AppExportResultOk {
-                csv_files: csv_coll.take().into_iter()
-                    .map(FileContent::from)
-                    .collect(),
-            })
-        }
+        Ok(_) => Ok(AppExportResultOk {
+            csv_files: csv_coll.take().into_iter().map(FileContent::from).collect(),
+        }),
         Err(()) => {
             let error_string =
                 err_string_buff.try_borrow_mut().unwrap().export_string();
@@ -256,7 +251,8 @@ impl serde::ser::Serialize for CsvBrokerConvertResult {
         S: serde::ser::Serializer,
     {
         let n_fields = 3;
-        let mut state = serializer.serialize_struct("CsvBrokerConvertResult", n_fields)?;
+        let mut state =
+            serializer.serialize_struct("CsvBrokerConvertResult", n_fields)?;
         state.serialize_field("csvText", &self.csv_text)?;
         state.serialize_field("nonFatalErrors", &self.non_fatal_errors)?;
         state.serialize_field("warnings", &self.warnings)?;
@@ -275,7 +271,8 @@ impl serde::ser::Serialize for EtradeConvertResult {
         S: serde::ser::Serializer,
     {
         let n_fields = 2;
-        let mut state = serializer.serialize_struct("EtradeConvertResult", n_fields)?;
+        let mut state =
+            serializer.serialize_struct("EtradeConvertResult", n_fields)?;
         state.serialize_field("csvText", &self.csv_text)?;
         state.serialize_field("warnings", &self.warnings)?;
         state.end()
@@ -293,7 +290,8 @@ impl serde::ser::Serialize for EtradeExtractResult {
         S: serde::ser::Serializer,
     {
         let n_fields = 2;
-        let mut state = serializer.serialize_struct("EtradeExtractResult", n_fields)?;
+        let mut state =
+            serializer.serialize_struct("EtradeExtractResult", n_fields)?;
         state.serialize_field("benefitsTable", &self.benefits_table)?;
         state.serialize_field("tradesTable", &self.trades_table)?;
         state.end()
@@ -311,7 +309,8 @@ impl serde::ser::Serialize for AppSummaryResultOk {
         S: serde::ser::Serializer,
     {
         let n_fields = 2;
-        let mut state = serializer.serialize_struct("AppSummaryResultOk", n_fields)?;
+        let mut state =
+            serializer.serialize_struct("AppSummaryResultOk", n_fields)?;
         state.serialize_field("csvText", &self.csv_text)?;
         state.serialize_field("summaryTable", &self.summary_table)?;
         state.end()
@@ -324,7 +323,7 @@ pub async fn run_acb_app_summary(
     split_annual_summary_gains: bool,
     render_full_dollar_values: bool,
 ) -> Result<AppSummaryResultOk, SError> {
-    use acb::app::{Options, run_acb_app_summary_to_render_model};
+    use acb::app::{run_acb_app_summary_to_render_model, Options};
 
     let (err_write_handle, err_string_buff) =
         WriteHandle::string_buff_write_handle();
@@ -343,7 +342,8 @@ pub async fn run_acb_app_summary(
         options,
         rate_loader,
         err_write_handle,
-    ).await;
+    )
+    .await;
 
     let buffered_error_string =
         err_string_buff.try_borrow_mut().unwrap().export_string();
@@ -358,8 +358,11 @@ pub async fn run_acb_app_summary(
     }
     errors.extend(result.errors.iter().map(String::clone));
 
-    let csv_txs: Vec<acb::portfolio::CsvTx> = result.summary_txs.iter().map(
-        |tx| acb::portfolio::CsvTx::from(tx.clone())).collect();
+    let csv_txs: Vec<acb::portfolio::CsvTx> = result
+        .summary_txs
+        .iter()
+        .map(|tx| acb::portfolio::CsvTx::from(tx.clone()))
+        .collect();
     let table = acb::portfolio::io::tx_csv::txs_to_csv_table(&csv_txs);
     let summary_table = SerializableRenderTable(RenderTable {
         header: table.header.into_iter().map(|s| s.to_string()).collect(),
