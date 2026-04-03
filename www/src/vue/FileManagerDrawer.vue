@@ -3,6 +3,7 @@ import { ref, computed } from 'vue';
 import { FileKind } from './file_manager_store.js';
 import type { FileManagerState, FileEntry } from './file_manager_store.js';
 import { openDynamicTextDialog } from './info_dialog_store.js';
+import FileDropAreaBase from './FileDropAreaBase.vue';
 
 const props = defineProps<{
    store: FileManagerState;
@@ -16,9 +17,6 @@ const props = defineProps<{
 const activeKindFilter = ref<FileKind | null>(null);
 const lastClickedFilteredIndex = ref<number | null>(null);
 const showClearModal = ref(false);
-const isDropActive = ref(false);
-const fileInput = ref<HTMLInputElement | null>(null);
-
 // --- Constants ---
 
 // Approximate rendered height of each table row (td padding 6px*2 + 13px font
@@ -111,36 +109,6 @@ function handleClearClick() {
    }
 }
 
-function handleDrawerDragOver(event: DragEvent) {
-   event.preventDefault();
-   if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy';
-   isDropActive.value = true;
-}
-
-function handleDrawerDragLeave() {
-   isDropActive.value = false;
-}
-
-function handleDrawerDrop(event: DragEvent) {
-   event.preventDefault();
-   isDropActive.value = false;
-   if (event.dataTransfer?.files && props.onFilesDropped) {
-      props.onFilesDropped(event.dataTransfer.files);
-   }
-}
-
-function handleDropZoneClick() {
-   fileInput.value?.click();
-}
-
-function handleFileInputChange(event: Event) {
-   const files = (event.target as HTMLInputElement).files;
-   if (files && props.onFilesDropped) {
-      props.onFilesDropped(files);
-   }
-   // Reset so the same file can be re-selected
-   (event.target as HTMLInputElement).value = '';
-}
 
 function showExtractedText(file: FileEntry) {
    if (!file.pdfPageTexts) return;
@@ -260,24 +228,13 @@ function removeSelected() {
          </div>
 
          <!-- Drop zone -->
-         <div
+         <FileDropAreaBase
             v-if="onFilesDropped"
             class="fm-drop-zone"
-            :class="{ 'fm-drop-active': isDropActive }"
-            @dragover="handleDrawerDragOver"
-            @dragleave="handleDrawerDragLeave"
-            @drop="handleDrawerDrop"
-            @click="handleDropZoneClick"
+            :onFilesDropped="onFilesDropped"
          >
             Drop files here or&nbsp;<span class="fm-drop-browse">browse</span>
-            <input
-               ref="fileInput"
-               type="file"
-               multiple
-               class="fm-drop-file-input"
-               @change="handleFileInputChange"
-            >
-         </div>
+         </FileDropAreaBase>
 
          <!-- File list -->
          <div class="fm-file-list-wrapper" :style="{ height: fileListWrapperHeight }">
@@ -559,33 +516,14 @@ function removeSelected() {
    display: flex;
    align-items: center;
    justify-content: center;
-   border: 2px dashed #c8cdd3;
    border-radius: 6px;
-   text-align: center;
    font-size: 12px;
    color: #888;
-   cursor: pointer;
-   transition: border-color 0.15s, background-color 0.15s, color 0.15s;
-}
-
-.fm-drop-zone:hover {
-   border-color: #999;
-   background-color: #fafafa;
-}
-
-.fm-drop-zone.fm-drop-active {
-   border-color: var(--primary-color);
-   background-color: var(--light-color);
-   color: var(--primary-color);
 }
 
 .fm-drop-browse {
    text-decoration: underline;
    color: var(--primary-color);
-}
-
-.fm-drop-file-input {
-   display: none;
 }
 
 /* File list */
