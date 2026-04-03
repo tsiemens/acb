@@ -8,7 +8,7 @@ use crate::{
         broker::{Account, BrokerTx},
         sheet_common::SheetParseError,
     },
-    portfolio::{Affiliate, Currency, TxAction},
+    portfolio::{Currency, TxAction},
     util::basic::SError,
 };
 
@@ -112,21 +112,6 @@ fn parse_preamble_account_info(
     None
 }
 
-fn affiliate_for_account_type(account_type: &str) -> Affiliate {
-    lazy_static::lazy_static! {
-        static ref REGISTERED_RE: regex::Regex =
-            regex::RegexBuilder::new(r"rrsp|tfsa|resp|fhsa|rrif")
-                .case_insensitive(true)
-                .build()
-                .unwrap();
-    }
-    if REGISTERED_RE.is_match(account_type) {
-        Affiliate::default_registered()
-    } else {
-        Affiliate::default()
-    }
-}
-
 /// A simple column-index lookup for CSV header rows.
 struct CsvColMap {
     col_to_index: std::collections::HashMap<String, usize>,
@@ -210,7 +195,7 @@ pub fn csv_to_txs(
     let (preamble_account_num, preamble_account_type) =
         parse_preamble_account_info(&preamble).unwrap_or_default();
 
-    let affiliate = affiliate_for_account_type(&preamble_account_type);
+    let affiliate = super::affiliate_for_account_type(&preamble_account_type);
 
     // Build a csv reader from the header line onward
     let csv_portion: String =
@@ -408,6 +393,9 @@ pub fn csv_to_txs(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    use crate::portfolio::Affiliate;
+
     #[test]
     fn test_parse_rbc_date() {
         let d = parse_rbc_date("December 24, 2025").unwrap();
@@ -440,28 +428,6 @@ mod tests {
     fn test_parse_preamble_no_account() {
         let preamble = vec!["some random text".to_string()];
         assert!(parse_preamble_account_info(&preamble).is_none());
-    }
-
-    #[test]
-    fn test_affiliate_registered() {
-        assert_eq!(
-            affiliate_for_account_type("RESP Family"),
-            Affiliate::default_registered()
-        );
-        assert_eq!(
-            affiliate_for_account_type("TFSA"),
-            Affiliate::default_registered()
-        );
-        assert_eq!(
-            affiliate_for_account_type("RRSP"),
-            Affiliate::default_registered()
-        );
-    }
-
-    #[test]
-    fn test_affiliate_non_registered() {
-        assert_eq!(affiliate_for_account_type("Cash"), Affiliate::default());
-        assert_eq!(affiliate_for_account_type("Margin"), Affiliate::default());
     }
 
     fn make_csv(rows: &[&str]) -> Vec<u8> {
