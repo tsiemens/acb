@@ -7,6 +7,7 @@
       :table="getTable(symbol)"
       :title="symbol"
       :titleBadge="isNewSecurity(symbol) ? 'NEW' : ''"
+      :titleBadgeHelpText="isNewSecurity(symbol) ? getNewSecurityDescription() : ''"
       :rowClassFn="rowClassFn"
       :cellClassFn="cellClassFn"
       :cellTagClassFn="cellTagClassFn"
@@ -91,6 +92,10 @@ export default defineComponent({
          return true;
       }
 
+      function getNewSecurityDescription(): string {
+         return `This security has no transactions before the ${currentTaxYear} tax year.`;
+      }
+
       function shouldShowSecurity(symbol: string): boolean {
          if (!props.store.highlightedYear || !props.store.hideInactiveSecurities) {
             return true;
@@ -167,7 +172,7 @@ export default defineComponent({
          return null;
       }
 
-      return { sortedSymbols, getTable, shouldShowSecurity, isNewSecurity, rowClassFn, cellClassFn, cellTagClassFn, cellHtmlFn };
+      return { sortedSymbols, getTable, shouldShowSecurity, isNewSecurity, getNewSecurityDescription, rowClassFn, cellClassFn, cellTagClassFn, cellHtmlFn };
    },
 });
 </script>
