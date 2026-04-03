@@ -10,7 +10,7 @@ use crate::{
         broker::{Account, BrokerTx, FxTracker, FxtRow},
         sheet_common::SheetParseError,
     },
-    portfolio::{Affiliate, Currency, TxAction},
+    portfolio::{Currency, TxAction},
     util::{basic::SError, date::parse_standard_date},
 };
 
@@ -105,16 +105,7 @@ pub fn sheet_to_txs(
                 account_num,
             };
 
-            let affiliate = if regex::RegexBuilder::new(r"rrsp|tfsa|resp|fhsa")
-                .case_insensitive(true)
-                .build()
-                .unwrap()
-                .is_match(&account.account_type)
-            {
-                Affiliate::default_registered()
-            } else {
-                Affiliate::default()
-            };
+            let affiliate = super::affiliate_for_account_type(&account.account_type);
 
             if action_str == "FXT" {
                 let fxt_row = FxtRow {
