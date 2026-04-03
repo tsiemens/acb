@@ -59,10 +59,10 @@ test-py:
 	make -C py test
 
 rustfmt:
-	rustfmt --config-path . `find src tests www -type f -name '*.rs'`
+	rustfmt --config-path . `find src tests acb_wasm www -type f -name '*.rs'`
 
 check-rustfmt:
-	rustfmt --check --config-path . `find src tests www -type f -name '*.rs'`
+	rustfmt --check --config-path . `find src tests acb_wasm www -type f -name '*.rs'`
 
 install:
 	cargo install --path .

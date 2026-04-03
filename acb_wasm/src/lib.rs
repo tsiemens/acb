@@ -27,8 +27,8 @@ pub fn convert_xl_to_csv(
         XlSource::Data(data),
         &BrokerArg::Questrade,
         sheet_name.as_deref(),
-        Some(Regex::new(r".").unwrap()),  // account_filter
-        None,  // security_filter
+        Some(Regex::new(r".").unwrap()), // account_filter
+        None,                            // security_filter
         no_fx,
         false, // no_sort (i.e. sort by default)
         None,  // usd_exchange_rate
@@ -41,7 +41,10 @@ pub fn convert_xl_to_csv(
     let csv_text =
         String::from_utf8(buf).map_err(|e| JsValue::from_str(&format!("{e}")))?;
 
-    let result = app_shim::XlConvertResult { csv_text, non_fatal_errors: convert_result.non_fatal_errors };
+    let result = app_shim::XlConvertResult {
+        csv_text,
+        non_fatal_errors: convert_result.non_fatal_errors,
+    };
     Ok(serde_wasm_bindgen::to_value(&result)?)
 }
 
@@ -50,18 +53,15 @@ pub fn convert_xl_to_csv(
 /// Returns a `CsvBrokerConvertResult` with `csvText`, `nonFatalErrors`, and
 /// `warnings` fields, or an error string on fatal failure.
 #[wasm_bindgen]
-pub fn convert_rbc_di_csv(
-    data: Vec<u8>,
-    no_fx: bool,
-) -> Result<JsValue, JsValue> {
+pub fn convert_rbc_di_csv(data: Vec<u8>, no_fx: bool) -> Result<JsValue, JsValue> {
     use acb::peripheral::tx_export_convert_impl::convert_csv_broker_txs;
     use acb::portfolio::io::tx_csv::write_txs_to_csv;
 
     let result = convert_csv_broker_txs(
         &data,
-        None,  // fpath
-        Some(Regex::new(r".").unwrap()),  // account_filter
-        None,  // security_filter
+        None,                            // fpath
+        Some(Regex::new(r".").unwrap()), // account_filter
+        None,                            // security_filter
         no_fx,
         false, // no_sort
         None,  // usd_exchange_rate
@@ -120,9 +120,7 @@ fn file_detect_result_to_js(
     js_obj.into()
 }
 
-fn run_file_detect(
-    source: acb::peripheral::broker::FileDetectSource,
-) -> JsValue {
+fn run_file_detect(source: acb::peripheral::broker::FileDetectSource) -> JsValue {
     use acb::peripheral::broker::{
         detect_file_kind as detect, FileDetectResult, FileKind,
     };
@@ -195,19 +193,25 @@ pub fn convert_etrade_pdfs_to_csv(
     use acb::peripheral::etrade_plan_pdf_tx_extract_impl::convert_etrade_file_data;
 
     if pdf_texts.len() != file_names.len() {
-        return Err(JsValue::from_str("pdf_texts and file_names must have the same length"));
+        return Err(JsValue::from_str(
+            "pdf_texts and file_names must have the same length",
+        ));
     }
 
-    let mut pairs: Vec<(String, String)> = pdf_texts
-        .into_iter()
-        .zip(file_names)
-        .collect();
+    let mut pairs: Vec<(String, String)> =
+        pdf_texts.into_iter().zip(file_names).collect();
     pairs.sort_by(|a, b| a.1.cmp(&b.1));
 
     let xlsx_files = unpack_xlsx_args(xlsx_datas, xlsx_names)?;
 
-    let result = convert_etrade_file_data(&pairs, &xlsx_files, generate_fx, no_sell_to_cover_pair, year)
-        .map_err(|errs| JsValue::from_str(&errs.join("\n")))?;
+    let result = convert_etrade_file_data(
+        &pairs,
+        &xlsx_files,
+        generate_fx,
+        no_sell_to_cover_pair,
+        year,
+    )
+    .map_err(|errs| JsValue::from_str(&errs.join("\n")))?;
 
     let convert_result = app_shim::EtradeConvertResult {
         csv_text: result.csv_text,
@@ -230,19 +234,20 @@ pub fn extract_etrade_pdf_data(
     use acb::peripheral::etrade_plan_pdf_tx_extract_impl::extract_etrade_file_data_to_render_tables;
 
     if pdf_texts.len() != pdf_names.len() {
-        return Err(JsValue::from_str("pdf_texts and file_names must have the same length"));
+        return Err(JsValue::from_str(
+            "pdf_texts and file_names must have the same length",
+        ));
     }
 
-    let mut pairs: Vec<(String, String)> = pdf_texts
-        .into_iter()
-        .zip(pdf_names)
-        .collect();
+    let mut pairs: Vec<(String, String)> =
+        pdf_texts.into_iter().zip(pdf_names).collect();
     pairs.sort_by(|a, b| a.1.cmp(&b.1));
 
     let xlsx_files = unpack_xlsx_args(xlsx_datas, xlsx_names)?;
 
-    let result = extract_etrade_file_data_to_render_tables(&pairs, &xlsx_files, year)
-        .map_err(|errs| JsValue::from_str(&errs.join("\n")))?;
+    let result =
+        extract_etrade_file_data_to_render_tables(&pairs, &xlsx_files, year)
+            .map_err(|errs| JsValue::from_str(&errs.join("\n")))?;
 
     let extract_result = app_shim::EtradeExtractResult {
         benefits_table: app_shim::SerializableRenderTable(result.benefits_table),
@@ -284,10 +289,9 @@ pub async fn run_acb(
         return Ok(serde_wasm_bindgen::to_value(&result)?);
     }
 
-    let result =
-        app_shim::run_acb_app(csv_readers, render_full_values)
-            .await
-            .map_err(|e| JsValue::from_str(&e))?;
+    let result = app_shim::run_acb_app(csv_readers, render_full_values)
+        .await
+        .map_err(|e| JsValue::from_str(&e))?;
 
     Ok(serde_wasm_bindgen::to_value(&result)?)
 }
@@ -305,16 +309,20 @@ pub async fn run_acb_summary(
     let latest_date_rs = acb::util::date::from_date_ints(
         latest_date.get_full_year() as i32,
         (latest_date.get_month() + 1) as u8,
-        latest_date.get_date() as u8).
-        map_err(|e| JsValue::from_str(
-            &format!("Error converting date {:?}: {}", latest_date, e)))?;
+        latest_date.get_date() as u8,
+    )
+    .map_err(|e| {
+        JsValue::from_str(&format!("Error converting date {:?}: {}", latest_date, e))
+    })?;
 
-    let result =
-        app_shim::run_acb_app_summary(
-            latest_date_rs, csv_readers,
-            split_annual_summary_gains, render_full_values)
-            .await
-            .map_err(|e| JsValue::from_str(&e))?;
+    let result = app_shim::run_acb_app_summary(
+        latest_date_rs,
+        csv_readers,
+        split_annual_summary_gains,
+        render_full_values,
+    )
+    .await
+    .map_err(|e| JsValue::from_str(&e))?;
 
     Ok(serde_wasm_bindgen::to_value(&result)?)
 }
