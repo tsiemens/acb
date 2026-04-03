@@ -301,13 +301,13 @@ fn test_rbc_di_basic_buy_sell() {
     // Verify the actual buy/sell transactions
     let exp_csv = "\
     security  ,trade date ,settlement date,action,shares,amount/share,commission,currency,affiliate  ,memo
-    XEQT      ,2025-01-10 ,2025-01-14     ,Buy   ,10    ,40.00       ,9.95      ,CAD     ,Default (R),RBC Direct Investing TFSA 12345678
-    ZNQ       ,2025-02-05 ,2025-02-07     ,Buy   ,5     ,100.00      ,0.00      ,CAD     ,Default (R),RBC Direct Investing TFSA 12345678
-    XEQT      ,2025-03-15 ,2025-03-18     ,Sell  ,4     ,42.50       ,9.95      ,CAD     ,Default (R),RBC Direct Investing TFSA 12345678
-    XEQT      ,2025-09-10 ,2025-09-12     ,Buy   ,8     ,41.25       ,0.00      ,CAD     ,Default (R),RBC Direct Investing TFSA 12345678
-    ZNQ       ,2025-10-05 ,2025-10-08     ,Sell  ,3     ,55.00       ,9.90      ,CAD     ,Default (R),RBC Direct Investing TFSA 12345678
-    VFV       ,2025-11-20 ,2025-11-24     ,Buy   ,20    ,120.00      ,9.95      ,CAD     ,Default (R),RBC Direct Investing TFSA 12345678
-    VFV       ,2025-12-15 ,2025-12-17     ,Sell  ,10    ,122.50      ,9.95      ,CAD     ,Default (R),RBC Direct Investing TFSA 12345678\
+    XEQT.TO   ,2025-01-10 ,2025-01-14     ,Buy   ,10    ,40.00       ,9.95      ,CAD     ,Default (R),RBC Direct Investing TFSA 12345678
+    ZNQ.TO    ,2025-02-05 ,2025-02-07     ,Buy   ,5     ,100.00      ,0.00      ,CAD     ,Default (R),RBC Direct Investing TFSA 12345678
+    XEQT.TO   ,2025-03-15 ,2025-03-18     ,Sell  ,4     ,42.50       ,9.95      ,CAD     ,Default (R),RBC Direct Investing TFSA 12345678
+    XEQT.TO   ,2025-09-10 ,2025-09-12     ,Buy   ,8     ,41.25       ,0.00      ,CAD     ,Default (R),RBC Direct Investing TFSA 12345678
+    ZNQ.TO    ,2025-10-05 ,2025-10-08     ,Sell  ,3     ,55.00       ,9.90      ,CAD     ,Default (R),RBC Direct Investing TFSA 12345678
+    VFV.TO    ,2025-11-20 ,2025-11-24     ,Buy   ,20    ,120.00      ,9.95      ,CAD     ,Default (R),RBC Direct Investing TFSA 12345678
+    VFV.TO    ,2025-12-15 ,2025-12-17     ,Sell  ,10    ,122.50      ,9.95      ,CAD     ,Default (R),RBC Direct Investing TFSA 12345678\
     ";
 
     verify_csv(&out, &exp_csv);
@@ -316,7 +316,7 @@ fn test_rbc_di_basic_buy_sell() {
 #[test]
 fn test_rbc_di_security_filter() {
     let (res, out, err) =
-        run_and_get_output(parse_rbc_args(vec!["--security", "XEQT"]));
+        run_and_get_output(parse_rbc_args(vec!["--security", "XEQT.TO"]));
 
     assert_ne!("", &err);
     // Still has warnings for RoC/Reorg, but they are for different securities
@@ -324,9 +324,9 @@ fn test_rbc_di_security_filter() {
 
     let exp_csv = "\
     security,trade date ,settlement date,action,shares,amount/share,commission,currency,affiliate  ,memo
-    XEQT    ,2025-01-10 ,2025-01-14     ,Buy   ,10    ,40.00       ,9.95      ,CAD     ,Default (R),RBC Direct Investing TFSA 12345678
-    XEQT    ,2025-03-15 ,2025-03-18     ,Sell  ,4     ,42.50       ,9.95      ,CAD     ,Default (R),RBC Direct Investing TFSA 12345678
-    XEQT    ,2025-09-10 ,2025-09-12     ,Buy   ,8     ,41.25       ,0.00      ,CAD     ,Default (R),RBC Direct Investing TFSA 12345678\
+    XEQT.TO ,2025-01-10 ,2025-01-14     ,Buy   ,10    ,40.00       ,9.95      ,CAD     ,Default (R),RBC Direct Investing TFSA 12345678
+    XEQT.TO ,2025-03-15 ,2025-03-18     ,Sell  ,4     ,42.50       ,9.95      ,CAD     ,Default (R),RBC Direct Investing TFSA 12345678
+    XEQT.TO ,2025-09-10 ,2025-09-12     ,Buy   ,8     ,41.25       ,0.00      ,CAD     ,Default (R),RBC Direct Investing TFSA 12345678\
     ";
 
     verify_csv(&out, &exp_csv);
@@ -343,9 +343,9 @@ fn test_rbc_di_year_filter() {
     res.unwrap(); // warnings still present but not errors
 
     // Just verify the output contains buy/sell transactions
-    assert!(out.contains("XEQT"));
-    assert!(out.contains("ZNQ"));
-    assert!(out.contains("VFV"));
+    assert!(out.contains("XEQT.TO"));
+    assert!(out.contains("ZNQ.TO"));
+    assert!(out.contains("VFV.TO"));
 }
 
 #[test]
@@ -390,7 +390,7 @@ fn test_rbc_di_errors() {
         &out,
         "\
     security,trade date,settlement date,action,shares,amount/share,commission,currency,affiliate,memo
-    XEQT,2025-01-10,2025-01-14,Buy,10,40.00,9.95,CAD,Default (R),RBC Direct Investing TFSA 11111111\
+    XEQT.TO,2025-01-10,2025-01-14,Buy,10,40.00,9.95,CAD,Default (R),RBC Direct Investing TFSA 11111111\
     ",
     );
 }

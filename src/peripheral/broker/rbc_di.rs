@@ -55,6 +55,19 @@ const RBC_DATE_FORMAT: &[time::format_description::BorrowedFormatItem<'_>] = tim
     "[month repr:long] [day padding:none], [year]"
 );
 
+/// Returns true if the symbol already contains a dot-suffix that looks like
+/// an exchange identifier (e.g. `.TO`, `.TSXV`, `.NYSE`).
+fn has_exchange_suffix(symbol: &str) -> bool {
+    symbol.contains('.')
+}
+
+/// Returns true if the symbol ends with `.U`, indicating a USD-denominated
+/// TSX-listed security (e.g. DLR.U). These should get `.TO` appended
+/// regardless of the transaction currency.
+fn ends_with_dot_u(symbol: &str) -> bool {
+    symbol.to_uppercase().ends_with(".U")
+}
+
 fn parse_rbc_date(date_str: &str) -> Result<Date, SError> {
     Date::parse(date_str.trim(), RBC_DATE_FORMAT)
         .map_err(|e| format!("Unable to parse date \"{date_str}\": {e}"))
@@ -336,8 +349,22 @@ pub fn csv_to_txs(
 
             let memo = account.memo_str();
 
+            // RBC DI doesn't include exchange suffixes that I know of.
+            // Append .TO for CAD-denominated securities so they match TSX ticker
+            // conventions.
+            // Skip if the symbol already has a dot-suffix (assumed to be an
+            // exchange identifier). .U symbols (USD-denominated TSX shares
+            // like DLR.U) always get .TO appended.
+            let needs_to_suffix = ends_with_dot_u(symbol)
+                || (currency == Currency::cad() && !has_exchange_suffix(symbol));
+            let security = if needs_to_suffix {
+                format!("{symbol}.TO")
+            } else {
+                symbol.to_string()
+            };
+
             let b_tx = BrokerTx {
-                security: symbol.to_string(),
+                security,
                 trade_date,
                 settlement_date,
                 trade_date_and_time: trade_date_str.to_string(),
@@ -464,7 +491,7 @@ mod tests {
         let txs = csv_to_txs(&csv, None).unwrap();
         assert_eq!(txs.len(), 1);
         let tx = &txs[0];
-        assert_eq!(tx.security, "XEQT");
+        assert_eq!(tx.security, "XEQT.TO");
         assert_eq!(tx.action, TxAction::Buy);
         assert_eq!(tx.num_shares, Decimal::from(6));
         assert_eq!(tx.amount_per_share, Decimal::new(4037, 2));
@@ -612,5 +639,68 @@ mod tests {
         assert_eq!(txs[0].account.broker_name, RBC_DI_BROKER_NAME);
         assert_eq!(txs[0].account.account_num, "12345678");
         assert_eq!(txs[0].account.account_type, "RESP Family");
+    }
+
+    #[test]
+    fn test_cad_symbol_gets_to_suffix() {
+        let csv = make_csv(&[
+            "\"January 3, 2025\",\"Buy\",\"XEQT\",\"ISHARES CORE EQUITY ETF\",\"10\",\"40.00\",\"January 5, 2025\",\"12345678\",\"-400\",\"CAD\",\"desc\"",
+        ]);
+        let txs = csv_to_txs(&csv, None).unwrap();
+        assert_eq!(txs[0].security, "XEQT.TO");
+        assert_eq!(txs[0].currency, Currency::cad());
+    }
+
+    #[test]
+    fn test_usd_symbol_no_suffix() {
+        let csv = make_csv(&[
+            "\"January 3, 2025\",\"Buy\",\"AAPL\",\"APPLE INC\",\"5\",\"200.00\",\"January 5, 2025\",\"12345678\",\"-1000\",\"USD\",\"desc\"",
+        ]);
+        let txs = csv_to_txs(&csv, None).unwrap();
+        assert_eq!(txs[0].security, "AAPL");
+        assert_eq!(txs[0].currency, Currency::usd());
+    }
+
+    #[test]
+    fn test_usd_sell_no_suffix() {
+        let csv = make_csv(&[
+            "\"March 10, 2025\",\"Sell\",\"MSFT\",\"MICROSOFT CORP\",\"3\",\"400.00\",\"March 12, 2025\",\"12345678\",\"1190.05\",\"USD\",\"desc\"",
+        ]);
+        let txs = csv_to_txs(&csv, None).unwrap();
+        assert_eq!(txs[0].security, "MSFT");
+        assert_eq!(txs[0].action, TxAction::Sell);
+        assert_eq!(txs[0].currency, Currency::usd());
+        // 3 * 400 = 1200, Value = 1190.05, commission = 9.95
+        assert_eq!(txs[0].commission, Decimal::new(995, 2));
+    }
+
+    #[test]
+    fn test_cad_symbol_already_has_to_suffix() {
+        let csv = make_csv(&[
+            "\"January 3, 2025\",\"Buy\",\"XEQT.TO\",\"ISHARES\",\"10\",\"40.00\",\"January 5, 2025\",\"12345678\",\"-400\",\"CAD\",\"desc\"",
+        ]);
+        let txs = csv_to_txs(&csv, None).unwrap();
+        assert_eq!(txs[0].security, "XEQT.TO");
+    }
+
+    #[test]
+    fn test_cad_symbol_already_has_tsxv_suffix() {
+        let csv = make_csv(&[
+            "\"January 3, 2025\",\"Buy\",\"FOO.TSXV\",\"SOME VENTURE\",\"10\",\"1.00\",\"January 5, 2025\",\"12345678\",\"-10\",\"CAD\",\"desc\"",
+        ]);
+        let txs = csv_to_txs(&csv, None).unwrap();
+        assert_eq!(txs[0].security, "FOO.TSXV");
+    }
+
+    #[test]
+    fn test_dot_u_symbol_gets_to_suffix() {
+        // .U denotes USD-denominated TSX shares (e.g. DLR.U -> DLR.U.TO).
+        // These show up as USD currency but are still TSX-listed.
+        let csv = make_csv(&[
+            "\"January 3, 2025\",\"Buy\",\"DLR.U\",\"HORIZONS US DLR\",\"100\",\"13.50\",\"January 5, 2025\",\"12345678\",\"-1350\",\"USD\",\"desc\"",
+        ]);
+        let txs = csv_to_txs(&csv, None).unwrap();
+        assert_eq!(txs[0].security, "DLR.U.TO");
+        assert_eq!(txs[0].currency, Currency::usd());
     }
 }
