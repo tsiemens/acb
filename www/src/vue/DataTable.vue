@@ -2,7 +2,7 @@
   <div>
     <div v-if="title" class="table-title">
       {{ title }}
-      <span v-if="titleBadge" class="title-badge">{{ titleBadge }}</span>
+      <span v-if="titleBadge" class="title-badge" :title="titleBadgeHelpText">{{ titleBadge }}</span>
     </div>
 
     <div v-if="errors.length > 0" class="security-errors">
@@ -71,6 +71,10 @@ export default defineComponent({
          type: String,
          default: '',
       },
+      titleBadgeHelpText: {
+         type: String,
+         default: '',
+      },
       errorSuffix: {
          type: String,
          default: '',
@@ -134,6 +138,10 @@ export default defineComponent({
   background: #d1fae5;
   color: #065f46;
   vertical-align: middle;
+}
+
+.title-badge[title]:not([title=""]) {
+  cursor: help;
 }
 
 .security-errors {
