@@ -9,12 +9,12 @@ WWW_DIR="$(dirname "$SCRIPTS_DIR")"
 # fnm is typically installed to ~/.cargo/bin
 export PATH="$HOME/.cargo/bin:$PATH"
 
-if ! command -v fnm &>/dev/null; then
-    echo "error: fnm not found. Install it with: cargo install fnm" >&2
+if command -v fnm &>/dev/null; then
+    eval "$(fnm env --shell bash)"
+    cd "$WWW_DIR" && fnm use --silent-if-unchanged
+elif ! command -v npm &>/dev/null; then
+    echo "error: Neither fnm nor npm found. Install fnm with: cargo install fnm" >&2
     exit 1
 fi
-
-eval "$(fnm env --shell bash)"
-cd "$WWW_DIR" && fnm use --silent-if-unchanged
 
 exec npm "$@"
