@@ -4,7 +4,6 @@ use serde::ser::SerializeStruct;
 
 use acb::{
     app::{outfmt::text::TextWriter, run_acb_app_to_writer},
-    fx::io::{InMemoryRatesCache, JsonRemoteRateLoader, RateLoader},
     portfolio::{io::tx_csv::TxCsvParseOptions, render::RenderTable, Security},
     util::{
         basic::SError,
@@ -12,19 +11,11 @@ use acb::{
     },
 };
 
-const FORCE_DOWNLOAD_RATES: bool = false;
-const RENDER_TOTAL_COSTS: bool = false;
+use crate::wasm_rates_loader::{
+    build_rates_cache_update, make_rate_loader, RatesCacheData, RatesCacheUpdate,
+};
 
-fn make_rate_loader(err_write_handle: WriteHandle) -> RateLoader {
-    RateLoader::new(
-        FORCE_DOWNLOAD_RATES,
-        Box::new(InMemoryRatesCache::new()),
-        JsonRemoteRateLoader::new_boxed(
-            crate::http::CorsEnabledHttpRequester::new_boxed(),
-        ),
-        err_write_handle,
-    )
-}
+const RENDER_TOTAL_COSTS: bool = false;
 
 pub struct SerializableRenderTable(pub RenderTable);
 
@@ -66,6 +57,7 @@ impl serde::ser::Serialize for AppRenderResult {
 pub struct AppResultOk {
     pub text_output: String,
     pub model_output: AppRenderResult,
+    pub rates_cache_update: RatesCacheUpdate,
 }
 
 impl serde::ser::Serialize for AppResultOk {
@@ -75,10 +67,11 @@ impl serde::ser::Serialize for AppResultOk {
     {
         // https://serde.rs/impl-serialize.html
 
-        let n_fields = 2;
+        let n_fields = 3;
         let mut state = serializer.serialize_struct("AppResultOk", n_fields)?;
         state.serialize_field("textOutput", &self.text_output)?;
         state.serialize_field("modelOutput", &self.model_output)?;
+        state.serialize_field("ratesCacheUpdate", &self.rates_cache_update)?;
         state.end()
     }
 }
@@ -86,6 +79,7 @@ impl serde::ser::Serialize for AppResultOk {
 pub async fn run_acb_app(
     csv_file_readers: Vec<DescribedReader>,
     render_full_dollar_values: bool,
+    initial_rates: Option<&RatesCacheData>,
 ) -> Result<AppResultOk, SError> {
     let (out_write_handle, out_string_buff) =
         WriteHandle::string_buff_write_handle();
@@ -94,7 +88,7 @@ pub async fn run_acb_app(
 
     let writer = Box::new(TextWriter::new(out_write_handle));
 
-    let rate_loader = make_rate_loader(err_write_handle.clone());
+    let mut rate_loader = make_rate_loader(err_write_handle.clone(), initial_rates)?;
 
     let result = run_acb_app_to_writer(
         writer,
@@ -102,10 +96,12 @@ pub async fn run_acb_app(
         &TxCsvParseOptions::default(),
         render_full_dollar_values,
         RENDER_TOTAL_COSTS,
-        rate_loader,
+        &mut rate_loader,
         err_write_handle,
     )
     .await;
+
+    let rates_cache_update = build_rates_cache_update(&mut rate_loader);
 
     match result {
         Ok(r) => Ok(AppResultOk {
@@ -120,6 +116,7 @@ pub async fn run_acb_app(
                     r.aggregate_gains_table,
                 ),
             },
+            rates_cache_update,
         }),
         Err(()) => {
             let error_string =
@@ -162,6 +159,7 @@ impl serde::ser::Serialize for FileContent {
 
 pub struct AppExportResultOk {
     pub csv_files: Vec<FileContent>,
+    pub rates_cache_update: RatesCacheUpdate,
 }
 
 impl serde::ser::Serialize for AppExportResultOk {
@@ -171,10 +169,11 @@ impl serde::ser::Serialize for AppExportResultOk {
     {
         // https://serde.rs/impl-serialize.html
 
-        let n_fields = 1;
+        let n_fields = 2;
         let mut state =
             serializer.serialize_struct("AppExportResultOk", n_fields)?;
         state.serialize_field("csvFiles", &self.csv_files)?;
+        state.serialize_field("ratesCacheUpdate", &self.rates_cache_update)?;
         state.end()
     }
 }
@@ -182,6 +181,7 @@ impl serde::ser::Serialize for AppExportResultOk {
 pub async fn run_acb_app_for_export(
     csv_file_readers: Vec<DescribedReader>,
     render_full_dollar_values: bool,
+    initial_rates: Option<&RatesCacheData>,
 ) -> Result<AppExportResultOk, SError> {
     let (err_write_handle, err_string_buff) =
         WriteHandle::string_buff_write_handle();
@@ -192,7 +192,7 @@ pub async fn run_acb_app_for_export(
         csv_coll.clone(),
     ));
 
-    let rate_loader = make_rate_loader(err_write_handle.clone());
+    let mut rate_loader = make_rate_loader(err_write_handle.clone(), initial_rates)?;
 
     let result = run_acb_app_to_writer(
         writer,
@@ -200,14 +200,17 @@ pub async fn run_acb_app_for_export(
         &TxCsvParseOptions::default(),
         render_full_dollar_values,
         RENDER_TOTAL_COSTS,
-        rate_loader,
+        &mut rate_loader,
         err_write_handle,
     )
     .await;
 
+    let rates_cache_update = build_rates_cache_update(&mut rate_loader);
+
     match result {
         Ok(_) => Ok(AppExportResultOk {
             csv_files: csv_coll.take().into_iter().map(FileContent::from).collect(),
+            rates_cache_update,
         }),
         Err(()) => {
             let error_string =
@@ -301,6 +304,7 @@ impl serde::ser::Serialize for EtradeExtractResult {
 pub struct AppSummaryResultOk {
     pub csv_text: String,
     pub summary_table: SerializableRenderTable,
+    pub rates_cache_update: RatesCacheUpdate,
 }
 
 impl serde::ser::Serialize for AppSummaryResultOk {
@@ -308,11 +312,12 @@ impl serde::ser::Serialize for AppSummaryResultOk {
     where
         S: serde::ser::Serializer,
     {
-        let n_fields = 2;
+        let n_fields = 3;
         let mut state =
             serializer.serialize_struct("AppSummaryResultOk", n_fields)?;
         state.serialize_field("csvText", &self.csv_text)?;
         state.serialize_field("summaryTable", &self.summary_table)?;
+        state.serialize_field("ratesCacheUpdate", &self.rates_cache_update)?;
         state.end()
     }
 }
@@ -322,13 +327,14 @@ pub async fn run_acb_app_summary(
     csv_file_readers: Vec<DescribedReader>,
     split_annual_summary_gains: bool,
     render_full_dollar_values: bool,
+    initial_rates: Option<&RatesCacheData>,
 ) -> Result<AppSummaryResultOk, SError> {
     use acb::app::{run_acb_app_summary_to_render_model, Options};
 
     let (err_write_handle, err_string_buff) =
         WriteHandle::string_buff_write_handle();
 
-    let rate_loader = make_rate_loader(err_write_handle.clone());
+    let mut rate_loader = make_rate_loader(err_write_handle.clone(), initial_rates)?;
 
     let options = Options {
         render_full_dollar_values,
@@ -340,10 +346,12 @@ pub async fn run_acb_app_summary(
         latest_date,
         csv_file_readers,
         options,
-        rate_loader,
+        &mut rate_loader,
         err_write_handle,
     )
     .await;
+
+    let rates_cache_update = build_rates_cache_update(&mut rate_loader);
 
     let buffered_error_string =
         err_string_buff.try_borrow_mut().unwrap().export_string();
@@ -375,5 +383,6 @@ pub async fn run_acb_app_summary(
     Ok(AppSummaryResultOk {
         csv_text: result.csv_text,
         summary_table,
+        rates_cache_update,
     })
 }

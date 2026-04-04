@@ -63,7 +63,7 @@ impl Default for Options {
 pub async fn run_acb_app_to_delta_models(
     csv_file_readers: Vec<DescribedReader>,
     csv_parse_options: &TxCsvParseOptions,
-    mut rate_loader: RateLoader,
+    rate_loader: &mut RateLoader,
     mut err_printer: WriteHandle,
 ) -> Result<HashMap<Security, DeltaListResult>, Error> {
     let mut all_txs = Vec::<Tx>::new();
@@ -76,7 +76,7 @@ pub async fn run_acb_app_to_delta_models(
             &mut err_printer,
         )?;
 
-        load_tx_rates(&mut csv_txs, &mut rate_loader).await?;
+        load_tx_rates(&mut csv_txs, rate_loader).await?;
 
         let mut txs = Vec::<Tx>::with_capacity(csv_txs.len());
         for csv_tx in csv_txs {
@@ -169,7 +169,7 @@ pub async fn run_acb_app_summary_to_render_model(
     latest_date: Date,
     csv_file_readers: Vec<DescribedReader>,
     options: Options,
-    rate_loader: RateLoader,
+    rate_loader: &mut RateLoader,
     err_printer: WriteHandle,
 ) -> AppSummaryRenderResult {
     let res = run_acb_app_summary_to_model(
@@ -219,7 +219,7 @@ pub async fn run_acb_app_to_render_model(
     csv_parse_options: &TxCsvParseOptions,
     render_full_dollar_values: bool,
     render_total_costs: bool,
-    rate_loader: RateLoader,
+    rate_loader: &mut RateLoader,
     err_printer: WriteHandle,
 ) -> Result<AppRenderResult, Error> {
     let deltas_results_by_sec = run_acb_app_to_delta_models(
@@ -339,7 +339,7 @@ pub async fn run_acb_app_to_writer(
     csv_parse_options: &TxCsvParseOptions,
     render_full_dollar_values: bool,
     render_total_costs: bool,
-    rate_loader: RateLoader,
+    rate_loader: &mut RateLoader,
     mut err_printer: WriteHandle,
 ) -> Result<AppRenderResult, ()> {
     let res = run_acb_app_to_render_model(
@@ -377,7 +377,7 @@ pub async fn run_acb_app_summary_to_model(
     latest_date: Date,
     csv_file_readers: Vec<DescribedReader>,
     options: Options,
-    rate_loader: RateLoader,
+    rate_loader: &mut RateLoader,
     err_printer: WriteHandle,
 ) -> Result<CollectedSummaryData, AppSummaryError> {
     let deltas_results_by_sec = run_acb_app_to_delta_models(
@@ -423,7 +423,7 @@ pub async fn run_acb_app_summary_to_console(
     latest_date: Date,
     csv_file_readers: Vec<DescribedReader>,
     options: Options,
-    rate_loader: RateLoader,
+    rate_loader: &mut RateLoader,
     mut err_printer: WriteHandle,
 ) -> Result<(), ()> {
     let summ_res = run_acb_app_summary_to_model(
@@ -477,7 +477,7 @@ pub async fn run_acb_app_summary_to_console(
 pub async fn run_acb_app_to_console(
     csv_file_readers: Vec<DescribedReader>,
     options: Options,
-    rate_loader: RateLoader,
+    rate_loader: &mut RateLoader,
     mut err_printer: WriteHandle,
 ) -> Result<(), ()> {
     if let Some(summary_mode_latest_date) = options.summary_mode_latest_date {
@@ -603,7 +603,7 @@ mod tests {
             &TxCsvParseOptions::default(),
             false,
             render_costs,
-            make_empty_test_rate_loader(),
+            &mut make_empty_test_rate_loader(),
             WriteHandle::empty_write_handle(),
         ))
         .unwrap();
@@ -635,7 +635,7 @@ mod tests {
             &TxCsvParseOptions::default(),
             false,
             render_costs,
-            make_empty_test_rate_loader(),
+            &mut make_empty_test_rate_loader(),
             WriteHandle::empty_write_handle(),
         ))
         .unwrap();
@@ -673,7 +673,7 @@ mod tests {
             &TxCsvParseOptions::default(),
             false,
             render_costs,
-            make_empty_test_rate_loader(),
+            &mut make_empty_test_rate_loader(),
             WriteHandle::empty_write_handle(),
         ))
         .unwrap();
@@ -720,7 +720,7 @@ mod tests {
             &TxCsvParseOptions::default(),
             false,
             false,
-            make_empty_test_rate_loader(),
+            &mut make_empty_test_rate_loader(),
             WriteHandle::empty_write_handle(),
         ))
         .unwrap();

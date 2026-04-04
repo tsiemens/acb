@@ -37,6 +37,7 @@ dependencies = [
  "acb",
  "async-trait",
  "regex",
+ "rust_decimal",
  "serde",
  "serde-wasm-bindgen",
  "wasm-bindgen",

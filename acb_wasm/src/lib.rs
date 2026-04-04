@@ -5,6 +5,7 @@ use wasm_bindgen::prelude::*;
 
 pub mod app_shim;
 pub mod http;
+pub mod wasm_rates_loader;
 
 /// Convert a raw Excel workbook (as bytes) to ACB-format CSV text.
 ///
@@ -256,6 +257,23 @@ pub fn extract_etrade_pdf_data(
     Ok(serde_wasm_bindgen::to_value(&extract_result)?)
 }
 
+fn parse_initial_rates(
+    initial_rates_cache: JsValue,
+) -> Result<Option<wasm_rates_loader::RatesCacheData>, JsValue> {
+    if initial_rates_cache.is_undefined() || initial_rates_cache.is_null() {
+        Ok(None)
+    } else {
+        Ok(Some(
+            serde_wasm_bindgen::from_value(initial_rates_cache).map_err(|e| {
+                JsValue::from_str(&format!(
+                    "Failed to deserialize rates cache: {}",
+                    e
+                ))
+            })?,
+        ))
+    }
+}
+
 fn get_csv_readers(
     file_descs: Vec<String>,
     file_contents: Vec<String>,
@@ -278,20 +296,29 @@ pub async fn run_acb(
     file_contents: Vec<String>,
     render_full_values: bool,
     export_mode: bool,
+    initial_rates_cache: JsValue,
 ) -> Result<JsValue, JsValue> {
     let csv_readers = get_csv_readers(file_descs, file_contents)?;
+    let initial_rates = parse_initial_rates(initial_rates_cache)?;
 
     if export_mode {
-        let result =
-            app_shim::run_acb_app_for_export(csv_readers, render_full_values)
-                .await
-                .map_err(|e| JsValue::from_str(&e))?;
+        let result = app_shim::run_acb_app_for_export(
+            csv_readers,
+            render_full_values,
+            initial_rates.as_ref(),
+        )
+        .await
+        .map_err(|e| JsValue::from_str(&e))?;
         return Ok(serde_wasm_bindgen::to_value(&result)?);
     }
 
-    let result = app_shim::run_acb_app(csv_readers, render_full_values)
-        .await
-        .map_err(|e| JsValue::from_str(&e))?;
+    let result = app_shim::run_acb_app(
+        csv_readers,
+        render_full_values,
+        initial_rates.as_ref(),
+    )
+    .await
+    .map_err(|e| JsValue::from_str(&e))?;
 
     Ok(serde_wasm_bindgen::to_value(&result)?)
 }
@@ -303,8 +330,10 @@ pub async fn run_acb_summary(
     file_contents: Vec<String>,
     split_annual_summary_gains: bool,
     render_full_values: bool,
+    initial_rates_cache: JsValue,
 ) -> Result<JsValue, JsValue> {
     let csv_readers = get_csv_readers(file_descs, file_contents)?;
+    let initial_rates = parse_initial_rates(initial_rates_cache)?;
 
     let latest_date_rs = acb::util::date::from_date_ints(
         latest_date.get_full_year() as i32,
@@ -320,6 +349,7 @@ pub async fn run_acb_summary(
         csv_readers,
         split_annual_summary_gains,
         render_full_values,
+        initial_rates.as_ref(),
     )
     .await
     .map_err(|e| JsValue::from_str(&e))?;

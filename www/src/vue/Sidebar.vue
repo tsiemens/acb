@@ -17,6 +17,15 @@
           <label for="printFullValuesCheckbox">Render high-precision dollars</label>
         </div>
       </div>
+
+      <div class="option-group">
+        <button
+          class="clear-cache-btn"
+          title="Clear the browser-cached FX exchange rates. Rates will be re-downloaded on the next run."
+          :disabled="!ratesCacheExists"
+          @click="onClearRatesCache"
+        >Clear FX Rates Cache</button>
+      </div>
     </div>
 
     <div v-if="tabStore.activeTab === TabId.BrokerConvert" class="options-section">
@@ -96,6 +105,7 @@ import { getSidebarInfoStore } from './sidebar_info_store.js';
 import { getAppInputStore } from './app_input_store.js';
 import { getTabStore, TabId } from './tab_store.js';
 import { isDebugModeEnabled } from '../debug.js';
+import { clearRatesCache, ratesCacheExists } from '../rates_cache.js';
 
 export default defineComponent({
    name: 'Sidebar',
@@ -126,10 +136,15 @@ export default defineComponent({
          appInputStore.filterYear = (event.target as HTMLInputElement).value;
       }
 
+      function onClearRatesCache() {
+         clearRatesCache();
+      }
+
       return {
          sidebarInfoStore, appInputStore, tabStore, TabId, isDebugMode,
+         ratesCacheExists,
          onPrintFullChange, onPairStcChange, onExtractOnlyChange, onNoFxChange,
-         onFilterYearInput,
+         onFilterYearInput, onClearRatesCache,
       };
    },
 });
@@ -163,5 +178,23 @@ export default defineComponent({
   padding: 8px;
   border: 1px solid #ddd;
   border-radius: 4px;
+}
+
+.clear-cache-btn {
+  padding: 6px 12px;
+  font-size: 0.85em;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  background-color: #f5f5f5;
+  cursor: pointer;
+}
+
+.clear-cache-btn:hover:not(:disabled) {
+  background-color: #e8e8e8;
+}
+
+.clear-cache-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
 }
 </style>

@@ -30,6 +30,14 @@ impl InMemoryRatesCache {
             rates_by_year: RcRefCellT::new(HashMap::new()),
         }
     }
+
+    pub fn new_with_rates(
+        rates_by_year: HashMap<u32, Vec<DailyRate>>,
+    ) -> InMemoryRatesCache {
+        InMemoryRatesCache {
+            rates_by_year: RcRefCellT::new(rates_by_year),
+        }
+    }
 }
 
 impl RatesCache for InMemoryRatesCache {

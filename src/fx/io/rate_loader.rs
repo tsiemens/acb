@@ -43,6 +43,10 @@ impl RateLoader {
         }
     }
 
+    pub fn fresh_loaded_years(&self) -> &HashSet<u32> {
+        &self.fresh_loaded_years
+    }
+
     pub fn new_cached_remote_loader(
         force_download: bool,
         cache: Box<dyn RatesCache>,
