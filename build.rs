@@ -108,9 +108,16 @@ fn get_repo_root(out_dir: &str) -> std::path::PathBuf {
         .expect("Failed to canonicalize repo root path")
 }
 
-/// Resolve the node binary path using fnm + .node-version.
-/// Returns None if fnm is not available.
+/// Resolve the node binary path using fnm + .node-version, falling back to
+/// node on PATH (e.g. in CI where actions/setup-node provides it directly).
+/// Returns None if neither fnm nor node is available.
 fn resolve_node_bin_path(repo_root: &Path) -> Option<std::path::PathBuf> {
+    resolve_node_via_fnm(repo_root)
+        .or_else(|| resolve_node_on_path(repo_root))
+}
+
+/// Try to resolve node via fnm.
+fn resolve_node_via_fnm(repo_root: &Path) -> Option<std::path::PathBuf> {
     let home = env::var("HOME").ok()?;
     let fnm_path = Path::new(&home).join(".cargo/bin/fnm");
 
@@ -166,6 +173,69 @@ realpath "$(which node)"
         println!("cargo::warning=fnm node resolution failed: {}", stderr);
         None
     }
+}
+
+/// Read the expected major version from www/.node-version.
+fn read_node_version_file(repo_root: &Path) -> Option<String> {
+    let version_file = repo_root.join("www/.node-version");
+    fs::read_to_string(version_file).ok().map(|s| s.trim().to_string())
+}
+
+/// Query the version of a node binary (returns e.g. "22.1.0").
+fn get_node_version(node_path: &str) -> Option<String> {
+    let output = Command::new(node_path)
+        .arg("--version")
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let version = String::from_utf8_lossy(&output.stdout)
+        .trim()
+        .trim_start_matches('v')
+        .to_string();
+    if version.is_empty() { None } else { Some(version) }
+}
+
+/// Fallback: check if node is directly available on PATH (e.g. CI with
+/// actions/setup-node). Warns to stderr if its major version doesn't match
+/// .node-version.
+fn resolve_node_on_path(repo_root: &Path) -> Option<std::path::PathBuf> {
+    let output = Command::new("which")
+        .arg("node")
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let node_path = String::from_utf8(output.stdout).ok()?.trim().to_string();
+    if node_path.is_empty() {
+        return None;
+    }
+
+    let node_version = get_node_version(&node_path)
+        .unwrap_or_else(|| "unknown".to_string());
+
+    // Check version matches .node-version
+    let expected_node_version_opt = read_node_version_file(repo_root);
+    if let Some(expected_node_version) = &expected_node_version_opt {
+        let actual_major = node_version.split('.').next().unwrap_or("");
+        let expected_major =
+            expected_node_version.split('.').next().unwrap_or("");
+        if actual_major != expected_major {
+            println!(
+                "cargo::error=Node on PATH is v{} but .node-version \
+                 expects {}. Tests requiring node may behave unexpectedly.",
+                node_version, expected_node_version
+            );
+        }
+    }
+
+    println!(
+        "cargo::warning=fnm not installed. Using node from PATH: {} (version: {}. Expected .node-version: {})",
+        node_path, node_version, expected_node_version_opt.unwrap_or_else(|| "unknown".into())
+    );
+    Some(std::path::PathBuf::from(node_path))
 }
 
 fn install_node_modules(emit_verbose_warnings: bool) {
@@ -245,13 +315,18 @@ fn install_node_modules(emit_verbose_warnings: bool) {
         .expect("Failed to write package.json");
 
     // Run npm install using the www/scripts/npm wrapper
-    let status = Command::new(npm_script.to_str().unwrap())
+    let npm_output = Command::new(npm_script.to_str().unwrap())
         .args(&["install", "--prefix", node_env_dir.to_str().unwrap()])
-        .status()
+        .output()
         .expect("Failed to run npm install for node_env");
 
-    if !status.success() {
+    if !npm_output.status.success() {
+        let stdout = String::from_utf8_lossy(&npm_output.stdout);
+        let stderr = String::from_utf8_lossy(&npm_output.stderr);
         println!("cargo::warning=npm install for pdfjs-dist failed. Node.js PDF reader will not be functional.");
+        for line in stdout.lines().chain(stderr.lines()) {
+            println!("cargo::warning=www/scripts/npm: {}", line);
+        }
         write_node_constants(&out_dir, None, None, None);
         return;
     }
@@ -298,6 +373,9 @@ pub const NODE_REPO_ROOT: Option<&str> = {};
     );
     fs::write(Path::new(out_dir).join("node_constants.rs"), content)
         .expect("Failed to write node_constants.rs");
+    if node_bin_path.is_none() {
+        println!("cargo::warning=NODE_BIN_PATH is None. Node.js PDF reader will not be functional.");
+    }
 }
 
 fn main() {
