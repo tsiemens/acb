@@ -154,7 +154,7 @@ pub fn command_main() -> Result<(), ExitCode> {
         }
     };
 
-    let rate_loader = RateLoader::new(
+    let mut rate_loader = RateLoader::new(
         args.force_download,
         Box::new(CsvRatesCache::new(home_dir, err_printer.clone())),
         JsonRemoteRateLoader::new_boxed(StandaloneAppRequester::new_boxed()),
@@ -164,7 +164,7 @@ pub fn command_main() -> Result<(), ExitCode> {
     async_std::task::block_on(run_acb_app_to_console(
         csv_readers,
         options,
-        rate_loader,
+        &mut rate_loader,
         err_printer,
     ))
     .map_err(|_| ExitCode::FAILURE)

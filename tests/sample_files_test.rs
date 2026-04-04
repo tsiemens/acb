@@ -28,21 +28,23 @@ fn validate_sample_csv_file(
     let (write_handle, buff) = WriteHandle::string_buff_write_handle();
     let writer = Box::new(TextWriter::new(write_handle));
 
+    let mut rate_loader = RateLoader::new(
+        false,
+        Box::new(CsvRatesCache::new(
+            cache_dir.to_path_buf(),
+            err_stream.clone(),
+        )),
+        JsonRemoteRateLoader::new_boxed(StandaloneAppRequester::new_boxed()),
+        err_stream.clone(),
+    );
+
     let res = async_std::task::block_on(run_acb_app_to_writer(
         writer,
         vec![reader],
         &TxCsvParseOptions::default(),
         false,
         render_costs,
-        RateLoader::new(
-            false,
-            Box::new(CsvRatesCache::new(
-                cache_dir.to_path_buf(),
-                err_stream.clone(),
-            )),
-            JsonRemoteRateLoader::new_boxed(StandaloneAppRequester::new_boxed()),
-            err_stream.clone(),
-        ),
+        &mut rate_loader,
         err_stream.clone(),
     ));
 
@@ -113,18 +115,20 @@ fn test_sample_csv_parse_errors() {
     let (write_handle, _buff) = WriteHandle::string_buff_write_handle();
     let writer = Box::new(TextWriter::new(write_handle));
 
+    let mut rate_loader = RateLoader::new(
+        false,
+        Box::new(CsvRatesCache::new(dir.path.clone(), err_stream.clone())),
+        JsonRemoteRateLoader::new_boxed(StandaloneAppRequester::new_boxed()),
+        err_stream.clone(),
+    );
+
     let res = async_std::task::block_on(run_acb_app_to_writer(
         writer,
         vec![reader],
         &TxCsvParseOptions::default(),
         false,
         false,
-        RateLoader::new(
-            false,
-            Box::new(CsvRatesCache::new(dir.path.clone(), err_stream.clone())),
-            JsonRemoteRateLoader::new_boxed(StandaloneAppRequester::new_boxed()),
-            err_stream.clone(),
-        ),
+        &mut rate_loader,
         err_stream,
     ));
 

@@ -10,6 +10,7 @@ crate-type = ["cdylib"]
 acb = { path = "../", features = [ "wasm", "xlsx_read" ], default-features = false }
 async-trait = "0.1.80"
 regex = "1.10.4"
+rust_decimal = "1"
 serde-wasm-bindgen = "0.6.5"
 serde = "1.0.203"
 wasm-bindgen = "0.2.92"

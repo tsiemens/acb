@@ -1,5 +1,25 @@
 import { mustGet, get } from "./basic_utils.js";
 
+// -- FX Rates Cache interchange types --
+
+export interface SerializableDailyRate {
+   date: string;
+   rate: string;
+}
+
+export interface SerializableYearRates {
+   year: number;
+   rates: SerializableDailyRate[];
+}
+
+export interface RatesCacheData {
+   years: SerializableYearRates[];
+}
+
+export interface RatesCacheUpdate {
+   years: SerializableYearRates[];
+}
+
 // Replication of AppResultOk in app_shim.rs:
 
 export class RenderTable {
@@ -87,6 +107,7 @@ export class AppResultOk {
     constructor(
         public textOutput: string,
         public modelOutput: AppRenderResult,
+        public ratesCacheUpdate?: RatesCacheUpdate,
     ) {}
 
     /* Import type from wasm interface */
@@ -95,6 +116,7 @@ export class AppResultOk {
         return new AppResultOk(
             mustGet(val, 'textOutput'),
             AppRenderResult.fromJsValue(mustGet(val, 'modelOutput')),
+            get(val, 'ratesCacheUpdate') as RatesCacheUpdate | undefined,
         );
     }
 
@@ -124,6 +146,7 @@ export class FileContent {
 export class AppExportResultOk {
     constructor(
         public csvFiles: Array<FileContent>,
+        public ratesCacheUpdate?: RatesCacheUpdate,
     ) {}
 
     /* Import type from wasm interface */
@@ -132,6 +155,7 @@ export class AppExportResultOk {
         return new AppExportResultOk(
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             mustGet<any[]>(val, 'csvFiles').map(FileContent.fromJsValue),
+            get(val, 'ratesCacheUpdate') as RatesCacheUpdate | undefined,
         );
     }
 
@@ -146,6 +170,7 @@ export class AppSummaryResultOk {
     constructor(
         public csvText: string,
         public summaryTable: RenderTable,
+        public ratesCacheUpdate?: RatesCacheUpdate,
     ) {}
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -153,6 +178,7 @@ export class AppSummaryResultOk {
         return new AppSummaryResultOk(
             mustGet(val, 'csvText'),
             RenderTable.fromJsValue(mustGet(val, 'summaryTable')),
+            get(val, 'ratesCacheUpdate') as RatesCacheUpdate | undefined,
         );
     }
 

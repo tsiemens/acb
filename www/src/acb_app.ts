@@ -4,12 +4,19 @@ import { fileBytesToString, loadFilesAsBytes } from "./file_reader.js";
 import { FileEntry, FileKind, getFileManagerStore, modifyDrawerNotificationForUserAddedFiles } from './vue/file_manager_store.js';
 import { run_acb, run_acb_summary, detect_file_kind, detect_file_kind_from_pdf_pages } from './pkg/acb_wasm.js';
 import { Result } from "./result.js";
-import { AppExportResultOk, AppResultOk, AppSummaryResultOk, RenderTable } from "./acb_wasm_types.js";
+import { AppExportResultOk, AppResultOk, AppSummaryResultOk, RatesCacheUpdate, RenderTable } from "./acb_wasm_types.js";
+import { loadRatesCache, mergeRatesCacheUpdate } from "./rates_cache.js";
 import { getOutputStore, setAppFunctionViewMode } from "./vue/output_store.js";
 import { getAppInputStore, getSummaryDate } from "./vue/app_input_store.js";
 import { ErrorBox } from "./vue/error_box_store.js";
 import { downloadCsv, makeZipAndDownload } from "./download_utils.js";
 import { extractPdfPages } from "./pdf_text_util.js";
+
+function maybeMergeRatesCacheUpdate(update?: RatesCacheUpdate): void {
+   if (update) {
+      mergeRatesCacheUpdate(update);
+   }
+}
 
 class CommonRunOptions {
    constructor(
@@ -34,20 +41,23 @@ async function asyncRunAcb(filenames: string[], contents: string[],
    const { printFullDollarValues } = commonOptions.unwrap();
 
    const exportMode: boolean = mode === AcbAppRunMode.Export;
+   const cachedRates = loadRatesCache();
 
    try {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment
       const jsRet: any = await run_acb(filenames, contents,
-         printFullDollarValues, exportMode);
+         printFullDollarValues, exportMode, cachedRates);
       console.debug("asyncRunAcb: run_acb returned: ", jsRet);
 
       if (exportMode) {
          const ret = AppExportResultOk.fromJsValue(jsRet);
+         maybeMergeRatesCacheUpdate(ret.ratesCacheUpdate);
          makeZipAndDownload(ret.csvFiles);
          return;
       }
 
       const ret: AppResultOk = AppResultOk.fromJsValue(jsRet);
+      maybeMergeRatesCacheUpdate(ret.ratesCacheUpdate);
 
       setAppFunctionViewMode(AppFunctionMode.Calculate);
 
@@ -80,14 +90,17 @@ async function asyncRunAcbSummary(filenames: string[], contents: string[], lates
 
    // Also, pass split_annual_summary_gains as true (or add UI for it if needed).
    const splitAnnualSummaryGains = true;
+   const cachedRates = loadRatesCache();
 
    try {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment
       const jsRet: any = await run_acb_summary(
-         latestDate, filenames, contents, splitAnnualSummaryGains, printFullDollarValues
+         latestDate, filenames, contents, splitAnnualSummaryGains, printFullDollarValues,
+         cachedRates
       );
       console.debug("asyncRunAcbSummary: run_acb_summary returned: ", jsRet);
       const ret: AppSummaryResultOk = AppSummaryResultOk.fromJsValue(jsRet);
+      maybeMergeRatesCacheUpdate(ret.ratesCacheUpdate);
 
       if (mode === AcbAppRunMode.Export) {
          downloadCsv("acb_summary", ret.csvText);
@@ -153,14 +166,17 @@ async function asyncRunAcbShareTally(filenames: string[], contents: string[], la
    const { printFullDollarValues } = commonOptions.unwrap();
 
    const splitAnnualSummaryGains = false;
+   const cachedRates = loadRatesCache();
 
    try {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment
       const jsRet: any = await run_acb_summary(
-         latestDate, filenames, contents, splitAnnualSummaryGains, printFullDollarValues
+         latestDate, filenames, contents, splitAnnualSummaryGains, printFullDollarValues,
+         cachedRates
       );
       console.debug("asyncRunAcbShareTally: run_acb_summary returned: ", jsRet);
       const ret: AppSummaryResultOk = AppSummaryResultOk.fromJsValue(jsRet);
+      maybeMergeRatesCacheUpdate(ret.ratesCacheUpdate);
 
       const [shareTallyTable, csvText] = generateShareTallyRenderTable(ret.summaryTable);
 
