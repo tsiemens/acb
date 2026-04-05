@@ -6,6 +6,7 @@ use clap::Parser;
 use regex::Regex;
 use rust_decimal::Decimal;
 
+use crate::app::config::AcbConfig;
 use crate::app::outfmt::csv::CsvWriter;
 use crate::app::outfmt::model::AcbWriter;
 use crate::app::outfmt::text::TextWriter;
@@ -119,8 +120,8 @@ fn unwrap_broker_result(
 }
 
 /// Applies common post-processing to broker transactions: account/security
-/// filtering, FX filtering, exchange rate override, sorting, and conversion
-/// to CsvTx.
+/// filtering, config-based affiliate override, FX filtering, exchange rate
+/// override, sorting, and conversion to CsvTx.
 fn process_broker_txs(
     mut txs: Vec<BrokerTx>,
     account_filter: Option<Regex>,
@@ -128,6 +129,7 @@ fn process_broker_txs(
     no_fx: bool,
     no_sort: bool,
     usd_exchange_rate: Option<Decimal>,
+    config: Option<&AcbConfig>,
 ) -> Result<Vec<CsvTx>, SError> {
     txs = filter_and_verify_tx_accounts(&account_filter, txs)?;
 
@@ -148,7 +150,14 @@ fn process_broker_txs(
         txs.sort();
     }
 
-    Ok(txs.into_iter().map(|t| t.into()).collect())
+    Ok(txs
+        .into_iter()
+        .map(|t| {
+            let af =
+                super::broker::affiliate_for_account_with_config(&t.account, config);
+            t.to_csv_tx(af)
+        })
+        .collect())
 }
 
 pub struct ConvertResult {
@@ -171,6 +180,7 @@ pub fn convert_xl_txs(
     no_fx: bool,
     no_sort: bool,
     usd_exchange_rate: Option<Decimal>,
+    config: Option<&AcbConfig>,
 ) -> Result<ConvertResult, SError> {
     let source_path: Option<PathBuf> = match &source {
         XlSource::Path(p) => Some(p.clone()),
@@ -196,6 +206,7 @@ pub fn convert_xl_txs(
         no_fx,
         no_sort,
         usd_exchange_rate,
+        config,
     )?;
     Ok(ConvertResult {
         csv_txs,
@@ -217,6 +228,7 @@ pub fn convert_csv_broker_txs(
     no_fx: bool,
     no_sort: bool,
     usd_exchange_rate: Option<Decimal>,
+    config: Option<&AcbConfig>,
 ) -> Result<ConvertResult, SError> {
     let tx_res = rbc_di::csv_to_txs(csv_data, fpath);
 
@@ -228,6 +240,7 @@ pub fn convert_csv_broker_txs(
         no_fx,
         no_sort,
         usd_exchange_rate,
+        config,
     )?;
     Ok(ConvertResult {
         csv_txs,
@@ -290,6 +303,13 @@ pub struct Args {
     /// Only include transactions whose settlement date falls in this year.
     #[arg(long)]
     pub year: Option<i32>,
+
+    /// Path to acb-config.json. Defaults to the platform config dir:
+    ///   Linux:   ~/.config/acb/acb-config.json
+    ///   macOS:   ~/Library/Application Support/acb/acb-config.json
+    ///   Windows: %APPDATA%\acb\acb-config.json
+    #[arg(long)]
+    pub config: Option<PathBuf>,
 }
 
 pub fn run() -> Result<(), ()> {
@@ -307,6 +327,15 @@ pub fn run_with_args(
     mut err_w: WriteHandle,
 ) -> Result<(), ()> {
     let date_range = args.year.map(DateRange::for_year);
+
+    // Load config
+    let config_path =
+        args.config.or_else(|| crate::app::config::default_config_path());
+    let config = match config_path {
+        Some(ref p) => crate::app::config::load_config(p)
+            .map_err(|e| write_errln!(err_w, "{e}"))?,
+        None => None,
+    };
 
     let broker = match args.broker {
         Some(b) => b,
@@ -336,6 +365,7 @@ pub fn run_with_args(
                 args.no_fx,
                 args.no_sort,
                 args.usd_exchange_rate,
+                config.as_ref(),
             )
         }
         BrokerArg::Questrade => convert_xl_txs(
@@ -347,6 +377,7 @@ pub fn run_with_args(
             args.no_fx,
             args.no_sort,
             args.usd_exchange_rate,
+            config.as_ref(),
         ),
     };
 

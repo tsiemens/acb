@@ -1,4 +1,5 @@
 mod approot;
+pub mod config;
 pub mod outfmt;
 
 // Override the version in Cargo.toml, since we are not using standard

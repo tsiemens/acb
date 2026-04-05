@@ -96,14 +96,7 @@ fn verify_csv(csv_str: &str, exp_csv_str: &str) {
     verify_multiline(csv_str, &unpadded_exp);
 }
 
-#[test]
-fn test_txs_basic_and_ignored_actions() {
-    let (res, out, err) =
-        run_and_get_output(parse_qt_args("basic", vec!["--account", "."]));
-
-    assert_eq!("", &err);
-    res.unwrap();
-    let exp_csv = "\
+const QT_BASIC_EXP_CSV: &str = "\
     security,trade date,settlement date,action,shares,amount/share,commission,currency,affiliate,memo
     CCO     ,2023-01-04,2023-01-05     ,Buy   ,2     ,10.00       ,3.99      ,CAD     ,Default (R),Questrade Individual TFSA 10000001
     DLR.TO  ,2023-01-06,2023-01-07     ,Buy   ,3     ,1.00        ,0.00      ,CAD     ,Default (R),Questrade Individual RRSP 10000002
@@ -127,6 +120,15 @@ fn test_txs_basic_and_ignored_actions() {
     UCO     ,2023-01-28,2023-01-29     ,Buy   ,20    ,0.00        ,0.00      ,USD     ,Default    ,Questrade Individual margin 10000003; From DIS action.
     UCO     ,2023-01-28,2023-01-29     ,Sell  ,19    ,0.00        ,0.00      ,USD     ,Default    ,Questrade Individual margin 10000003; From LIQ action.\
     ";
+
+#[test]
+fn test_txs_basic_and_ignored_actions() {
+    let (res, out, err) =
+        run_and_get_output(parse_qt_args("basic", vec!["--account", "."]));
+
+    assert_eq!("", &err);
+    res.unwrap();
+    let exp_csv = QT_BASIC_EXP_CSV;
 
     verify_csv(&out, &exp_csv);
 
@@ -299,7 +301,10 @@ fn test_rbc_di_basic_buy_sell() {
     assert!(err.contains("not automatically converted"));
 
     // Verify the actual buy/sell transactions
-    let exp_csv = "\
+    verify_csv(&out, RBC_BASIC_EXP_CSV);
+}
+
+const RBC_BASIC_EXP_CSV: &str = "\
     security  ,trade date ,settlement date,action,shares,amount/share,commission,currency,affiliate  ,memo
     XEQT.TO   ,2025-01-10 ,2025-01-14     ,Buy   ,10    ,40.00       ,9.95      ,CAD     ,Default (R),RBC Direct Investing TFSA 12345678
     ZNQ.TO    ,2025-02-05 ,2025-02-07     ,Buy   ,5     ,100.00      ,0.00      ,CAD     ,Default (R),RBC Direct Investing TFSA 12345678
@@ -309,9 +314,6 @@ fn test_rbc_di_basic_buy_sell() {
     VFV.TO    ,2025-11-20 ,2025-11-24     ,Buy   ,20    ,120.00      ,9.95      ,CAD     ,Default (R),RBC Direct Investing TFSA 12345678
     VFV.TO    ,2025-12-15 ,2025-12-17     ,Sell  ,10    ,122.50      ,9.95      ,CAD     ,Default (R),RBC Direct Investing TFSA 12345678\
     ";
-
-    verify_csv(&out, &exp_csv);
-}
 
 #[test]
 fn test_rbc_di_security_filter() {
@@ -393,4 +395,36 @@ fn test_rbc_di_errors() {
     XEQT.TO,2025-01-10,2025-01-14,Buy,10,40.00,9.95,CAD,Default (R),RBC Direct Investing TFSA 11111111\
     ",
     );
+}
+
+// ---- Config (affiliate binding) permutation tests ----
+
+const ALT_CONFIG_PATH: &str = "./tests/data/alt-config.json";
+
+/// Replace the stock Default/Default (R) affiliate strings with the names
+/// bound in tests/data/alt-config.json. Order matters: the (R) variant must
+/// be replaced before the bare "Default" to avoid partial matches.
+fn apply_alt_affiliate_subs(s: &str) -> String {
+    s.replace("Default (R)", "Alice (R)").replace("Default", "Alice")
+}
+
+#[test]
+fn test_qt_basic_with_config() {
+    let (res, out, err) = run_and_get_output(parse_qt_args(
+        "basic",
+        vec!["--account", ".", "--config", ALT_CONFIG_PATH],
+    ));
+    assert_eq!("", &err);
+    res.unwrap();
+    verify_csv(&out, &apply_alt_affiliate_subs(QT_BASIC_EXP_CSV));
+}
+
+#[test]
+fn test_rbc_di_basic_with_config() {
+    let (res, out, err) =
+        run_and_get_output(parse_rbc_args(vec!["--config", ALT_CONFIG_PATH]));
+    res.unwrap();
+    assert!(err.contains("Warnings:"));
+    assert!(!err.contains("Errors:"));
+    verify_csv(&out, &apply_alt_affiliate_subs(RBC_BASIC_EXP_CSV));
 }

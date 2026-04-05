@@ -24,6 +24,8 @@ impl Account {
 
 /// This is similar to CsvTx, but slightly less constrained, as it
 /// represents a Tx imported from any broker's exported data.
+/// Note: affiliate is not stored here — it is derived from the account
+/// via config at conversion time.
 #[derive(PartialEq, Eq, Hash, Clone, Debug)]
 pub struct BrokerTx {
     pub security: Security,
@@ -38,7 +40,6 @@ pub struct BrokerTx {
     pub currency: Currency,
     pub memo: String,
     pub exchange_rate: Option<Decimal>,
-    pub affiliate: Affiliate,
 
     pub row_num: u32,
     pub account: Account,
@@ -94,8 +95,10 @@ impl Ord for BrokerTx {
     }
 }
 
-impl Into<crate::portfolio::CsvTx> for BrokerTx {
-    fn into(self) -> crate::portfolio::CsvTx {
+impl BrokerTx {
+    /// Convert to CsvTx with the given affiliate.
+    /// Affiliate is computed externally (from config + account type).
+    pub fn to_csv_tx(self, affiliate: Affiliate) -> crate::portfolio::CsvTx {
         crate::portfolio::CsvTx {
             security: Some(self.security),
             trade_date: Some(self.trade_date),
@@ -110,7 +113,7 @@ impl Into<crate::portfolio::CsvTx> for BrokerTx {
             commission_currency: None,
             commission_curr_to_local_exchange_rate: None,
             memo: Some(self.memo),
-            affiliate: Some(self.affiliate),
+            affiliate: Some(affiliate),
             specified_superficial_loss: None,
             stock_split_ratio: None,
             read_index: self.row_num,

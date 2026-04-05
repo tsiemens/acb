@@ -57,6 +57,16 @@ impl Affiliate {
         AffiliateDedupTable::global_table().deduped_affiliate(s)
     }
 
+    /// Create an affiliate with the given name and registered status.
+    /// The name should not contain `(R)` — pass `registered: true` instead.
+    pub fn from_name(name: &str, registered: bool) -> Affiliate {
+        if registered {
+            Affiliate::from_strep(&format!("{name} (R)"))
+        } else {
+            Affiliate::from_strep(name)
+        }
+    }
+
     pub fn default() -> Affiliate {
         Affiliate::from_strep("")
     }
@@ -209,5 +219,23 @@ mod tests {
 
         // Check that the first entry is still retained in the dedup table
         assert_eq!(af1, dt.deduped_affiliate("default"));
+    }
+
+    #[test]
+    fn test_from_name() {
+        let af = Affiliate::from_name("Spouse", false);
+        assert_eq!(af, Affiliate::from_strep("Spouse"));
+        assert!(!af.registered());
+
+        let af = Affiliate::from_name("Spouse", true);
+        assert_eq!(af, Affiliate::from_strep("Spouse (R)"));
+        assert!(af.registered());
+
+        // Empty name becomes Default
+        let af = Affiliate::from_name("", false);
+        assert_eq!(af, Affiliate::default());
+
+        let af = Affiliate::from_name("", true);
+        assert_eq!(af, Affiliate::default_registered());
     }
 }
