@@ -38,6 +38,7 @@ def get_programs() -> list[str]:
     return programs
 
 program_to_aliases = {
+    "acb": ["calc"],
     "csv-to-xlsx": ["csv2xl"],
     "pdf-text": ["pdf"],
     "questrade-statement-fmv": ["qt-fmv"],
@@ -52,16 +53,24 @@ def alias_to_program() -> dict[str, str]:
             alias_map[alias] = program
     return alias_map
 
+BOLD = "\033[1m"
+DIM  = "\033[2m"
+RESET = "\033[0m"
+
 def print_usage():
-    print( f"Usage: {sys.argv[0]} [<command>]" )
-    print( "Where <command> is one of:" )
+    cmd_name = Path(sys.argv[0]).name
+    print(f"\n{BOLD}acb-tools{RESET} — launcher for all ACB utility programs\n")
+    print(f"{BOLD}Usage:{RESET} {cmd_name} {DIM}<command> [args...]{RESET}\n")
+    print(f"{BOLD}Commands:{RESET}")
     programs = sorted(get_programs())
     for prog in programs:
-        print(f"  {prog}", end='')
+        print(f"  {BOLD}{prog}{RESET}", end='')
         if prog in program_to_aliases:
             aliases = program_to_aliases[prog]
-            print(f" (aka: {', '.join(aliases)})", end='')
+            bold_aliases = ', '.join(f"{BOLD}{a}{RESET}{DIM}" for a in aliases)
+            print(f"  {DIM}(aka: {bold_aliases}){RESET}", end='')
         print("")
+    print("")
 
 def main():
     if len( sys.argv ) < 2:
