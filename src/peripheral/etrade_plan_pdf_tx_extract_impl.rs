@@ -4,6 +4,7 @@ use itertools::Itertools;
 use rust_decimal::Decimal;
 
 use super::broker::{etrade::BenefitEntry, BrokerTx, FxTracker};
+use crate::app::config::AcbConfig;
 use crate::peripheral::broker::etrade;
 use crate::portfolio::render::RenderTable;
 use crate::portfolio::{CsvTx, Currency, TxAction};
@@ -24,11 +25,20 @@ pub(super) fn txs_from_data(
     trade_data: &BenefitsAndTrades,
     generate_fx: bool,
     no_sell_to_cover_pair: bool,
+    config: Option<&AcbConfig>,
 ) -> Result<Vec<crate::portfolio::CsvTx>, SError> {
     let mut csv_txs = Vec::new();
     let mut fx_tracker = FxTracker::new();
 
     for (i, b) in trade_data.benefits.iter().enumerate() {
+        let af = super::broker::affiliate_for_account_with_config(&b.account, config);
+        // In the vast majority of cases, the affiliate will be default
+        // so leave it empty unless it was overridden via the config.
+        let affiliate = if af == crate::portfolio::Affiliate::default() {
+            None
+        } else {
+            Some(af)
+        };
         let buy_tx = crate::portfolio::CsvTx {
             security: Some(b.security.clone()),
             trade_date: Some(b.acquire_tx_date),
@@ -43,7 +53,7 @@ pub(super) fn txs_from_data(
             commission_currency: None,
             commission_curr_to_local_exchange_rate: None,
             memo: Some(b.plan_note.clone()),
-            affiliate: None,
+            affiliate: affiliate.clone(),
             specified_superficial_loss: None,
             stock_split_ratio: None,
             read_index: (i * 2).try_into().unwrap(),
@@ -68,7 +78,7 @@ pub(super) fn txs_from_data(
                 commission_currency: None,
                 commission_curr_to_local_exchange_rate: None,
                 memo: Some(format!("{} {}", b.plan_note, sell_note)),
-                affiliate: None,
+                affiliate: affiliate.clone(),
                 specified_superficial_loss: None,
                 stock_split_ratio: None,
                 read_index: ((i * 2) + 1).try_into().unwrap(),
@@ -81,7 +91,9 @@ pub(super) fn txs_from_data(
     // Remaining trades (manual trades, or all trades if no_sell_to_cover_pair)
     let read_index_base = csv_txs.len();
     for (i, trade) in trade_data.other_trades.iter().enumerate() {
-        let mut tx: CsvTx = trade.clone().into();
+        let af =
+            super::broker::affiliate_for_account_with_config(&trade.account, config);
+        let mut tx: CsvTx = trade.clone().to_csv_tx(af);
         if no_sell_to_cover_pair {
             tx.memo = Some("E*TRADE transaction".to_string());
         } else {
@@ -111,7 +123,11 @@ pub(super) fn txs_from_data(
         let fx_txs = fx_tracker.get_fx_txs().map_err(|(_txs, e)| format!("{e}"))?;
         let fx_read_index_base = csv_txs.len();
         for (i, fx_tx) in fx_txs.iter().enumerate() {
-            let mut tx: CsvTx = fx_tx.clone().into();
+            let af = super::broker::affiliate_for_account_with_config(
+                &fx_tx.account,
+                config,
+            );
+            let mut tx: CsvTx = fx_tx.clone().to_csv_tx(af);
             tx.read_index = (fx_read_index_base + i).try_into().unwrap();
             csv_txs.push(tx);
         }
@@ -467,7 +483,6 @@ fn trades_to_render_table(trade_confs: &[BrokerTx]) -> RenderTable {
         "currency",
         "memo",
         "exchange_rate",
-        "affiliate",
         "row_num",
         "account",
         "sort_tiebreak",
@@ -489,7 +504,6 @@ fn trades_to_render_table(trade_confs: &[BrokerTx]) -> RenderTable {
             t.currency.to_string(),
             t.memo.clone(),
             display_opt(&t.exchange_rate),
-            t.affiliate.name().to_string(),
             t.row_num.to_string(),
             t.account.memo_str(),
             display_opt(&t.sort_tiebreak),
@@ -579,6 +593,7 @@ pub fn convert_etrade_file_data(
     generate_fx: bool,
     no_sell_to_cover_pair: bool,
     year: Option<i32>,
+    config: Option<&AcbConfig>,
 ) -> Result<EtradeConvertResult, Vec<SError>> {
     let date_range = year.map(DateRange::for_year);
     let pdf_data =
@@ -587,9 +602,13 @@ pub fn convert_etrade_file_data(
     let amend_res = amend_benefit_sales(pdf_data, no_sell_to_cover_pair)?;
     let benefits_and_trades = amend_res.benefits_and_trades;
 
-    let txs =
-        txs_from_data(&benefits_and_trades, generate_fx, no_sell_to_cover_pair)
-            .map_err(|e| vec![e])?;
+    let txs = txs_from_data(
+        &benefits_and_trades,
+        generate_fx,
+        no_sell_to_cover_pair,
+        config,
+    )
+    .map_err(|e| vec![e])?;
 
     let mut buf: Vec<u8> = Vec::new();
     crate::portfolio::io::tx_csv::write_txs_to_csv(&txs, &mut buf)
@@ -679,6 +698,9 @@ mod tests {
                     None
                 },
                 filename: "a_file.pdf".to_string(),
+                account: crate::peripheral::broker::etrade::new_account(
+                    String::new(),
+                ),
             }
         }
     }
@@ -724,7 +746,6 @@ mod tests {
                 currency: Currency::usd(),
                 memo: "test trade conf".to_string(),
                 exchange_rate: None,
-                affiliate: crate::portfolio::Affiliate::default(),
                 row_num: 100 + self.n_sh,
                 account: crate::peripheral::broker::etrade::new_account(
                     "x".to_string(),
@@ -753,6 +774,7 @@ mod tests {
             plan_note: "XXXX Vest".to_string(),
             sell_note: Some("XXX STC".to_string()),
             filename: "a_file.pdf".to_string(),
+            account: crate::peripheral::broker::etrade::new_account(String::new()),
         }
     }
 
@@ -774,7 +796,6 @@ mod tests {
             currency: Currency::usd(),
             memo: "Sell to cover".to_string(),
             exchange_rate: None,
-            affiliate: crate::portfolio::Affiliate::default(),
             row_num: 100 + n_shares,
             account: crate::peripheral::broker::etrade::new_account("x".to_string()),
             sort_tiebreak: None,
@@ -1033,7 +1054,7 @@ mod tests {
                 TTx{tdate: dt(19), n_sh: 2, act: TxAction::Buy,
                     ..dflt()}.x(),
             ]
-        }, false, false).unwrap();
+        }, false, false, None).unwrap();
 
         assert_vec_eq(txs, vec![
             // Vest without Stc
@@ -1152,7 +1173,7 @@ mod tests {
         };
 
         // With FX generation enabled
-        let txs_with_fx = super::txs_from_data(&data, true, false).unwrap();
+        let txs_with_fx = super::txs_from_data(&data, true, false, None).unwrap();
         // Should have: 1 benefit buy + 1 sell-to-cover + 1 manual sell + 1 FX tx
         assert_eq!(txs_with_fx.len(), 4);
 
@@ -1168,7 +1189,7 @@ mod tests {
         assert_eq!(fx_tx.shares, Some(dec!(8.01)));
 
         // With FX generation disabled
-        let txs_no_fx = super::txs_from_data(&data, false, false).unwrap();
+        let txs_no_fx = super::txs_from_data(&data, false, false, None).unwrap();
         // Should have: 1 benefit buy + 1 sell-to-cover + 1 manual sell (no FX)
         assert_eq!(txs_no_fx.len(), 3);
         let fx_txs: Vec<_> = txs_no_fx.iter()
@@ -1189,7 +1210,7 @@ mod tests {
             other_trades: vec![],
         };
 
-        let txs = super::txs_from_data(&data, true, false).unwrap();
+        let txs = super::txs_from_data(&data, true, false, None).unwrap();
         // Should have: 1 benefit buy + 1 sell-to-cover, NO FX
         assert_eq!(txs.len(), 2);
         let fx_txs: Vec<_> = txs.iter()
@@ -1209,7 +1230,7 @@ mod tests {
             ],
         };
 
-        let txs = super::txs_from_data(&data, true, false).unwrap();
+        let txs = super::txs_from_data(&data, true, false, None).unwrap();
         assert_eq!(txs.len(), 2);
 
         let fx_tx = txs.iter()
@@ -1269,7 +1290,7 @@ mod tests {
             ],
         };
 
-        let txs = super::txs_from_data(&data, false, true).unwrap();
+        let txs = super::txs_from_data(&data, false, true, None).unwrap();
 
         // 1 benefit buy + 2 trades (no STC sell, no FX)
         assert_eq!(txs.len(), 3);
@@ -1300,7 +1321,7 @@ mod tests {
             ],
         };
 
-        let txs = super::txs_from_data(&data, true, true).unwrap();
+        let txs = super::txs_from_data(&data, true, true, None).unwrap();
         // 1 sell + 1 FX
         assert_eq!(txs.len(), 2);
 

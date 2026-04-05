@@ -1,10 +1,48 @@
 use regex::Regex;
 
+use acb::app::config::AcbConfig;
 use acb::util::rw::DescribedReader;
 use wasm_bindgen::prelude::*;
 
 use crate::app_shim;
 use crate::wasm_rates_loader;
+
+#[derive(serde::Serialize)]
+struct ConfigParseResult {
+    config: AcbConfig,
+    warnings: Vec<String>,
+}
+
+/// Parse and validate a config JSON string.
+/// Returns the validated config as a JS object, or an error string.
+#[wasm_bindgen]
+pub fn parse_config(json: &str) -> Result<JsValue, JsValue> {
+    let config = AcbConfig::from_json(json).map_err(|e| JsValue::from_str(&e))?;
+    let warnings = AcbConfig::validate_warnings(json);
+    let result = ConfigParseResult { config, warnings };
+    Ok(serde_wasm_bindgen::to_value(&result)?)
+}
+
+/// Serialize a config object to pretty-printed JSON.
+#[wasm_bindgen]
+pub fn serialize_config(config_js: JsValue) -> Result<String, JsValue> {
+    let config: AcbConfig = serde_wasm_bindgen::from_value(config_js)
+        .map_err(|e| JsValue::from_str(&format!("Invalid config: {e}")))?;
+    config.to_json().map_err(|e| JsValue::from_str(&e))
+}
+
+fn parse_optional_config(
+    config_json: Option<String>,
+) -> Result<Option<AcbConfig>, JsValue> {
+    match config_json {
+        Some(json) if !json.is_empty() => {
+            let config =
+                AcbConfig::from_json(&json).map_err(|e| JsValue::from_str(&e))?;
+            Ok(Some(config))
+        }
+        _ => Ok(None),
+    }
+}
 
 /// Convert a raw Excel workbook (as bytes) to ACB-format CSV text.
 ///
@@ -18,10 +56,13 @@ pub fn convert_xl_to_csv(
     data: Vec<u8>,
     sheet_name: Option<String>,
     no_fx: bool,
+    config_json: Option<String>,
 ) -> Result<JsValue, JsValue> {
     use acb::peripheral::excel::XlSource;
     use acb::peripheral::tx_export_convert_impl::{convert_xl_txs, BrokerArg};
     use acb::portfolio::io::tx_csv::write_txs_to_csv;
+
+    let config = parse_optional_config(config_json)?;
 
     let convert_result = convert_xl_txs(
         XlSource::Data(data),
@@ -32,6 +73,7 @@ pub fn convert_xl_to_csv(
         no_fx,
         false, // no_sort (i.e. sort by default)
         None,  // usd_exchange_rate
+        config.as_ref(),
     )
     .map_err(|e| JsValue::from_str(&e))?;
 
@@ -53,9 +95,15 @@ pub fn convert_xl_to_csv(
 /// Returns a `CsvBrokerConvertResult` with `csvText`, `nonFatalErrors`, and
 /// `warnings` fields, or an error string on fatal failure.
 #[wasm_bindgen]
-pub fn convert_rbc_di_csv(data: Vec<u8>, no_fx: bool) -> Result<JsValue, JsValue> {
+pub fn convert_rbc_di_csv(
+    data: Vec<u8>,
+    no_fx: bool,
+    config_json: Option<String>,
+) -> Result<JsValue, JsValue> {
     use acb::peripheral::tx_export_convert_impl::convert_csv_broker_txs;
     use acb::portfolio::io::tx_csv::write_txs_to_csv;
+
+    let config = parse_optional_config(config_json)?;
 
     let result = convert_csv_broker_txs(
         &data,
@@ -65,6 +113,7 @@ pub fn convert_rbc_di_csv(data: Vec<u8>, no_fx: bool) -> Result<JsValue, JsValue
         no_fx,
         false, // no_sort
         None,  // usd_exchange_rate
+        config.as_ref(),
     )
     .map_err(|e| JsValue::from_str(&e))?;
 
@@ -189,6 +238,7 @@ pub fn convert_etrade_pdfs_to_csv(
     generate_fx: bool,
     no_sell_to_cover_pair: bool,
     year: Option<i32>,
+    config_json: Option<String>,
 ) -> Result<JsValue, JsValue> {
     use acb::peripheral::etrade_plan_pdf_tx_extract_impl::convert_etrade_file_data;
 
@@ -197,6 +247,8 @@ pub fn convert_etrade_pdfs_to_csv(
             "pdf_texts and file_names must have the same length",
         ));
     }
+
+    let config = parse_optional_config(config_json)?;
 
     let mut pairs: Vec<(String, String)> =
         pdf_texts.into_iter().zip(file_names).collect();
@@ -210,6 +262,7 @@ pub fn convert_etrade_pdfs_to_csv(
         generate_fx,
         no_sell_to_cover_pair,
         year,
+        config.as_ref(),
     )
     .map_err(|errs| JsValue::from_str(&errs.join("\n")))?;
 

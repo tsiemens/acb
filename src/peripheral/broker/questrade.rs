@@ -16,7 +16,7 @@ use crate::{
 
 use super::SheetToTxsErr;
 
-const QUESTRADE_ACCOUNT_BROKER_NAME: &str = "Questrade";
+pub const QUESTRADE_ACCOUNT_BROKER_NAME: &str = "Questrade";
 
 /// Converts a QT spreadsheet into Txs
 pub fn sheet_to_txs(
@@ -105,13 +105,10 @@ pub fn sheet_to_txs(
                 account_num,
             };
 
-            let affiliate = super::affiliate_for_account_type(&account.account_type);
-
             if action_str == "FXT" {
                 let fxt_row = FxtRow {
                     row_num,
                     currency: Currency::new(reader.get_str("Currency")?.as_str()),
-                    affiliate,
                     trade_date,
                     trade_date_and_time: trade_date_str_full.clone(),
                     amount: reader.get_dec("Net Amount")?,
@@ -137,7 +134,6 @@ pub fn sheet_to_txs(
                         trade_date,
                         trade_date_str_full.clone(),
                         reader.get_dec("Net Amount")?,
-                        affiliate,
                         row_num,
                         account,
                         None, // exchange rate
@@ -196,7 +192,6 @@ pub fn sheet_to_txs(
                 currency: Currency::new(reader.get_str("Currency")?.as_str()),
                 memo: account_memo + &orig_symbol_note + &converted_action_note,
                 exchange_rate: None,
-                affiliate,
                 row_num: row_num as u32,
                 account: account,
                 sort_tiebreak: None,

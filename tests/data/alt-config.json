@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "account_bindings": {
+    "questrade": {
+      "10000001": "Alice",
+      "10000002": "Alice",
+      "10000003": "Alice"
+    },
+    "rbc_di": {
+      "12345678": "Alice",
+      "11111111": "Alice"
+    },
+    "etrade": {
+      "12345678": "Alice",
+      "XXXX-1234": "Alice",
+      "123-XXX789-111": "Alice"
+    }
+  }
+}

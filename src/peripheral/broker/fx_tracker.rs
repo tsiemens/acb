@@ -5,7 +5,7 @@ use time::Date;
 
 use crate::{
     peripheral::sheet_common::SheetParseError,
-    portfolio::{Affiliate, Currency, TxAction},
+    portfolio::{Currency, TxAction},
     util::decimal::is_positive,
 };
 
@@ -14,7 +14,6 @@ use super::{Account, BrokerTx};
 pub struct FxtRow {
     pub row_num: usize,
     pub currency: Currency,
-    pub affiliate: Affiliate,
     pub trade_date: Date,
     pub trade_date_and_time: String,
     pub amount: Decimal,
@@ -103,9 +102,7 @@ impl FxTracker {
                 ),
             ));
         }
-        if other_fxt.affiliate != cad_fxt.affiliate
-            || other_fxt.account != cad_fxt.account
-        {
+        if other_fxt.account != cad_fxt.account {
             return Err(SheetParseError::new(
                 fxt_row.row_num,
                 format!(
@@ -135,7 +132,6 @@ impl FxTracker {
             other_fxt.trade_date.clone(),
             other_fxt.trade_date_and_time.clone(),
             other_fxt.amount,
-            other_fxt.affiliate.clone(),
             fxt_row.row_num as usize,
             other_fxt.account.clone(),
             Some(rate),
@@ -173,7 +169,6 @@ impl FxTracker {
             tx.trade_date.clone(),
             tx.trade_date_and_time.clone(),
             amount,
-            tx.affiliate.clone(),
             tx.row_num as usize,
             tx.account.clone(),
             None,
@@ -207,7 +202,6 @@ impl FxTracker {
         trade_date: Date,
         trade_date_and_time: String,
         amount: Decimal,
-        affiliate: Affiliate,
         row_num: usize,
         account: Account,
         exchange_rate: Option<Decimal>,
@@ -246,7 +240,6 @@ impl FxTracker {
             currency: currency,
             memo: memo,
             exchange_rate: exchange_rate,
-            affiliate: affiliate,
             row_num: row_num as u32,
             account: account,
             // We need all FX to buy first, then sell. Otherwise we have quantity issues

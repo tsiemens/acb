@@ -23,6 +23,8 @@ dependencies = [
  "rust_decimal",
  "rust_decimal_macros",
  "rust_xlsxwriter",
+ "serde",
+ "serde_json",
  "surf",
  "tabled",
  "time 0.3.47",

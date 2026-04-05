@@ -14,7 +14,7 @@ use crate::{
 
 use super::SheetToTxsErr;
 
-const RBC_DI_BROKER_NAME: &str = "RBC Direct Investing";
+pub const RBC_DI_BROKER_NAME: &str = "RBC Direct Investing";
 
 // Expected header columns
 const COL_DATE: &str = "Date";
@@ -195,8 +195,6 @@ pub fn csv_to_txs(
     let (preamble_account_num, preamble_account_type) =
         parse_preamble_account_info(&preamble).unwrap_or_default();
 
-    let affiliate = super::affiliate_for_account_type(&preamble_account_type);
-
     // Build a csv reader from the header line onward
     let csv_portion: String =
         text.lines().skip(header_line_idx).collect::<Vec<&str>>().join("\n");
@@ -361,7 +359,6 @@ pub fn csv_to_txs(
                 currency,
                 memo,
                 exchange_rate: None,
-                affiliate: affiliate.clone(),
                 row_num: row_num as u32,
                 account,
                 sort_tiebreak: None,
@@ -393,8 +390,6 @@ pub fn csv_to_txs(
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    use crate::portfolio::Affiliate;
 
     #[test]
     fn test_parse_rbc_date() {
@@ -464,7 +459,6 @@ mod tests {
         assert_eq!(tx.trade_date, time::macros::date!(2025 - 12 - 24));
         assert_eq!(tx.settlement_date, time::macros::date!(2025 - 12 - 29));
         assert_eq!(tx.currency, Currency::new("CAD"));
-        assert_eq!(tx.affiliate, Affiliate::default_registered());
         // 6 * 40.37 = 242.22, |Value| = 242.22, commission = 0
         assert_eq!(tx.commission, Decimal::ZERO);
     }
@@ -570,28 +564,22 @@ mod tests {
     }
 
     #[test]
-    fn test_affiliate_from_preamble_registered() {
-        for acct_type in &["RRSP", "TFSA", "RESP <kind>", "FHSA", "RRIF"] {
+    fn test_account_type_from_preamble() {
+        // Broker parser stores account type on the Account struct;
+        // affiliate is derived later via affiliate_for_account_with_config.
+        for acct_type in &["RRSP", "TFSA", "RESP Family", "FHSA", "RRIF"] {
             let csv = make_csv_with_account(acct_type);
             let txs = csv_to_txs(&csv, None).unwrap();
             assert_eq!(
-                txs[0].affiliate,
-                Affiliate::default_registered(),
-                "Expected registered affiliate for account type \"{acct_type}\""
+                txs[0].account.account_type, *acct_type,
+                "Expected account_type \"{acct_type}\""
             );
         }
-    }
 
-    #[test]
-    fn test_affiliate_from_preamble_non_registered() {
         for acct_type in &["Cash", "Margin", ""] {
             let csv = make_csv_with_account(acct_type);
             let txs = csv_to_txs(&csv, None).unwrap();
-            assert_eq!(
-                txs[0].affiliate,
-                Affiliate::default(),
-                "Expected default affiliate for account type \"{acct_type}\""
-            );
+            assert_eq!(txs[0].account.account_type, *acct_type);
         }
     }
 

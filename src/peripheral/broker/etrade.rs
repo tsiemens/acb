@@ -15,7 +15,7 @@ use crate::{
 
 use lazy_static::lazy_static;
 
-const ETRADE_ACCOUNT_BROKER_NAME: &str = "E*TRADE";
+pub const ETRADE_ACCOUNT_BROKER_NAME: &str = "E*TRADE";
 
 pub fn new_account(account_number: String) -> super::Account {
     super::Account {
@@ -185,6 +185,12 @@ pub struct BenefitEntry {
     pub plan_note: String,
     pub sell_note: Option<String>,
     pub filename: String,
+
+    /// Account the benefit was purchased/released under. Used to look up
+    /// a configured affiliate via `affiliate_for_account_with_config`.
+    /// May be empty if the source did not carry account information
+    /// (e.g. xlsx BenefitHistory exports).
+    pub account: super::Account,
 }
 
 pub struct SellToCoverData {
@@ -370,6 +376,7 @@ fn parse_rsu_entry(
         plan_note: format!("RSU {}", rsu_data.award_number),
         sell_note: None,
         filename: get_filename(filepath),
+        account: new_account(rsu_data.common_benefit_data.account_number),
     })
 }
 
@@ -602,6 +609,9 @@ fn parse_eso_entries(
             plan_note: format!("Option Grant {}", grant.grant_number),
             sell_note: Some(eso_data.exercise_type.clone()),
             filename: get_filename(filepath),
+            account: new_account(
+                eso_data.common_benefit_data.account_number.clone(),
+            ),
         });
     }
     Ok(entries)
@@ -700,6 +710,7 @@ fn parse_espp_entry(
         plan_note: "ESPP".to_string(),
         sell_note: None,
         filename: get_filename(filepath),
+        account: new_account(espp_data.common_benefit_data.account_number),
     })
 }
 
@@ -742,7 +753,7 @@ fn parse_pre_ms_2023_trade_confirmations(
             currency: crate::portfolio::Currency::usd(),
             memo: String::new(),
             exchange_rate: None,
-            affiliate: crate::portfolio::Affiliate::default(),
+
             row_num: (i + 1).try_into().unwrap(),
             account: new_account(account_number.clone()),
             sort_tiebreak: None,
@@ -796,7 +807,7 @@ fn parse_post_ms_2023_trade_confirmation(
             currency: crate::portfolio::Currency::usd(),
             memo: String::new(),
             exchange_rate: None,
-            affiliate: crate::portfolio::Affiliate::default(),
+
             row_num: 1,
             account: new_account(account_number.clone()),
             sort_tiebreak: None,
@@ -911,7 +922,6 @@ fn parse_post_ms_2023_trade_confirmation_alt(
         currency: crate::portfolio::Currency::usd(),
         memo: String::new(),
         exchange_rate: None,
-        affiliate: crate::portfolio::Affiliate::default(),
         row_num: 1,
         account: new_account(
             do_match_opt(&account_re)?.unwrap_or("UNKNOWN".to_string()),
@@ -1065,6 +1075,7 @@ fn parse_espp_benefits_from_sheet(
             plan_note: "ESPP".to_string(),
             sell_note: None,
             filename: filename.to_string(),
+            account: new_account(String::new()),
         });
     }
 
@@ -1163,6 +1174,7 @@ fn parse_rsu_benefits_from_sheet(
                     plan_note: format!("RSU {}", current_grant_number),
                     sell_note: None,
                     filename: filename.to_string(),
+                    account: new_account(String::new()),
                 });
             }
             _ => {} // Skip Event, Tax Withholding (handled via look-ahead), etc.
@@ -1315,6 +1327,7 @@ mod tests {
                 plan_note: s("RSU R98765"),
                 sell_note: None,
                 filename: s("myrsu.pdf"),
+                account: new_account(s("11223344")),
             },
         );
 
@@ -1395,6 +1408,7 @@ statement is subject to the terms of the plan under which the release was made.
                 plan_note: s("RSU R98765"),
                 sell_note: None,
                 filename: s("myrsu.pdf"),
+                account: new_account(s("11223344")),
             },
         );
     }
@@ -1508,6 +1522,7 @@ statement is subject to the terms of the plan under which the release was made.
                     plan_note: s("Option Grant 1234"),
                     sell_note: Some(s("Same-Day Sale")),
                     filename: s("myeso.pdf"),
+                    account: new_account(s("0112")),
                 },
                 BenefitEntry {
                     security: s("FOO"),
@@ -1523,6 +1538,7 @@ statement is subject to the terms of the plan under which the release was made.
                     plan_note: s("Option Grant 1235"),
                     sell_note: Some(s("Same-Day Sale")),
                     filename: s("myeso.pdf"),
+                    account: new_account(s("0112")),
                 },
             ],
         );
@@ -1612,6 +1628,7 @@ statement is subject to the terms of the plan under which the release was made.
                 plan_note: s("ESPP"),
                 sell_note: None,
                 filename: s("myespp.pdf"),
+                account: new_account(s("11223344")),
             },
         );
 
@@ -1703,6 +1720,7 @@ statement is subject to the terms of the plan under which the purchase was made.
                 plan_note: s("ESPP"),
                 sell_note: None,
                 filename: s("myespp.pdf"),
+                account: new_account(s("11223344")),
             },
         );
 
@@ -1765,6 +1783,7 @@ statement is subject to the terms of the plan under which the purchase was made.
                 plan_note: s("ESPP"),
                 sell_note: None,
                 filename: s("myespp.pdf"),
+                account: new_account(s("11223344")),
             },
         );
     }
@@ -1882,7 +1901,7 @@ statement is subject to the terms of the plan under which the purchase was made.
                 currency: crate::portfolio::Currency::usd(),
                 memo: s(""),
                 exchange_rate: None,
-                affiliate: crate::portfolio::Affiliate::default(),
+
                 row_num: 1,
                 account: new_account(s("XXXX-9876")),
                 sort_tiebreak: None,
@@ -1901,7 +1920,7 @@ statement is subject to the terms of the plan under which the purchase was made.
                 currency: crate::portfolio::Currency::usd(),
                 memo: s(""),
                 exchange_rate: None,
-                affiliate: crate::portfolio::Affiliate::default(),
+
                 row_num: 2,
                 account: new_account(s("XXXX-9876")),
                 sort_tiebreak: None,
@@ -1972,7 +1991,7 @@ statement is subject to the terms of the plan under which the purchase was made.
                 currency: crate::portfolio::Currency::usd(),
                 memo: s(""),
                 exchange_rate: None,
-                affiliate: crate::portfolio::Affiliate::default(),
+
                 row_num: 1,
                 account: new_account(s("123-XXX123-123")),
                 sort_tiebreak: None,
@@ -2029,7 +2048,7 @@ statement is subject to the terms of the plan under which the purchase was made.
                 currency: crate::portfolio::Currency::usd(),
                 memo: s(""),
                 exchange_rate: None,
-                affiliate: crate::portfolio::Affiliate::default(),
+
                 row_num: 1,
                 account: new_account(s("123-XXX123-123")),
                 sort_tiebreak: None,
@@ -2098,7 +2117,7 @@ Morgan Stanley Smith Barney LLC acted as agent.
                 currency: crate::portfolio::Currency::usd(),
                 memo: s(""),
                 exchange_rate: None,
-                affiliate: crate::portfolio::Affiliate::default(),
+
                 row_num: 1,
                 account: new_account(s("123-XXX123-123")),
                 sort_tiebreak: None,
@@ -2119,7 +2138,7 @@ Morgan Stanley Smith Barney LLC acted as agent.
         };
 
         use super::super::{
-            filter_benefits_by_date, parse_benefit_history_xlsx,
+            filter_benefits_by_date, new_account, parse_benefit_history_xlsx,
             parse_etrade_dmy_date, BenefitEntry,
         };
         use crate::util::date::DateRange;
@@ -2230,6 +2249,7 @@ Morgan Stanley Smith Barney LLC acted as agent.
                     plan_note: "ESPP".to_string(),
                     sell_note: None,
                     filename: "test.xlsx".to_string(),
+                    account: new_account(String::new()),
                 },
             );
 
@@ -2249,6 +2269,7 @@ Morgan Stanley Smith Barney LLC acted as agent.
                     plan_note: "ESPP".to_string(),
                     sell_note: None,
                     filename: "test.xlsx".to_string(),
+                    account: new_account(String::new()),
                 },
             );
         }
@@ -2370,6 +2391,7 @@ Morgan Stanley Smith Barney LLC acted as agent.
                     plan_note: "RSU R12345".to_string(),
                     sell_note: None,
                     filename: "test.xlsx".to_string(),
+                    account: new_account(String::new()),
                 },
             );
 
@@ -2389,6 +2411,7 @@ Morgan Stanley Smith Barney LLC acted as agent.
                     plan_note: "RSU R12345".to_string(),
                     sell_note: None,
                     filename: "test.xlsx".to_string(),
+                    account: new_account(String::new()),
                 },
             );
         }
@@ -2454,6 +2477,7 @@ Morgan Stanley Smith Barney LLC acted as agent.
                     plan_note: "ESPP".to_string(),
                     sell_note: None,
                     filename: "test".to_string(),
+                    account: new_account(String::new()),
                 },
                 // tx_date in 2021, but settle_date in 2022 — should be
                 // included when filtering for 2022
@@ -2471,6 +2495,7 @@ Morgan Stanley Smith Barney LLC acted as agent.
                     plan_note: "ESPP".to_string(),
                     sell_note: None,
                     filename: "test".to_string(),
+                    account: new_account(String::new()),
                 },
                 BenefitEntry {
                     security: "FOO".to_string(),
@@ -2486,6 +2511,7 @@ Morgan Stanley Smith Barney LLC acted as agent.
                     plan_note: "ESPP".to_string(),
                     sell_note: None,
                     filename: "test".to_string(),
+                    account: new_account(String::new()),
                 },
             ];
             let range = DateRange::for_year(2022);

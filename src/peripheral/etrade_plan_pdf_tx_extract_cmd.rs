@@ -190,7 +190,6 @@ fn dump_extracted_data(
             "currency",
             "memo",
             "exchange_rate",
-            "affiliate",
             "row_num",
             "account",
             "sort_tiebreak",
@@ -212,7 +211,6 @@ fn dump_extracted_data(
             t.currency.to_string(),
             t.memo.clone(),
             display_opt(&t.exchange_rate),
-            t.affiliate.name().to_string(),
             t.row_num.to_string(),
             t.account.memo_str(),
             display_opt(&t.sort_tiebreak),
@@ -229,11 +227,13 @@ fn render_txs_from_data(
     generate_fx: bool,
     no_sell_to_cover_pair: bool,
     out_w: WriteHandle,
+    config: Option<&crate::app::config::AcbConfig>,
 ) -> Result<(), SError> {
     let txs = super::etrade_plan_pdf_tx_extract_impl::txs_from_data(
         trade_data,
         generate_fx,
         no_sell_to_cover_pair,
+        config,
     )?;
 
     let mut printer: Box<dyn AcbWriter> = if pretty {
@@ -314,6 +314,13 @@ pub struct Args {
     /// Useful when processing a BenefitHistory xlsx that spans many years.
     #[arg(long)]
     pub year: Option<i32>,
+
+    /// Path to acb-config.json. Defaults to the platform config dir:
+    ///   Linux:   ~/.config/acb/acb-config.json
+    ///   macOS:   ~/Library/Application Support/acb/acb-config.json
+    ///   Windows: %APPDATA%\acb\acb-config.json
+    #[arg(long)]
+    pub config: Option<PathBuf>,
 }
 
 pub fn run() -> Result<(), ()> {
@@ -339,6 +346,15 @@ pub fn run_with_args(
         );
     }
     crate::tracing::setup_tracing();
+
+    // Load config
+    let config_path =
+        args.config.or_else(|| crate::app::config::default_config_path());
+    let config = match config_path {
+        Some(ref p) => crate::app::config::load_config(p)
+            .map_err(|e| write_errln!(err_w, "{e}"))?,
+        None => None,
+    };
 
     let date_range = args.year.map(DateRange::for_year);
 
@@ -388,6 +404,7 @@ pub fn run_with_args(
         !args.no_fx,
         args.no_sell_to_cover_pair,
         out_w,
+        config.as_ref(),
     )
     .map_err(|e| write_errln!(err_w, "Error: {e}"))?;
 
