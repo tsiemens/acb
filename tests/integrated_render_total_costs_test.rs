@@ -83,11 +83,7 @@ fn get_deltas(tds: Vec<Td>) -> Vec<TxDelta> {
 fn render_table(rt: &RenderTable) -> String {
     let (wh, buff) = WriteHandle::string_buff_write_handle();
     let mut wr = TextWriter::new(wh);
-    wr.print_render_table(
-        acb::app::outfmt::model::OutputType::Costs,
-        "Table of",
-        &rt,
-    )
+    wr.print_render_table("Table of Costs", "table-of-costs.csv", &rt)
     .unwrap();
     let buff_ref = buff.borrow();
     buff_ref.as_str().to_string()

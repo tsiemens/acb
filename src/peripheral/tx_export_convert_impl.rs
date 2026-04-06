@@ -404,16 +404,13 @@ pub fn run_with_args(
     } else {
         Box::new(CsvWriter::new_to_writer(out_w))
     };
-    let table_name = if args.pretty {
-        format!("{} TXs", args.export_file.display())
-    } else {
-        format!("{}_txs", args.export_file.display())
-    };
+    let table_title = format!("{} TXs", args.export_file.display());
+    let csv_file_name = format!("{}_txs.csv", args.export_file.display());
     let csv_table = crate::portfolio::io::tx_csv::txs_to_csv_table(&csv_txs);
     printer
         .print_render_table(
-            crate::app::outfmt::model::OutputType::Raw,
-            &table_name,
+            &table_title,
+            &csv_file_name,
             &crate::portfolio::render::RenderTable::from(csv_table),
         )
         .map_err(|e| {

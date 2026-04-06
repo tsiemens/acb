@@ -541,20 +541,12 @@ pub fn run() -> Result<(), ()> {
 
     let write_res = if args.pretty {
         crate::app::outfmt::text::TextWriter::new(WriteHandle::stdout_write_handle())
-            .print_render_table(
-                crate::app::outfmt::model::OutputType::Raw,
-                "FMVs",
-                &table,
-            )
+            .print_render_table("FMVs", "FMVs.csv", &table)
     } else {
         crate::app::outfmt::csv::CsvWriter::new_to_writer(
             WriteHandle::stdout_write_handle(),
         )
-        .print_render_table(
-            crate::app::outfmt::model::OutputType::Raw,
-            "FMVs",
-            &table,
-        )
+        .print_render_table("FMVs", "FMVs.csv", &table)
     };
 
     if let Err(e) = write_res {

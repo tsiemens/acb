@@ -40,12 +40,12 @@ impl ZipWriter {
 
     pub fn start_file<'b>(
         &'b mut self,
-        name: &str,
+        file_name_and_path: &str,
     ) -> Result<ZipEntryWriter<'b>, String> {
         // We are not compressing the data, so we can use the Store compression method.
         let entry_writer = self
             .archive
-            .new_file(name)
+            .new_file(file_name_and_path)
             .compression_method(rawzip::CompressionMethod::Store)
             .last_modified(rawzip::time::UtcDateTime::from_unix(
                 chrono::offset::Local::now().to_utc().timestamp(),
