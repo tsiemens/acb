@@ -74,7 +74,6 @@ impl CsvWriter {
             mode: WriteMode::Collection(coll),
         }
     }
-
 }
 
 impl AcbWriter for CsvWriter {
