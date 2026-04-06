@@ -154,9 +154,7 @@ fn test_etrade_scenario_with_config() {
         .unwrap()
         .read_to_string(&mut base_exp)
         .unwrap();
-    let exp_out = splice_affiliate_column(&base_exp, |_cells| {
-        "Alice"
-    });
+    let exp_out = splice_affiliate_column(&base_exp, |_cells| "Alice");
 
     acb::testlib::assert_vec_eq(
         out.split("\n").collect(),
@@ -182,7 +180,11 @@ where
         // Column layout (pre-splice): security, trade date, settlement date,
         // action, shares, amount/share, commission, currency, memo
         // Splice at index 8 (right before memo).
-        let insert_val: &str = if i == 0 { "affiliate" } else { row_value(&cells) };
+        let insert_val: &str = if i == 0 {
+            "affiliate"
+        } else {
+            row_value(&cells)
+        };
         let mut new_cells: Vec<String> =
             cells[..8].iter().map(|s| s.to_string()).collect();
         new_cells.push(insert_val.to_string());

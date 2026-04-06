@@ -31,7 +31,8 @@ pub(super) fn txs_from_data(
     let mut fx_tracker = FxTracker::new();
 
     for (i, b) in trade_data.benefits.iter().enumerate() {
-        let af = super::broker::affiliate_for_account_with_config(&b.account, config);
+        let af =
+            super::broker::affiliate_for_account_with_config(&b.account, config);
         // In the vast majority of cases, the affiliate will be default
         // so leave it empty unless it was overridden via the config.
         let affiliate = if af == crate::portfolio::Affiliate::default() {

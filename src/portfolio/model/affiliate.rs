@@ -147,6 +147,31 @@ impl AffiliateDedupTable {
     }
 }
 
+#[derive(PartialEq, Eq, Clone, Debug)]
+pub struct AffiliateFilter {
+    pub non_registered: Affiliate,
+    pub registered: Affiliate,
+}
+
+impl AffiliateFilter {
+    pub fn new(non_registered_name: &str) -> Self {
+        let non_registered = Affiliate::from_name(non_registered_name, false);
+        let registered = Affiliate::from_name(non_registered_name, true);
+        Self {
+            non_registered,
+            registered,
+        }
+    }
+
+    pub fn affiliates(&self) -> Vec<Affiliate> {
+        vec![self.non_registered.clone(), self.registered.clone()]
+    }
+
+    pub fn matches(&self, af: &Affiliate) -> bool {
+        af == &self.non_registered || af == &self.registered
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::Affiliate;
