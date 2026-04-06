@@ -5,7 +5,7 @@ use crate::util::{
     rw::{StringBuffer, WriteHandle},
 };
 
-use super::model::{AcbWriter, OutputType};
+use super::model::AcbWriter;
 
 fn print_render_table_to_csv<W: std::io::Write>(
     writer: W,
@@ -75,30 +75,18 @@ impl CsvWriter {
         }
     }
 
-    pub fn get_csv_file_name(out_type: OutputType, name: &str) -> String {
-        match out_type {
-            OutputType::Transactions => format!("{name}.csv"),
-            OutputType::AggregateGains => "aggregate-gains.csv".to_string(),
-            OutputType::Costs => {
-                format!("{}-costs.csv", name.to_lowercase().replace(" ", "-"))
-            }
-            OutputType::Raw => format!("{name}.csv"),
-        }
-    }
 }
 
 impl AcbWriter for CsvWriter {
     fn print_render_table(
         &mut self,
-        out_type: OutputType,
-        name: &str,
+        _table_title: &str,
+        csv_file_name: &str,
         table_model: &crate::portfolio::render::RenderTable,
     ) -> Result<(), super::model::Error> {
-        // let writer = self.get_writer(out_type, name)?;
         match &mut self.mode {
             WriteMode::Directory(out_dir) => {
-                let file_name = Self::get_csv_file_name(out_type, name);
-                let file_path = out_dir.join(PathBuf::from(file_name));
+                let file_path = out_dir.join(PathBuf::from(csv_file_name));
                 let fp = File::create(file_path.clone()).map_err(|e| {
                     format!("Failed to create {:?}: {}", file_path.to_str(), e)
                 })?;
@@ -110,12 +98,11 @@ impl AcbWriter for CsvWriter {
                 print_render_table_to_csv(writer, table_model)
             }
             WriteMode::Collection(contents) => {
-                let file_name = Self::get_csv_file_name(out_type, name);
                 let mut writer = Box::new(StringBuffer::new());
                 print_render_table_to_csv(&mut writer, table_model)?;
 
                 let content = Utf8FileContent {
-                    file_name,
+                    file_name: csv_file_name.to_string(),
                     content: writer.export_string(),
                 };
                 contents.borrow_mut().push(content);
@@ -166,8 +153,8 @@ impl CsvZipWriter {
 impl AcbWriter for CsvZipWriter {
     fn print_render_table(
         &mut self,
-        out_type: OutputType,
-        name: &str,
+        _table_title: &str,
+        csv_file_name: &str,
         table_model: &crate::portfolio::render::RenderTable,
     ) -> Result<(), super::model::Error> {
         if self.zip_writer.is_none() {
@@ -176,8 +163,7 @@ impl AcbWriter for CsvZipWriter {
 
         let zip_writer = self.zip_writer.as_mut().unwrap();
 
-        let file_name = CsvWriter::get_csv_file_name(out_type, name);
-        let mut file_writer = zip_writer.start_file(&file_name)?;
+        let mut file_writer = zip_writer.start_file(csv_file_name)?;
         let mut data_writer = file_writer.create_data_writer();
 
         print_render_table_to_csv(&mut data_writer, table_model)?;

@@ -4,7 +4,7 @@ use std::path::PathBuf;
 use clap::Parser;
 
 use crate::app::outfmt::csv::CsvWriter;
-use crate::app::outfmt::model::{AcbWriter, OutputType};
+use crate::app::outfmt::model::AcbWriter;
 use crate::app::outfmt::text::TextWriter;
 use crate::peripheral::broker::etrade;
 use crate::peripheral::pdf;
@@ -170,7 +170,7 @@ fn dump_extracted_data(
             b.filename.clone(),
         ]);
     }
-    let _ = printer.print_render_table(OutputType::Raw, "benefits", &rt).unwrap();
+    let _ = printer.print_render_table("benefits", "benefits.csv", &rt).unwrap();
 
     let _ = writeln!(out_w, "");
     if pdf_data.trade_confs.is_empty() {
@@ -218,7 +218,7 @@ fn dump_extracted_data(
         ]);
     }
 
-    let _ = printer.print_render_table(OutputType::Raw, "trades", &rt).unwrap();
+    let _ = printer.print_render_table("trades", "trades.csv", &rt).unwrap();
 }
 
 fn render_txs_from_data(
@@ -241,11 +241,10 @@ fn render_txs_from_data(
     } else {
         Box::new(CsvWriter::new_to_writer(out_w))
     };
-    let table_name = if pretty { "Benefit TXs" } else { "benefit_txs" };
     let csv_table = crate::portfolio::io::tx_csv::txs_to_csv_table(&txs);
     printer.print_render_table(
-        crate::app::outfmt::model::OutputType::Raw,
-        &table_name,
+        "Benefit TXs",
+        "benefit_txs.csv",
         &crate::portfolio::render::RenderTable::from(csv_table),
     )
 }

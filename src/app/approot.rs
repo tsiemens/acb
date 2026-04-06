@@ -23,7 +23,7 @@ use crate::{
     write_errln,
 };
 
-use super::outfmt::model::{AcbWriter, OutputType};
+use super::outfmt::model::AcbWriter;
 
 pub type Error = String;
 
@@ -317,9 +317,11 @@ fn write_render_result(
     let mut secs_with_errors = Vec::<Security>::new();
     for sec in &secs {
         let render_table = sec_render_tables.get(sec).unwrap();
-        if let Err(err) =
-            writer.print_render_table(OutputType::Transactions, sec, render_table)
-        {
+        if let Err(err) = writer.print_render_table(
+            &format!("Transactions for {sec}"),
+            &format!("{sec}.csv"),
+            render_table,
+        ) {
             return Err(format!("Rendering transactions for {sec}: {err}"));
         }
         if render_table.errors.len() > 0 {
@@ -328,8 +330,8 @@ fn write_render_result(
     }
 
     if let Err(err) = writer.print_render_table(
-        OutputType::AggregateGains,
-        "",
+        "Aggregate Gains",
+        "aggregate-gains.csv",
         &render_res.aggregate_gains_table,
     ) {
         return Err(format!("Rendering aggregate gains: {err}"));
@@ -337,16 +339,16 @@ fn write_render_result(
 
     if let Some(costs_tables) = &render_res.costs_tables {
         if let Err(err) = writer.print_render_table(
-            OutputType::Costs,
-            "Total",
+            "Total Costs",
+            "total-costs.csv",
             &costs_tables.total,
         ) {
             return Err(format!("Rendering total costs: {err}"));
         }
 
         if let Err(err) = writer.print_render_table(
-            OutputType::Costs,
-            "Yearly Max",
+            "Yearly Max Costs",
+            "yearly-max-costs.csv",
             &costs_tables.yearly,
         ) {
             return Err(format!("Rendering yearly costs: {err}"));
@@ -592,8 +594,8 @@ mod tests {
         };
         let mut w = TextWriter::new(wh);
         w.print_render_table(
-            crate::app::outfmt::model::OutputType::Transactions,
-            "Dummy table",
+            "Transactions for Dummy table",
+            "Dummy table.csv",
             render_table,
         )
         .unwrap();

@@ -8,7 +8,7 @@ use tabled::settings::{
 
 use crate::{portfolio::render::RenderTable, util::rw::WriteHandle};
 
-use super::model::{AcbWriter, OutputType};
+use super::model::AcbWriter;
 
 pub struct TextWriter {
     w: WriteHandle,
@@ -77,8 +77,8 @@ impl Default for CellBorder {
 impl AcbWriter for TextWriter {
     fn print_render_table(
         &mut self,
-        out_type: OutputType,
-        name: &str,
+        table_title: &str,
+        _csv_file_name: &str,
         table_model: &RenderTable,
     ) -> Result<(), super::model::Error> {
         let map_write_err = |e| format!("{e}");
@@ -91,14 +91,7 @@ impl AcbWriter for TextWriter {
                 .map_err(map_write_err)?;
         }
 
-        let title = match out_type {
-            OutputType::Transactions => format!("Transactions for {}", name),
-            OutputType::AggregateGains => "Aggregate Gains".to_string(),
-            OutputType::Costs => format!("{} Costs", name),
-            OutputType::Raw => name.to_string(),
-        };
-
-        writeln!(self.w, "{}", title).map_err(map_write_err)?;
+        writeln!(self.w, "{}", table_title).map_err(map_write_err)?;
 
         let n_cols = table_model.header.len();
         let mut table_bldr = tabled::builder::Builder::default();
