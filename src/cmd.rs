@@ -6,6 +6,7 @@ use clap::Parser;
 use crate::app::run_acb_app_to_console;
 use crate::fx::io::{CsvRatesCache, JsonRemoteRateLoader, RateLoader};
 use crate::portfolio::io::tx_csv::TxCsvParseOptions;
+use crate::portfolio::AffiliateFilter;
 use crate::util::date::{parse_dyn_date_format, parse_standard_date};
 use crate::util::http::standalone::StandaloneAppRequester;
 use crate::{
@@ -48,6 +49,11 @@ pub struct Args {
     /// Print verbose output
     #[arg(short, long, default_value_t = false)]
     pub verbose: bool,
+
+    /// Only render trasnactions pertaining to this affiliate
+    /// (e.g. "default"/"", "spouse"). Is case-insensitive.
+    #[arg(long)]
+    pub affiliate: Option<String>,
 
     /// Download exchange rates, even if they are cached
     #[arg(short, long, default_value_t = false)]
@@ -123,6 +129,7 @@ pub fn command_main() -> Result<(), ExitCode> {
     };
 
     let mut options = crate::app::Options {
+        affiliate_render_filter: args.affiliate.map(|f| AffiliateFilter::new(&f)),
         render_full_dollar_values: args.print_full_values,
         summary_mode_latest_date: None, // set below
         split_annual_summary_gains: args.summarize_annual_gains,

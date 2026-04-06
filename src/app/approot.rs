@@ -17,7 +17,7 @@ use crate::{
             RenderTable,
         },
         summary::{make_aggregate_summary_txs, CollectedSummaryData},
-        CumulativeCapitalGains, Security, Tx, TxDelta,
+        AffiliateFilter, CumulativeCapitalGains, Security, Tx, TxDelta,
     },
     util::rw::{DescribedReader, WriteHandle},
     write_errln,
@@ -28,6 +28,7 @@ use super::outfmt::model::{AcbWriter, OutputType};
 pub type Error = String;
 
 pub struct Options {
+    pub affiliate_render_filter: Option<AffiliateFilter>,
     pub render_full_dollar_values: bool,
     pub summary_mode_latest_date: Option<Date>,
     pub split_annual_summary_gains: bool,
@@ -46,6 +47,7 @@ impl Options {
 impl Default for Options {
     fn default() -> Self {
         Self {
+            affiliate_render_filter: None,
             render_full_dollar_values: false,
             summary_mode_latest_date: None,
             split_annual_summary_gains: false,
@@ -210,6 +212,30 @@ pub async fn run_acb_app_summary_to_render_model(
     }
 }
 
+fn filter_deltas_by_affiliate(
+    deltas_by_sec: HashMap<Security, DeltaListResult>,
+    affiliate_filter: &AffiliateFilter,
+) -> HashMap<Security, DeltaListResult> {
+    let mut filtered = HashMap::<Security, DeltaListResult>::new();
+    for (sec, deltas_res) in deltas_by_sec {
+        let filtered_deltas_res = match deltas_res.0 {
+            Ok(deltas) => {
+                let filtered_deltas: Vec<TxDelta> = deltas
+                    .into_iter()
+                    .filter(|delta| affiliate_filter.matches(&delta.tx.affiliate))
+                    .collect();
+                if filtered_deltas.len() == 0 {
+                    continue;
+                }
+                DeltaListResult(Ok(filtered_deltas))
+            }
+            Err(e) => DeltaListResult(Err(e)),
+        };
+        filtered.insert(sec.clone(), filtered_deltas_res);
+    }
+    filtered
+}
+
 /// Runs the entire ACB app in the "default" mode (processing TXs and
 /// generating and rendering a delta list plus some aggregations).
 /// This is output as a generic render model, so that it can be fed
@@ -217,6 +243,7 @@ pub async fn run_acb_app_summary_to_render_model(
 pub async fn run_acb_app_to_render_model(
     csv_file_readers: Vec<DescribedReader>,
     csv_parse_options: &TxCsvParseOptions,
+    affiliate_render_filter: Option<AffiliateFilter>,
     render_full_dollar_values: bool,
     render_total_costs: bool,
     rate_loader: &mut RateLoader,
@@ -230,13 +257,18 @@ pub async fn run_acb_app_to_render_model(
     )
     .await?;
 
-    let gains = get_cumulative_capital_gains(&deltas_results_by_sec);
+    let filtered_deltas_results_by_sec = match affiliate_render_filter {
+        None => deltas_results_by_sec,
+        Some(filter) => filter_deltas_by_affiliate(deltas_results_by_sec, &filter),
+    };
+
+    let gains = get_cumulative_capital_gains(&filtered_deltas_results_by_sec);
 
     let default_gains = CumulativeCapitalGains::default();
 
     let mut all_deltas = Vec::<TxDelta>::new();
     let mut sec_render_tables = HashMap::new();
-    for (sec, deltas_res) in deltas_results_by_sec {
+    for (sec, deltas_res) in filtered_deltas_results_by_sec {
         let deltas = deltas_res.deltas_or_partial_deltas();
         let mut deltas_copy = deltas.iter().cloned().collect();
         all_deltas.append(&mut deltas_copy);
@@ -337,6 +369,7 @@ pub async fn run_acb_app_to_writer(
     writer: Box<dyn AcbWriter>,
     csv_file_readers: Vec<DescribedReader>,
     csv_parse_options: &TxCsvParseOptions,
+    affiliate_render_filter: Option<AffiliateFilter>,
     render_full_dollar_values: bool,
     render_total_costs: bool,
     rate_loader: &mut RateLoader,
@@ -345,6 +378,7 @@ pub async fn run_acb_app_to_writer(
     let res = run_acb_app_to_render_model(
         csv_file_readers,
         csv_parse_options,
+        affiliate_render_filter,
         render_full_dollar_values,
         render_total_costs,
         rate_loader,
@@ -416,6 +450,7 @@ pub async fn run_acb_app_summary_to_model(
         latest_date,
         &deltas_by_sec,
         options.split_annual_summary_gains,
+        options.affiliate_render_filter,
     ))
 }
 
@@ -515,6 +550,7 @@ pub async fn run_acb_app_to_console(
             writer,
             csv_file_readers,
             &options.csv_parse_options,
+            options.affiliate_render_filter,
             options.render_full_dollar_values,
             options.render_total_costs,
             rate_loader,
@@ -533,6 +569,7 @@ mod tests {
     use async_std::task::block_on;
 
     use crate::portfolio::io::tx_csv::testlib::TestTxCsvRow as Row;
+    use crate::portfolio::AffiliateFilter;
     use crate::testlib::{assert_re, assert_vec_eq};
     use crate::{
         app::outfmt::{model::AcbWriter, text::TextWriter},
@@ -601,6 +638,7 @@ mod tests {
         let render_res = block_on(run_acb_app_to_render_model(
             readers,
             &TxCsvParseOptions::default(),
+            None,
             false,
             render_costs,
             &mut make_empty_test_rate_loader(),
@@ -633,6 +671,7 @@ mod tests {
         let render_res = block_on(run_acb_app_to_render_model(
             readers,
             &TxCsvParseOptions::default(),
+            None,
             false,
             render_costs,
             &mut make_empty_test_rate_loader(),
@@ -671,6 +710,7 @@ mod tests {
         let render_res = block_on(run_acb_app_to_render_model(
             readers,
             &TxCsvParseOptions::default(),
+            None,
             false,
             render_costs,
             &mut make_empty_test_rate_loader(),
@@ -691,9 +731,84 @@ mod tests {
     }
 
     #[test]
+    fn test_multi_af_filtering() {
+        // Tests:
+        // - Shared symbol between AFs: both affiliates' rows appear with no filter
+        // - Symbol only in one AF: omitted when the other AF is filtered
+        // - Filtering reduces rows to only the matching affiliate
+
+        #[rustfmt::skip]
+        let make_readers = || {
+            CsvFileBuilder::with_all_modern_headers()
+            .split_csv_rows(&vec![4], &vec![
+                // FOO appears in both affiliates
+                Row{sec: "FOO", td: "2016-01-03", sd: "2016-01-05",
+                    a: "Buy", sh: "10", aps: "1.0", cur: "CAD", ..Row::default()},
+                Row{sec: "FOO", td: "2016-01-04", sd: "2016-01-06",
+                    a: "Buy", sh: "5", aps: "2.0", cur: "CAD", af: "spouse", ..Row::default()},
+                // BAR only in spouse
+                Row{sec: "BAR", td: "2016-02-01", sd: "2016-02-03",
+                    a: "Buy", sh: "3", aps: "1.0", cur: "CAD", af: "spouse", ..Row::default()},
+                // BAZ only in default
+                Row{sec: "BAZ", td: "2016-03-01", sd: "2016-03-03",
+                    a: "Buy", sh: "4", aps: "1.5", cur: "CAD", ..Row::default()},
+            ])
+        };
+
+        // No filter: all three securities visible
+        let render_res = block_on(run_acb_app_to_render_model(
+            make_readers(),
+            &TxCsvParseOptions::default(),
+            None,
+            false,
+            false,
+            &mut make_empty_test_rate_loader(),
+            WriteHandle::empty_write_handle(),
+        ))
+        .unwrap();
+        assert_eq!(render_res.security_tables.len(), 3);
+        // FOO has rows from both affiliates
+        assert_eq!(render_res.security_tables.get("FOO").unwrap().rows.len(), 2);
+
+        // Filter for default: FOO (1 row) and BAZ visible; BAR omitted
+        let render_res = block_on(run_acb_app_to_render_model(
+            make_readers(),
+            &TxCsvParseOptions::default(),
+            Some(AffiliateFilter::new("default")),
+            false,
+            false,
+            &mut make_empty_test_rate_loader(),
+            WriteHandle::empty_write_handle(),
+        ))
+        .unwrap();
+        assert_eq!(render_res.security_tables.len(), 2);
+        assert!(render_res.security_tables.contains_key("FOO"));
+        assert!(render_res.security_tables.contains_key("BAZ"));
+        assert!(!render_res.security_tables.contains_key("BAR"));
+        assert_eq!(render_res.security_tables.get("FOO").unwrap().rows.len(), 1);
+
+        // Filter for spouse: FOO (1 row) and BAR visible; BAZ omitted
+        let render_res = block_on(run_acb_app_to_render_model(
+            make_readers(),
+            &TxCsvParseOptions::default(),
+            Some(AffiliateFilter::new("spouse")),
+            false,
+            false,
+            &mut make_empty_test_rate_loader(),
+            WriteHandle::empty_write_handle(),
+        ))
+        .unwrap();
+        assert_eq!(render_res.security_tables.len(), 2);
+        assert!(render_res.security_tables.contains_key("FOO"));
+        assert!(render_res.security_tables.contains_key("BAR"));
+        assert!(!render_res.security_tables.contains_key("BAZ"));
+        assert_eq!(render_res.security_tables.get("FOO").unwrap().rows.len(), 1);
+    }
+
+    #[test]
     fn test_global_stock_split() {
         #[rustfmt::skip]
-        let readers =
+        let make_readers = || {
             CsvFileBuilder::with_all_modern_headers()
             .split_csv_rows(&vec![6], &vec![
                 Row{sec: "FOO", td: "2016-01-03", sd: "2016-01-05",
@@ -713,11 +828,14 @@ mod tests {
 
                 Row{sec: "FOO", td: "2018-02-01", sd: "2018-02-03",
                     a: "Buy", sh: "2", aps: "1.6", cur: "CAD", af: "spouse", ..Row::default()},
-            ]);
+            ])
+        };
 
+        let readers = make_readers();
         let render_res = block_on(run_acb_app_to_render_model(
             readers,
             &TxCsvParseOptions::default(),
+            None,
             false,
             false,
             &mut make_empty_test_rate_loader(),
@@ -735,6 +853,66 @@ mod tests {
             vec![
                 "Buy", "Buy", "Split", "Split", "Split", // duped split
                 "Split", "Split", // individual splits
+                "Buy",
+            ]
+            .iter()
+            .map(|s| String::from(*s))
+            .collect(),
+        );
+
+        // Check affiliate filtering
+        let affiliate_filter = AffiliateFilter::new("default");
+        let readers = make_readers();
+        let render_res = block_on(run_acb_app_to_render_model(
+            readers,
+            &TxCsvParseOptions::default(),
+            Some(affiliate_filter),
+            false,
+            false,
+            &mut make_empty_test_rate_loader(),
+            WriteHandle::empty_write_handle(),
+        ))
+        .unwrap();
+
+        let render_table = get_and_check_foo_table(&render_res.security_tables);
+        assert_eq!(render_table.rows.len(), 6);
+        assert_eq!(Vec::<String>::new(), render_table.errors);
+        let row_actions =
+            render_table.rows.iter().map(|row| row[3].clone()).collect();
+        assert_vec_eq(
+            row_actions,
+            vec![
+                "Buy", "Buy", "Split", "Split", // duped split
+                "Split", "Split", // individual splits
+            ]
+            .iter()
+            .map(|s| String::from(*s))
+            .collect(),
+        );
+
+        // More affiliate filtering (spouse)
+        let affiliate_filter = AffiliateFilter::new("spouse");
+        let readers = make_readers();
+        let render_res = block_on(run_acb_app_to_render_model(
+            readers,
+            &TxCsvParseOptions::default(),
+            Some(affiliate_filter),
+            false,
+            false,
+            &mut make_empty_test_rate_loader(),
+            WriteHandle::empty_write_handle(),
+        ))
+        .unwrap();
+
+        let render_table = get_and_check_foo_table(&render_res.security_tables);
+        assert_eq!(render_table.rows.len(), 2);
+        assert_eq!(Vec::<String>::new(), render_table.errors);
+        let row_actions =
+            render_table.rows.iter().map(|row| row[3].clone()).collect();
+        assert_vec_eq(
+            row_actions,
+            vec![
+                "Split", // duped split
                 "Buy",
             ]
             .iter()
