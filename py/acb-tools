@@ -39,6 +39,7 @@ def get_programs() -> list[str]:
 
 program_to_aliases = {
     "acb": ["calc"],
+    "acb-config": ["config"],
     "csv-to-xlsx": ["csv2xl"],
     "pdf-text": ["pdf"],
     "questrade-statement-fmv": ["qt-fmv"],

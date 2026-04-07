@@ -304,9 +304,12 @@ pub struct Args {
     #[arg(long)]
     pub year: Option<i32>,
 
-    /// Path to acb-config.json. Defaults to the platform config dir:
+    /// Path to acb-config.json. Defaults to the platform config dir.
+    ///
     ///   Linux:   ~/.config/acb/acb-config.json
+    ///
     ///   macOS:   ~/Library/Application Support/acb/acb-config.json
+    ///
     ///   Windows: %APPDATA%\acb\acb-config.json
     #[arg(long)]
     pub config: Option<PathBuf>,
