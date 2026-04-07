@@ -3,7 +3,7 @@ mod common;
 use std::path::Path;
 
 use acb::{
-    app::{outfmt::text::TextWriter, run_acb_app_to_writer},
+    app::{outfmt::text::TextWriter, run_acb_app_to_writer, AppRenderMode},
     fx::io::{CsvRatesCache, JsonRemoteRateLoader, RateLoader},
     portfolio::io::tx_csv::TxCsvParseOptions,
     testlib::assert_vec_eq,
@@ -45,6 +45,7 @@ fn validate_sample_csv_file(
         None,
         false,
         render_costs,
+        AppRenderMode::Default,
         &mut rate_loader,
         err_stream.clone(),
     ));
@@ -130,6 +131,7 @@ fn test_sample_csv_parse_errors() {
         None,
         false,
         false,
+        AppRenderMode::Default,
         &mut rate_loader,
         err_stream,
     ));

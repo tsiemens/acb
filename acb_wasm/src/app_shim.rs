@@ -3,7 +3,10 @@ use std::collections::HashMap;
 use serde::ser::SerializeStruct;
 
 use acb::{
-    app::{outfmt::text::TextWriter, run_acb_app_to_writer},
+    app::{
+        outfmt::text::TextWriter, run_acb_app_to_writer, AppRenderMode,
+        AppSummaryRenderOutput, CalcRenderOutput,
+    },
     portfolio::{io::tx_csv::TxCsvParseOptions, render::RenderTable, Security},
     util::{
         basic::SError,
@@ -97,6 +100,7 @@ pub async fn run_acb_app(
         None,
         render_full_dollar_values,
         RENDER_TOTAL_COSTS,
+        AppRenderMode::Default,
         &mut rate_loader,
         err_write_handle,
     )
@@ -105,20 +109,29 @@ pub async fn run_acb_app(
     let rates_cache_update = build_rates_cache_update(&mut rate_loader);
 
     match result {
-        Ok(r) => Ok(AppResultOk {
-            text_output: out_string_buff.try_borrow_mut().unwrap().export_string(),
-            model_output: AppRenderResult {
-                security_tables: r
-                    .security_tables
-                    .into_iter()
-                    .map(|(k, v)| (k, SerializableRenderTable(v)))
-                    .collect(),
-                aggregate_gains_table: SerializableRenderTable(
-                    r.aggregate_gains_table,
-                ),
-            },
-            rates_cache_update,
-        }),
+        Ok(r) => {
+            let calc_variant = match r.output {
+                CalcRenderOutput::Default(v) => v,
+                CalcRenderOutput::ByAffiliate(v) => v.unfiltered,
+            };
+            Ok(AppResultOk {
+                text_output: out_string_buff
+                    .try_borrow_mut()
+                    .unwrap()
+                    .export_string(),
+                model_output: AppRenderResult {
+                    security_tables: calc_variant
+                        .security_tables
+                        .into_iter()
+                        .map(|(k, v)| (k, SerializableRenderTable(v)))
+                        .collect(),
+                    aggregate_gains_table: SerializableRenderTable(
+                        calc_variant.aggregate_gains_table,
+                    ),
+                },
+                rates_cache_update,
+            })
+        }
         Err(()) => {
             let error_string =
                 err_string_buff.try_borrow_mut().unwrap().export_string();
@@ -202,6 +215,7 @@ pub async fn run_acb_app_for_export(
         None,
         render_full_dollar_values,
         RENDER_TOTAL_COSTS,
+        AppRenderMode::ByAffiliateIfMultiple,
         &mut rate_loader,
         err_write_handle,
     )
@@ -368,8 +382,14 @@ pub async fn run_acb_app_summary(
     }
     errors.extend(result.errors.iter().map(String::clone));
 
-    let csv_txs: Vec<acb::portfolio::CsvTx> = result
-        .summary_txs
+    let (summary_txs, csv_text) = match result.output {
+        AppSummaryRenderOutput::Default(v) => (v.summary_txs, v.csv_text),
+        AppSummaryRenderOutput::ByAffiliate(v) => {
+            (v.unfiltered.summary_txs, v.unfiltered.csv_text)
+        }
+    };
+
+    let csv_txs: Vec<acb::portfolio::CsvTx> = summary_txs
         .iter()
         .map(|tx| acb::portfolio::CsvTx::from(tx.clone()))
         .collect();
@@ -383,7 +403,7 @@ pub async fn run_acb_app_summary(
     });
 
     Ok(AppSummaryResultOk {
-        csv_text: result.csv_text,
+        csv_text,
         summary_table,
         rates_cache_update,
     })

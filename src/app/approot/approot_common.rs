@@ -49,6 +49,11 @@ impl Default for Options {
     }
 }
 
+pub enum AppRenderMode {
+    Default,
+    ByAffiliateIfMultiple,
+}
+
 /// This is a partial component of the app as a whole, just to generate TxDeltas.
 /// What this does _not_ do is do any aggregation calculations, like
 /// yearly capital gains and costs.

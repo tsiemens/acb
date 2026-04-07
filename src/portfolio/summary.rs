@@ -10,7 +10,7 @@ use crate::{
             get_first_day_in_superficial_loss_period,
             get_last_day_in_superficial_loss_period,
         },
-        Affiliate, AffiliateFilter, SFLInput,
+        Affiliate, SFLInput,
     },
     util::decimal::{
         is_negative, GreaterEqualZeroDecimal, LessEqualZeroDecimal, PosDecimal,
@@ -476,7 +476,6 @@ pub fn make_aggregate_summary_txs(
     latest_date: Date,
     deltas_by_sec: &HashMap<Security, Vec<TxDelta>>,
     split_annual_gains: bool,
-    affiliate_render_filter: Option<AffiliateFilter>,
 ) -> CollectedSummaryData {
     let mut all_summary_txs = Vec::<Tx>::new();
     // Warnings -> list of secs that encountered this warning.
@@ -497,12 +496,7 @@ pub fn make_aggregate_summary_txs(
             all_warnings.get_mut(&warning).unwrap().push((**sec).clone());
         }
 
-        all_summary_txs.extend(summary_txs.into_iter().filter(|tx| {
-            match &affiliate_render_filter {
-                None => true,
-                Some(filter) => filter.matches(&tx.affiliate),
-            }
-        }));
+        all_summary_txs.extend(summary_txs);
     }
 
     CollectedSummaryData {
@@ -517,14 +511,11 @@ mod tests {
     use rust_decimal::Decimal;
     use rust_decimal_macros::dec;
 
-    use std::collections::HashMap;
-
     use crate::testlib::assert_vecr_eq;
     use crate::util::date::pub_testlib::doy_date;
     use crate::{
         portfolio::{
-            bookkeeping::txs_to_delta_list, testlib::TTx, AffiliateFilter, SFLInput,
-            Security, Tx, TxDelta,
+            bookkeeping::txs_to_delta_list, testlib::TTx, SFLInput, Tx, TxDelta,
         },
         tracing::setup_tracing,
         util::decimal::{GreaterEqualZeroDecimal, LessEqualZeroDecimal},
@@ -534,7 +525,7 @@ mod tests {
     use crate::lezdec as lez;
     use crate::portfolio::TxAction as A;
 
-    use super::{make_aggregate_summary_txs, make_summary_txs};
+    use super::make_summary_txs;
 
     // Shortening alias
     fn def<T: Default>() -> T {
@@ -1493,51 +1484,5 @@ mod tests {
             make_summary_txs(doy_date(2020, 104), &deltas, false /* year gains */);
         assert_vecr_eq(&warnings, &Vec::new()); // zero warning
         validate_txs(&exp_summary_txs, &summary_txs);
-    }
-
-    #[test]
-    #[rustfmt::skip]
-    fn test_multi_affiliate_filtering() {
-        setup_tracing();
-        crate::util::date::set_todays_date_for_test(doy_date(3000, 1));
-
-        // FOO: transactions in default and spouse affiliates
-        // BAR: transactions only in spouse affiliate
-        let foo_txs = vec![
-            TTx{s_yr: 2020, s_doy: 10, act: A::Buy, shares: gez!(10), price: gez!(1),
-                ..def()}.x(),
-            TTx{s_yr: 2020, s_doy: 11, act: A::Buy, shares: gez!(5), price: gez!(2),
-                af_name: "spouse", ..def()}.x(),
-        ];
-        let bar_txs = vec![
-            TTx{s_yr: 2020, s_doy: 10, act: A::Buy, shares: gez!(3), price: gez!(1),
-                af_name: "spouse", ..def()}.x(),
-        ];
-
-        let mut deltas_by_sec = HashMap::<Security, Vec<TxDelta>>::new();
-        deltas_by_sec.insert("FOO".to_string(), txs_to_ok_delta_list(&foo_txs));
-        deltas_by_sec.insert("BAR".to_string(), txs_to_ok_delta_list(&bar_txs));
-
-        // No filter: summary txs for all affiliates in both securities
-        // (BAR:spouse, FOO:default, FOO:spouse in sorted security order)
-        let result = make_aggregate_summary_txs(
-            doy_date(2024, -1), &deltas_by_sec, false, None);
-        assert_eq!(result.txs.len(), 3);
-
-        // Filter for "default": only FOO's default tx survives
-        let result = make_aggregate_summary_txs(
-            doy_date(2024, -1), &deltas_by_sec, false,
-            Some(AffiliateFilter::new("default")));
-        assert_eq!(result.txs.len(), 1);
-        assert_eq!(result.txs[0].affiliate.name(), "Default");
-
-        // Filter for "spouse": FOO's spouse tx and BAR's spouse tx survive
-        let result = make_aggregate_summary_txs(
-            doy_date(2024, -1), &deltas_by_sec, false,
-            Some(AffiliateFilter::new("spouse")));
-        assert_eq!(result.txs.len(), 2);
-        for tx in &result.txs {
-            assert_eq!(tx.affiliate.name(), "spouse");
-        }
     }
 }

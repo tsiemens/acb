@@ -70,7 +70,7 @@ pub fn affiliate_for_account_with_config(
             if let Some(af_name) =
                 cfg.affiliate_name_for_account(config_key, &account.account_num)
             {
-                return Affiliate::from_name(af_name, registered);
+                return Affiliate::from_base_name(af_name, registered);
             }
         }
     }
