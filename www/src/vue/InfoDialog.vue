@@ -1,24 +1,21 @@
 <template>
-  <div
-    class="info-dialog"
-    :class="{ active: isActive }"
+  <DialogShell
+    :active="isActive"
+    :title="title"
+    @close="close"
   >
-    <div class="info-dialog-header">
-      <h3 class="info-dialog-title">{{ title }}</h3>
-      <button class="info-dialog-close" @click="close" title="Close - Esc">&times;</button>
-    </div>
-    <div class="info-dialog-content">
-      <slot></slot>
-    </div>
-  </div>
+    <slot></slot>
+  </DialogShell>
 </template>
 
 <script lang="ts">
 import { defineComponent, computed, type PropType } from 'vue';
 import { type InfoDialogStore, closeDialog } from './info_dialog_store.js';
+import DialogShell from './DialogShell.vue';
 
 export default defineComponent({
    name: 'InfoDialog',
+   components: { DialogShell },
    props: {
       store: {
          type: Object as PropType<InfoDialogStore>,
@@ -44,60 +41,3 @@ export default defineComponent({
    },
 });
 </script>
-
-<style scoped>
-.info-dialog {
-  display: none;
-  position: fixed;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  width: 90%;
-  max-width: 600px;
-  max-height: calc(100vh - 60px);
-  background-color: white;
-  border-radius: var(--border-radius);
-  padding: 25px;
-  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
-  z-index: 100;
-  display: none;
-  flex-direction: column;
-}
-
-.info-dialog.active {
-  display: flex;
-}
-
-.info-dialog-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 15px;
-  padding-bottom: 10px;
-  border-bottom: 1px solid #eee;
-}
-
-.info-dialog-title {
-  font-size: 20px;
-  font-weight: 600;
-  color: var(--primary-color);
-}
-
-.info-dialog-close {
-  background: none;
-  border: none;
-  font-size: 20px;
-  cursor: pointer;
-  color: var(--secondary-color);
-}
-
-.info-dialog-content {
-  line-height: 1.6;
-  overflow-y: auto;
-  min-height: 0;
-}
-
-.info-dialog-content :deep(p) {
-  margin-bottom: 15px;
-}
-</style>

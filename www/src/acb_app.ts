@@ -12,6 +12,7 @@ import { ErrorBox } from "./vue/error_box_store.js";
 import { downloadCsv, makeZipAndDownload } from "./download_utils.js";
 import { extractPdfPages } from "./pdf_text_util.js";
 import { getConfigStore, loadConfigFromFileEntry } from "./vue/config_store.js";
+import { confirm as confirmDialog } from "./vue/confirm_dialog_store.js";
 
 function maybeMergeRatesCacheUpdate(update?: RatesCacheUpdate): void {
    if (update) {
@@ -266,6 +267,36 @@ async function detectAndUpdatePdfEntry(entry: FileEntry): Promise<void> {
    console.debug(`Finished detecting file: ${entry.name}: kind=${entry.kind}, warning=${entry.warning ?? ''}`);
 }
 
+async function maybeLoadConfigEntry(entry: FileEntry): Promise<void> {
+   const configStore = getConfigStore();
+
+   // If a config already exists, ask the user before replacing.
+   if (configStore.config !== null) {
+      const confirmed = await confirmDialog({
+         title: 'Replace Configuration?',
+         message: 'A configuration file is already loaded. Do you want to replace it with the new file?',
+         confirmLabel: 'Replace',
+         cancelLabel: 'Keep Existing',
+      });
+      if (!confirmed) {
+         // Remove the newly added file entry since the user declined.
+         const fileStore = getFileManagerStore();
+         fileStore.removeFiles([entry.id]);
+         return;
+      }
+   }
+
+   try {
+      const configWarnings = loadConfigFromFileEntry(configStore, entry);
+      if (configWarnings.length > 0) {
+         entry.warning = configWarnings.join('; ');
+      }
+   } catch (err) {
+      const errMsg = typeof err === 'string' ? err : (err instanceof Error ? err.message : String(err));
+      entry.warning = `Config load error: ${errMsg}`;
+   }
+}
+
 // NOTE (until refactoring is done): This adds files to the new
 // file manager drawer.
 export function loadAndAddFilesToFileManager(fileList: FileList): void {
@@ -303,17 +334,8 @@ export function loadAndAddFilesToFileManager(fileList: FileList): void {
 
             // If it's a config file, load it into the config store.
             if (detectResult.kind === FileKind.AcbConfigJson && !warning) {
-               try {
-                  const configWarnings = loadConfigFromFileEntry(
-                     getConfigStore(), addedEntry,
-                  );
-                  if (configWarnings.length > 0) {
-                     addedEntry.warning = configWarnings.join('; ');
-                  }
-               } catch (err) {
-                  const errMsg = typeof err === 'string' ? err : (err instanceof Error ? err.message : String(err));
-                  addedEntry.warning = `Config load error: ${errMsg}`;
-               }
+               maybeLoadConfigEntry(addedEntry)
+                  .catch((err: unknown) => { console.error('Config load error:', err); });
             }
          }
       });

@@ -1,4 +1,4 @@
-import { reactive, ref } from 'vue';
+import { reactive, ref, watchEffect } from 'vue';
 import { parse_config, serialize_config } from '../pkg/acb_wasm.js';
 import { FileKind, getFileManagerStore, modifyDrawerNotificationForUserAddedFiles, type FileEntry } from './file_manager_store.js';
 
@@ -94,6 +94,21 @@ export function getConfigStore(): ConfigStore {
       if (initial) {
          syncConfigToFileDrawer(_store);
       }
+
+      // Watch for the config file entry being removed from the drawer
+      // (e.g. user deletes it) and clear the cached config accordingly.
+      const s = _store;
+      watchEffect(() => {
+         if (s.fileEntryId === null || s.config === null) return;
+         const fileStore = getFileManagerStore();
+         const exists = fileStore.files.some(f => f.id === s.fileEntryId);
+         if (!exists) {
+            s.config = null;
+            s.fileEntryId = null;
+            localStorage.removeItem(STORAGE_KEY);
+            configExists.value = false;
+         }
+      });
    }
    return _store;
 }

@@ -46,6 +46,7 @@
     </footer>
   </div>
 
+  <ConfirmDialog />
   <FileManagerDrawer
     :store="fileManagerStore"
     :onFilesDropped="onFilesDropped"
@@ -61,6 +62,7 @@ import Sidebar from './Sidebar.vue';
 import AcbCalcTabContent from './AcbCalcTabContent.vue';
 import BrokerConvertTabContent from './BrokerConvertTabContent.vue';
 import FileManagerDrawer from './FileManagerDrawer.vue';
+import ConfirmDialog from './ConfirmDialog.vue';
 import { getInfoDialogStore } from './info_dialog_store.js';
 import { getFileManagerStore } from './file_manager_store.js';
 import { getTabStore, tabs, TabId } from './tab_store.js';
@@ -70,7 +72,7 @@ import { copyrightYears } from './copyright.js';
 
 export default defineComponent({
    name: 'App',
-   components: { AppHeader, InfoDialogs, Sidebar, AcbCalcTabContent, BrokerConvertTabContent, FileManagerDrawer },
+   components: { AppHeader, InfoDialogs, Sidebar, AcbCalcTabContent, BrokerConvertTabContent, FileManagerDrawer, ConfirmDialog },
    props: {
       onFilesDropped: {
          type: Function as PropType<(fileList: FileList) => void>,

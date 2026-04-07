@@ -118,6 +118,11 @@ function showExtractedText(file: FileEntry) {
    openDynamicTextDialog(file.name, content);
 }
 
+function showFileAsText(file: FileEntry) {
+   const content = new TextDecoder().decode(file.data);
+   openDynamicTextDialog(file.name, content);
+}
+
 function removeSelected() {
    props.store.removeFiles(selectedFiles.value.map((f) => f.id));
    lastClickedFilteredIndex.value = null;
@@ -298,7 +303,13 @@ function removeSelected() {
                            @click.stop="showExtractedText(file)"
                         >&#x1F4C4;</span>
                         <span
-                           v-else-if="file.isDownloadable"
+                           v-else-if="file.kind === FileKind.AcbConfigJson"
+                           class="fm-tag fm-tag-view-text"
+                           title="View file contents"
+                           @click.stop="showFileAsText(file)"
+                        >&#x1F4C4;</span>
+                        <span
+                           v-if="file.isDownloadable"
                            class="fm-tag fm-tag-download"
                            title="Select to download"
                         >&#x2B07;</span>
