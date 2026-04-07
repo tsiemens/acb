@@ -5,6 +5,7 @@ import { AcbAppRunMode } from "./common/acb_app_types.js";
 import { loadGitUserCaveatIssues, loadAndCheckVersions } from './github.js';
 import wasm_init, { get_acb_version } from './pkg/acb_wasm.js';
 import { webappVersion } from './versions.js';
+import { getConfigStore } from './vue/config_store.js';
 import { getSidebarInfoStore } from './vue/sidebar_info_store.js';
 import { getTabStore, TabId } from './vue/tab_store.js';
 import App from './vue/App.vue';
@@ -49,6 +50,10 @@ export async function init(): Promise<void> {
       await initWasmLib();
       const acbVersion = get_acb_version();
       getSidebarInfoStore().acbVersion = `v${acbVersion}`;
+
+      // Initialize config store early so any cached config appears in the
+      // file drawer on page load (requires WASM for validation).
+      getConfigStore();
 
       createVueApp();
       loadGitUserCaveatIssues();

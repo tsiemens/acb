@@ -1,6 +1,4 @@
 <template>
-  <InfoDialogBackdrop :store="store" />
-
   <InfoDialog :store="store" dialog-id="appDescriptionDialog" title="What is ACB?">
     <p><span class="tooltip">ACB<span class="tooltiptext">
       Adjusted Cost Basis - The method in which capital gains tax are calculated in Canada. This can differ from the methods used in other countries.</span>
@@ -124,12 +122,11 @@
 import { defineComponent, type PropType } from 'vue';
 import type { InfoDialogStore } from './info_dialog_store.js';
 import InfoDialog from './InfoDialog.vue';
-import InfoDialogBackdrop from './InfoDialogBackdrop.vue';
 import { copyrightYears } from './copyright.js';
 
 export default defineComponent({
    name: 'InfoDialogs',
-   components: { InfoDialog, InfoDialogBackdrop },
+   components: { InfoDialog },
    props: {
       store: {
          type: Object as PropType<InfoDialogStore>,
