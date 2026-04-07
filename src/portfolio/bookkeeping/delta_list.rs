@@ -456,7 +456,7 @@ fn delta_for_tx(
     Ok((delta, txs_to_inject))
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct TxDeltaListError {
     pub partial_deltas: Vec<TxDelta>,
     pub err_msg: String,

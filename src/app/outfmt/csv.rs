@@ -86,6 +86,15 @@ impl AcbWriter for CsvWriter {
         match &mut self.mode {
             WriteMode::Directory(out_dir) => {
                 let file_path = out_dir.join(PathBuf::from(csv_file_name));
+                if let Some(parent) = file_path.parent() {
+                    std::fs::create_dir_all(parent).map_err(|e| {
+                        format!(
+                            "Failed to create directory {:?}: {}",
+                            parent.to_str(),
+                            e
+                        )
+                    })?;
+                }
                 let fp = File::create(file_path.clone()).map_err(|e| {
                     format!("Failed to create {:?}: {}", file_path.to_str(), e)
                 })?;

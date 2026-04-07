@@ -8,6 +8,7 @@ use std::{
 #[derive(PartialEq, Eq, Debug)]
 struct AffiliateData {
     id: String,
+    name_base: String,
     name: String,
     registered: bool,
 }
@@ -20,18 +21,15 @@ lazy_static! {
 }
 
 impl AffiliateData {
-    fn from_strep(s: &str) -> AffiliateData {
-        let registered = REGISTERED_RE.is_match(s);
-        let mut pretty_name: String = s.to_string();
-        if registered {
-            pretty_name = REGISTERED_RE.replace_all(&pretty_name, " ").to_string();
-        }
-        pretty_name =
-            EXTRA_SPACE_RE.replace_all(&pretty_name, " ").trim().to_string();
+    fn from_base_name(name_base: &str, registered: bool) -> AffiliateData {
+        let mut pretty_name =
+            EXTRA_SPACE_RE.replace_all(&name_base, " ").trim().to_string();
+
         if pretty_name.is_empty() {
             pretty_name = "Default".to_string();
         }
         let mut id = pretty_name.to_lowercase();
+        let name_base_cleaned = pretty_name.clone();
         if registered {
             id += " (R)";
             pretty_name += " (R)";
@@ -39,12 +37,38 @@ impl AffiliateData {
 
         AffiliateData {
             id: id,
+            name_base: name_base_cleaned,
             name: pretty_name,
             registered: registered,
         }
     }
+
+    fn from_strep(s: &str) -> AffiliateData {
+        let registered = REGISTERED_RE.is_match(s);
+        let mut pretty_name: String = s.to_string();
+        if registered {
+            pretty_name = REGISTERED_RE.replace_all(&pretty_name, " ").to_string();
+        }
+        AffiliateData::from_base_name(&pretty_name, registered)
+    }
 }
 
+/// An Affiliate is a person or entity associated with transactions, such as you,
+/// your spouse, a company, etc. Each 'base' affiliate, at least those associated
+/// with a real person, can also have a registered and non-registered variant.
+///
+/// We represent each Affiliate with a 'base' name (e.g. "Default", "Spouse") etc,
+/// and a registered status. The "name" here is a display name, and the id is a
+/// normalized version of this. It will include "(R)" if registered.
+///
+/// Default is a special reserved name, normally used for yourself, or the
+/// primary person managing the portfolio. Though it need not be used.
+///
+/// Storage efficiency isn't a high concern here, since we deduplicate AffiliateData,
+/// which means the first time an affiliate is encountered, we store the full name,
+/// but subsequent times, we'll just pick up the previous with the same id.
+/// As a side-effect, this means that capitalization differences will be resolved by
+/// the first Affiliate to be deduplicated.
 #[derive(PartialEq, Eq, Clone, Debug)]
 pub struct Affiliate(Arc<AffiliateData>);
 
@@ -57,14 +81,11 @@ impl Affiliate {
         AffiliateDedupTable::global_table().deduped_affiliate(s)
     }
 
-    /// Create an affiliate with the given name and registered status.
-    /// The name should not contain `(R)` — pass `registered: true` instead.
-    pub fn from_name(name: &str, registered: bool) -> Affiliate {
-        if registered {
-            Affiliate::from_strep(&format!("{name} (R)"))
-        } else {
-            Affiliate::from_strep(name)
-        }
+    /// Create an affiliate with the given base name and registered status.
+    /// The name should NOT contain `(R)` — pass `registered: true` instead.
+    pub fn from_base_name(name: &str, registered: bool) -> Affiliate {
+        let afd = AffiliateData::from_base_name(name, registered);
+        AffiliateDedupTable::global_table().deduped_affiliate_from_afd(afd)
     }
 
     pub fn default() -> Affiliate {
@@ -84,6 +105,9 @@ impl Affiliate {
     }
     pub fn name(&self) -> &str {
         self.0.name.as_str()
+    }
+    pub fn base_name_normalized(&self) -> String {
+        self.0.name_base.to_lowercase()
     }
     pub fn registered(&self) -> bool {
         self.0.registered
@@ -125,9 +149,10 @@ impl AffiliateDedupTable {
         GLOBAL_AF_DEDUP_TABLE.lock().unwrap()
     }
 
-    pub fn deduped_affiliate(&mut self, strep: &str) -> Affiliate {
-        let afd = AffiliateData::from_strep(strep);
-        // let mut map = GLOBAL_AF_DEDUP_TABLE.id_to_af.lock().unwrap();
+    pub(self) fn deduped_affiliate_from_afd(
+        &mut self,
+        afd: AffiliateData,
+    ) -> Affiliate {
         match self.id_to_af.contains_key(afd.id.as_str()) {
             true => self.id_to_af.get(afd.id.as_str()).unwrap().clone(),
             false => {
@@ -136,6 +161,11 @@ impl AffiliateDedupTable {
                 af
             }
         }
+    }
+
+    pub fn deduped_affiliate(&mut self, strep: &str) -> Affiliate {
+        let afd = AffiliateData::from_strep(strep);
+        self.deduped_affiliate_from_afd(afd)
     }
 
     pub fn must_get(&self, id: &str) -> &Affiliate {
@@ -155,8 +185,8 @@ pub struct AffiliateFilter {
 
 impl AffiliateFilter {
     pub fn new(non_registered_name: &str) -> Self {
-        let non_registered = Affiliate::from_name(non_registered_name, false);
-        let registered = Affiliate::from_name(non_registered_name, true);
+        let non_registered = Affiliate::from_base_name(non_registered_name, false);
+        let registered = Affiliate::from_base_name(non_registered_name, true);
         Self {
             non_registered,
             registered,
@@ -248,19 +278,19 @@ mod tests {
 
     #[test]
     fn test_from_name() {
-        let af = Affiliate::from_name("Spouse", false);
+        let af = Affiliate::from_base_name("Spouse", false);
         assert_eq!(af, Affiliate::from_strep("Spouse"));
         assert!(!af.registered());
 
-        let af = Affiliate::from_name("Spouse", true);
+        let af = Affiliate::from_base_name("Spouse", true);
         assert_eq!(af, Affiliate::from_strep("Spouse (R)"));
         assert!(af.registered());
 
         // Empty name becomes Default
-        let af = Affiliate::from_name("", false);
+        let af = Affiliate::from_base_name("", false);
         assert_eq!(af, Affiliate::default());
 
-        let af = Affiliate::from_name("", true);
+        let af = Affiliate::from_base_name("", true);
         assert_eq!(af, Affiliate::default_registered());
     }
 }
