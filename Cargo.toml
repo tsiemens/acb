@@ -27,6 +27,11 @@ path = "src/bin/acb.rs"
 required-features = [ "cliapp" ]
 
 [[bin]]
+name = "acb-config"
+path = "src/bin/acb_config.rs"
+required-features = []
+
+[[bin]]
 name = "pdf-text"
 path = "src/bin/pdf_text.rs"
 required-features = [ "pdf_parse" ]
