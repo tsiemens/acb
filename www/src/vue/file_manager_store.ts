@@ -10,6 +10,7 @@ export enum FileKind {
    RbcDiCsv    = 'RbcDiCsv',
    OutputText  = 'OutputText',
    AcbOutputZip = 'AcbOutputZip',
+   AcbConfigJson = 'AcbConfigJson',
    GenericPdf  = 'GenericPdf',
    Other       = 'Other',
 }
@@ -29,6 +30,7 @@ const FILE_KIND_META: Record<FileKind, FileKindMeta> = {
    [FileKind.RbcDiCsv]:                   { label: 'RBC DI csv',           isInput: true,  isDownloadableDefault: false },
    [FileKind.OutputText]:                 { label: 'Text',                 isInput: false, isDownloadableDefault: true  },
    [FileKind.AcbOutputZip]:               { label: 'ACB Output',           isInput: false, isDownloadableDefault: true  },
+   [FileKind.AcbConfigJson]:              { label: 'ACB Config',            isInput: false, isDownloadableDefault: true  },
    [FileKind.GenericPdf]:                 { label: 'PDF',                  isInput: false, isDownloadableDefault: false },
    [FileKind.Other]:                      { label: 'Other',                isInput: false, isDownloadableDefault: false },
 };

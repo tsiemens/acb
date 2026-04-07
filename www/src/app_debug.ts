@@ -10,6 +10,7 @@ import { getTabStore, tabs } from "./vue/tab_store.js";
 import { runHandler as brokerConvertRunHandler } from "./broker_convert_app.js";
 import { AcbAppRunMode } from "./common/acb_app_types.js";
 import { detect_file_kind_from_pdf_pages } from "./pkg/acb_wasm.js";
+import { getConfigStore, loadConfigFromFileEntry } from "./vue/config_store.js";
 
 // ---------------------------------------------------------------------------
 // Manifest types
@@ -54,6 +55,7 @@ const WASM_FILE_KIND_MAP: Record<string, FileKind> = {
    'EtradeTradeConfirmationPdf': FileKind.EtradeTradeConfirmationPdf,
    'EtradeBenefitPdf': FileKind.EtradeBenefitPdf,
    'EtradeBenefitsExcel': FileKind.EtradeBenefitsExcel,
+   'AcbConfigJson': FileKind.AcbConfigJson,
 };
 
 async function fetchBytes(url: string): Promise<Uint8Array> {
@@ -112,7 +114,7 @@ export async function loadSampleSet(setId: string): Promise<void> {
             } else {
                const detectResult = detectFileKindFromBytes(data, file.name);
                const warning = detectResult.warning;
-               store.addFile({
+               const addedEntry = store.addFile({
                   name: file.name,
                   kind: detectResult.kind,
                   isDownloadable: false,
@@ -120,6 +122,15 @@ export async function loadSampleSet(setId: string): Promise<void> {
                   data,
                   warning,
                });
+
+               if (detectResult.kind === FileKind.AcbConfigJson && !warning) {
+                  try {
+                     loadConfigFromFileEntry(getConfigStore(), addedEntry);
+                  } catch (err) {
+                     const msg = err instanceof Error ? err.message : String(err);
+                     addedEntry.warning = `Config load error: ${msg}`;
+                  }
+               }
             }
          } catch (err) {
             const msg = err instanceof Error ? err.message : String(err);

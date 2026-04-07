@@ -18,6 +18,8 @@ pub enum FileKind {
     EtradeTradeConfirmationPdf,
     EtradeBenefitPdf,
     EtradeBenefitsExcel,
+    // Config
+    AcbConfigJson,
     // Other
     Unknown,
 }
@@ -124,6 +126,11 @@ fn detect_from_path(path: &Path) -> Result<FileDetectResult, SError> {
             )?;
             Ok(detect_from_pdf_text(&pages))
         }
+        "json" => {
+            let data = std::fs::read(path)
+                .map_err(|e| format!("Failed to read {}: {e}", path.display()))?;
+            Ok(detect_json(&data))
+        }
         _ => Ok(FileDetectResult::unknown_bare()),
     }
 }
@@ -138,6 +145,7 @@ fn detect_from_bytes(
         "csv" => Ok(detect_csv(data)),
         #[cfg(feature = "xlsx_read")]
         "xls" | "xlsx" => detect_excel(data),
+        "json" => Ok(detect_json(data)),
         // For PDF from raw bytes, callers should pre-parse pages and use
         // PdfPages instead.
         _ => Ok(FileDetectResult::unknown_bare()),
@@ -260,6 +268,34 @@ fn detect_excel(data: &[u8]) -> Result<FileDetectResult, SError> {
     Ok(FileDetectResult::unknown(
         "Excel file does not match any known broker format".to_string(),
     ))
+}
+
+fn detect_json(data: &[u8]) -> FileDetectResult {
+    let text = match std::str::from_utf8(data) {
+        Ok(t) => t,
+        Err(_) => return FileDetectResult::unknown_bare(),
+    };
+
+    // First check that the JSON contains at least one config-specific field
+    // so we don't classify arbitrary JSON objects as configs.
+    let raw: serde_json::Value = match serde_json::from_str(text) {
+        Ok(v) => v,
+        Err(_) => {
+            return FileDetectResult::unknown(
+                "JSON file is not a valid ACB config".to_string(),
+            )
+        }
+    };
+
+    let has_config_field = raw.get("version").is_some()
+        || raw.get("account_bindings").is_some();
+    if !has_config_field {
+        return FileDetectResult::unknown(
+            "JSON file is not a valid ACB config".to_string(),
+        );
+    }
+
+    FileDetectResult::ok(FileKind::AcbConfigJson)
 }
 
 fn detect_from_pdf_text(pages: &[String]) -> FileDetectResult {
@@ -570,5 +606,57 @@ mod tests {
             file_name: "unknown.xlsx",
         });
         assert_unknown_with_warning(&r, "does not match");
+    }
+
+    // -- JSON detection --
+
+    #[test]
+    fn test_json_valid_config() {
+        let json = r#"{"version": 1, "account_bindings": {"questrade": {}, "rbc_di": {}, "etrade": {}}}"#;
+        let r = detect(FileDetectSource::Bytes {
+            data: json.as_bytes(),
+            file_name: "acb-config.json",
+        });
+        assert_ok(&r, FileKind::AcbConfigJson);
+    }
+
+    #[test]
+    fn test_json_valid_config_with_bindings() {
+        let json = r#"{"version": 1, "account_bindings": {"questrade": {"12345": "Spouse"}, "rbc_di": {}, "etrade": {}}}"#;
+        let r = detect(FileDetectSource::Bytes {
+            data: json.as_bytes(),
+            file_name: "config.json",
+        });
+        assert_ok(&r, FileKind::AcbConfigJson);
+    }
+
+    #[test]
+    fn test_json_invalid_config_warns() {
+        let json = r#"{"name": "not a config"}"#;
+        let r = detect(FileDetectSource::Bytes {
+            data: json.as_bytes(),
+            file_name: "data.json",
+        });
+        assert_unknown_with_warning(&r, "not a valid ACB config");
+    }
+
+    #[test]
+    fn test_json_invalid_json_warns() {
+        let data = b"not json at all";
+        let r = detect(FileDetectSource::Bytes {
+            data,
+            file_name: "bad.json",
+        });
+        assert_unknown_with_warning(&r, "not a valid ACB config");
+    }
+
+    #[test]
+    fn test_non_json_extension_not_detected_as_config() {
+        let json = r#"{"version": 1, "account_bindings": {"questrade": {}, "rbc_di": {}, "etrade": {}}}"#;
+        let r = detect(FileDetectSource::Bytes {
+            data: json.as_bytes(),
+            file_name: "data.txt",
+        });
+        assert_unknown_bare(&r);
     }
 }

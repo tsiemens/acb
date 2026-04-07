@@ -148,6 +148,7 @@ fn file_detect_result_to_js(
         FileKind::EtradeTradeConfirmationPdf => "EtradeTradeConfirmationPdf",
         FileKind::EtradeBenefitPdf => "EtradeBenefitPdf",
         FileKind::EtradeBenefitsExcel => "EtradeBenefitsExcel",
+        FileKind::AcbConfigJson => "AcbConfigJson",
         FileKind::Unknown => "Unknown",
     };
 

@@ -8,6 +8,7 @@ import { FileKind, getFileManagerStore, modifyDrawerNotificationForUserAddedFile
 import { getBrokerConvertOutputStore, type NamedTable } from './vue/broker_convert_output_store.js';
 import { ErrorBox } from './vue/error_box_store.js';
 import { getAppInputStore } from './vue/app_input_store.js';
+import { getConfigJsonForWasm } from './vue/config_store.js';
 
 interface XlConvertResult {
    csvText: string;
@@ -105,6 +106,7 @@ export function runHandler(mode: AcbAppRunMode): void {
       return;
    }
 
+   const configJson = getConfigJsonForWasm();
    const allNonFatalErrors: string[] = [];
    const allWarnings: string[] = [];
    const addedFileIds: number[] = [];
@@ -115,7 +117,7 @@ export function runHandler(mode: AcbAppRunMode): void {
    for (const entry of xlsxFiles) {
       try {
          // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-         const jsRet = convert_xl_to_csv(entry.data, undefined, appInputStore.noFx);
+         const jsRet = convert_xl_to_csv(entry.data, undefined, appInputStore.noFx, configJson);
          const result = xlConvertResultFromJsValue(jsRet);
 
          if (result.nonFatalErrors.length > 0) {
@@ -174,7 +176,7 @@ export function runHandler(mode: AcbAppRunMode): void {
             );
          } else {
             // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-            const jsRet = convert_etrade_pdfs_to_csv(pdfTexts, pdfFileNames, xlsxDatas, xlsxNames, !appInputStore.noFx, appInputStore.noSellToCoverPair, filterYear);
+            const jsRet = convert_etrade_pdfs_to_csv(pdfTexts, pdfFileNames, xlsxDatas, xlsxNames, !appInputStore.noFx, appInputStore.noSellToCoverPair, filterYear, configJson);
             const result = etradeConvertResultFromJsValue(jsRet);
 
             if (result.warnings.length > 0) {
@@ -216,7 +218,7 @@ export function runHandler(mode: AcbAppRunMode): void {
    for (const entry of rbcDiCsvFiles) {
       try {
          // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-         const jsRet = convert_rbc_di_csv(entry.data, appInputStore.noFx);
+         const jsRet = convert_rbc_di_csv(entry.data, appInputStore.noFx, configJson);
          const result = csvBrokerConvertResultFromJsValue(jsRet);
 
          if (result.nonFatalErrors.length > 0) {

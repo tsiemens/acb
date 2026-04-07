@@ -11,6 +11,7 @@ import { getAppInputStore, getSummaryDate } from "./vue/app_input_store.js";
 import { ErrorBox } from "./vue/error_box_store.js";
 import { downloadCsv, makeZipAndDownload } from "./download_utils.js";
 import { extractPdfPages } from "./pdf_text_util.js";
+import { getConfigStore, loadConfigFromFileEntry } from "./vue/config_store.js";
 
 function maybeMergeRatesCacheUpdate(update?: RatesCacheUpdate): void {
    if (update) {
@@ -218,6 +219,7 @@ const WASM_FILE_KIND_MAP: Record<string, FileKind> = {
    'EtradeTradeConfirmationPdf': FileKind.EtradeTradeConfirmationPdf,
    'EtradeBenefitPdf': FileKind.EtradeBenefitPdf,
    'EtradeBenefitsExcel': FileKind.EtradeBenefitsExcel,
+   'AcbConfigJson': FileKind.AcbConfigJson,
 };
 
 interface FileDetectResult {
@@ -290,7 +292,7 @@ export function loadAndAddFilesToFileManager(fileList: FileList): void {
             // Non-PDF: detect synchronously from bytes.
             const detectResult = detectFileKindFromBytes(result.data, result.name);
             const warning = result.error ?? detectResult.warning;
-            store.addFile({
+            const addedEntry = store.addFile({
                name: result.name,
                kind: detectResult.kind,
                isDownloadable: false,
@@ -298,6 +300,21 @@ export function loadAndAddFilesToFileManager(fileList: FileList): void {
                data: result.data,
                warning,
             });
+
+            // If it's a config file, load it into the config store.
+            if (detectResult.kind === FileKind.AcbConfigJson && !warning) {
+               try {
+                  const configWarnings = loadConfigFromFileEntry(
+                     getConfigStore(), addedEntry,
+                  );
+                  if (configWarnings.length > 0) {
+                     addedEntry.warning = configWarnings.join('; ');
+                  }
+               } catch (err) {
+                  const errMsg = typeof err === 'string' ? err : (err instanceof Error ? err.message : String(err));
+                  addedEntry.warning = `Config load error: ${errMsg}`;
+               }
+            }
          }
       });
       modifyDrawerNotificationForUserAddedFiles(store);
