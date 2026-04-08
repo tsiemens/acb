@@ -203,16 +203,14 @@ fn run_with_args(args: Args) -> Result<(), SError> {
         Command::Path(_) => {
             println!("{}", config_path.display());
         }
-        Command::Show(_) => {
-            match load_config(&config_path)? {
-                Some(config) => {
-                    println!("{}", config.to_json()?);
-                }
-                None => {
-                    println!("No config file found at {}", config_path.display());
-                }
+        Command::Show(_) => match load_config(&config_path)? {
+            Some(config) => {
+                println!("{}", config.to_json()?);
             }
-        }
+            None => {
+                println!("No config file found at {}", config_path.display());
+            }
+        },
         Command::Set(set_args) => {
             let mut config =
                 load_config(&config_path)?.unwrap_or_else(AcbConfig::new);
@@ -262,10 +260,7 @@ mod tests {
     #[test]
     fn test_set_overwrites_existing() {
         let mut config = AcbConfig::new();
-        config
-            .account_bindings
-            .etrade
-            .insert("AAA".into(), "OldName".into());
+        config.account_bindings.etrade.insert("AAA".into(), "OldName".into());
 
         apply_set(
             &mut config,
@@ -322,22 +317,16 @@ mod tests {
     #[test]
     fn test_set_bad_kv_format() {
         let mut config = AcbConfig::new();
-        let err = apply_set(
-            &mut config,
-            "affiliate-account",
-            &["not_a_pair".into()],
-        )
-        .unwrap_err();
+        let err =
+            apply_set(&mut config, "affiliate-account", &["not_a_pair".into()])
+                .unwrap_err();
         assert!(err.contains("key=value"));
     }
 
     #[test]
     fn test_unset_affiliate_account() {
         let mut config = AcbConfig::new();
-        config
-            .account_bindings
-            .rbc_di
-            .insert("99999".into(), "Spouse".into());
+        config.account_bindings.rbc_di.insert("99999".into(), "Spouse".into());
 
         let msg = apply_unset(
             &mut config,

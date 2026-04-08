@@ -387,6 +387,29 @@ pub fn csv_to_txs(
     }
 }
 
+pub fn extract_rbc_di_accounts(
+    data: &[u8],
+    file_name: &str,
+    warnings: &mut Vec<String>,
+) -> Vec<Account> {
+    match csv_to_txs(data, None) {
+        Ok(txs) => txs.iter().map(|t| t.account.clone()).collect(),
+        Err(e) => {
+            if let Some(ref txs) = e.txs {
+                let accounts: Vec<Account> =
+                    txs.iter().map(|t| t.account.clone()).collect();
+                if !accounts.is_empty() {
+                    return accounts;
+                }
+            }
+            for err in &e.errors {
+                warnings.push(format!("{file_name}: {err}"));
+            }
+            vec![]
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

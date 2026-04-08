@@ -129,8 +129,10 @@ export function getConfigJsonForWasm(): string | undefined {
  * Set a new config, persisting to localStorage and updating the file drawer.
  */
 export function setConfig(store: ConfigStore, config: AcbConfig): void {
-   store.config = config;
-   saveConfigToStorage(config);
+   // Ensure a new reference so Vue's reactivity triggers even when the
+   // caller mutated the existing config object in-place.
+   store.config = (config === store.config) ? { ...config } : config;
+   saveConfigToStorage(store.config);
    syncConfigToFileDrawer(store);
 }
 

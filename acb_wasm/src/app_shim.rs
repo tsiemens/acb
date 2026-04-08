@@ -338,6 +338,69 @@ impl serde::ser::Serialize for AppSummaryResultOk {
     }
 }
 
+/// A serializable account extracted from a broker file, with the config key
+/// identifying the broker and the raw account type/number.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize)]
+pub struct ExtractedAccount {
+    /// The config key for the broker (e.g. "questrade", "rbc_di", "etrade").
+    pub broker: String,
+    /// The account number as a string.
+    pub account_num: String,
+    /// The broker-detected account type (e.g. "TFSA", "Individual margin").
+    pub account_type: String,
+}
+
+impl ExtractedAccount {
+    fn from_account(
+        account: &acb::peripheral::broker::Account,
+    ) -> Option<Self> {
+        use acb::peripheral::broker::config_key_for_broker_name;
+        let broker = config_key_for_broker_name(account.broker_name)?;
+        if account.account_num.is_empty() {
+            return None;
+        }
+        Some(ExtractedAccount {
+            broker: broker.to_string(),
+            account_num: account.account_num.clone(),
+            account_type: account.account_type.clone(),
+        })
+    }
+}
+
+/// Result of extracting account numbers from broker files.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct AccountExtractionResult {
+    pub accounts: Vec<ExtractedAccount>,
+    pub warnings: Vec<String>,
+}
+
+/// Convert raw broker `Account` objects into a deduplicated, sorted, serializable result.
+pub fn to_account_extraction_result(
+    accounts: Vec<acb::peripheral::broker::Account>,
+    warnings: Vec<String>,
+) -> AccountExtractionResult {
+    use std::collections::HashSet;
+
+    let mut seen = HashSet::<ExtractedAccount>::new();
+    for account in &accounts {
+        if let Some(ea) = ExtractedAccount::from_account(account) {
+            seen.insert(ea);
+        }
+    }
+
+    let mut extracted: Vec<ExtractedAccount> = seen.into_iter().collect();
+    extracted.sort_by(|a, b| {
+        a.broker
+            .cmp(&b.broker)
+            .then_with(|| a.account_num.cmp(&b.account_num))
+    });
+
+    AccountExtractionResult {
+        accounts: extracted,
+        warnings,
+    }
+}
+
 pub async fn run_acb_app_summary(
     latest_date: acb::util::date::Date,
     csv_file_readers: Vec<DescribedReader>,

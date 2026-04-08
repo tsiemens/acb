@@ -5,12 +5,11 @@ use time::Date;
 
 use super::BrokerTx;
 use crate::{
-    portfolio::TxAction,
-    util::{
+    peripheral::broker::Account, portfolio::TxAction, util::{
         basic::SError,
         date::{DateRange, StaticDateFormat},
         decimal::parse_large_decimal,
-    },
+    }
 };
 
 use lazy_static::lazy_static;
@@ -977,6 +976,30 @@ pub fn parse_pdf_text(
         ]))
     } else {
         Err("Cannot categorize layout of PDF".to_string())
+    }
+}
+
+pub fn extract_etrade_pdf_accounts(
+    full_text: &str,
+    file_name: &str,
+    warnings: &mut Vec<String>,
+) -> Vec<Account> {
+    use std::path::PathBuf;
+
+    let filepath = PathBuf::from(file_name);
+    match parse_pdf_text(full_text, &filepath) {
+        Ok(content) => match content {
+            EtradePdfContent::BenefitConfirmation(benefits) => {
+                benefits.iter().map(|b| b.account.clone()).collect()
+            }
+            EtradePdfContent::TradeConfirmation(trades) => {
+                trades.iter().map(|t| t.account.clone()).collect()
+            }
+        },
+        Err(e) => {
+            warnings.push(format!("{file_name}: {e}"));
+            vec![]
+        }
     }
 }
 
