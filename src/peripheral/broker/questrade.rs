@@ -247,3 +247,37 @@ fn convert_date_str(date_str: &str) -> Result<Date, SError> {
         .ok_or(format!("Unable to parse date \"{date_str}\""))?;
     parse_standard_date(m.as_str()).map_err(|e| format!("{e}"))
 }
+
+
+pub fn extract_questrade_accounts(
+    data: &[u8],
+    file_name: &str,
+    warnings: &mut Vec<String>,
+) -> Vec<Account> {
+    use crate::peripheral::excel::{read_xl_source, XlSource};
+
+    let rg = match read_xl_source(XlSource::Data(data.to_vec()), None) {
+        Ok(rg) => rg,
+        Err(e) => {
+            warnings.push(format!("{file_name}: {e}"));
+            return vec![];
+        }
+    };
+    match sheet_to_txs(&rg, None) {
+        Ok(txs) => txs.iter().map(|t| t.account.clone()).collect(),
+        Err(e) => {
+            // Partial results may still have accounts
+            if let Some(ref txs) = e.txs {
+                let accounts: Vec<Account> =
+                    txs.iter().map(|t| t.account.clone()).collect();
+                if !accounts.is_empty() {
+                    return accounts;
+                }
+            }
+            for err in &e.errors {
+                warnings.push(format!("{file_name}: {err}"));
+            }
+            vec![]
+        }
+    }
+}

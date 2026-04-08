@@ -7,6 +7,8 @@
         dropMessage="Drop XLSX, PDF or CSV Files Here"
       />
 
+      <BrokerConvertConfigPanel />
+
       <div class="action-buttons">
         <SplitRunButton :tabId="TabId.BrokerConvert" :onAction="onRunAction" />
       </div>
@@ -27,6 +29,7 @@ import { defineComponent, type PropType } from 'vue';
 import TabContent from './TabContent.vue';
 import FileDropArea from './FileDropArea.vue';
 import SplitRunButton from './SplitRunButton.vue';
+import BrokerConvertConfigPanel from './BrokerConvertConfigPanel.vue';
 import ErrorBox from './ErrorBox.vue';
 import BrokerConvertOutputArea from './BrokerConvertOutputArea.vue';
 import { getBrokerConvertOutputStore } from './broker_convert_output_store.js';
@@ -37,7 +40,7 @@ import { TabId } from './tab_store.js';
 
 export default defineComponent({
    name: 'BrokerConvertTabContent',
-   components: { TabContent, FileDropArea, SplitRunButton, ErrorBox, BrokerConvertOutputArea },
+   components: { TabContent, FileDropArea, SplitRunButton, BrokerConvertConfigPanel, ErrorBox, BrokerConvertOutputArea },
    props: {
       onFilesDropped: {
          type: Function as PropType<(fileList: FileList) => void>,

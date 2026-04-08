@@ -287,8 +287,8 @@ fn detect_json(data: &[u8]) -> FileDetectResult {
         }
     };
 
-    let has_config_field = raw.get("version").is_some()
-        || raw.get("account_bindings").is_some();
+    let has_config_field =
+        raw.get("version").is_some() || raw.get("account_bindings").is_some();
     if !has_config_field {
         return FileDetectResult::unknown(
             "JSON file is not a valid ACB config".to_string(),

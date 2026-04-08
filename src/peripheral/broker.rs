@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use crate::app::config::AcbConfig;
 use crate::portfolio::Affiliate;
 
@@ -79,6 +81,88 @@ pub fn affiliate_for_account_with_config(
     } else {
         Affiliate::default()
     }
+}
+
+/// Extract unique accounts from broker file data.
+///
+/// For each file, the kind is detected and the appropriate broker parser
+/// runs to extract `Account` structs. Results are deduplicated.
+///
+/// `files` is a slice of (raw_data, file_name) pairs.
+/// `pdf_page_texts` provides pre-parsed PDF page texts: a slice of
+/// (pages, file_name) pairs, one per PDF file.
+///
+/// Returns `(accounts, warnings)`.
+#[cfg(feature = "xlsx_read")]
+pub fn extract_accounts_from_files(
+    files: &[(&[u8], &str)],
+    pdf_page_texts: &[(&[String], &str)],
+) -> (Vec<Account>, Vec<String>) {
+    let mut seen = HashSet::<Account>::new();
+    let mut warnings = Vec::new();
+
+    // Process non-PDF files (xlsx, csv)
+    for &(data, file_name) in files {
+        let detect_result =
+            match detect_file_kind(FileDetectSource::Bytes { data, file_name }) {
+                Ok(r) => r,
+                Err(e) => {
+                    warnings.push(format!("{file_name}: {e}"));
+                    continue;
+                }
+            };
+
+        let accounts: Vec<Account> = match detect_result.kind {
+            FileKind::QuestradeExcel => {
+                use crate::peripheral::broker::questrade::extract_questrade_accounts;
+
+                extract_questrade_accounts(data, file_name, &mut warnings)
+            }
+            FileKind::RbcDiCsv => {
+                use crate::peripheral::broker::rbc_di::extract_rbc_di_accounts;
+
+                extract_rbc_di_accounts(data, file_name, &mut warnings)
+            }
+            FileKind::EtradeBenefitsExcel => {
+                // Etrade xlsx files don't contain account numbers
+                continue;
+            }
+            _ => continue,
+        };
+
+        for account in accounts {
+            seen.insert(account);
+        }
+    }
+
+    // Process PDF files (already have page texts from JS-side parsing)
+    for &(ref pages, file_name) in pdf_page_texts {
+        let detect_result = detect_file_kind(FileDetectSource::PdfPages(pages))
+            .unwrap_or(FileDetectResult {
+                kind: FileKind::Unknown,
+                warning: None,
+            });
+
+        match detect_result.kind {
+            FileKind::EtradeTradeConfirmationPdf | FileKind::EtradeBenefitPdf => {
+                use crate::peripheral::broker::etrade::extract_etrade_pdf_accounts;
+
+                let full_text = pages.join("\n");
+                let accounts = extract_etrade_pdf_accounts(
+                    &full_text,
+                    file_name,
+                    &mut warnings,
+                );
+                for account in accounts {
+                    seen.insert(account);
+                }
+            }
+            _ => continue,
+        }
+    }
+
+    let accounts: Vec<Account> = seen.into_iter().collect();
+    (accounts, warnings)
 }
 
 #[cfg(test)]

@@ -1,4 +1,5 @@
 use regex::Regex;
+use serde::Serialize;
 
 use acb::app::config::AcbConfig;
 use acb::util::rw::DescribedReader;
@@ -20,7 +21,9 @@ pub fn parse_config(json: &str) -> Result<JsValue, JsValue> {
     let config = AcbConfig::from_json(json).map_err(|e| JsValue::from_str(&e))?;
     let warnings = AcbConfig::validate_warnings(json);
     let result = ConfigParseResult { config, warnings };
-    Ok(serde_wasm_bindgen::to_value(&result)?)
+    let serializer = serde_wasm_bindgen::Serializer::new()
+        .serialize_maps_as_objects(true);
+    Ok(result.serialize(&serializer)?)
 }
 
 /// Serialize a config object to pretty-printed JSON.
@@ -308,6 +311,60 @@ pub fn extract_etrade_pdf_data(
         trades_table: app_shim::SerializableRenderTable(result.trades_table),
     };
     Ok(serde_wasm_bindgen::to_value(&extract_result)?)
+}
+
+/// Extract unique account numbers from broker files.
+///
+/// `file_datas` and `file_names` are parallel arrays of non-PDF file bytes
+/// and names (xlsx, csv, etc.).
+/// `pdf_texts` and `pdf_names` are parallel arrays of pre-extracted PDF
+/// full-text strings and their file names.
+///
+/// Returns an `AccountExtractionResult` with `accounts` and `warnings`.
+#[wasm_bindgen]
+pub fn extract_account_numbers(
+    file_datas: Vec<web_sys::js_sys::Uint8Array>,
+    file_names: Vec<String>,
+    pdf_texts: Vec<String>,
+    pdf_names: Vec<String>,
+) -> Result<JsValue, JsValue> {
+    use acb::peripheral::broker::extract_accounts_from_files;
+
+    if file_datas.len() != file_names.len() {
+        return Err(JsValue::from_str(
+            "file_datas and file_names must have the same length",
+        ));
+    }
+    if pdf_texts.len() != pdf_names.len() {
+        return Err(JsValue::from_str(
+            "pdf_texts and pdf_names must have the same length",
+        ));
+    }
+
+    // Convert Uint8Array items to Vec<u8>
+    let file_bytes: Vec<Vec<u8>> =
+        file_datas.into_iter().map(|d| d.to_vec()).collect();
+    let files: Vec<(&[u8], &str)> = file_bytes
+        .iter()
+        .zip(file_names.iter())
+        .map(|(data, name)| (data.as_slice(), name.as_str()))
+        .collect();
+
+    // Split each pdf text into pages (single page per entry since JS
+    // already joins pages).  The Rust side expects &[String] per file.
+    let pdf_page_vecs: Vec<Vec<String>> =
+        pdf_texts.into_iter().map(|t| vec![t]).collect();
+    let pdf_page_texts: Vec<(&[String], &str)> = pdf_page_vecs
+        .iter()
+        .zip(pdf_names.iter())
+        .map(|(pages, name)| (pages.as_slice(), name.as_str()))
+        .collect();
+
+    let (accounts, warnings) =
+        extract_accounts_from_files(&files, &pdf_page_texts);
+    let result =
+        app_shim::to_account_extraction_result(accounts, warnings);
+    Ok(serde_wasm_bindgen::to_value(&result)?)
 }
 
 fn parse_initial_rates(
