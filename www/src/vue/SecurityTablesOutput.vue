@@ -20,7 +20,7 @@
 
 <script lang="ts">
 import { defineComponent, computed, type PropType } from 'vue';
-import type { OutputStore } from './output_store.js';
+import { InactiveFilterMode, type OutputStore } from './output_store.js';
 import type { RenderTable } from '../acb_wasm_types.js';
 import DataTable from './DataTable.vue';
 
@@ -97,7 +97,8 @@ export default defineComponent({
       }
 
       function shouldShowSecurity(symbol: string): boolean {
-         if (!props.store.highlightedYear || !props.store.hideInactiveSecurities) {
+         if (!props.store.highlightedYear ||
+             props.store.inactiveFilterMode === InactiveFilterMode.DimRows) {
             return true;
          }
          const table = getTable(symbol);
@@ -117,8 +118,11 @@ export default defineComponent({
          const year = row[SETTLE_DATE_COL]?.split('-')[0];
          const yearClass = `year-${year || 'unknown'}-row`;
 
-         const dimmed = props.store.highlightedYear && year !== props.store.highlightedYear
-            ? 'year-dimmed' : '';
+         const isNonMatching = props.store.highlightedYear && year !== props.store.highlightedYear;
+         const filterMode = props.store.inactiveFilterMode;
+         const dimmed = isNonMatching ? (
+            filterMode === InactiveFilterMode.HideRows ? 'year-hidden' : 'year-dimmed'
+         ) : '';
 
          const gl = gainLossType(row);
          const glClass = gl === 'gain' ? 'gain-row' : gl === 'loss' ? 'loss-row' : '';
@@ -180,6 +184,10 @@ export default defineComponent({
 <style scoped>
 :deep(.year-dimmed) {
   filter: opacity(0.4);
+}
+
+:deep(.year-hidden) {
+  display: none;
 }
 
 :deep(.nowrap-cell) {

@@ -2,6 +2,12 @@ import { reactive } from 'vue';
 import { AppFunctionMode } from '../common/acb_app_types.js';
 import type { RenderTable } from '../acb_wasm_types.js';
 
+export enum InactiveFilterMode {
+   DimRows = "dim_rows",
+   HideSecurities = "hide_securities",
+   HideRows = "hide_rows",
+}
+
 export enum AcbOutputViewMode {
    SecurityTables = "security_tables",
    Aggregate = "aggregate",
@@ -18,7 +24,7 @@ export interface OutputStore {
    aggregateTable: RenderTable | null;
    securityTables: Map<string, RenderTable> | null;
    highlightedYear: string | null;
-   hideInactiveSecurities: boolean;
+   inactiveFilterMode: InactiveFilterMode;
 }
 
 let store: OutputStore | null = null;
@@ -34,7 +40,7 @@ export function getOutputStore(): OutputStore {
          aggregateTable: null,
          securityTables: null,
          highlightedYear: null,
-         hideInactiveSecurities: false,
+         inactiveFilterMode: InactiveFilterMode.DimRows,
       });
    }
    return store;
