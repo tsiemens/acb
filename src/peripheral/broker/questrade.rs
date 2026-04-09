@@ -248,7 +248,6 @@ fn convert_date_str(date_str: &str) -> Result<Date, SError> {
     parse_standard_date(m.as_str()).map_err(|e| format!("{e}"))
 }
 
-
 pub fn extract_questrade_accounts(
     data: &[u8],
     file_name: &str,

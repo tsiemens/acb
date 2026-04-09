@@ -351,9 +351,7 @@ pub struct ExtractedAccount {
 }
 
 impl ExtractedAccount {
-    fn from_account(
-        account: &acb::peripheral::broker::Account,
-    ) -> Option<Self> {
+    fn from_account(account: &acb::peripheral::broker::Account) -> Option<Self> {
         use acb::peripheral::broker::config_key_for_broker_name;
         let broker = config_key_for_broker_name(account.broker_name)?;
         if account.account_num.is_empty() {
@@ -390,9 +388,7 @@ pub fn to_account_extraction_result(
 
     let mut extracted: Vec<ExtractedAccount> = seen.into_iter().collect();
     extracted.sort_by(|a, b| {
-        a.broker
-            .cmp(&b.broker)
-            .then_with(|| a.account_num.cmp(&b.account_num))
+        a.broker.cmp(&b.broker).then_with(|| a.account_num.cmp(&b.account_num))
     });
 
     AccountExtractionResult {
