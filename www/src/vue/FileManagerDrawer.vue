@@ -282,6 +282,15 @@ function removeSelected() {
                               : 'fm-use-checkbox-neutral'"
                            @click.stop
                         >
+                        <input
+                           v-else-if="file.kind === FileKind.AcbConfigJson"
+                           type="checkbox"
+                           checked
+                           disabled
+                           class="fm-use-checkbox-locked"
+                           title="Config files are always applied"
+                           @click.stop
+                        >
                      </td>
                      <td class="fm-col-name">
                         {{ file.name }}
@@ -650,6 +659,12 @@ th.fm-col-use > * {
 
 .fm-use-checkbox-neutral {
    accent-color: #929292;
+}
+
+.fm-use-checkbox-locked {
+   accent-color: #6a9fd8;
+   cursor: not-allowed;
+   opacity: 0.7;
 }
 
 .fm-warning-icon {
