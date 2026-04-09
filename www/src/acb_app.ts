@@ -67,6 +67,7 @@ async function asyncRunAcb(filenames: string[], contents: string[],
       outputStore.textOutput = ret.textOutput;
       outputStore.aggregateTable = ret.modelOutput.aggregateGainsTable;
       outputStore.securityTables = ret.modelOutput.securityTables;
+      outputStore.selectedAffiliate = null;
       ErrorBox.getMain().hide();
    } catch (err) {
       let errMsg = typeof err === "string" ? err : (err instanceof Error ? err.message : String(err));
@@ -136,19 +137,26 @@ async function asyncRunAcbSummary(filenames: string[], contents: string[], lates
 }
 
 function generateShareTallyRenderTable(txSummary: RenderTable): [RenderTable, string] {
-   if (txSummary.header[0] !== "security") {
-      throw new Error(`Expected 'security' column at index 0, found '${txSummary.header[0]}'`);
+   const secIdx = txSummary.header.indexOf("security");
+   if (secIdx < 0) {
+      throw new Error(`Expected 'security' column in header, found: ${txSummary.header.join(', ')}`);
    }
-   if (txSummary.header[4] !== "shares") {
-      throw new Error(`Expected 'shares' column at index 4, found '${txSummary.header[4]}'`);
+   const sharesIdx = txSummary.header.indexOf("shares");
+   if (sharesIdx < 0) {
+      throw new Error(`Expected 'shares' column in header, found: ${txSummary.header.join(', ')}`);
    }
+   const affIdx = txSummary.header.indexOf("affiliate");
+   const hasMultipleAffiliates = affIdx >= 0 &&
+      new Set(txSummary.rows.map(r => r[affIdx])).size > 1;
 
-   const header = ["security", "shares"];
+   const header = hasMultipleAffiliates
+      ? ["security", "affiliate", "shares"]
+      : ["security", "shares"];
    let csvText = header.join(",") + "\n";
    const rows = txSummary.rows.map((row) => {
-      const sec = row[0];
-      const shares = row[4];
-      let tallyRow = [sec, shares];
+      const tallyRow = hasMultipleAffiliates
+         ? [row[secIdx], row[affIdx], row[sharesIdx]]
+         : [row[secIdx], row[sharesIdx]];
       csvText += tallyRow.join(",") + "\n";
       return tallyRow;
    });

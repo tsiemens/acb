@@ -35,6 +35,7 @@
         <DataTable
           v-if="store.summaryTable"
           :table="store.summaryTable"
+          :rowClassFn="summaryRowClassFn"
           title="Summary"
         />
       </div>
@@ -45,6 +46,7 @@
         <DataTable
           v-if="store.aggregateTable"
           :table="store.aggregateTable"
+          :rowClassFn="aggregateRowClassFn"
           title="Aggregate Gains"
         />
       </div>
@@ -58,8 +60,8 @@
 </template>
 
 <script lang="ts">
-import { defineComponent, type PropType } from 'vue';
-import { type OutputStore, AcbOutputViewMode, getViewModeLabel } from './output_store.js';
+import { defineComponent, computed, type PropType } from 'vue';
+import { InactiveFilterMode, type OutputStore, AcbOutputViewMode, getViewModeLabel, affiliateMatches } from './output_store.js';
 import DataTable from './DataTable.vue';
 import SecurityTablesOutput from './SecurityTablesOutput.vue';
 import AcbAppOutputViewSettings from './AcbAppOutputViewSettings.vue';
@@ -73,10 +75,46 @@ export default defineComponent({
          required: true,
       },
    },
-   setup() {
+   setup(props) {
+      function filterClassForMatch(matching: boolean): string {
+         if (matching) return '';
+         const mode = props.store.inactiveFilterMode;
+         return mode === InactiveFilterMode.HideRows ? 'filter-hidden' : 'filter-dimmed';
+      }
+
+      function makeRowClassFn(table: { header: string[] }): (row: string[]) => string {
+         const affIdx = table.header.findIndex(h => h.toLowerCase() === 'affiliate');
+         // "Year" for aggregate table, date columns for summary/tally tables
+         const yearIdx = table.header.findIndex(h => h.toLowerCase() === 'year');
+         const settleDateIdx = table.header.findIndex(h => h.toLowerCase() === 'settlement date');
+         return (row: string[]) => {
+            let matching = true;
+            if (affIdx >= 0 && props.store.selectedAffiliate) {
+               matching = affiliateMatches(row[affIdx], props.store.selectedAffiliate);
+            }
+            if (matching && props.store.highlightedYear) {
+               if (yearIdx >= 0) {
+                  matching = row[yearIdx] === props.store.highlightedYear;
+               } else if (settleDateIdx >= 0) {
+                  const year = row[settleDateIdx]?.split('-')[0];
+                  matching = year === props.store.highlightedYear;
+               }
+            }
+            return filterClassForMatch(matching);
+         };
+      }
+
+      const summaryRowClassFn = computed(() =>
+         props.store.summaryTable ? makeRowClassFn(props.store.summaryTable) : null);
+
+      const aggregateRowClassFn = computed(() =>
+         props.store.aggregateTable ? makeRowClassFn(props.store.aggregateTable) : null);
+
       return {
          ViewMode: AcbOutputViewMode,
          getViewModeLabel,
+         summaryRowClassFn,
+         aggregateRowClassFn,
       };
    },
 });
@@ -151,6 +189,14 @@ export default defineComponent({
 }
 
 .acb-output.inactive {
+  display: none;
+}
+
+:deep(.filter-dimmed) {
+  filter: opacity(0.4);
+}
+
+:deep(.filter-hidden) {
   display: none;
 }
 </style>

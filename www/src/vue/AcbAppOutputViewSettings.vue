@@ -29,7 +29,24 @@
       </svg>
     </button>
 
-    <div class="year-pills">
+    <div v-if="availableAffiliates.length > 1" class="pill-group">
+      <button
+        class="year-pill"
+        :class="{ active: store.selectedAffiliate === null }"
+        @click="store.selectedAffiliate = null"
+      >All Affiliates</button>
+      <button
+        v-for="aff in availableAffiliates"
+        :key="aff"
+        class="year-pill"
+        :class="{ active: store.selectedAffiliate === aff }"
+        @click="store.selectedAffiliate = aff"
+      >{{ aff }}</button>
+    </div>
+
+    <div v-if="availableAffiliates.length > 1" class="pill-separator"></div>
+
+    <div class="pill-group">
       <button
         class="year-pill"
         :class="{ active: store.highlightedYear === null }"
@@ -48,7 +65,7 @@
 
 <script lang="ts">
 import { defineComponent, computed, type PropType } from 'vue';
-import { InactiveFilterMode, type OutputStore } from './output_store.js';
+import { InactiveFilterMode, affiliateBaseName, type OutputStore } from './output_store.js';
 
 const FILTER_CYCLE: InactiveFilterMode[] = [
    InactiveFilterMode.DimRows,
@@ -75,14 +92,43 @@ export default defineComponent({
             (s.textOutput !== '');
       });
 
+      const AFFILIATE_COL = 14;
+
+      const availableAffiliates = computed(() => {
+         const baseNames = new Set<string>();
+         if (props.store.securityTables) {
+            for (const table of props.store.securityTables.values()) {
+               for (const row of table.rows) {
+                  const aff = row[AFFILIATE_COL];
+                  if (aff) baseNames.add(affiliateBaseName(aff));
+               }
+            }
+         }
+         return Array.from(baseNames).sort((a, b) => {
+            const aIsDefault = a.toLowerCase() === 'default';
+            const bIsDefault = b.toLowerCase() === 'default';
+            if (aIsDefault && !bIsDefault) return -1;
+            if (!aIsDefault && bIsDefault) return 1;
+            return a.localeCompare(b);
+         });
+      });
+
       const availableYears = computed(() => {
          const years = new Set<number>();
          if (props.store.securityTables) {
             for (const table of props.store.securityTables.values()) {
                for (const row of table.rows) {
+                  // Settlement date column
                   const year = parseInt(row[2]?.split('-')[0], 10);
                   if (!isNaN(year)) years.add(year);
                }
+            }
+         }
+         if (props.store.summaryTable) {
+            for (const row of props.store.summaryTable.rows) {
+              // Settlement date column
+              const year = parseInt(row[2]?.split('-')[0], 10);
+              if (!isNaN(year)) years.add(year);
             }
          }
          return Array.from(years).sort((a, b) => b - a);
@@ -112,7 +158,7 @@ export default defineComponent({
             FILTER_CYCLE[(current + 1) % FILTER_CYCLE.length];
       }
 
-      return { FilterMode, hasOutput, availableYears, visibilityTitle, visibilityBtnClass, cycleVisibility };
+      return { FilterMode, hasOutput, availableAffiliates, availableYears, visibilityTitle, visibilityBtnClass, cycleVisibility };
    },
 });
 </script>
@@ -126,10 +172,16 @@ export default defineComponent({
   flex-wrap: wrap;
 }
 
-.year-pills {
+.pill-group {
   display: flex;
   gap: 4px;
   flex-wrap: wrap;
+}
+
+.pill-separator {
+  width: 1px;
+  height: 20px;
+  background: #ccc;
 }
 
 .year-pill {
@@ -187,4 +239,5 @@ export default defineComponent({
   border-color: #c9302c;
   color: white;
 }
+
 </style>
