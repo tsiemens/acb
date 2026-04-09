@@ -21,8 +21,8 @@ pub fn parse_config(json: &str) -> Result<JsValue, JsValue> {
     let config = AcbConfig::from_json(json).map_err(|e| JsValue::from_str(&e))?;
     let warnings = AcbConfig::validate_warnings(json);
     let result = ConfigParseResult { config, warnings };
-    let serializer = serde_wasm_bindgen::Serializer::new()
-        .serialize_maps_as_objects(true);
+    let serializer =
+        serde_wasm_bindgen::Serializer::new().serialize_maps_as_objects(true);
     Ok(result.serialize(&serializer)?)
 }
 
@@ -360,10 +360,8 @@ pub fn extract_account_numbers(
         .map(|(pages, name)| (pages.as_slice(), name.as_str()))
         .collect();
 
-    let (accounts, warnings) =
-        extract_accounts_from_files(&files, &pdf_page_texts);
-    let result =
-        app_shim::to_account_extraction_result(accounts, warnings);
+    let (accounts, warnings) = extract_accounts_from_files(&files, &pdf_page_texts);
+    let result = app_shim::to_account_extraction_result(accounts, warnings);
     Ok(serde_wasm_bindgen::to_value(&result)?)
 }
 

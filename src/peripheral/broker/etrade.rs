@@ -5,11 +5,13 @@ use time::Date;
 
 use super::BrokerTx;
 use crate::{
-    peripheral::broker::Account, portfolio::TxAction, util::{
+    peripheral::broker::Account,
+    portfolio::TxAction,
+    util::{
         basic::SError,
         date::{DateRange, StaticDateFormat},
         decimal::parse_large_decimal,
-    }
+    },
 };
 
 use lazy_static::lazy_static;
