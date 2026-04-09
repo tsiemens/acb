@@ -25,6 +25,7 @@ export interface OutputStore {
    securityTables: Map<string, RenderTable> | null;
    highlightedYear: string | null;
    inactiveFilterMode: InactiveFilterMode;
+   selectedAffiliate: string | null;
 }
 
 let store: OutputStore | null = null;
@@ -41,6 +42,7 @@ export function getOutputStore(): OutputStore {
          securityTables: null,
          highlightedYear: null,
          inactiveFilterMode: InactiveFilterMode.DimRows,
+         selectedAffiliate: null,
       });
    }
    return store;
@@ -81,4 +83,17 @@ const VIEW_MODE_LABELS: Record<AcbOutputViewMode, string> = {
 
 export function getViewModeLabel(mode: AcbOutputViewMode): string {
    return VIEW_MODE_LABELS[mode];
+}
+
+/** Strip the registered suffix "(R)" to get the base affiliate name. */
+export function affiliateBaseName(affiliate: string): string {
+   return affiliate.replace(/\s*\(R\)$/i, '').trim();
+}
+
+/**
+ * Check if a row's affiliate value matches the selected affiliate filter.
+ * Matches on base name (ignoring "(R)" suffix).
+ */
+export function affiliateMatches(rowAffiliate: string, selected: string): boolean {
+   return affiliateBaseName(rowAffiliate) === selected;
 }

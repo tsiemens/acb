@@ -20,17 +20,17 @@
 
 <script lang="ts">
 import { defineComponent, computed, type PropType } from 'vue';
-import { InactiveFilterMode, type OutputStore } from './output_store.js';
+import { InactiveFilterMode, affiliateMatches, type OutputStore } from './output_store.js';
 import type { RenderTable } from '../acb_wasm_types.js';
 import DataTable from './DataTable.vue';
 
-const TRADE_DATE_COL = 1;
 const SETTLE_DATE_COL = 2;
 const ACTION_COL = 3;
 const AMOUNT_COL = 4;
 const AMT_PER_SHARE_COL = 6;
 const COMMISSION_COL = 8;
 const CAP_GAIN_COL = 9;
+const AFFILIATE_COL = 14;
 const MEMO_COL = 15;
 
 const BREAK_BEFORE_PAREN_COLS = new Set([AMOUNT_COL, AMT_PER_SHARE_COL, COMMISSION_COL]);
@@ -96,15 +96,28 @@ export default defineComponent({
          return `This security has no transactions before the ${currentTaxYear} tax year.`;
       }
 
+      function isRowMatching(row: string[]): boolean {
+         const year = row[SETTLE_DATE_COL]?.split('-')[0];
+         if (props.store.highlightedYear && year !== props.store.highlightedYear) return false;
+         const aff = row[AFFILIATE_COL];
+         if (props.store.selectedAffiliate && aff &&
+             !affiliateMatches(aff, props.store.selectedAffiliate)) return false;
+         return true;
+      }
+
+      function hasAnyFilter(): boolean {
+         return !!(props.store.highlightedYear || props.store.selectedAffiliate);
+      }
+
       function shouldShowSecurity(symbol: string): boolean {
-         if (!props.store.highlightedYear ||
-             props.store.inactiveFilterMode === InactiveFilterMode.DimRows) {
+         if (!hasAnyFilter()) return true;
+         if (props.store.inactiveFilterMode === InactiveFilterMode.DimRows) {
             return true;
          }
          const table = getTable(symbol);
          const hasError = table.errors && table.errors.length > 0;
          if (hasError) return true;
-         return getYearsForSymbol(symbol).has(props.store.highlightedYear);
+         return table.rows.some(isRowMatching);
       }
 
       function gainLossType(row: string[]): 'gain' | 'loss' | null {
@@ -115,19 +128,16 @@ export default defineComponent({
       }
 
       function rowClassFn(row: string[]): string[] {
-         const year = row[SETTLE_DATE_COL]?.split('-')[0];
-         const yearClass = `year-${year || 'unknown'}-row`;
-
-         const isNonMatching = props.store.highlightedYear && year !== props.store.highlightedYear;
+         const matching = isRowMatching(row);
          const filterMode = props.store.inactiveFilterMode;
-         const dimmed = isNonMatching ? (
-            filterMode === InactiveFilterMode.HideRows ? 'year-hidden' : 'year-dimmed'
+         const filterClass = !matching ? (
+            filterMode === InactiveFilterMode.HideRows ? 'filter-hidden' : 'filter-dimmed'
          ) : '';
 
          const gl = gainLossType(row);
          const glClass = gl === 'gain' ? 'gain-row' : gl === 'loss' ? 'loss-row' : '';
 
-         return [yearClass, dimmed, glClass].filter(Boolean);
+         return [filterClass, glClass].filter(Boolean);
       }
 
       function cellClassFn(row: string[], colIndex: number): string | string[] | null {
@@ -182,11 +192,11 @@ export default defineComponent({
 </script>
 
 <style scoped>
-:deep(.year-dimmed) {
+:deep(.filter-dimmed) {
   filter: opacity(0.4);
 }
 
-:deep(.year-hidden) {
+:deep(.filter-hidden) {
   display: none;
 }
 
