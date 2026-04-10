@@ -90,7 +90,9 @@ pub async fn run_acb_app_to_delta_models(
     let mut delta_results = HashMap::<Security, DeltaListResult>::new();
 
     for (sec, mut sec_txs) in txs_by_sec {
-        crate::portfolio::splits::replace_global_security_txs(&mut sec_txs)?;
+        crate::portfolio::global_affiliate_txs::replace_global_security_txs(
+            &mut sec_txs,
+        )?;
 
         let deltas_res = txs_to_delta_list(&sec_txs);
         delta_results.insert(sec, deltas_res);

@@ -1,11 +1,11 @@
 pub mod bookkeeping;
 pub mod csv_common;
 mod cumulative_gains;
+pub mod global_affiliate_txs;
 pub mod io;
 mod misc;
 pub mod model;
 pub mod render;
-pub mod splits;
 pub mod summary;
 
 pub use self::cumulative_gains::*;
