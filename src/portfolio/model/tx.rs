@@ -758,6 +758,31 @@ fn total_or_amount_per_share_to_gez(
     }
 }
 
+// Get the default (not necessarily Affiliate::default) affiliate for a given action,
+// if the affiliate is not specified in the CSV.
+fn default_affiliate_for_action(act_specs: &TxActionSpecifics) -> Affiliate {
+    match act_specs {
+        // Splits apply to all affiliates by default
+        TxActionSpecifics::Split(_) => Affiliate::global(),
+        // Distribution actions with per-share amounts apply to all affiliates
+        // by default, since the per-share amount is independent of which
+        // affiliate holds the shares.
+        TxActionSpecifics::Roc(d)
+        | TxActionSpecifics::RiCGDist(d)
+        | TxActionSpecifics::RiDiv(d)
+        | TxActionSpecifics::CGDiv(d) => {
+            if d.amount_per_held_share().is_some() {
+                Affiliate::global()
+            } else {
+                Affiliate::default()
+            }
+        }
+        TxActionSpecifics::Buy(_)
+        | TxActionSpecifics::Sell(_)
+        | TxActionSpecifics::Sfla(_) => Affiliate::default(),
+    }
+}
+
 impl TryFrom<CsvTx> for Tx {
     type Error = String;
 
@@ -885,7 +910,9 @@ impl TryFrom<CsvTx> for Tx {
         let not_found_err =
             |col_name| -> String { format!("\"{col_name}\" not found") };
 
-        let is_split = act_specs.action() == TxAction::Split;
+        let affiliate = csv_tx
+            .affiliate
+            .unwrap_or_else(|| default_affiliate_for_action(&act_specs));
 
         let tx = Tx {
             security: csv_tx
@@ -899,10 +926,7 @@ impl TryFrom<CsvTx> for Tx {
                 .ok_or_else(|| not_found_err(CsvCol::SETTLEMENT_DATE))?,
             action_specifics: act_specs,
             memo: csv_tx.memo.unwrap_or_else(|| String::new()),
-            affiliate: csv_tx.affiliate.unwrap_or_else(||
-                // Unless otherwise specified, splits apply to all affiliates
-                if is_split { Affiliate::global() } else { Affiliate::default() }
-            ),
+            affiliate,
             read_index: csv_tx.read_index,
         };
         if tx.security.is_empty() {
@@ -1781,5 +1805,70 @@ mod tests {
         let roc_csvtx = barebones_valid_sample_csvtx(TxAction::Roc);
         let err = Tx::try_from(roc_csvtx).unwrap_err();
         assert_eq!(err, "Ret. of Cap. should not specify shares (found 123.1). This amount is automatic (the current share balance)");
+    }
+
+    #[test]
+    fn test_default_affiliate() {
+        let dist_per_share = super::DistTxSpecifics {
+            amount: TotalOrAmountPerShare::AmountPerShare(gez(dec!(1))),
+            tx_currency_and_rate: CurrencyAndExchangeRate::default(),
+        };
+        let dist_total = super::DistTxSpecifics {
+            amount: TotalOrAmountPerShare::Total(gez(dec!(10))),
+            tx_currency_and_rate: CurrencyAndExchangeRate::default(),
+        };
+
+        let split_specs = super::TxActionSpecifics::Split(super::SplitTxSpecifics {
+            ratio: SplitRatio::parse("2-for-1").unwrap(),
+        });
+
+        // Splits always default to global
+        assert_eq!(
+            super::default_affiliate_for_action(&split_specs),
+            Affiliate::global()
+        );
+
+        // Dist actions with per-share amount default to global
+        for action_specs in [
+            super::TxActionSpecifics::Roc(dist_per_share.clone()),
+            super::TxActionSpecifics::RiCGDist(dist_per_share.clone()),
+            super::TxActionSpecifics::RiDiv(dist_per_share.clone()),
+            super::TxActionSpecifics::CGDiv(dist_per_share.clone()),
+        ] {
+            assert_eq!(
+                super::default_affiliate_for_action(&action_specs),
+                Affiliate::global(),
+                "Expected global affiliate for per-share dist {:?}",
+                action_specs.action()
+            );
+        }
+
+        // Dist actions with total amount default to non-global default
+        for action_specs in [
+            super::TxActionSpecifics::Roc(dist_total.clone()),
+            super::TxActionSpecifics::RiCGDist(dist_total.clone()),
+            super::TxActionSpecifics::RiDiv(dist_total.clone()),
+            super::TxActionSpecifics::CGDiv(dist_total.clone()),
+        ] {
+            assert_eq!(
+                super::default_affiliate_for_action(&action_specs),
+                Affiliate::default(),
+                "Expected default affiliate for total-amount dist {:?}",
+                action_specs.action()
+            );
+        }
+
+        // Buy/Sell default to non-global default
+        let buy_specs = super::TxActionSpecifics::Buy(BuyTxSpecifics {
+            shares: pos(dec!(1)),
+            amount_per_share: gez(dec!(10)),
+            commission: gez(dec!(0)),
+            tx_currency_and_rate: CurrencyAndExchangeRate::default(),
+            separate_commission_currency: None,
+        });
+        assert_eq!(
+            super::default_affiliate_for_action(&buy_specs),
+            Affiliate::default()
+        );
     }
 }

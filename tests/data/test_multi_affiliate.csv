@@ -13,12 +13,12 @@ FOO,2018-02-06,2018-02-08,Sell,2,,1.99,USD,1.2,,-1.3731119002638,,,"Sell (explic
 FOO,2018-02-06,2018-02-08,SFLA,1,,1.3731119002638,,,,,,,Manual SFLA specified in total amount
 FOO,2018-02-06,2018-02-08,Sell,2,,1.99,USD,1.2,,-1.7207,,,"Sell (explicit superficial loss), specified in total amount (2)"
 FOO,2018-02-06,2018-02-08,SFLA,1,1.775,,,,,,,,Manual SFLA specified in per-share amount
-FOO,2018-02-20,2018-02-20,RoC,,0.1,,USD,,,,,,"Per share, No AF specified"
-FOO,2018-02-21,2018-02-21,RoC,,,0.4,USD,,,,,,"Total Amount, No AF specified"
-FOO,2018-02-22,2018-02-22,RiCGDist,,0.2,,USD,,,,,,"Per share, No AF specified"
-FOO,2018-02-23,2018-02-23,RiCGDist,,,0.5,USD,,,,,,"Total Amount, No AF specified"
-FOO,2018-02-24,2018-02-24,RiDiv,,0.3,,USD,,,,,,"Per share, No AF specified"
-FOO,2018-02-25,2018-02-25,RiDiv,,,0.6,USD,,,,,,"Total Amount, No AF specified"
-FOO,2018-02-26,2018-02-26,CGDiv,,0.4,,USD,,,,,,"Per share, No AF specified"
-FOO,2018-02-27,2018-02-27,CGDiv,,,0.7,USD,,,,,,"Total Amount, No AF specified"
+FOO,2018-02-10,2018-02-10,RoC,,0.1,,USD,,,,,,"Per share, No AF specified"
+FOO,2018-02-12,2018-02-12,RoC,,,0.4,USD,,,,,,"Total Amount, No AF specified"
+FOO,2018-02-13,2018-02-13,RiCGDist,,0.2,,USD,,,,,,"Per share, No AF specified"
+FOO,2018-02-15,2018-02-15,RiCGDist,,,0.5,USD,,,,,,"Total Amount, No AF specified"
+FOO,2018-02-16,2018-02-16,RiDiv,,0.3,,USD,,,,,,"Per share, No AF specified"
+FOO,2018-02-18,2018-02-18,RiDiv,,,0.6,USD,,,,,,"Total Amount, No AF specified"
+FOO,2018-02-19,2018-02-19,CGDiv,,0.4,,USD,,,,,,"Per share, No AF specified"
+FOO,2018-02-21,2018-02-21,CGDiv,,,0.7,USD,,,,,,"Total Amount, No AF specified"
 FOO,2018-12-31,2018-12-31,Split,,,,,,,,4-for-1,,4:1 split

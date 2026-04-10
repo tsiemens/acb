@@ -1,8 +1,14 @@
 use crate::util::basic::SError;
 
-use super::{find_all_non_global_affiliates, Affiliate, Tx, TxAction};
+use super::{
+    find_all_non_global_affiliates, Affiliate, Tx, TxAction, TxActionSpecifics,
+};
 
-fn has_non_global_surrounding_splits(txs: &[Tx], idx: usize) -> bool {
+fn has_non_global_conflicting_surrounding_tx(
+    txs: &[Tx],
+    idx: usize,
+    tx_action: TxAction,
+) -> bool {
     let target_date = txs[idx].trade_date;
 
     // Check backwards
@@ -17,7 +23,7 @@ fn has_non_global_surrounding_splits(txs: &[Tx], idx: usize) -> bool {
                 break;
             }
 
-            if tx.action() == TxAction::Split && !tx.affiliate.is_global() {
+            if tx.action() == tx_action && !tx.affiliate.is_global() {
                 has_surrounding = true;
                 break;
             }
@@ -38,7 +44,7 @@ fn has_non_global_surrounding_splits(txs: &[Tx], idx: usize) -> bool {
             break;
         }
 
-        if tx.action() == TxAction::Split && !tx.affiliate.is_global() {
+        if tx.action() == tx_action && !tx.affiliate.is_global() {
             return true;
         }
     }
@@ -46,65 +52,101 @@ fn has_non_global_surrounding_splits(txs: &[Tx], idx: usize) -> bool {
     false
 }
 
-/// Goes through sorted_security_txs and finds all Split Txs with the global
-/// affiliate. Converts this into per-affiliate Txs, for all affiliates in
-/// the vector.
-/// As a sanity check, it will return an error if any candidate split is
-/// accompanied by another within a day, which has a specified affiliate.
-/// This would most likely occur if a user is following the old directions of
-/// specifying a split for each affiliate, and would result in unexpected
-/// behaviour because the "default" affiliate for splits is __global__ now,
-/// and so it would result in a double split for those non-default affiliates,
-/// which we do not want.
-pub fn replace_global_security_splits(
+fn is_per_share_dist(tx: &Tx) -> bool {
+    match &tx.action_specifics {
+        TxActionSpecifics::Roc(d)
+        | TxActionSpecifics::RiCGDist(d)
+        | TxActionSpecifics::RiDiv(d)
+        | TxActionSpecifics::CGDiv(d) => d.amount_per_held_share().is_some(),
+        _ => false,
+    }
+}
+
+fn is_global_per_share_dist(tx: &Tx) -> bool {
+    tx.affiliate.is_global() && is_per_share_dist(tx)
+}
+
+/// Goes through sorted_security_txs and finds all Split and per-share dist Txs
+/// with the global affiliate, and converts each into per-affiliate Txs.
+///
+/// For splits, expands to all non-global affiliates (including registered),
+/// since a split affects all share holders regardless of account type.
+///
+/// For per-share dists, expands to all non-global, non-registered affiliates
+/// only, since dists cannot be applied to registered affiliates.
+///
+/// As a sanity check, returns an error if any candidate tx is accompanied by
+/// a non-global tx of the same action within a day. This would most likely
+/// indicate duplicate entries, and would result in double-counting.
+pub fn replace_global_security_txs(
     sorted_security_txs: &mut Vec<Tx>,
 ) -> Result<(), SError> {
-    // First find all global splits and validate them
-    let mut split_indices = Vec::new();
+    let mut global_tx_indices = Vec::new();
 
-    // Collect indices of global splits and validate them
     for (idx, tx) in sorted_security_txs.iter().enumerate() {
-        if tx.action() == TxAction::Split && tx.affiliate.is_global() {
-            // Check for surrounding non-global splits
-            if has_non_global_surrounding_splits(sorted_security_txs, idx) {
+        let is_global_split =
+            tx.action() == TxAction::Split && tx.affiliate.is_global();
+        let is_global_dist = is_global_per_share_dist(tx);
+
+        if is_global_split || is_global_dist {
+            let action = tx.action();
+            let has_conflict = has_non_global_conflicting_surrounding_tx(
+                sorted_security_txs,
+                idx,
+                action,
+            );
+            if has_conflict {
                 return Err(format!(
-                    "Found non-global split of {} near global split on {}. This likely indicates \
-                    duplicate split entries. Manually specify Default for split if this is intentional.",
-                    tx.security, tx.trade_date
+                    "Found non-global {} of {} near global {} on {}. This likely \
+                    indicates duplicate entries. Manually specify Default if this \
+                    is intentional.",
+                    action.med_pretty_str(),
+                    tx.security,
+                    action.med_pretty_str(),
+                    tx.trade_date
                 ));
             }
-            split_indices.push(idx);
+            global_tx_indices.push(idx);
         }
     }
 
-    // If no global splits found, nothing to do
-    if split_indices.is_empty() {
+    if global_tx_indices.is_empty() {
         return Ok(());
     }
 
-    // Get all affiliates we need to create splits for
-    let mut non_global_affiliates: Vec<_> =
+    // Precompute the two affiliate sets used during expansion.
+    let all_non_global: Vec<_> =
         find_all_non_global_affiliates(sorted_security_txs).into_iter().collect();
+    let non_registered: Vec<_> =
+        all_non_global.iter().filter(|af| !af.registered()).cloned().collect();
+    let just_default_affiliate = vec![Affiliate::default()];
 
-    // Ensure we have at least the default affiliate. This would be a weird case
-    // where the only Txs are splits, but we'll handle it anyway.
-    if non_global_affiliates.is_empty() {
-        non_global_affiliates.push(Affiliate::default());
-    }
+    // Process in reverse order to not invalidate earlier indices.
+    for &idx in global_tx_indices.iter().rev() {
+        let is_split = sorted_security_txs[idx].action() == TxAction::Split;
 
-    // Process splits in reverse order to not invalidate indices
-    for &idx in split_indices.iter().rev() {
-        if non_global_affiliates.len() == 1 {
-            // If there's only one affiliate to replace with, just modify in place
-            sorted_security_txs[idx].affiliate = non_global_affiliates[0].clone();
+        // Splits replicate for all affiliates (registered accounts still split).
+        // Dists replicate only for non-registered affiliates.
+        let base_set = if is_split {
+            &all_non_global
         } else {
-            // For multiple affiliates, we need to remove and insert
-            let global_split = sorted_security_txs.remove(idx);
+            &non_registered
+        };
+        let affiliates: &Vec<Affiliate> = if base_set.is_empty() {
+            &just_default_affiliate
+        } else {
+            base_set
+        };
 
-            for affiliate in non_global_affiliates.iter().rev() {
-                let mut new_split = global_split.clone();
-                new_split.affiliate = affiliate.clone();
-                sorted_security_txs.insert(idx, new_split);
+        if affiliates.len() == 1 {
+            // Modify in place rather than remove + insert.
+            sorted_security_txs[idx].affiliate = affiliates[0].clone();
+        } else {
+            let global_tx = sorted_security_txs.remove(idx);
+            for affiliate in affiliates.iter().rev() {
+                let mut new_tx = global_tx.clone();
+                new_tx.affiliate = affiliate.clone();
+                sorted_security_txs.insert(idx, new_tx);
             }
         }
     }
@@ -196,7 +238,7 @@ mod tests {
     #[test]
     fn test_empty_vector() {
         let mut txs = Vec::new();
-        assert!(replace_global_security_splits(&mut txs).is_ok());
+        assert!(replace_global_security_txs(&mut txs).is_ok());
         assert!(txs.is_empty());
     }
 
@@ -204,7 +246,7 @@ mod tests {
     fn test_single_global_split_no_affiliates() {
         let mut txs = vec![create_tx(1, TxAction::Split, Affiliate::global(), 1)];
 
-        replace_global_security_splits(&mut txs).unwrap();
+        replace_global_security_txs(&mut txs).unwrap();
 
         assert_eq!(txs.len(), 1);
         assert!(!txs[0].affiliate.is_global());
@@ -220,7 +262,7 @@ mod tests {
             create_tx(1, TxAction::Split, Affiliate::global(), 2),
         ];
 
-        replace_global_security_splits(&mut txs).unwrap();
+        replace_global_security_txs(&mut txs).unwrap();
 
         assert_eq!(txs.len(), 2);
         assert_eq!(txs[1].affiliate, affiliate);
@@ -237,7 +279,7 @@ mod tests {
             create_tx(1, TxAction::Buy, affiliate2.clone(), 3),
         ];
 
-        replace_global_security_splits(&mut txs).unwrap();
+        replace_global_security_txs(&mut txs).unwrap();
 
         assert_eq!(txs.len(), 4);
         assert_affiliates_at_indices(
@@ -260,7 +302,7 @@ mod tests {
             create_tx(11, TxAction::Buy, affiliate1.clone(), 3),
         ];
 
-        replace_global_security_splits(&mut txs).unwrap();
+        replace_global_security_txs(&mut txs).unwrap();
 
         assert_eq!(txs.len(), 3);
         assert_tx(&txs[0], TxAction::Split, &affiliate1, 1);
@@ -275,7 +317,7 @@ mod tests {
             create_tx(12, TxAction::Buy, affiliate2.clone(), 4),
         ];
 
-        replace_global_security_splits(&mut txs).unwrap();
+        replace_global_security_txs(&mut txs).unwrap();
 
         assert_eq!(txs.len(), 6);
         assert_affiliates_at_indices(
@@ -302,7 +344,7 @@ mod tests {
             create_tx(1, TxAction::Split, Affiliate::from_strep("test"), 2),
         ];
 
-        assert!(replace_global_security_splits(&mut txs).is_err());
+        assert!(replace_global_security_txs(&mut txs).is_err());
         // Verify vector wasn't modified
         assert_eq!(txs.len(), 2);
         assert!(txs[0].affiliate.is_global());
@@ -313,7 +355,7 @@ mod tests {
             create_tx(2, TxAction::Split, Affiliate::from_strep("test"), 2),
         ];
 
-        assert!(replace_global_security_splits(&mut txs).is_err());
+        assert!(replace_global_security_txs(&mut txs).is_err());
         // Verify vector wasn't modified
         assert_eq!(txs.len(), 2);
         assert!(txs[0].affiliate.is_global());
@@ -323,7 +365,7 @@ mod tests {
             create_tx(2, TxAction::Split, Affiliate::global(), 2),
         ];
 
-        assert!(replace_global_security_splits(&mut txs).is_err());
+        assert!(replace_global_security_txs(&mut txs).is_err());
         // Verify vector wasn't modified
         assert_eq!(txs.len(), 2);
         assert!(txs[1].affiliate.is_global());
@@ -335,7 +377,7 @@ mod tests {
         ];
 
         let before_txs = txs.clone();
-        assert!(replace_global_security_splits(&mut txs).is_ok());
+        assert!(replace_global_security_txs(&mut txs).is_ok());
         // Verify vector wasn't modified
         assert_vec_eq(before_txs, txs);
     }
@@ -348,7 +390,7 @@ mod tests {
             create_tx(5, TxAction::Split, Affiliate::from_strep("test2"), 3),
         ];
 
-        replace_global_security_splits(&mut txs).unwrap();
+        replace_global_security_txs(&mut txs).unwrap();
 
         assert_eq!(txs.len(), 4);
         assert!(!txs[1].affiliate.is_global());
@@ -366,7 +408,7 @@ mod tests {
             create_tx(20, TxAction::Split, Affiliate::global(), 3),
         ];
 
-        replace_global_security_splits(&mut txs).unwrap();
+        replace_global_security_txs(&mut txs).unwrap();
 
         assert_eq!(txs.len(), 3);
         assert!(!txs[0].affiliate.is_global());
@@ -381,7 +423,7 @@ mod tests {
             create_tx(20, TxAction::Split, Affiliate::global(), 4),
         ];
 
-        replace_global_security_splits(&mut txs).unwrap();
+        replace_global_security_txs(&mut txs).unwrap();
 
         assert_eq!(txs.len(), 6);
         assert_affiliates_at_indices(
@@ -400,5 +442,222 @@ mod tests {
         assert_eq!(txs[3].action(), TxAction::Buy);
         assert_eq!(txs[4].action(), TxAction::Split);
         assert_eq!(txs[5].action(), TxAction::Split);
+    }
+
+    // Helper to create a per-share dist tx (global affiliate by default)
+    fn create_dist_tx(
+        date: i32,
+        action_type: TxAction,
+        affiliate: Affiliate,
+        read_index: u32,
+    ) -> Tx {
+        TTx {
+            t_day: date,
+            act: action_type,
+            price: gez!(1), // amount_per_share → triggers global default
+            af: affiliate,
+            read_index,
+            ..TTx::default()
+        }
+        .x()
+    }
+
+    #[test]
+    fn test_global_dist_no_affiliates() {
+        // A global per-share dist with no other affiliates → defaults to Default
+        for action in
+            [TxAction::Roc, TxAction::RiCGDist, TxAction::RiDiv, TxAction::CGDiv]
+        {
+            let mut txs = vec![create_dist_tx(1, action, Affiliate::global(), 1)];
+
+            replace_global_security_txs(&mut txs).unwrap();
+
+            assert_eq!(txs.len(), 1);
+            assert_eq!(txs[0].affiliate, Affiliate::default());
+            assert_eq!(txs[0].read_index, 1);
+        }
+    }
+
+    #[test]
+    fn test_global_dist_one_non_registered_affiliate() {
+        let affiliate = Affiliate::from_strep("myaf");
+        for action in
+            [TxAction::Roc, TxAction::RiCGDist, TxAction::RiDiv, TxAction::CGDiv]
+        {
+            let mut txs = vec![
+                create_tx(1, TxAction::Buy, affiliate.clone(), 1),
+                create_dist_tx(2, action, Affiliate::global(), 2),
+            ];
+
+            replace_global_security_txs(&mut txs).unwrap();
+
+            assert_eq!(txs.len(), 2);
+            assert_eq!(txs[1].affiliate, affiliate);
+            assert_eq!(txs[1].read_index, 2);
+        }
+    }
+
+    #[test]
+    fn test_global_dist_multiple_non_registered_affiliates() {
+        let af1 = Affiliate::from_strep("af1");
+        let af2 = Affiliate::from_strep("af2");
+        for action in
+            [TxAction::Roc, TxAction::RiCGDist, TxAction::RiDiv, TxAction::CGDiv]
+        {
+            let mut txs = vec![
+                create_tx(1, TxAction::Buy, af1.clone(), 1),
+                create_tx(1, TxAction::Buy, af2.clone(), 2),
+                create_dist_tx(2, action, Affiliate::global(), 3),
+            ];
+
+            replace_global_security_txs(&mut txs).unwrap();
+
+            // One dist tx per non-registered affiliate
+            assert_eq!(txs.len(), 4);
+            assert_affiliates_at_indices(
+                &txs,
+                vec![2, 3],
+                vec![af1.clone(), af2.clone()],
+            );
+            assert_eq!(txs[2].read_index, 3);
+            assert_eq!(txs[3].read_index, 3);
+        }
+    }
+
+    #[test]
+    fn test_global_dist_skips_registered_affiliates() {
+        // Registered affiliate should not receive a dist tx
+        let af_nonreg = Affiliate::from_strep("nonreg");
+        let af_reg = Affiliate::default_registered();
+        for action in
+            [TxAction::Roc, TxAction::RiCGDist, TxAction::RiDiv, TxAction::CGDiv]
+        {
+            let mut txs = vec![
+                create_tx(1, TxAction::Buy, af_nonreg.clone(), 1),
+                create_tx(1, TxAction::Buy, af_reg.clone(), 2),
+                create_dist_tx(2, action, Affiliate::global(), 3),
+            ];
+
+            replace_global_security_txs(&mut txs).unwrap();
+
+            // Only one dist tx — for the non-registered affiliate
+            assert_eq!(txs.len(), 3);
+            assert_eq!(txs[2].affiliate, af_nonreg);
+        }
+    }
+
+    #[test]
+    fn test_global_dist_all_four_affiliate_types() {
+        // Buys from default, default registered, non-default, and non-default
+        // registered. Only the two non-registered affiliates should receive
+        // copies of the dist.
+        let af_default = Affiliate::default();
+        let af_default_reg = Affiliate::default_registered();
+        let af_nondefault = Affiliate::from_strep("spouse");
+        let af_nondefault_reg = Affiliate::from_base_name("spouse", true);
+
+        for action in
+            [TxAction::Roc, TxAction::RiCGDist, TxAction::RiDiv, TxAction::CGDiv]
+        {
+            let mut txs = vec![
+                create_tx(1, TxAction::Buy, af_default.clone(), 1),
+                create_tx(1, TxAction::Buy, af_default_reg.clone(), 2),
+                create_tx(1, TxAction::Buy, af_nondefault.clone(), 3),
+                create_tx(1, TxAction::Buy, af_nondefault_reg.clone(), 4),
+                create_dist_tx(2, action, Affiliate::global(), 5),
+            ];
+
+            replace_global_security_txs(&mut txs).unwrap();
+
+            // One dist tx per non-registered affiliate (default + nondefault = 2)
+            assert_eq!(txs.len(), 6);
+            assert_affiliates_at_indices(
+                &txs,
+                vec![4, 5],
+                vec![af_default.clone(), af_nondefault.clone()],
+            );
+            assert_eq!(txs[4].read_index, 5);
+            assert_eq!(txs[5].read_index, 5);
+        }
+    }
+
+    #[test]
+    fn test_global_dist_total_amount_not_expanded() {
+        // A dist with total_amount (not per-share) should NOT be expanded
+        for action in
+            [TxAction::Roc, TxAction::RiCGDist, TxAction::RiDiv, TxAction::CGDiv]
+        {
+            let total_dist_tx = TTx {
+                t_day: 2,
+                act: action,
+                t_amt: gez!(5), // total amount, not per-share
+                af: Affiliate::global(),
+                read_index: 2,
+                ..TTx::default()
+            }
+            .x();
+            let mut txs = vec![
+                create_tx(1, TxAction::Buy, Affiliate::from_strep("af1"), 1),
+                total_dist_tx,
+            ];
+            let before = txs.clone();
+
+            replace_global_security_txs(&mut txs).unwrap();
+
+            // Global total-amount dists are left untouched
+            assert_vec_eq(before, txs);
+        }
+    }
+
+    #[test]
+    fn test_nearby_non_global_dist_error() {
+        for action in
+            [TxAction::Roc, TxAction::RiCGDist, TxAction::RiDiv, TxAction::CGDiv]
+        {
+            // Same day: global per-share + explicit per-share -> error (duplicate)
+            let mut txs = vec![
+                create_dist_tx(1, action, Affiliate::global(), 1),
+                create_dist_tx(1, action, Affiliate::from_strep("test"), 2),
+            ];
+            assert!(replace_global_security_txs(&mut txs).is_err());
+            assert!(txs[0].affiliate.is_global());
+
+            // Adjacent day: global per-share + explicit per-share -> error
+            let mut txs = vec![
+                create_dist_tx(1, action, Affiliate::global(), 1),
+                create_dist_tx(2, action, Affiliate::from_strep("test"), 2),
+            ];
+            assert!(replace_global_security_txs(&mut txs).is_err());
+            assert!(txs[0].affiliate.is_global());
+
+            // Same day: global per-share + total-amount (unrealistic) -> error
+            // (total-amount is a different kind of transaction, not a duplicate)
+            let total_dist_tx = TTx {
+                t_day: 1,
+                act: action,
+                t_amt: gez!(5),
+                af: Affiliate::from_strep("test"),
+                read_index: 2,
+                ..TTx::default()
+            }
+            .x();
+            let mut txs = vec![
+                create_dist_tx(1, action, Affiliate::global(), 1),
+                total_dist_tx,
+            ];
+            assert!(replace_global_security_txs(&mut txs).is_err());
+            assert!(txs[0].affiliate.is_global());
+
+            // Different dist action types on same day — not an error
+            let other_action = match action {
+                TxAction::Roc => TxAction::RiDiv,
+                _ => TxAction::Roc,
+            };
+            let mut txs = vec![
+                create_dist_tx(1, action, Affiliate::global(), 1),
+                create_dist_tx(1, other_action, Affiliate::from_strep("test"), 2),
+            ];
+            assert!(replace_global_security_txs(&mut txs).is_ok());
+        }
     }
 }
