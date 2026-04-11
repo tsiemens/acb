@@ -4,7 +4,8 @@
  */
 
 import { loadJSON } from "./http_utils.js";
-import { detectFileKindFromBytes, runHandler } from "./acb_app.js";
+import { runHandler } from "./acb_app.js";
+import { detectFileKindFromBytes } from "./file_load.js";
 import { FileKind, getFileManagerStore } from "./vue/file_manager_store.js";
 import { getTabStore, tabs } from "./vue/tab_store.js";
 import { runHandler as brokerConvertRunHandler } from "./broker_convert_app.js";

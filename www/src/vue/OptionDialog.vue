@@ -3,7 +3,7 @@
     :active="store.active"
     :title="store.title"
     :dismissOnBackdropClick="false"
-    maxWidth="450px"
+    maxWidth="700px"
     @close="dismiss"
   >
     <p>{{ store.message }}</p>
