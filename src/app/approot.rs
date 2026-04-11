@@ -4,7 +4,7 @@ mod summary_approot;
 
 #[cfg(not(target_arch = "wasm32"))]
 use crate::{
-    app::outfmt::model::AcbWriter,
+    app::{config::AcbConfig, outfmt::model::AcbWriter},
     fx::io::RateLoader,
     util::rw::{DescribedReader, WriteHandle},
     write_errln,
@@ -36,6 +36,7 @@ pub use crate::app::approot::calc_approot::run_acb_app_to_writer;
 pub async fn run_acb_app_to_console(
     csv_file_readers: Vec<DescribedReader>,
     options: Options,
+    config: Option<&AcbConfig>,
     rate_loader: &mut RateLoader,
     mut err_printer: WriteHandle,
 ) -> Result<(), ()> {
@@ -44,6 +45,7 @@ pub async fn run_acb_app_to_console(
             summary_mode_latest_date,
             csv_file_readers,
             options,
+            config,
             rate_loader,
             err_printer,
         )
@@ -78,6 +80,7 @@ pub async fn run_acb_app_to_console(
             writer,
             csv_file_readers,
             &options.csv_parse_options,
+            config,
             options.affiliate_render_filter,
             options.render_full_dollar_values,
             options.render_total_costs,

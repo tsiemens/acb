@@ -136,6 +136,15 @@ pub(super) fn txs_from_data(
 
     csv_txs.sort();
 
+    if let Some(cfg) = config {
+        for tx in &mut csv_txs {
+            tx.security = tx
+                .security
+                .take()
+                .map(|sec| crate::app::config::rename_symbol(cfg, &sec).to_string());
+        }
+    }
+
     Ok(csv_txs)
 }
 
@@ -1335,5 +1344,36 @@ mod tests {
             .find(|t| t.action == Some(TxAction::Sell) && !t.security.as_ref().unwrap().ends_with(".FX"))
             .unwrap();
         assert_eq!(sell.memo, Some("E*TRADE transaction".to_string()));
+    }
+
+    #[test]
+    fn test_txs_from_data_symbol_rename() {
+        let mut config = crate::app::config::AcbConfig::new();
+        config.symbol_renames.insert("FOO".to_string(), "FOO.TO".to_string());
+
+        let txs = super::txs_from_data(
+            &super::BenefitsAndTrades {
+                benefits: vec![TBen {
+                    n_stc: None,
+                    ..dflt()
+                }
+                .x()],
+                other_trades: vec![TTx { ..dflt() }.x()],
+            },
+            false,
+            false,
+            Some(&config),
+        )
+        .unwrap();
+
+        assert!(txs.len() >= 1);
+        for tx in &txs {
+            assert_eq!(
+                tx.security.as_deref(),
+                Some("FOO.TO"),
+                "expected FOO renamed to FOO.TO, got {:?}",
+                tx.security
+            );
+        }
     }
 }

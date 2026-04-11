@@ -150,14 +150,23 @@ fn process_broker_txs(
         txs.sort();
     }
 
-    Ok(txs
+    let mut csv_txs: Vec<CsvTx> = txs
         .into_iter()
         .map(|t| {
             let af =
                 super::broker::affiliate_for_account_with_config(&t.account, config);
             t.to_csv_tx(af)
         })
-        .collect())
+        .collect();
+    if let Some(cfg) = config {
+        for tx in &mut csv_txs {
+            tx.security = tx
+                .security
+                .take()
+                .map(|sec| crate::app::config::rename_symbol(cfg, &sec).to_string());
+        }
+    }
+    Ok(csv_txs)
 }
 
 pub struct ConvertResult {
@@ -434,5 +443,62 @@ pub fn run_with_args(
         Err(())
     } else {
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use rust_decimal_macros::dec;
+
+    use super::process_broker_txs;
+    use crate::app::config::AcbConfig;
+    use crate::peripheral::broker::{Account, BrokerTx};
+    use crate::portfolio::{Currency, TxAction};
+    use crate::util::date::pub_testlib::doy_date;
+
+    fn make_broker_tx(security: &str) -> BrokerTx {
+        let date = doy_date(2024, 10);
+        BrokerTx {
+            security: security.to_string(),
+            trade_date: date,
+            settlement_date: date,
+            trade_date_and_time: date.to_string(),
+            settlement_date_and_time: date.to_string(),
+            action: TxAction::Buy,
+            amount_per_share: dec!(1.0),
+            num_shares: dec!(10),
+            commission: dec!(0),
+            currency: Currency::cad(),
+            memo: String::new(),
+            exchange_rate: None,
+            row_num: 1,
+            account: Account {
+                broker_name: "test",
+                account_type: "Individual".to_string(),
+                account_num: "12345".to_string(),
+            },
+            sort_tiebreak: None,
+            filename: None,
+        }
+    }
+
+    #[test]
+    fn test_process_broker_txs_symbol_rename() {
+        let mut config = AcbConfig::new();
+        config.symbol_renames.insert("FOO".to_string(), "FOO.TO".to_string());
+
+        let txs = vec![make_broker_tx("FOO"), make_broker_tx("BAR")];
+        let result =
+            process_broker_txs(txs, None, None, false, true, None, Some(&config))
+                .unwrap();
+
+        assert_eq!(result.len(), 2);
+        let securities: Vec<_> =
+            result.iter().map(|t| t.security.as_deref()).collect();
+        assert!(
+            securities.contains(&Some("FOO.TO")),
+            "FOO should be renamed to FOO.TO"
+        );
+        assert!(securities.contains(&Some("BAR")), "BAR should be unchanged");
     }
 }

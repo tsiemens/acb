@@ -139,11 +139,7 @@ impl AcbConfig {
 /// Returns the renamed symbol if a mapping exists, otherwise returns `sym`
 /// unchanged. Single-pass: no chaining is performed.
 pub fn rename_symbol<'a>(config: &'a AcbConfig, sym: &'a str) -> &'a str {
-    config
-        .symbol_renames
-        .get(sym)
-        .map(|s| s.as_str())
-        .unwrap_or(sym)
+    config.symbol_renames.get(sym).map(|s| s.as_str()).unwrap_or(sym)
 }
 
 /// Default config file path: `~/.config/acb/acb-config.json`
@@ -268,12 +264,8 @@ mod tests {
     #[test]
     fn test_round_trip_with_symbol_renames() {
         let mut config = AcbConfig::new();
-        config
-            .symbol_renames
-            .insert("XEQT".to_string(), "XEQT.TO".to_string());
-        config
-            .symbol_renames
-            .insert("VFV".to_string(), "VFV.TO".to_string());
+        config.symbol_renames.insert("XEQT".to_string(), "XEQT.TO".to_string());
+        config.symbol_renames.insert("VFV".to_string(), "VFV.TO".to_string());
 
         let json = config.to_json().unwrap();
         let parsed = AcbConfig::from_json(&json).unwrap();
@@ -283,9 +275,7 @@ mod tests {
     #[test]
     fn test_rename_symbol() {
         let mut config = AcbConfig::new();
-        config
-            .symbol_renames
-            .insert("XEQT".to_string(), "XEQT.TO".to_string());
+        config.symbol_renames.insert("XEQT".to_string(), "XEQT.TO".to_string());
 
         assert_eq!(rename_symbol(&config, "XEQT"), "XEQT.TO");
         assert_eq!(rename_symbol(&config, "XEQT.TO"), "XEQT.TO");
@@ -295,12 +285,8 @@ mod tests {
     #[test]
     fn test_rename_symbol_no_chaining() {
         let mut config = AcbConfig::new();
-        config
-            .symbol_renames
-            .insert("A".to_string(), "B".to_string());
-        config
-            .symbol_renames
-            .insert("B".to_string(), "C".to_string());
+        config.symbol_renames.insert("A".to_string(), "B".to_string());
+        config.symbol_renames.insert("B".to_string(), "C".to_string());
 
         // Single-pass: A → B (stops there, does not chain to C)
         assert_eq!(rename_symbol(&config, "A"), "B");
