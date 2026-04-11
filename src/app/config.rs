@@ -23,6 +23,13 @@ pub struct AcbConfig {
     pub version: u32,
     #[serde(default)]
     pub account_bindings: AccountBindings,
+    /// Global symbol rename map: `from → to`.
+    ///
+    /// Applied at every ingestion point (broker import and ACB calculation).
+    /// Single-pass, no chaining: `A → B` and `B → C` will rename `A` to `B`
+    /// only; `B` to `C` only. Case-sensitive exact match.
+    #[serde(default)]
+    pub symbol_renames: HashMap<String, String>,
 }
 
 /// Per-broker maps of `account_num → affiliate_name`.
@@ -45,6 +52,7 @@ impl AcbConfig {
         AcbConfig {
             version: CURRENT_CONFIG_VERSION,
             account_bindings: AccountBindings::default(),
+            symbol_renames: HashMap::new(),
         }
     }
 
@@ -97,7 +105,7 @@ impl AcbConfig {
     /// adds extra keys.  We check via the raw JSON value.
     pub fn validate_warnings(json: &str) -> Vec<String> {
         let mut warnings = Vec::new();
-        let known_keys: &[&str] = &["version", "account_bindings"];
+        let known_keys: &[&str] = &["version", "account_bindings", "symbol_renames"];
         let known_broker_keys: &[&str] = &["questrade", "rbc_di", "etrade"];
 
         if let Ok(raw) = serde_json::from_str::<serde_json::Value>(json) {
@@ -124,6 +132,18 @@ impl AcbConfig {
         }
         warnings
     }
+}
+
+/// Look up `sym` in the config's `symbol_renames` map.
+///
+/// Returns the renamed symbol if a mapping exists, otherwise returns `sym`
+/// unchanged. Single-pass: no chaining is performed.
+pub fn rename_symbol<'a>(config: &'a AcbConfig, sym: &'a str) -> &'a str {
+    config
+        .symbol_renames
+        .get(sym)
+        .map(|s| s.as_str())
+        .unwrap_or(sym)
 }
 
 /// Default config file path: `~/.config/acb/acb-config.json`
@@ -243,6 +263,49 @@ mod tests {
         assert_eq!(warnings.len(), 2);
         assert!(warnings[0].contains("mystery"));
         assert!(warnings[1].contains("unknown_broker"));
+    }
+
+    #[test]
+    fn test_round_trip_with_symbol_renames() {
+        let mut config = AcbConfig::new();
+        config
+            .symbol_renames
+            .insert("XEQT".to_string(), "XEQT.TO".to_string());
+        config
+            .symbol_renames
+            .insert("VFV".to_string(), "VFV.TO".to_string());
+
+        let json = config.to_json().unwrap();
+        let parsed = AcbConfig::from_json(&json).unwrap();
+        assert_eq!(config, parsed);
+    }
+
+    #[test]
+    fn test_rename_symbol() {
+        let mut config = AcbConfig::new();
+        config
+            .symbol_renames
+            .insert("XEQT".to_string(), "XEQT.TO".to_string());
+
+        assert_eq!(rename_symbol(&config, "XEQT"), "XEQT.TO");
+        assert_eq!(rename_symbol(&config, "XEQT.TO"), "XEQT.TO");
+        assert_eq!(rename_symbol(&config, "VFV"), "VFV");
+    }
+
+    #[test]
+    fn test_rename_symbol_no_chaining() {
+        let mut config = AcbConfig::new();
+        config
+            .symbol_renames
+            .insert("A".to_string(), "B".to_string());
+        config
+            .symbol_renames
+            .insert("B".to_string(), "C".to_string());
+
+        // Single-pass: A → B (stops there, does not chain to C)
+        assert_eq!(rename_symbol(&config, "A"), "B");
+        // Direct hit: B → C
+        assert_eq!(rename_symbol(&config, "B"), "C");
     }
 
     #[test]
