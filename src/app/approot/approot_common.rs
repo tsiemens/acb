@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use time::Date;
 
 use crate::{
+    app::config::{rename_symbol, AcbConfig},
     fx::io::RateLoader,
     portfolio::{
         bookkeeping::{txs_to_delta_list, DeltaListResult},
@@ -60,6 +61,7 @@ pub enum AppRenderMode {
 pub async fn run_acb_app_to_delta_models(
     csv_file_readers: Vec<DescribedReader>,
     csv_parse_options: &TxCsvParseOptions,
+    config: Option<&AcbConfig>,
     rate_loader: &mut RateLoader,
     mut err_printer: WriteHandle,
 ) -> Result<HashMap<Security, DeltaListResult>, Error> {
@@ -72,6 +74,15 @@ pub async fn run_acb_app_to_delta_models(
             &csv_parse_options,
             &mut err_printer,
         )?;
+
+        if let Some(cfg) = config {
+            for tx in &mut csv_txs {
+                tx.security = tx
+                    .security
+                    .take()
+                    .map(|sec| rename_symbol(cfg, &sec).to_string());
+            }
+        }
 
         load_tx_rates(&mut csv_txs, rate_loader).await?;
 

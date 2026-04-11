@@ -6,7 +6,10 @@ use std::io::Write;
 use time::Date;
 
 use crate::{
-    app::approot::approot_common::{self, AppRenderMode, Error, Options},
+    app::{
+        approot::approot_common::{self, AppRenderMode, Error, Options},
+        config::AcbConfig,
+    },
     fx::io::RateLoader,
     portfolio::{
         io::tx_csv::write_txs_to_csv,
@@ -102,6 +105,7 @@ async fn run_acb_app_summary_to_model(
     latest_date: Date,
     csv_file_readers: Vec<DescribedReader>,
     options: Options,
+    config: Option<&AcbConfig>,
     app_render_mode: AppRenderMode,
     rate_loader: &mut RateLoader,
     err_printer: WriteHandle,
@@ -109,6 +113,7 @@ async fn run_acb_app_summary_to_model(
     let deltas_results_by_sec = approot_common::run_acb_app_to_delta_models(
         csv_file_readers,
         &options.csv_parse_options,
+        config,
         rate_loader,
         err_printer,
     )
@@ -212,6 +217,7 @@ pub async fn run_acb_app_summary_to_render_model(
     latest_date: Date,
     csv_file_readers: Vec<DescribedReader>,
     options: Options,
+    config: Option<&AcbConfig>,
     rate_loader: &mut RateLoader,
     err_printer: WriteHandle,
 ) -> AppSummaryRenderResult {
@@ -219,6 +225,7 @@ pub async fn run_acb_app_summary_to_render_model(
         latest_date,
         csv_file_readers,
         options,
+        config,
         AppRenderMode::Default,
         rate_loader,
         err_printer.clone(),
@@ -247,6 +254,7 @@ pub async fn run_acb_app_summary_to_console(
     latest_date: Date,
     csv_file_readers: Vec<DescribedReader>,
     options: Options,
+    config: Option<&AcbConfig>,
     rate_loader: &mut RateLoader,
     mut err_printer: WriteHandle,
 ) -> Result<(), ()> {
@@ -254,6 +262,7 @@ pub async fn run_acb_app_summary_to_console(
         latest_date,
         csv_file_readers,
         options,
+        config,
         AppRenderMode::Default,
         rate_loader,
         err_printer.clone(),
@@ -361,6 +370,7 @@ mod tests {
             latest_date,
             make_readers(),
             Options::default(),
+            None,
             AppRenderMode::Default,
             &mut make_empty_test_rate_loader(),
             WriteHandle::empty_write_handle(),
@@ -376,6 +386,7 @@ mod tests {
                 affiliate_render_filter: Some(AffiliateFilter::new("Default")),
                 ..Options::default()
             },
+            None,
             AppRenderMode::Default,
             &mut make_empty_test_rate_loader(),
             WriteHandle::empty_write_handle(),
@@ -396,6 +407,7 @@ mod tests {
                 affiliate_render_filter: Some(AffiliateFilter::new("spouse")),
                 ..Options::default()
             },
+            None,
             AppRenderMode::Default,
             &mut make_empty_test_rate_loader(),
             WriteHandle::empty_write_handle(),

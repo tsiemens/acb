@@ -98,6 +98,7 @@ pub async fn run_acb_app(
         csv_file_readers,
         &TxCsvParseOptions::default(),
         None,
+        None,
         render_full_dollar_values,
         RENDER_TOTAL_COSTS,
         AppRenderMode::Default,
@@ -212,6 +213,7 @@ pub async fn run_acb_app_for_export(
         writer,
         csv_file_readers,
         &TxCsvParseOptions::default(),
+        None,
         None,
         render_full_dollar_values,
         RENDER_TOTAL_COSTS,
@@ -421,6 +423,7 @@ pub async fn run_acb_app_summary(
         latest_date,
         csv_file_readers,
         options,
+        None,
         &mut rate_loader,
         err_write_handle,
     )

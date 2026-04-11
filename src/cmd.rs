@@ -95,6 +95,16 @@ pub struct Args {
     /// Write output as a zip file of containing CSVs
     #[arg(short = 'z', long)]
     pub csv_output_zip: Option<String>,
+
+    /// Path to acb-config.json. Defaults to the platform config dir.
+    ///
+    ///   Linux:   ~/.config/acb/acb-config.json
+    ///
+    ///   macOS:   ~/Library/Application Support/acb/acb-config.json
+    ///
+    ///   Windows: %APPDATA%\acb\acb-config.json
+    #[arg(long)]
+    pub config: Option<PathBuf>,
 }
 
 pub fn command_main() -> Result<(), ExitCode> {
@@ -150,6 +160,16 @@ pub fn command_main() -> Result<(), ExitCode> {
             };
     }
 
+    let config_path =
+        args.config.or_else(|| crate::app::config::default_config_path());
+    let config = match config_path {
+        Some(ref p) => crate::app::config::load_config(p).map_err(|e| {
+            write_errln!(err_printer, "{e}");
+            ExitCode::FAILURE
+        })?,
+        None => None,
+    };
+
     let home_dir = match crate::util::os::home_dir_path() {
         Ok(d) => d,
         Err(e) => {
@@ -171,6 +191,7 @@ pub fn command_main() -> Result<(), ExitCode> {
     async_std::task::block_on(run_acb_app_to_console(
         csv_readers,
         options,
+        config.as_ref(),
         &mut rate_loader,
         err_printer,
     ))

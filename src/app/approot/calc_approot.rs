@@ -1,6 +1,7 @@
 use std::collections::{HashMap, HashSet};
 use std::io::Write;
 
+use crate::app::config::AcbConfig;
 use crate::portfolio::Affiliate;
 use crate::{
     app::approot::approot_common::{self, AppRenderMode, Error},
@@ -180,6 +181,7 @@ fn compute_costs_tables(
 pub async fn run_acb_app_to_render_model(
     csv_file_readers: Vec<DescribedReader>,
     csv_parse_options: &TxCsvParseOptions,
+    config: Option<&AcbConfig>,
     affiliate_render_filter: Option<AffiliateFilter>,
     render_full_dollar_values: bool,
     render_total_costs: bool,
@@ -190,6 +192,7 @@ pub async fn run_acb_app_to_render_model(
     let deltas_results_by_sec = approot_common::run_acb_app_to_delta_models(
         csv_file_readers,
         csv_parse_options,
+        config,
         rate_loader,
         err_printer,
     )
@@ -410,6 +413,7 @@ pub async fn run_acb_app_to_writer(
     writer: Box<dyn AcbWriter>,
     csv_file_readers: Vec<DescribedReader>,
     csv_parse_options: &TxCsvParseOptions,
+    config: Option<&AcbConfig>,
     affiliate_render_filter: Option<AffiliateFilter>,
     render_full_dollar_values: bool,
     render_total_costs: bool,
@@ -420,6 +424,7 @@ pub async fn run_acb_app_to_writer(
     let res = run_acb_app_to_render_model(
         csv_file_readers,
         csv_parse_options,
+        config,
         affiliate_render_filter,
         render_full_dollar_values,
         render_total_costs,
@@ -458,6 +463,7 @@ mod tests {
     use crate::{
         app::{
             approot::approot_common::AppRenderMode,
+            config::AcbConfig,
             outfmt::{model::AcbWriter, text::TextWriter},
         },
         fx::io::{InMemoryRatesCache, JsonRemoteRateLoader, RateLoader},
@@ -534,6 +540,7 @@ mod tests {
             readers,
             &TxCsvParseOptions::default(),
             None,
+            None,
             false,
             render_costs,
             AppRenderMode::Default,
@@ -567,6 +574,7 @@ mod tests {
         let render_res = block_on(run_acb_app_to_render_model(
             readers,
             &TxCsvParseOptions::default(),
+            None,
             None,
             false,
             render_costs,
@@ -607,6 +615,7 @@ mod tests {
         let render_res = block_on(run_acb_app_to_render_model(
             readers,
             &TxCsvParseOptions::default(),
+            None,
             None,
             false,
             render_costs,
@@ -658,6 +667,7 @@ mod tests {
             make_readers(),
             &TxCsvParseOptions::default(),
             None,
+            None,
             false,
             false,
             AppRenderMode::Default,
@@ -674,6 +684,7 @@ mod tests {
         let render_res = block_on(run_acb_app_to_render_model(
             make_readers(),
             &TxCsvParseOptions::default(),
+            None,
             Some(AffiliateFilter::new("Default")),
             false,
             false,
@@ -693,6 +704,7 @@ mod tests {
         let render_res = block_on(run_acb_app_to_render_model(
             make_readers(),
             &TxCsvParseOptions::default(),
+            None,
             Some(AffiliateFilter::new("spouse")),
             false,
             false,
@@ -740,6 +752,7 @@ mod tests {
             readers,
             &TxCsvParseOptions::default(),
             None,
+            None,
             false,
             false,
             AppRenderMode::Default,
@@ -771,6 +784,7 @@ mod tests {
         let render_res = block_on(run_acb_app_to_render_model(
             readers,
             &TxCsvParseOptions::default(),
+            None,
             Some(affiliate_filter),
             false,
             false,
@@ -802,6 +816,7 @@ mod tests {
         let render_res = block_on(run_acb_app_to_render_model(
             readers,
             &TxCsvParseOptions::default(),
+            None,
             Some(affiliate_filter),
             false,
             false,
@@ -825,6 +840,42 @@ mod tests {
             .iter()
             .map(|s| String::from(*s))
             .collect(),
+        );
+    }
+
+    #[test]
+    fn test_symbol_rename() {
+        #[rustfmt::skip]
+        let readers = CsvFileBuilder::with_all_modern_headers()
+            .split_csv_rows(&vec![1], &vec![
+                Row{sec: "FOO", td: "2016-01-03", sd: "2016-01-05",
+                    a: "Buy", sh: "10", aps: "1.0", cur: "CAD", ..Row::default()},
+            ]);
+
+        let mut config = AcbConfig::new();
+        config.symbol_renames.insert("FOO".to_string(), "BAR".to_string());
+
+        let render_res = block_on(run_acb_app_to_render_model(
+            readers,
+            &TxCsvParseOptions::default(),
+            Some(&config),
+            None,
+            false,
+            false,
+            AppRenderMode::Default,
+            &mut make_empty_test_rate_loader(),
+            WriteHandle::empty_write_handle(),
+        ))
+        .unwrap();
+
+        let render_tables = get_default_security_tables(&render_res);
+        assert!(
+            render_tables.contains_key("BAR"),
+            "Expected BAR after rename"
+        );
+        assert!(
+            !render_tables.contains_key("FOO"),
+            "FOO should have been renamed"
         );
     }
 }
