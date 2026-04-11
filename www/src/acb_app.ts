@@ -1,8 +1,8 @@
 import { Unit } from "./basic_utils.js";
 import { AcbAppRunMode, AppFunctionMode } from "./common/acb_app_types.js";
-import { fileBytesToString, loadFilesAsBytes } from "./file_reader.js";
-import { FileEntry, FileKind, getFileManagerStore, modifyDrawerNotificationForUserAddedFiles } from './vue/file_manager_store.js';
-import { run_acb, run_acb_summary, detect_file_kind, detect_file_kind_from_pdf_pages } from './pkg/acb_wasm.js';
+import { fileBytesToString } from "./file_reader.js";
+import { FileEntry, FileKind, getFileManagerStore } from './vue/file_manager_store.js';
+import { run_acb, run_acb_summary } from './pkg/acb_wasm.js';
 import { Result } from "./result.js";
 import { AppExportResultOk, AppResultOk, AppSummaryResultOk, RatesCacheUpdate, RenderTable } from "./acb_wasm_types.js";
 import { loadRatesCache, mergeRatesCacheUpdate } from "./rates_cache.js";
@@ -10,9 +10,6 @@ import { getOutputStore, setAppFunctionViewMode } from "./vue/output_store.js";
 import { getAppInputStore, getSummaryDate } from "./vue/app_input_store.js";
 import { ErrorBox } from "./vue/error_box_store.js";
 import { downloadCsv, makeZipAndDownload } from "./download_utils.js";
-import { extractPdfPages } from "./pdf_text_util.js";
-import { getConfigStore, loadConfigFromFileEntry } from "./vue/config_store.js";
-import { confirm as confirmDialog } from "./vue/confirm_dialog_store.js";
 
 function maybeMergeRatesCacheUpdate(update?: RatesCacheUpdate): void {
    if (update) {
@@ -221,137 +218,7 @@ async function asyncRunAcbShareTally(filenames: string[], contents: string[], la
    }
 }
 
-const WASM_FILE_KIND_MAP: Record<string, FileKind> = {
-   'AcbTxCsv': FileKind.AcbTxCsv,
-   'QuestradeExcel': FileKind.QuestradeXlsx,
-   'RbcDiCsv': FileKind.RbcDiCsv,
-   'EtradeTradeConfirmationPdf': FileKind.EtradeTradeConfirmationPdf,
-   'EtradeBenefitPdf': FileKind.EtradeBenefitPdf,
-   'EtradeBenefitsExcel': FileKind.EtradeBenefitsExcel,
-   'AcbConfigJson': FileKind.AcbConfigJson,
-};
-
-interface FileDetectResult {
-   kind: FileKind;
-   warning?: string;
-}
-
-export function detectFileKindFromBytes(data: Uint8Array, fileName: string): FileDetectResult {
-   // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-   const wasmResult = detect_file_kind(data, fileName);
-   // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-   const kind: FileKind = WASM_FILE_KIND_MAP[wasmResult.kind as string] ?? FileKind.Other;
-   // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-   const warning: string | undefined = wasmResult.warning as string | undefined;
-   return { kind, warning };
-}
-
-function isPdfFileName(name: string): boolean {
-   return name.toLowerCase().endsWith('.pdf');
-}
-
-async function detectAndUpdatePdfEntry(entry: FileEntry): Promise<void> {
-   try {
-      const pages = await extractPdfPages(entry.data.buffer as ArrayBuffer);
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-      const wasmResult = detect_file_kind_from_pdf_pages(pages);
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-      const kind: FileKind = WASM_FILE_KIND_MAP[wasmResult.kind as string] ?? FileKind.GenericPdf;
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
-      const warning: string | undefined = wasmResult.warning as string | undefined;
-
-      entry.kind = kind;
-      entry.pdfPageTexts = pages;
-      entry.useChecked = warning ? false : FileKind.isInput(kind);
-      if (warning) {
-         entry.warning = warning;
-      }
-   } catch (err) {
-      const errMsg = typeof err === 'string' ? err : (err instanceof Error ? err.message : String(err));
-      entry.warning = `PDF extraction failed: ${errMsg}`;
-      entry.useChecked = false;
-   }
-   entry.isDetecting = false;
-   console.debug(`Finished detecting file: ${entry.name}: kind=${entry.kind}, warning=${entry.warning ?? ''}`);
-}
-
-async function maybeLoadConfigEntry(entry: FileEntry): Promise<void> {
-   const configStore = getConfigStore();
-
-   // If a config already exists, ask the user before replacing.
-   if (configStore.config !== null) {
-      const confirmed = await confirmDialog({
-         title: 'Replace Configuration?',
-         message: 'A configuration file is already loaded. Do you want to replace it with the new file?',
-         confirmLabel: 'Replace',
-         cancelLabel: 'Keep Existing',
-      });
-      if (!confirmed) {
-         // Remove the newly added file entry since the user declined.
-         const fileStore = getFileManagerStore();
-         fileStore.removeFiles([entry.id]);
-         return;
-      }
-   }
-
-   try {
-      const configWarnings = loadConfigFromFileEntry(configStore, entry);
-      if (configWarnings.length > 0) {
-         entry.warning = configWarnings.join('; ');
-      }
-   } catch (err) {
-      const errMsg = typeof err === 'string' ? err : (err instanceof Error ? err.message : String(err));
-      entry.warning = `Config load error: ${errMsg}`;
-   }
-}
-
-// NOTE (until refactoring is done): This adds files to the new
-// file manager drawer.
-export function loadAndAddFilesToFileManager(fileList: FileList): void {
-   const files = Array.from(fileList);
-   loadFilesAsBytes(files, (results) => {
-      const store = getFileManagerStore();
-      results.forEach((result) => {
-         if (isPdfFileName(result.name)) {
-            // Add as GenericPdf immediately, then detect asynchronously.
-            const entry = store.addFile({
-               name: result.name,
-               kind: FileKind.GenericPdf,
-               isDownloadable: false,
-               useChecked: false,
-               data: result.data,
-               warning: result.error,
-               isDetecting: !result.error,
-            });
-            if (!result.error) {
-               detectAndUpdatePdfEntry(entry)
-                  .catch((err: unknown) => { console.error('PDF detect error:', err); });
-            }
-         } else {
-            // Non-PDF: detect synchronously from bytes.
-            const detectResult = detectFileKindFromBytes(result.data, result.name);
-            const warning = result.error ?? detectResult.warning;
-            const addedEntry = store.addFile({
-               name: result.name,
-               kind: detectResult.kind,
-               isDownloadable: false,
-               useChecked: warning ? false : FileKind.isInput(detectResult.kind),
-               data: result.data,
-               warning,
-            });
-
-            // If it's a config file, load it into the config store.
-            if (detectResult.kind === FileKind.AcbConfigJson && !warning) {
-               maybeLoadConfigEntry(addedEntry)
-                  .catch((err: unknown) => { console.error('Config load error:', err); });
-            }
-         }
-      });
-      modifyDrawerNotificationForUserAddedFiles(store);
-   });
-}
-
-function fileEntiesToNamesAndStringContents(entries: FileEntry[]
+function fileEntriesToNamesAndStringContents(entries: FileEntry[]
    ): [filenames: string[], contents: string[]] {
    const filenames: string[] = [];
    const contents: string[] = [];
@@ -380,7 +247,7 @@ export function runHandler(acbRunMode: AcbAppRunMode = AcbAppRunMode.Run) {
    const csvFiles = fileStore.files.filter(
       f => f.kind === FileKind.AcbTxCsv && f.useChecked && !f.warning
    );
-   let [filenames, filesContents] = fileEntiesToNamesAndStringContents(csvFiles);
+   let [filenames, filesContents] = fileEntriesToNamesAndStringContents(csvFiles);
 
    // TODO temporary.
    // Run button should ideally be disabled until at least one

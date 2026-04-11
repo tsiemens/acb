@@ -10,13 +10,13 @@ const CANCEL_ID = 'cancel';
  * This is a thin wrapper around the generic option dialog, preserving
  * the simple two-button confirm/cancel interface used throughout the app.
  */
-export function confirm(opts: {
+export async function confirm(opts: {
    title: string;
    message: string;
    confirmLabel?: string;
    cancelLabel?: string;
 }): Promise<boolean> {
-   return showOptionDialog({
+   const id = await showOptionDialog({
       title: opts.title,
       message: opts.message,
       options: [
@@ -31,5 +31,6 @@ export function confirm(opts: {
             affirmative: true,
          },
       ],
-   }).then((id) => id === CONFIRM_ID);
+   });
+   return id === CONFIRM_ID;
 }

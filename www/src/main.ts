@@ -1,5 +1,6 @@
 import { createApp } from 'vue';
-import { loadAndAddFilesToFileManager, runHandler as acbRunHandler } from './acb_app.js';
+import { runHandler as acbRunHandler } from './acb_app.js';
+import { loadAndAddFilesToFileManager } from './file_load.js';
 import { runHandler as brokerConvertRunHandler } from './broker_convert_app.js';
 import { AcbAppRunMode } from "./common/acb_app_types.js";
 import { loadGitUserCaveatIssues, loadAndCheckVersions } from './github.js';

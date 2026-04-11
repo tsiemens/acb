@@ -72,7 +72,10 @@ export interface FileManagerState {
    // highlighted for relevant kinds and neutral for others. Derived from the
    // tab store via watchEffect.
    relevantInputKinds: Set<FileKind>;
-   addFile(entry: Omit<FileEntry, 'id' | 'isSelected'>): FileEntry;
+   addFile(
+      entry: Omit<FileEntry, 'id' | 'isSelected'>,
+      options?: { skipDedup?: boolean },
+   ): FileEntry;
    removeFiles(ids: number[]): void;
    clearSelection(): void;
    setSelectedByIds(ids: Set<number>): void;
@@ -99,8 +102,11 @@ function makeState(): FileManagerState {
       hasNotification: false,
       isExpanded: false,
       relevantInputKinds: relevantInputKindsForTab(getTabStore().activeTab),
-      addFile(entry: Omit<FileEntry, 'id' | 'isSelected'>): FileEntry {
-         return addFile(this, entry);
+      addFile(
+         entry: Omit<FileEntry, 'id' | 'isSelected'>,
+         options?: { skipDedup?: boolean },
+      ): FileEntry {
+         return addFile(this, entry, options);
       },
       removeFiles(ids: number[]): void {
          const idSet = new Set(ids);
@@ -190,9 +196,13 @@ export function deduplicateFileName(name: string, existingNames: Set<string>): s
 export function addFile(
    state: FileManagerState,
    entry: Omit<FileEntry, 'id' | 'isSelected'>,
+   options?: { skipDedup?: boolean },
 ): FileEntry {
-   const existingNames = new Set(state.files.map((f) => f.name));
-   const name = deduplicateFileName(entry.name, existingNames);
+   let name = entry.name;
+   if (!options?.skipDedup) {
+      const existingNames = new Set(state.files.map((f) => f.name));
+      name = deduplicateFileName(entry.name, existingNames);
+   }
    const file: FileEntry = { ...entry, name, id: nextId++, isSelected: false };
    state.files.push(file);
    // Return the reactive proxy (last element), not the raw object.
