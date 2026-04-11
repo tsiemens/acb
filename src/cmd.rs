@@ -99,11 +99,9 @@ pub struct Args {
     /// Path to acb-config.json. Defaults to the platform config dir.
     ///
     ///   Linux:   ~/.config/acb/acb-config.json
-    ///
     ///   macOS:   ~/Library/Application Support/acb/acb-config.json
-    ///
     ///   Windows: %APPDATA%\acb\acb-config.json
-    #[arg(long)]
+    #[arg(long, verbatim_doc_comment)]
     pub config: Option<PathBuf>,
 }
 

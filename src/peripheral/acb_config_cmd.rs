@@ -20,12 +20,12 @@ struct SetArgs {
     #[arg(required = true)]
     setting: String,
 
-    /// Key-value equals-separated pairs to set for the config.
+    /// Key-value equals-separated pairs to set for the config (--help for details).
     ///
     /// Settings:
-    ///
     /// - affiliate-account broker=questrade|rbc_di|etrade account=12345 affiliate=Spouse
-    #[arg(required = true)]
+    /// - symbol-rename from=XEQT to=XEQT.TO
+    #[arg(required = true, verbatim_doc_comment)]
     pub values: Vec<String>,
 }
 
@@ -40,8 +40,10 @@ struct UnsetArgs {
     /// Typically this will mean all of the "identifying" attributes of a
     /// config entry.
     ///
-    /// eg. affiliate-account broker=questrade account=12345
-    #[arg(required = false)]
+    /// Settings:
+    /// - affiliate-account broker=questrade|rbc_di|etrade account=12345
+    /// - symbol-rename from=XEQT
+    #[arg(required = false, verbatim_doc_comment)]
     pub values: Vec<String>,
 }
 
@@ -70,11 +72,9 @@ struct Args {
     /// Path to acb-config.json. Defaults to the platform config dir.
     ///
     ///   Linux:   ~/.config/acb/acb-config.json
-    ///
     ///   macOS:   ~/Library/Application Support/acb/acb-config.json
-    ///
     ///   Windows: %APPDATA%\acb\acb-config.json
-    #[arg(long)]
+    #[arg(long, verbatim_doc_comment)]
     pub config: Option<PathBuf>,
 }
 
@@ -144,8 +144,30 @@ pub fn apply_set(
                  account={account} affiliate={affiliate}"
             ))
         }
+        "symbol-rename" => {
+            let kv = parse_kv_pairs(values)?;
+            let from = require_key(&kv, "from")?;
+            let to = require_key(&kv, "to")?;
+
+            if from.is_empty() {
+                return Err("\"from\" must not be empty".to_string());
+            }
+            if to.is_empty() {
+                return Err("\"to\" must not be empty".to_string());
+            }
+
+            if config.symbol_renames.contains_key(from) {
+                eprintln!(
+                    "Warning: overwriting existing symbol-rename for \"{from}\""
+                );
+            }
+            config.symbol_renames.insert(from.to_string(), to.to_string());
+
+            Ok(format!("Set symbol-rename: {from} -> {to}"))
+        }
         _ => Err(format!(
-            "Unknown setting: \"{setting}\". Known settings: affiliate-account"
+            "Unknown setting: \"{setting}\". \
+             Known settings: affiliate-account, symbol-rename"
         )),
     }
 }
@@ -175,8 +197,19 @@ pub fn apply_unset(
                 ))
             }
         }
+        "symbol-rename" => {
+            let kv = parse_kv_pairs(values)?;
+            let from = require_key(&kv, "from")?;
+
+            if config.symbol_renames.remove(from).is_some() {
+                Ok(format!("Removed symbol-rename for \"{from}\""))
+            } else {
+                Err(format!("No symbol-rename found for \"{from}\""))
+            }
+        }
         _ => Err(format!(
-            "Unknown setting: \"{setting}\". Known settings: affiliate-account"
+            "Unknown setting: \"{setting}\". \
+             Known settings: affiliate-account, symbol-rename"
         )),
     }
 }
@@ -356,5 +389,88 @@ mod tests {
         let mut config = AcbConfig::new();
         let err = apply_unset(&mut config, "bogus", &[]).unwrap_err();
         assert!(err.contains("Unknown setting"));
+    }
+
+    #[test]
+    fn test_set_symbol_rename() {
+        let mut config = AcbConfig::new();
+        let msg = apply_set(
+            &mut config,
+            "symbol-rename",
+            &["from=XEQT".into(), "to=XEQT.TO".into()],
+        )
+        .unwrap();
+
+        assert!(msg.contains("XEQT"));
+        assert!(msg.contains("XEQT.TO"));
+        assert_eq!(
+            config.symbol_renames.get("XEQT"),
+            Some(&"XEQT.TO".to_string())
+        );
+    }
+
+    #[test]
+    fn test_set_symbol_rename_overwrites_existing() {
+        let mut config = AcbConfig::new();
+        config.symbol_renames.insert("XEQT".into(), "OLD.TO".into());
+
+        apply_set(
+            &mut config,
+            "symbol-rename",
+            &["from=XEQT".into(), "to=XEQT.TO".into()],
+        )
+        .unwrap();
+
+        assert_eq!(
+            config.symbol_renames.get("XEQT"),
+            Some(&"XEQT.TO".to_string())
+        );
+    }
+
+    #[test]
+    fn test_set_symbol_rename_missing_from() {
+        let mut config = AcbConfig::new();
+        let err = apply_set(&mut config, "symbol-rename", &["to=XEQT.TO".into()])
+            .unwrap_err();
+        assert!(err.contains("from"));
+    }
+
+    #[test]
+    fn test_set_symbol_rename_missing_to() {
+        let mut config = AcbConfig::new();
+        let err = apply_set(&mut config, "symbol-rename", &["from=XEQT".into()])
+            .unwrap_err();
+        assert!(err.contains("to"));
+    }
+
+    #[test]
+    fn test_unset_symbol_rename() {
+        let mut config = AcbConfig::new();
+        config.symbol_renames.insert("XEQT".into(), "XEQT.TO".into());
+
+        let msg = apply_unset(&mut config, "symbol-rename", &["from=XEQT".into()])
+            .unwrap();
+
+        assert!(msg.contains("Removed"));
+        assert!(msg.contains("XEQT"));
+        assert!(config.symbol_renames.is_empty());
+    }
+
+    #[test]
+    fn test_unset_symbol_rename_not_found() {
+        let mut config = AcbConfig::new();
+        let err = apply_unset(&mut config, "symbol-rename", &["from=XEQT".into()])
+            .unwrap_err();
+        assert!(err.contains("No symbol-rename found"));
+        assert!(err.contains("XEQT"));
+    }
+
+    #[test]
+    fn test_unknown_setting_lists_symbol_rename() {
+        let mut config = AcbConfig::new();
+        let err = apply_set(&mut config, "bogus", &[]).unwrap_err();
+        assert!(err.contains("symbol-rename"));
+        let err = apply_unset(&mut config, "bogus", &[]).unwrap_err();
+        assert!(err.contains("symbol-rename"));
     }
 }
