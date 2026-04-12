@@ -5,7 +5,7 @@ use serde::ser::SerializeStruct;
 use acb::{
     app::{
         config::AcbConfig, outfmt::text::TextWriter, run_acb_app_to_writer,
-        AppRenderMode, AppSummaryRenderOutput, CalcRenderOutput,
+        AppRenderMode, AppSummaryRenderOutput, CalcRenderOutput, CalcRenderVariant,
     },
     portfolio::{io::tx_csv::TxCsvParseOptions, render::RenderTable, Security},
     util::{
@@ -19,6 +19,28 @@ use crate::wasm_rates_loader::{
 };
 
 const RENDER_TOTAL_COSTS: bool = false;
+
+fn collect_securities_with_errors(variant: &CalcRenderVariant) -> Vec<Security> {
+    let mut secs: Vec<Security> = variant
+        .security_tables
+        .iter()
+        .filter(|(_, table)| !table.errors.is_empty())
+        .map(|(sec, _)| sec.clone())
+        .collect();
+    secs.sort();
+    secs
+}
+
+fn collect_all_securities_with_errors(output: &CalcRenderOutput) -> Vec<Security> {
+    match output {
+        CalcRenderOutput::Default(variant) => {
+            collect_securities_with_errors(variant)
+        }
+        CalcRenderOutput::ByAffiliate(by_af) => {
+            collect_securities_with_errors(&by_af.unfiltered)
+        }
+    }
+}
 
 pub struct SerializableRenderTable(pub RenderTable);
 
@@ -175,6 +197,7 @@ impl serde::ser::Serialize for FileContent {
 
 pub struct AppExportResultOk {
     pub csv_files: Vec<FileContent>,
+    pub securities_with_errors: Vec<Security>,
     pub rates_cache_update: RatesCacheUpdate,
 }
 
@@ -185,10 +208,12 @@ impl serde::ser::Serialize for AppExportResultOk {
     {
         // https://serde.rs/impl-serialize.html
 
-        let n_fields = 2;
+        let n_fields = 3;
         let mut state =
             serializer.serialize_struct("AppExportResultOk", n_fields)?;
         state.serialize_field("csvFiles", &self.csv_files)?;
+        state
+            .serialize_field("securitiesWithErrors", &self.securities_with_errors)?;
         state.serialize_field("ratesCacheUpdate", &self.rates_cache_update)?;
         state.end()
     }
@@ -228,10 +253,19 @@ pub async fn run_acb_app_for_export(
     let rates_cache_update = build_rates_cache_update(&mut rate_loader);
 
     match result {
-        Ok(_) => Ok(AppExportResultOk {
-            csv_files: csv_coll.take().into_iter().map(FileContent::from).collect(),
-            rates_cache_update,
-        }),
+        Ok(render_res) => {
+            let securities_with_errors =
+                collect_all_securities_with_errors(&render_res.output);
+            Ok(AppExportResultOk {
+                csv_files: csv_coll
+                    .take()
+                    .into_iter()
+                    .map(FileContent::from)
+                    .collect(),
+                securities_with_errors,
+                rates_cache_update,
+            })
+        }
         Err(()) => {
             let error_string =
                 err_string_buff.try_borrow_mut().unwrap().export_string();

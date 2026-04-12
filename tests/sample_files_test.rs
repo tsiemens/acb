@@ -3,10 +3,13 @@ mod common;
 use std::path::Path;
 
 use acb::{
-    app::{outfmt::text::TextWriter, run_acb_app_to_writer, AppRenderMode},
+    app::{
+        outfmt::text::TextWriter, run_acb_app_to_writer, AppRenderMode,
+        CalcRenderOutput,
+    },
     fx::io::{CsvRatesCache, JsonRemoteRateLoader, RateLoader},
     portfolio::io::tx_csv::TxCsvParseOptions,
-    testlib::assert_vec_eq,
+    testlib::{assert_re, assert_vec_eq},
     util::{
         date::parse_standard_date,
         http::standalone::StandaloneAppRequester,
@@ -144,5 +147,78 @@ fn test_sample_csv_parse_errors() {
         err_text.contains("Invalid action 'InvalidAction'"),
         "err: {}",
         err_text
+    );
+}
+
+#[test]
+fn test_sample_csv_share_quantity_issues() {
+    acb::util::date::set_todays_date_for_test(
+        parse_standard_date("2025-01-01").unwrap(),
+    );
+
+    let dir = NonAutoCreatingTestDir::new();
+    let csv_path = Path::new("./tests/data/sample_csv_share_quantity_issues.csv");
+    let reader = DescribedReader::from_file_path(csv_path.into());
+
+    let (err_stream, _err_buff) = WriteHandle::string_buff_write_handle();
+    let (write_handle, _buff) = WriteHandle::string_buff_write_handle();
+    let writer = Box::new(TextWriter::new(write_handle));
+
+    let mut rate_loader = RateLoader::new(
+        false,
+        Box::new(CsvRatesCache::new(dir.path.clone(), err_stream.clone())),
+        JsonRemoteRateLoader::new_boxed(StandaloneAppRequester::new_boxed()),
+        err_stream.clone(),
+    );
+
+    let res = async_std::task::block_on(run_acb_app_to_writer(
+        writer,
+        vec![reader],
+        &TxCsvParseOptions::default(),
+        None,
+        None,
+        false,
+        false,
+        AppRenderMode::Default,
+        &mut rate_loader,
+        err_stream,
+    ));
+
+    // The run should succeed overall, but some securities should have errors.
+    let render_res = res.expect("Expected Ok result");
+
+    let variant = match &render_res.output {
+        CalcRenderOutput::Default(v) => v,
+        CalcRenderOutput::ByAffiliate(_) => {
+            panic!("Expected Default variant");
+        }
+    };
+
+    // FOO and BAR should have errors (selling more shares than held).
+    let foo_table = variant.security_tables.get("FOO").expect("FOO table");
+    assert_eq!(
+        foo_table.errors.len(),
+        1,
+        "FOO errors: {:?}",
+        foo_table.errors
+    );
+    assert_re("is more than the current holdings", &foo_table.errors[0]);
+
+    let bar_table = variant.security_tables.get("BAR").expect("BAR table");
+    assert_eq!(
+        bar_table.errors.len(),
+        1,
+        "BAR errors: {:?}",
+        bar_table.errors
+    );
+    assert_re("is more than the current holdings", &bar_table.errors[0]);
+
+    // GOOD should have no errors.
+    let good_table = variant.security_tables.get("GOOD").expect("GOOD table");
+    assert_eq!(
+        good_table.errors.len(),
+        0,
+        "GOOD should have no errors, got: {:?}",
+        good_table.errors
     );
 }
