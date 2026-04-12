@@ -138,7 +138,7 @@ function sanitizeAffiliateName(raw: string): string {
    return raw.trim().replace(/\s*\([rR]\)\s*$/, '');
 }
 
-function getBindingsMap(config: AcbConfig, broker: string): Record<string, string> {
+function getBindingsMap(config: AcbConfig, broker: string): Map<string, string> {
    return config.account_bindings[broker as keyof AccountBindings];
 }
 
@@ -162,7 +162,7 @@ export default defineComponent({
          const result: Binding[] = [];
          for (const broker of Object.keys(BROKER_LABELS)) {
             const map = getBindingsMap(config, broker);
-            for (const [acctNum, affName] of Object.entries(map)) {
+            for (const [acctNum, affName] of map.entries()) {
                result.push({
                   broker,
                   accountNum: acctNum,
@@ -179,7 +179,7 @@ export default defineComponent({
          return extractedAccounts.value.filter(ea => {
             if (!config) return true;
             const map = getBindingsMap(config, ea.broker);
-            return !(ea.accountNum in map);
+            return !map.has(ea.accountNum);
          });
       });
 
@@ -253,14 +253,13 @@ export default defineComponent({
             return;
          }
          updateConfig(config => {
-            getBindingsMap(config, broker)[accountNum] = afName;
+            getBindingsMap(config, broker).set(accountNum, afName);
          });
       }
 
       function onRemoveBinding(broker: string, accountNum: string) {
          updateConfig(config => {
-            const map = getBindingsMap(config, broker);
-            delete map[accountNum];
+            getBindingsMap(config, broker).delete(accountNum);
          });
       }
 
@@ -268,7 +267,7 @@ export default defineComponent({
          const afName = sanitizeAffiliateName(value);
          if (!afName) return;
          updateConfig(config => {
-            getBindingsMap(config, broker)[accountNum] = afName;
+            getBindingsMap(config, broker).set(accountNum, afName);
          });
          (event.target as HTMLInputElement).value = '';
       }
@@ -282,7 +281,7 @@ export default defineComponent({
          const afName = sanitizeAffiliateName(input.value);
          if (!afName) return;
          updateConfig(config => {
-            getBindingsMap(config, broker)[accountNum] = afName;
+            getBindingsMap(config, broker).set(accountNum, afName);
          });
          input.value = '';
       }
@@ -292,7 +291,7 @@ export default defineComponent({
          const afName = sanitizeAffiliateName(addAffiliateName.value);
          if (!acct || !afName) return;
          updateConfig(config => {
-            getBindingsMap(config, addBroker.value)[acct] = afName;
+            getBindingsMap(config, addBroker.value).set(acct, afName);
          });
          addAccountNum.value = '';
          addAffiliateName.value = '';
