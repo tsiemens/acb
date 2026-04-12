@@ -91,8 +91,8 @@ export default defineComponent({
       const addWarning = ref('');
 
       const allRenames = computed<Rename[]>(() => {
-         const renames = configStore.config?.symbol_renames ?? {};
-         return Object.entries(renames).map(([from, to]) => ({ from, to }));
+         const renames = configStore.config?.symbol_renames ?? new Map<string, string>();
+         return Array.from(renames.entries()).map(([from, to]) => ({ from, to }));
       });
 
       function onAddInputChange() {
@@ -102,12 +102,12 @@ export default defineComponent({
             addWarning.value = '';
             return;
          }
-         const renames = configStore.config?.symbol_renames ?? {};
+         const renames = configStore.config?.symbol_renames ?? new Map<string, string>();
          if (from === to) {
             addWarning.value = 'Warning: "from" and "to" are the same symbol.';
-         } else if (from in renames) {
+         } else if (renames.has(from)) {
             addWarning.value = `Warning: "${from}" already has a rename. Adding will overwrite it.`;
-         } else if (to in renames) {
+         } else if (renames.has(to)) {
             addWarning.value = `Warning: "${to}" is already a "from" key — chaining renames is not supported.`;
          } else {
             addWarning.value = '';
