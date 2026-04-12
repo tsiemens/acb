@@ -22,7 +22,10 @@ rust: ensure-fnm
 release:
 	cargo build --release
 
-www:
+www-lint:
+	$(MAKE) -C www lint
+
+www: www-lint
 	$(MAKE) -C www build
 
 www-all:

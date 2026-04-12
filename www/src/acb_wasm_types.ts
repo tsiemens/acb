@@ -146,6 +146,7 @@ export class FileContent {
 export class AppExportResultOk {
     constructor(
         public csvFiles: Array<FileContent>,
+        public securitiesWithErrors: Array<string>,
         public ratesCacheUpdate?: RatesCacheUpdate,
     ) {}
 
@@ -155,12 +156,14 @@ export class AppExportResultOk {
         return new AppExportResultOk(
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             mustGet<any[]>(val, 'csvFiles').map(FileContent.fromJsValue),
+            mustGet<string[]>(val, 'securitiesWithErrors'),
             get(val, 'ratesCacheUpdate') as RatesCacheUpdate | undefined,
         );
     }
 
    public static default(): AppExportResultOk {
       return new AppExportResultOk(
+            [],
             [],
       );
    }

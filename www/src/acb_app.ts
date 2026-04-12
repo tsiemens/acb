@@ -12,6 +12,29 @@ import { getConfigJsonForWasm } from "./vue/config_store.js";
 import { ErrorBox } from "./vue/error_box_store.js";
 import { downloadCsv, makeZipAndDownload } from "./download_utils.js";
 
+function collectSecuritiesWithErrors(
+   securityTables: Map<string, RenderTable>
+): string[] {
+   const secsWithErrors: string[] = [];
+   for (const [sec, table] of securityTables) {
+      if (table.errors && table.errors.length > 0) {
+         secsWithErrors.push(sec);
+      }
+   }
+   secsWithErrors.sort();
+   return secsWithErrors;
+}
+
+function showSecurityErrors(secsWithErrors: string[], descPost?: string): void {
+   ErrorBox.getMain().showWith({
+      title: "Processing Error(s)",
+      descPre: "Errors were generated for the following securities:",
+      errorText: secsWithErrors.join(", "),
+      descPost: descPost ??
+         "See the per-security output tables for error details.",
+   });
+}
+
 function maybeMergeRatesCacheUpdate(update?: RatesCacheUpdate): void {
    if (update) {
       mergeRatesCacheUpdate(update);
@@ -53,6 +76,11 @@ async function asyncRunAcb(filenames: string[], contents: string[],
       if (exportMode) {
          const ret = AppExportResultOk.fromJsValue(jsRet);
          maybeMergeRatesCacheUpdate(ret.ratesCacheUpdate);
+         if (ret.securitiesWithErrors.length > 0) {
+            showSecurityErrors(ret.securitiesWithErrors,
+               "Please fix the errors before exporting.");
+            return;
+         }
          makeZipAndDownload(ret.csvFiles);
          return;
       }
@@ -67,7 +95,14 @@ async function asyncRunAcb(filenames: string[], contents: string[],
       outputStore.aggregateTable = ret.modelOutput.aggregateGainsTable;
       outputStore.securityTables = ret.modelOutput.securityTables;
       outputStore.selectedAffiliate = null;
-      ErrorBox.getMain().hide();
+
+      const secsWithErrors = collectSecuritiesWithErrors(
+         ret.modelOutput.securityTables);
+      if (secsWithErrors.length > 0) {
+         showSecurityErrors(secsWithErrors);
+      } else {
+         ErrorBox.getMain().hide();
+      }
    } catch (err) {
       let errMsg = typeof err === "string" ? err : (err instanceof Error ? err.message : String(err));
       console.error("asyncRunAcb caught error: ", err);
@@ -105,7 +140,17 @@ async function asyncRunAcbSummary(filenames: string[], contents: string[], lates
       const ret: AppSummaryResultOk = AppSummaryResultOk.fromJsValue(jsRet);
       maybeMergeRatesCacheUpdate(ret.ratesCacheUpdate);
 
+      const summaryErrors = ret.summaryTable.errors ?? [];
+
       if (mode === AcbAppRunMode.Export) {
+         if (summaryErrors.length > 0) {
+            ErrorBox.getMain().showWith({
+               title: "Processing Error(s)",
+               descPre: "The following errors were generated during processing. Please fix the errors before exporting:",
+               errorText: summaryErrors.map(err => err.trim()).join("\n"),
+            });
+            return;
+         }
          downloadCsv("acb_summary", ret.csvText);
          return;
       }
@@ -115,11 +160,11 @@ async function asyncRunAcbSummary(filenames: string[], contents: string[], lates
       const outputStore = getOutputStore();
       outputStore.textOutput = ret.csvText;
       outputStore.summaryTable = ret.summaryTable;
-      if (ret.summaryTable.errors && ret.summaryTable.errors.length > 0) {
+      if (summaryErrors.length > 0) {
          ErrorBox.getMain().showWith({
             title: "Processing Error(s)",
             descPre: "The following errors were generated during processing:",
-            errorText: ret.summaryTable.errors.map(err => err.trim()).join("\n"),
+            errorText: summaryErrors.map(err => err.trim()).join("\n"),
          });
       } else {
          ErrorBox.getMain().hide();
@@ -191,7 +236,17 @@ async function asyncRunAcbShareTally(filenames: string[], contents: string[], la
 
       const [shareTallyTable, csvText] = generateShareTallyRenderTable(ret.summaryTable);
 
+      const tallyErrors = shareTallyTable.errors ?? [];
+
       if (mode === AcbAppRunMode.Export) {
+         if (tallyErrors.length > 0) {
+            ErrorBox.getMain().showWith({
+               title: "Processing Error(s)",
+               descPre: "The following errors were generated during processing. Please fix the errors before exporting:",
+               errorText: tallyErrors.map(err => err.trim()).join("\n"),
+            });
+            return;
+         }
          downloadCsv("acb_share_tally", csvText);
          return;
       }
@@ -201,11 +256,11 @@ async function asyncRunAcbShareTally(filenames: string[], contents: string[], la
       const outputStore = getOutputStore();
       outputStore.textOutput = csvText;
       outputStore.summaryTable = shareTallyTable;
-      if (shareTallyTable.errors && shareTallyTable.errors.length > 0) {
+      if (tallyErrors.length > 0) {
          ErrorBox.getMain().showWith({
             title: "Processing Error(s)",
             descPre: "The following errors were generated during processing:",
-            errorText: shareTallyTable.errors.map(err => err.trim()).join("\n"),
+            errorText: tallyErrors.map(err => err.trim()).join("\n"),
          });
       } else {
          ErrorBox.getMain().hide();
