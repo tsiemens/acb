@@ -26,6 +26,15 @@ pub fn parse_config(json: &str) -> Result<JsValue, JsValue> {
     Ok(result.serialize(&serializer)?)
 }
 
+/// Return a default (empty) AcbConfig as a JS object.
+#[wasm_bindgen]
+pub fn make_default_config() -> Result<JsValue, JsValue> {
+    let config = AcbConfig::new();
+    let serializer =
+        serde_wasm_bindgen::Serializer::new().serialize_maps_as_objects(true);
+    Ok(config.serialize(&serializer)?)
+}
+
 /// Serialize a config object to pretty-printed JSON.
 #[wasm_bindgen]
 pub fn serialize_config(config_js: JsValue) -> Result<String, JsValue> {
@@ -405,15 +414,18 @@ pub async fn run_acb(
     render_full_values: bool,
     export_mode: bool,
     initial_rates_cache: JsValue,
+    config_json: Option<String>,
 ) -> Result<JsValue, JsValue> {
     let csv_readers = get_csv_readers(file_descs, file_contents)?;
     let initial_rates = parse_initial_rates(initial_rates_cache)?;
+    let config = parse_optional_config(config_json)?;
 
     if export_mode {
         let result = app_shim::run_acb_app_for_export(
             csv_readers,
             render_full_values,
             initial_rates.as_ref(),
+            config.as_ref(),
         )
         .await
         .map_err(|e| JsValue::from_str(&e))?;
@@ -424,6 +436,7 @@ pub async fn run_acb(
         csv_readers,
         render_full_values,
         initial_rates.as_ref(),
+        config.as_ref(),
     )
     .await
     .map_err(|e| JsValue::from_str(&e))?;
@@ -439,9 +452,11 @@ pub async fn run_acb_summary(
     split_annual_summary_gains: bool,
     render_full_values: bool,
     initial_rates_cache: JsValue,
+    config_json: Option<String>,
 ) -> Result<JsValue, JsValue> {
     let csv_readers = get_csv_readers(file_descs, file_contents)?;
     let initial_rates = parse_initial_rates(initial_rates_cache)?;
+    let config = parse_optional_config(config_json)?;
 
     let latest_date_rs = acb::util::date::from_date_ints(
         latest_date.get_full_year() as i32,
@@ -458,6 +473,7 @@ pub async fn run_acb_summary(
         split_annual_summary_gains,
         render_full_values,
         initial_rates.as_ref(),
+        config.as_ref(),
     )
     .await
     .map_err(|e| JsValue::from_str(&e))?;

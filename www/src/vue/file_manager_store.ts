@@ -93,6 +93,8 @@ export function relevantInputKindsForTab(tabId: TabIdType): Set<FileKind> {
             FileKind.EtradeBenefitsExcel,
             FileKind.RbcDiCsv,
          ]);
+      case TabId.Configuration:
+         return new Set();
    }
 }
 

@@ -8,6 +8,7 @@ import { AppExportResultOk, AppResultOk, AppSummaryResultOk, RatesCacheUpdate, R
 import { loadRatesCache, mergeRatesCacheUpdate } from "./rates_cache.js";
 import { getOutputStore, setAppFunctionViewMode } from "./vue/output_store.js";
 import { getAppInputStore, getSummaryDate } from "./vue/app_input_store.js";
+import { getConfigJsonForWasm } from "./vue/config_store.js";
 import { ErrorBox } from "./vue/error_box_store.js";
 import { downloadCsv, makeZipAndDownload } from "./download_utils.js";
 
@@ -41,11 +42,12 @@ async function asyncRunAcb(filenames: string[], contents: string[],
 
    const exportMode: boolean = mode === AcbAppRunMode.Export;
    const cachedRates = loadRatesCache();
+   const configJson = getConfigJsonForWasm();
 
    try {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment
       const jsRet: any = await run_acb(filenames, contents,
-         printFullDollarValues, exportMode, cachedRates);
+         printFullDollarValues, exportMode, cachedRates, configJson);
       console.debug("asyncRunAcb: run_acb returned: ", jsRet);
 
       if (exportMode) {
@@ -91,12 +93,13 @@ async function asyncRunAcbSummary(filenames: string[], contents: string[], lates
    // Also, pass split_annual_summary_gains as true (or add UI for it if needed).
    const splitAnnualSummaryGains = true;
    const cachedRates = loadRatesCache();
+   const configJson = getConfigJsonForWasm();
 
    try {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment
       const jsRet: any = await run_acb_summary(
          latestDate, filenames, contents, splitAnnualSummaryGains, printFullDollarValues,
-         cachedRates
+         cachedRates, configJson
       );
       console.debug("asyncRunAcbSummary: run_acb_summary returned: ", jsRet);
       const ret: AppSummaryResultOk = AppSummaryResultOk.fromJsValue(jsRet);
@@ -174,12 +177,13 @@ async function asyncRunAcbShareTally(filenames: string[], contents: string[], la
 
    const splitAnnualSummaryGains = false;
    const cachedRates = loadRatesCache();
+   const configJson = getConfigJsonForWasm();
 
    try {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment
       const jsRet: any = await run_acb_summary(
          latestDate, filenames, contents, splitAnnualSummaryGains, printFullDollarValues,
-         cachedRates
+         cachedRates, configJson
       );
       console.debug("asyncRunAcbShareTally: run_acb_summary returned: ", jsRet);
       const ret: AppSummaryResultOk = AppSummaryResultOk.fromJsValue(jsRet);
