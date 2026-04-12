@@ -28,6 +28,9 @@
         :onFilesDropped="onFilesDropped"
         :onRunAction="onRunAction"
       />
+      <ConfigurationTabContent
+        v-if="tabStore.activeTab === TabId.Configuration"
+      />
     </div>
 
     <footer class="app-footer">
@@ -61,6 +64,7 @@ import InfoDialogs from './InfoDialogs.vue';
 import Sidebar from './Sidebar.vue';
 import AcbCalcTabContent from './AcbCalcTabContent.vue';
 import BrokerConvertTabContent from './BrokerConvertTabContent.vue';
+import ConfigurationTabContent from './ConfigurationTabContent.vue';
 import FileManagerDrawer from './FileManagerDrawer.vue';
 import OptionDialog from './OptionDialog.vue';
 import { getInfoDialogStore } from './info_dialog_store.js';
@@ -72,7 +76,7 @@ import { copyrightYears } from './copyright.js';
 
 export default defineComponent({
    name: 'App',
-   components: { AppHeader, InfoDialogs, Sidebar, AcbCalcTabContent, BrokerConvertTabContent, FileManagerDrawer, OptionDialog },
+   components: { AppHeader, InfoDialogs, Sidebar, AcbCalcTabContent, BrokerConvertTabContent, ConfigurationTabContent, FileManagerDrawer, OptionDialog },
    props: {
       onFilesDropped: {
          type: Function as PropType<(fileList: FileList) => void>,

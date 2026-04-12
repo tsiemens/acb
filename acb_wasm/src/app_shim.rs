@@ -4,8 +4,8 @@ use serde::ser::SerializeStruct;
 
 use acb::{
     app::{
-        outfmt::text::TextWriter, run_acb_app_to_writer, AppRenderMode,
-        AppSummaryRenderOutput, CalcRenderOutput,
+        config::AcbConfig, outfmt::text::TextWriter, run_acb_app_to_writer,
+        AppRenderMode, AppSummaryRenderOutput, CalcRenderOutput,
     },
     portfolio::{io::tx_csv::TxCsvParseOptions, render::RenderTable, Security},
     util::{
@@ -83,6 +83,7 @@ pub async fn run_acb_app(
     csv_file_readers: Vec<DescribedReader>,
     render_full_dollar_values: bool,
     initial_rates: Option<&RatesCacheData>,
+    config: Option<&AcbConfig>,
 ) -> Result<AppResultOk, SError> {
     let (out_write_handle, out_string_buff) =
         WriteHandle::string_buff_write_handle();
@@ -97,7 +98,7 @@ pub async fn run_acb_app(
         writer,
         csv_file_readers,
         &TxCsvParseOptions::default(),
-        None,
+        config,
         None,
         render_full_dollar_values,
         RENDER_TOTAL_COSTS,
@@ -197,6 +198,7 @@ pub async fn run_acb_app_for_export(
     csv_file_readers: Vec<DescribedReader>,
     render_full_dollar_values: bool,
     initial_rates: Option<&RatesCacheData>,
+    config: Option<&AcbConfig>,
 ) -> Result<AppExportResultOk, SError> {
     let (err_write_handle, err_string_buff) =
         WriteHandle::string_buff_write_handle();
@@ -213,7 +215,7 @@ pub async fn run_acb_app_for_export(
         writer,
         csv_file_readers,
         &TxCsvParseOptions::default(),
-        None,
+        config,
         None,
         render_full_dollar_values,
         RENDER_TOTAL_COSTS,
@@ -405,6 +407,7 @@ pub async fn run_acb_app_summary(
     split_annual_summary_gains: bool,
     render_full_dollar_values: bool,
     initial_rates: Option<&RatesCacheData>,
+    config: Option<&AcbConfig>,
 ) -> Result<AppSummaryResultOk, SError> {
     use acb::app::{run_acb_app_summary_to_render_model, Options};
 
@@ -423,7 +426,7 @@ pub async fn run_acb_app_summary(
         latest_date,
         csv_file_readers,
         options,
-        None,
+        config,
         &mut rate_loader,
         err_write_handle,
     )

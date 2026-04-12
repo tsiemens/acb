@@ -3,6 +3,7 @@ import { reactive, watch } from 'vue';
 export const TabId = {
    AcbCalc: 'acb-calc',
    BrokerConvert: 'broker-convert',
+   Configuration: 'configuration',
 } as const;
 
 export type TabIdType = typeof TabId[keyof typeof TabId];
@@ -10,6 +11,7 @@ export type TabIdType = typeof TabId[keyof typeof TabId];
 export const tabs: ReadonlyArray<{ id: TabIdType; label: string }> = [
    { id: TabId.AcbCalc, label: 'ACB Calculator' },
    { id: TabId.BrokerConvert, label: 'Broker Activity Convert' },
+   { id: TabId.Configuration, label: 'Configuration' },
 ];
 
 export interface TabStore {

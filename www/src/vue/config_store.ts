@@ -1,5 +1,5 @@
 import { reactive, ref, watchEffect } from 'vue';
-import { parse_config, serialize_config } from '../pkg/acb_wasm.js';
+import { make_default_config, parse_config, serialize_config } from '../pkg/acb_wasm.js';
 import { FileKind, getFileManagerStore, modifyDrawerNotificationForUserAddedFiles, type FileEntry } from './file_manager_store.js';
 
 // -- Config types (mirrors Rust AcbConfig / AccountBindings) --
@@ -13,6 +13,7 @@ export interface AccountBindings {
 export interface AcbConfig {
    version: number;
    account_bindings: AccountBindings;
+   symbol_renames: Record<string, string>;
 }
 
 export interface ConfigParseResult {
@@ -69,6 +70,26 @@ export function parseConfigJson(json: string): ConfigParseResult {
 /** Serialize an AcbConfig to pretty-printed JSON via WASM. */
 export function serializeConfig(config: AcbConfig): string {
    return serialize_config(config);
+}
+
+/** Returns a default (empty) AcbConfig, sourced from the WASM layer. */
+export function makeDefaultConfig(): AcbConfig {
+   return make_default_config() as AcbConfig;
+}
+
+/** Add or update a symbol rename entry. */
+export function setSymbolRename(store: ConfigStore, from: string, to: string): void {
+   const config = store.config ?? makeDefaultConfig();
+   config.symbol_renames[from] = to;
+   setConfig(store, config);
+}
+
+/** Remove a symbol rename entry (no-op if not present). */
+export function removeSymbolRename(store: ConfigStore, from: string): void {
+   if (!store.config) return;
+   const renames = { ...store.config.symbol_renames };
+   delete renames[from];
+   setConfig(store, { ...store.config, symbol_renames: renames });
 }
 
 // -- Store --
