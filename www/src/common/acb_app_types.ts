@@ -1,6 +1,7 @@
 export enum AcbAppRunMode {
    Run = "run",
    Export = "export",
+   ExportTampermonkeyScript = "export_tampermonkey_script",
 }
 
 export enum AppFunctionMode {

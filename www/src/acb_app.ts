@@ -1,29 +1,24 @@
 import { Unit } from "./basic_utils.js";
 import { AcbAppRunMode, AppFunctionMode } from "./common/acb_app_types.js";
 import { fileBytesToString } from "./file_reader.js";
-import { FileEntry, FileKind, getFileManagerStore } from './vue/file_manager_store.js';
+import { FileEntry, FileKind, getFileManagerStore, modifyDrawerNotificationForUserAddedFiles } from './vue/file_manager_store.js';
 import { run_acb, run_acb_summary } from './pkg/acb_wasm.js';
 import { Result } from "./result.js";
-import { AppExportResultOk, AppResultOk, AppSummaryResultOk, RatesCacheUpdate, RenderTable } from "./acb_wasm_types.js";
+import { AppExportResultOk, AppResultOk, AppSummaryResultOk, RatesCacheUpdate } from "./acb_wasm_types.js";
 import { loadRatesCache, mergeRatesCacheUpdate } from "./rates_cache.js";
 import { getOutputStore, setAppFunctionViewMode } from "./vue/output_store.js";
 import { getAppInputStore, getSummaryDate } from "./vue/app_input_store.js";
 import { getConfigJsonForWasm } from "./vue/config_store.js";
 import { ErrorBox } from "./vue/error_box_store.js";
 import { downloadCsv, makeZipAndDownload } from "./download_utils.js";
-
-function collectSecuritiesWithErrors(
-   securityTables: Map<string, RenderTable>
-): string[] {
-   const secsWithErrors: string[] = [];
-   for (const [sec, table] of securityTables) {
-      if (table.errors && table.errors.length > 0) {
-         secsWithErrors.push(sec);
-      }
-   }
-   secsWithErrors.sort();
-   return secsWithErrors;
-}
+import { openDynamicTextDialog } from "./vue/info_dialog_store.js";
+import { generateTamperMonkeyScript } from "./tampermonkey_gen.js";
+import { showTampermonkeyExportDialog } from "./vue/tampermonkey_dialog_store.js";
+import {
+   collectSecuritiesWithErrors,
+   extractSellData,
+   generateShareTallyRenderTable,
+} from "./render_table_utils.js";
 
 function showSecurityErrors(secsWithErrors: string[], descPost?: string): void {
    ErrorBox.getMain().showWith({
@@ -115,6 +110,82 @@ async function asyncRunAcb(filenames: string[], contents: string[],
    }
 }
 
+async function asyncRunAcbForTampermonkey(filenames: string[], contents: string[]) {
+   console.debug("asyncRunAcbForTampermonkey", filenames);
+   const commonOptions = getCommonRunOptions();
+   if (commonOptions.isErr()) {
+      return;
+   }
+   const { printFullDollarValues } = commonOptions.unwrap();
+
+   const cachedRates = loadRatesCache();
+   const configJson = getConfigJsonForWasm();
+
+   try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment
+      const jsRet: any = await run_acb(filenames, contents,
+         printFullDollarValues, /*exportMode=*/ false, cachedRates, configJson);
+
+      const ret: AppResultOk = AppResultOk.fromJsValue(jsRet);
+      maybeMergeRatesCacheUpdate(ret.ratesCacheUpdate);
+
+      const secsWithErrors = collectSecuritiesWithErrors(ret.modelOutput.securityTables);
+      if (secsWithErrors.length > 0) {
+         showSecurityErrors(secsWithErrors,
+            "Please fix the errors before generating the Tampermonkey script.");
+         return;
+      }
+
+      const sellData = extractSellData(ret.modelOutput.securityTables);
+      if (sellData.sellYears.length === 0) {
+         // TODO clear error box and use warning box ?
+         ErrorBox.getMain().showWith({
+            title: "No Sell Transactions",
+            descPre: "No sell transactions were found for non-registered affiliates. " +
+               "There is nothing to include in a Tampermonkey script.",
+         });
+         return;
+      }
+
+      const dialogResult = await showTampermonkeyExportDialog({
+         years: sellData.sellYears,
+         affiliates: sellData.affiliateBaseNames,
+      });
+      if (dialogResult === null) return;
+
+      const filtered = sellData.entries.filter(e => {
+         const entryYear = parseInt(e.date.split('-')[0], 10);
+         if (entryYear !== dialogResult.year) return false;
+         if (dialogResult.affiliate !== null && e.affiliate !== dialogResult.affiliate) return false;
+         return true;
+      });
+
+      const scriptContent = generateTamperMonkeyScript(filtered);
+      const encoder = new TextEncoder();
+      const fileStore = getFileManagerStore();
+      const affSuffix = dialogResult.affiliate ? `_${dialogResult.affiliate}` : '';
+      const fileName = `acb_ws_autofill_${String(dialogResult.year)}${affSuffix}.user.js`;
+      const file = fileStore.addFile({
+         name: fileName,
+         kind: FileKind.TampermonkeyScript,
+         isDownloadable: true,
+         useChecked: false,
+         data: encoder.encode(scriptContent),
+      });
+      modifyDrawerNotificationForUserAddedFiles(fileStore);
+      openDynamicTextDialog(file.name, scriptContent);
+   } catch (err) {
+      let errMsg = typeof err === "string" ? err : (err instanceof Error ? err.message : String(err));
+      console.error("asyncRunAcbForTampermonkey caught error: ", err);
+      ErrorBox.getMain().showWith({
+         title: "Processing Error",
+         descPre: "An error occurred while processing ACB. Please review the error details below:",
+         errorText: errMsg,
+         descPost: "If this seems unexpected, try clearing your cache."
+      });
+   }
+}
+
 // Handler for summary mode
 async function asyncRunAcbSummary(filenames: string[], contents: string[], latestDate: Date, mode: AcbAppRunMode) {
    console.debug("asyncRunAcbSummary", filenames);
@@ -179,35 +250,6 @@ async function asyncRunAcbSummary(filenames: string[], contents: string[], lates
          descPost: "If this seems unexpected, try clearing your cache."
       });
    }
-}
-
-function generateShareTallyRenderTable(txSummary: RenderTable): [RenderTable, string] {
-   const secIdx = txSummary.header.indexOf("security");
-   if (secIdx < 0) {
-      throw new Error(`Expected 'security' column in header, found: ${txSummary.header.join(', ')}`);
-   }
-   const sharesIdx = txSummary.header.indexOf("shares");
-   if (sharesIdx < 0) {
-      throw new Error(`Expected 'shares' column in header, found: ${txSummary.header.join(', ')}`);
-   }
-   const affIdx = txSummary.header.indexOf("affiliate");
-   const hasMultipleAffiliates = affIdx >= 0 &&
-      new Set(txSummary.rows.map(r => r[affIdx])).size > 1;
-
-   const header = hasMultipleAffiliates
-      ? ["security", "affiliate", "shares"]
-      : ["security", "shares"];
-   let csvText = header.join(",") + "\n";
-   const rows = txSummary.rows.map((row) => {
-      const tallyRow = hasMultipleAffiliates
-         ? [row[secIdx], row[affIdx], row[sharesIdx]]
-         : [row[secIdx], row[sharesIdx]];
-      csvText += tallyRow.join(",") + "\n";
-      return tallyRow;
-   });
-   const table = new RenderTable(
-      header, rows, txSummary.footer, txSummary.notes, txSummary.errors);
-   return [table, csvText];
 }
 
 // Handler for share tally mode
@@ -317,6 +359,12 @@ export function runHandler(acbRunMode: AcbAppRunMode = AcbAppRunMode.Run) {
          title: "No Valid Files",
          descPre: "Please add and select at least one valid CSV file before running (use the new file manager drawer).",
       });
+      return;
+   }
+
+   if (acbRunMode === AcbAppRunMode.ExportTampermonkeyScript) {
+      asyncRunAcbForTampermonkey(filenames, filesContents)
+         .then(() => {}).catch((_: unknown) => {});
       return;
    }
 

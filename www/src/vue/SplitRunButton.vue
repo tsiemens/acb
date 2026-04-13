@@ -3,6 +3,8 @@ import { ref, computed, onMounted, onUnmounted } from 'vue';
 import { AcbAppRunMode } from '../common/acb_app_types.js';
 import { getTabStore, type TabIdType } from './tab_store.js';
 import { getFileManagerStore, FileKind, relevantInputKindsForTab } from './file_manager_store.js';
+import { isExperimentEnabled, TAMPERMONKEY_SCRIPT } from '../experiment_flags.js';
+import { AppFunctionMode } from '../common/acb_app_types.js';
 
 interface RunModeOption {
    mode: AcbAppRunMode;
@@ -10,14 +12,10 @@ interface RunModeOption {
    icon?: string;
 }
 
-const RUN_MODE_OPTIONS: RunModeOption[] = [
-   { mode: AcbAppRunMode.Run,    label: 'Run' },
-   { mode: AcbAppRunMode.Export, label: 'Export', icon: '/images/submit-document.svg' },
-];
-
 const props = defineProps<{
    tabId: TabIdType;
    onAction: (mode: AcbAppRunMode) => void;
+   functionMode?: AppFunctionMode | null;
 }>();
 
 const menuOpen = ref(false);
@@ -29,8 +27,20 @@ const disabled = computed(() =>
    !(tabStore.runEnabledByTab.get(props.tabId) ?? false)
 );
 
-const primaryOption = RUN_MODE_OPTIONS[0];
-const dropdownOptions = RUN_MODE_OPTIONS.slice(1);
+const BASE_RUN_MODE_OPTIONS: RunModeOption[] = [
+   { mode: AcbAppRunMode.Run,    label: 'Run' },
+   { mode: AcbAppRunMode.Export, label: 'Export', icon: '/images/submit-document.svg' },
+];
+
+const primaryOption = BASE_RUN_MODE_OPTIONS[0];
+
+const dropdownOptions = computed<RunModeOption[]>(() => {
+   const opts = BASE_RUN_MODE_OPTIONS.slice(1);
+   if (isExperimentEnabled(TAMPERMONKEY_SCRIPT) && props.functionMode === AppFunctionMode.Calculate) {
+      opts.push({ mode: AcbAppRunMode.ExportTampermonkeyScript, label: 'Tampermonkey Script', icon: '/images/tampermonkey.svg' });
+   }
+   return opts;
+});
 
 const selectedFilesLabel = computed(() => {
    const kinds = relevantInputKindsForTab(props.tabId);

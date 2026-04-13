@@ -10,6 +10,19 @@
       </div>
 
       <div class="debug-section">
+        <div class="debug-section-title">Experiments</div>
+        <div v-for="flag in allExperimentFlags" :key="flag" class="debug-control-row">
+          <input
+            type="checkbox"
+            :id="'exp-' + flag"
+            :checked="enabledExperiments.has(flag)"
+            @change="toggleExperiment(flag)"
+          >
+          <label :for="'exp-' + flag" class="debug-label debug-label-checkbox">{{ flag }}</label>
+        </div>
+      </div>
+
+      <div class="debug-section">
         <div class="debug-control-row">
           <label class="debug-label">Sample Set:</label>
           <select :value="selectedSample" @change="onSampleChange" class="debug-select">
@@ -43,6 +56,7 @@ import { defineComponent, ref } from 'vue';
 import { handleGitUserCaveatIssues } from '../github.js';
 import { isDebugModeEnabled } from '../debug.js';
 import { loadManifest, loadSampleSet, autoRunHandler, type ManifestSet } from '../app_debug.js';
+import { ALL_EXPERIMENT_FLAGS, getEnabledExperiments, buildUrlWithExperiments } from '../experiment_flags.js';
 
 type AutoloadMode = 'none' | 'load' | 'run';
 
@@ -56,6 +70,19 @@ export default defineComponent({
       const isDebugMode = isDebugModeEnabled();
       const panelVisible = ref(false);
       const manifestSets = ref<ManifestSet[]>([]);
+
+      const allExperimentFlags = ALL_EXPERIMENT_FLAGS;
+      const enabledExperiments = ref<Set<string>>(getEnabledExperiments());
+
+      function toggleExperiment(flag: string) {
+         const next = new Set(enabledExperiments.value);
+         if (next.has(flag)) {
+            next.delete(flag);
+         } else {
+            next.add(flag);
+         }
+         window.location.href = buildUrlWithExperiments(next);
+      }
 
       const selectedSample = ref<string>(getUrlParam('debug_sample') || 'none');
       const autoloadMode = ref<AutoloadMode>(
@@ -136,6 +163,7 @@ export default defineComponent({
          isDebugMode, panelVisible, manifestSets, selectedSample, autoloadMode,
          generateGithubOpenIssues, generateGithubFetchError,
          onSampleChange, onAutoloadModeChange, loadNow,
+         allExperimentFlags, enabledExperiments, toggleExperiment,
       };
    },
 });
@@ -172,10 +200,24 @@ export default defineComponent({
   margin-bottom: 6px;
 }
 
+.debug-section-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: #666;
+  margin-bottom: 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
 .debug-label {
   flex: 0 0 auto;
   font-size: 13px;
   white-space: nowrap;
+}
+
+.debug-label-checkbox {
+  cursor: pointer;
+  font-family: monospace;
 }
 
 .debug-select {

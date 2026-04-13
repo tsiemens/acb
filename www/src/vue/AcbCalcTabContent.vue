@@ -9,7 +9,7 @@
       <AppInputControls :store="appInputStore" />
 
       <div class="action-buttons">
-        <SplitRunButton :tabId="TabId.AcbCalc" :onAction="onRunAction" />
+        <SplitRunButton :tabId="TabId.AcbCalc" :onAction="onRunAction" :functionMode="appInputStore.functionMode" />
       </div>
 
     </div>

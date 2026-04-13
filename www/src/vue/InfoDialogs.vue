@@ -85,7 +85,10 @@
   </InfoDialog>
 
   <InfoDialog :store="store" dialog-id="dynamicTextInfo" :title="store.dynamicTextTitle">
-    <pre class="dynamic-text-content">{{ store.dynamicTextContent }}</pre>
+    <div class="dynamic-text-wrapper">
+      <button class="dynamic-text-copy-btn" @click="copyDynamicText">{{ copyBtnLabel }}</button>
+      <pre class="dynamic-text-content">{{ store.dynamicTextContent }}</pre>
+    </div>
   </InfoDialog>
 
   <InfoDialog :store="store" dialog-id="licenseDialog" title="License">
@@ -119,7 +122,7 @@
 </template>
 
 <script lang="ts">
-import { defineComponent, type PropType } from 'vue';
+import { defineComponent, ref, type PropType } from 'vue';
 import type { InfoDialogStore } from './info_dialog_store.js';
 import InfoDialog from './InfoDialog.vue';
 import { copyrightYears } from './copyright.js';
@@ -133,8 +136,20 @@ export default defineComponent({
          required: true,
       },
    },
-   setup() {
-      return { copyrightYears: copyrightYears() };
+   setup(props) {
+      const copyBtnLabel = ref('Copy');
+
+      function copyDynamicText() {
+         navigator.clipboard.writeText(props.store.dynamicTextContent).then(() => {
+            copyBtnLabel.value = 'Copied!';
+            setTimeout(() => { copyBtnLabel.value = 'Copy'; }, 1500);
+         }).catch(() => {
+            copyBtnLabel.value = 'Failed';
+            setTimeout(() => { copyBtnLabel.value = 'Copy'; }, 1500);
+         });
+      }
+
+      return { copyrightYears: copyrightYears(), copyBtnLabel, copyDynamicText };
    },
 });
 </script>
@@ -178,6 +193,29 @@ ol li {
   color: var(--warning-text);
   font-size: 14px;
   line-height: 1.5;
+}
+
+.dynamic-text-wrapper {
+  position: relative;
+}
+
+.dynamic-text-copy-btn {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  z-index: 1;
+  padding: 3px 10px;
+  font-size: 11px;
+  background-color: #fff;
+  border: 1px solid #c8cdd3;
+  border-radius: 4px;
+  cursor: pointer;
+  color: #444;
+  transition: background-color 0.15s;
+}
+
+.dynamic-text-copy-btn:hover {
+  background-color: #e9ecef;
 }
 
 .dynamic-text-content {
