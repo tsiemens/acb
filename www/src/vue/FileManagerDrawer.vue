@@ -312,7 +312,7 @@ function removeSelected() {
                            @click.stop="showExtractedText(file)"
                         >&#x1F4C4;</span>
                         <span
-                           v-else-if="file.kind === FileKind.AcbConfigJson"
+                           v-else-if="file.kind === FileKind.AcbConfigJson || file.kind === FileKind.TampermonkeyScript"
                            class="fm-tag fm-tag-view-text"
                            title="View file contents"
                            @click.stop="showFileAsText(file)"

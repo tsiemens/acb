@@ -23,34 +23,11 @@ import { defineComponent, computed, type PropType } from 'vue';
 import { InactiveFilterMode, affiliateMatches, type OutputStore } from './output_store.js';
 import type { RenderTable } from '../acb_wasm_types.js';
 import DataTable from './DataTable.vue';
-
-const SETTLE_DATE_COL = 2;
-const ACTION_COL = 3;
-const AMOUNT_COL = 4;
-const AMT_PER_SHARE_COL = 6;
-const COMMISSION_COL = 8;
-const CAP_GAIN_COL = 9;
-const AFFILIATE_COL = 14;
-const MEMO_COL = 15;
-
-const BREAK_BEFORE_PAREN_COLS = new Set([AMOUNT_COL, AMT_PER_SHARE_COL, COMMISSION_COL]);
-
-// Canadian personal tax deadline is April 30.
-// Before the deadline, the "current" tax year is last year.
-// After the deadline, the "current" tax year is this year.
-const TAX_DEADLINE_MONTH = 4; // April (1-indexed)
-const TAX_DEADLINE_DAY = 30;
-
-function getCurrentTaxYear(): number {
-   const now = new Date();
-   const year = now.getFullYear();
-   const month = now.getMonth() + 1;
-   const day = now.getDate();
-   if (month < TAX_DEADLINE_MONTH || (month === TAX_DEADLINE_MONTH && day <= TAX_DEADLINE_DAY)) {
-      return year - 1;
-   }
-   return year;
-}
+import { getCurrentTaxYear } from '../tax_logic.js';
+import {
+   ACTION_COL, AFFILIATE_COL,
+   BREAK_BEFORE_PAREN_COLS, CAP_GAIN_COL, MEMO_COL, SETTLE_DATE_COL,
+} from '../render_table_utils.js';
 
 export default defineComponent({
    name: 'SecurityTablesOutput',

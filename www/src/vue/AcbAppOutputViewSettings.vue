@@ -66,6 +66,7 @@
 <script lang="ts">
 import { defineComponent, computed, type PropType } from 'vue';
 import { InactiveFilterMode, affiliateBaseName, type OutputStore } from './output_store.js';
+import { AFFILIATE_COL, SETTLE_DATE_COL } from '../render_table_utils.js';
 
 const FILTER_CYCLE: InactiveFilterMode[] = [
    InactiveFilterMode.DimRows,
@@ -92,8 +93,6 @@ export default defineComponent({
             (s.textOutput !== '');
       });
 
-      const AFFILIATE_COL = 14;
-
       const availableAffiliates = computed(() => {
          const baseNames = new Set<string>();
          if (props.store.securityTables) {
@@ -118,8 +117,7 @@ export default defineComponent({
          if (props.store.securityTables) {
             for (const table of props.store.securityTables.values()) {
                for (const row of table.rows) {
-                  // Settlement date column
-                  const year = parseInt(row[2]?.split('-')[0], 10);
+                  const year = parseInt(row[SETTLE_DATE_COL]?.split('-')[0], 10);
                   if (!isNaN(year)) years.add(year);
                }
             }

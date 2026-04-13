@@ -21,4 +21,5 @@ FOO,2018-02-16,2018-02-16,RiDiv,,0.3,,USD,,,,,,"Per share, No AF specified"
 FOO,2018-02-18,2018-02-18,RiDiv,,,0.6,USD,,,,,,"Total Amount, No AF specified"
 FOO,2018-02-19,2018-02-19,CGDiv,,0.4,,USD,,,,,,"Per share, No AF specified"
 FOO,2018-02-21,2018-02-21,CGDiv,,,0.7,USD,,,,,,"Total Amount, No AF specified"
+FOO,2018-04-02,2018-04-04,Sell,1,1.6,,USD,1.2,1,,,Spouse,
 FOO,2018-12-31,2018-12-31,Split,,,,,,,,4-for-1,,4:1 split
