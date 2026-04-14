@@ -154,13 +154,14 @@ async function asyncRunAcbForTampermonkey(filenames: string[], contents: string[
       if (dialogResult === null) return;
 
       const filtered = sellData.entries.filter(e => {
-         const entryYear = parseInt(e.date.split('-')[0], 10);
+         const entryYear = parseInt(e.settlementDate.split('-')[0], 10);
          if (entryYear !== dialogResult.year) return false;
          if (dialogResult.affiliate !== null && e.affiliate !== dialogResult.affiliate) return false;
          return true;
       });
 
-      const scriptContent = generateTamperMonkeyScript(filtered);
+      const scriptContent = generateTamperMonkeyScript(
+         filtered, dialogResult.affiliate ?? "All Affiliates", dialogResult.year);
       const encoder = new TextEncoder();
       const fileStore = getFileManagerStore();
       const affSuffix = dialogResult.affiliate ? `_${dialogResult.affiliate}` : '';

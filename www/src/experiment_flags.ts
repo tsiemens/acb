@@ -1,7 +1,4 @@
-export const TAMPERMONKEY_SCRIPT = "tampermonkey_script";
-
 export const ALL_EXPERIMENT_FLAGS: string[] = [
-   TAMPERMONKEY_SCRIPT,
 ];
 
 export function isExperimentEnabled(flag: string): boolean {

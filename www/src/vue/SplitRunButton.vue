@@ -3,7 +3,6 @@ import { ref, computed, onMounted, onUnmounted } from 'vue';
 import { AcbAppRunMode } from '../common/acb_app_types.js';
 import { getTabStore, type TabIdType } from './tab_store.js';
 import { getFileManagerStore, FileKind, relevantInputKindsForTab } from './file_manager_store.js';
-import { isExperimentEnabled, TAMPERMONKEY_SCRIPT } from '../experiment_flags.js';
 import { AppFunctionMode } from '../common/acb_app_types.js';
 
 interface RunModeOption {
@@ -36,7 +35,7 @@ const primaryOption = BASE_RUN_MODE_OPTIONS[0];
 
 const dropdownOptions = computed<RunModeOption[]>(() => {
    const opts = BASE_RUN_MODE_OPTIONS.slice(1);
-   if (isExperimentEnabled(TAMPERMONKEY_SCRIPT) && props.functionMode === AppFunctionMode.Calculate) {
+   if (props.functionMode === AppFunctionMode.Calculate) {
       opts.push({ mode: AcbAppRunMode.ExportTampermonkeyScript, label: 'Tampermonkey Script', icon: '/images/tampermonkey.svg' });
    }
    return opts;

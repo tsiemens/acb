@@ -23,7 +23,8 @@
         "jszip": "^3.10.1",
         "papaparse": "^5.5.3",
         "pdfjs-dist": "^5.5.207",
-        "vue": "^3.5.29"
+        "vue": "^3.5.29",
+        "canada-acb": "github:tsiemens/canada-acb-js#preview-0.1.1"
     },
     "devDependencies": {
         "@types/papaparse": "^5.5.2",
