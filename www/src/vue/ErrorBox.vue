@@ -6,25 +6,29 @@ const props = defineProps<{
    store: ErrorBoxState;
    width?: string;
    severity?: 'error' | 'warning';
+   fullWidth?: boolean;
 }>();
 
 const sev = props.severity ?? 'error';
 </script>
 
 <template>
-   <div class="error-container-outer">
+   <div :class="['error-container-outer', props.fullWidth ? 'error-container-outer--full-width' : '']">
       <div
          v-if="props.store.visible"
          class="error-container"
          :style="props.width ? { width: props.width } : {}"
       >
          <div :class="['error-header', `error-header--${sev}`]">
-            <WarningTriangleIcon class="error-icon" />
-            <span class="error-box-title">{{ props.store.title }}</span>
+            <WarningTriangleIcon v-if="props.store.title" class="error-icon" />
+            <span v-if="props.store.title" class="error-box-title">{{ props.store.title }}</span>
          </div>
          <div class="error-content">
             <p v-if="props.store.descPre" class="error-desc-pre">{{ props.store.descPre }}</p>
-            <div v-if="props.store.errorText" :class="['error-message', `error-message--${sev}`]">{{ props.store.errorText }}</div>
+            <template v-if="props.store.errorTexts && props.store.errorTexts.length > 0">
+               <div v-for="(text, i) in props.store.errorTexts" :key="i" :class="['error-message', `error-message--${sev}`]">{{ text }}</div>
+            </template>
+            <div v-else-if="props.store.errorText" :class="['error-message', `error-message--${sev}`]">{{ props.store.errorText }}</div>
             <p v-if="props.store.descPost" class="error-desc-post">{{ props.store.descPost }}</p>
          </div>
       </div>
@@ -36,6 +40,11 @@ const sev = props.severity ?? 'error';
    width: 100%;
    display: flex;
    justify-content: center;
+}
+
+.error-container-outer--full-width .error-container {
+   width: 100%;
+   max-width: none;
 }
 
 .error-container {
@@ -75,6 +84,10 @@ const sev = props.severity ?? 'error';
    padding: 12px 12px;
    color: #333;
    line-height: 1.5;
+}
+
+.error-message + .error-message {
+   margin-top: 8px;
 }
 
 .error-message {

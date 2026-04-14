@@ -5,6 +5,7 @@ export interface ErrorBoxState {
    title: string;
    descPre: string;
    errorText: string;
+   errorTexts?: string[];
    descPost: string;
 }
 
