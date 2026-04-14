@@ -179,6 +179,19 @@ fn get_superficial_loss_info(
     // manual entry if the number of shares remaining in the sell affiliate is less
     // than the number of rejected loss shares. <<<<<< Warn of this and possibly suggest an accountant.
 
+    // Track the sequence of transactions in the period window for error diagnostics.
+    // Start with the triggering sell.
+    let trigger_af_balance =
+        active_affiliate_spladj_shares_at_eop.get(&tx.affiliate).unwrap();
+    let mut period_tx_sequence: Vec<String> = vec![format!(
+        "  {} Sell {} -> total ({}): {}, total (all): {}  (triggering sale)",
+        tx.trade_date,
+        *sell_shares,
+        tx.affiliate.name(),
+        *trigger_af_balance,
+        *all_affiliates_share_balance_after_sell
+    )];
+
     for i in (idx + 1)..txs.len() {
         let after_tx = txs.get(i).unwrap();
         if after_tx.settlement_date > last_bad_buy_date {
@@ -190,6 +203,12 @@ fn get_superficial_loss_info(
             .map(|v| *v)
             .unwrap_or(PosDecimal::one());
 
+        let split_adj_note = if *split_adjustment != *PosDecimal::one() {
+            format!(" [split adj: {}]", split_adjustment)
+        } else {
+            String::new()
+        };
+
         // Within the 30 day window after
         match &after_tx.action_specifics {
             TxActionSpecifics::Buy(buy) => {
@@ -197,17 +216,28 @@ fn get_superficial_loss_info(
                 let after_tx_buy_spladj_shares =
                     after_tx_buy_shares * split_adjustment.into();
 
-                all_aff_spladj_shares_at_end_of_period += after_tx_buy_spladj_shares;
                 let old_shares_eop = active_affiliate_spladj_shares_at_eop
                     .get(after_tx_affil)
                     .map(|d| *d)
                     .unwrap_or_else(|| {
                         default_post_sale_share_balance(after_tx_affil)
                     });
-                active_affiliate_spladj_shares_at_eop.insert(
-                    after_tx_affil.clone(),
-                    old_shares_eop + after_tx_buy_spladj_shares,
-                );
+                let new_af_balance = old_shares_eop + after_tx_buy_spladj_shares;
+                let new_all_total = *all_aff_spladj_shares_at_end_of_period
+                    + *after_tx_buy_spladj_shares;
+                period_tx_sequence.push(format!(
+                    "  {} Buy {}{} -> total ({}): {}, total (all): {}",
+                    after_tx.trade_date,
+                    *after_tx_buy_shares,
+                    split_adj_note,
+                    after_tx_affil.name(),
+                    *new_af_balance,
+                    new_all_total
+                ));
+
+                all_aff_spladj_shares_at_end_of_period += after_tx_buy_spladj_shares;
+                active_affiliate_spladj_shares_at_eop
+                    .insert(after_tx_affil.clone(), new_af_balance);
                 total_aquired_spladj_shares_in_period += after_tx_buy_spladj_shares;
                 buying_affiliates.insert(after_tx_affil.clone());
             }
@@ -217,29 +247,53 @@ fn get_superficial_loss_info(
                 let after_tx_spladj_sell_shares =
                     after_tx_sell_shares * split_adjustment.into();
 
-                all_aff_spladj_shares_at_end_of_period = GreaterEqualZeroDecimal::try_from(
-                    *all_aff_spladj_shares_at_end_of_period - *after_tx_spladj_sell_shares
-                ).map_err(|_| {
-                    // The caller may not have gone through those transactions to validate them
-                    // yet, so we shouldn't panic here.
-                    format!("Total share count went below zero in 30-day period after sale (on {})",
-                            after_tx.trade_date)
-                })?;
-
                 let old_shares_eop = active_affiliate_spladj_shares_at_eop
                     .get(after_tx_affil)
                     .map(|d| *d)
                     .unwrap_or_else(|| {
                         default_post_sale_share_balance(after_tx_affil)
                     });
+                let new_af_total = *old_shares_eop - *after_tx_spladj_sell_shares;
+                let new_all_total = *all_aff_spladj_shares_at_end_of_period
+                    - *after_tx_spladj_sell_shares;
+                period_tx_sequence.push(format!(
+                    "  {} Sell {}{} -> total ({}): {}, total (all): {}",
+                    after_tx.trade_date,
+                    *after_tx_sell_shares,
+                    split_adj_note,
+                    after_tx_affil.name(),
+                    new_af_total,
+                    new_all_total
+                ));
+
+                all_aff_spladj_shares_at_end_of_period = GreaterEqualZeroDecimal::try_from(
+                    new_all_total
+                ).map_err(|_| {
+                    // The caller may not have gone through those transactions to validate them
+                    // yet, so we shouldn't panic here.
+                    format!(
+                        "Total share count went below zero in 30-day period after sale \
+                        (balance = {} on {}).\nTransaction sequence:\n{}",
+                        new_all_total, after_tx.trade_date,
+                        period_tx_sequence.join("\n")
+                    )
+                })?;
+
                 active_affiliate_spladj_shares_at_eop.insert(after_tx_affil.clone(),
-                    GreaterEqualZeroDecimal::try_from(*old_shares_eop - *after_tx_spladj_sell_shares)
-                        .map_err(|_|
-                            format!("Share count for affiliate {} went below zero in 30-day period after sale (on {})",
-                            after_tx_affil.name(), after_tx.trade_date))?
+                    GreaterEqualZeroDecimal::try_from(new_af_total)
+                        .map_err(|_| format!(
+                            "Share count for affiliate {} went below zero in 30-day period \
+                            after sale (balance = {} on {}).\nTransaction sequence:\n{}",
+                            after_tx_affil.name(), new_af_total, after_tx.trade_date,
+                            period_tx_sequence.join("\n")
+                        ))?
                 );
             }
             TxActionSpecifics::Split(split) => {
+                period_tx_sequence.push(format!(
+                    "  {} Split {}",
+                    after_tx.trade_date, split.ratio
+                ));
                 // Adjustment goes backwards in time for txs after the sale.
                 let new_split_adjustment =
                     split_adjustment / split.ratio.pre_to_post_factor();
@@ -837,8 +891,15 @@ mod tests {
         ];
 
         let e = get_superficial_loss_info(0, &txs, &statuses).unwrap_err();
-        assert_eq!("Share count for affiliate Default went below zero in \
-                    30-day period after sale (on 2017-01-14)", &e);
+        assert_eq!(
+            "Share count for affiliate Default went below zero in 30-day period \
+            after sale (balance = -12 on 2017-01-14).\nTransaction sequence:\n".to_string()
+            + "  2017-01-11 Sell 5 -> total (Default): 5, total (all): 5  (triggering sale)\n"
+            + "  2017-01-12 Buy 3 -> total (Default): 8, total (all): 8\n"
+            + "  2017-01-13 Buy 100 -> total (B): 100, total (all): 108\n"
+            + "  2017-01-14 Sell 20 -> total (Default): -12, total (all): 88",
+            e
+        );
 
         // Case: Some sell after is too large, on other affiliate
         let statuses = create_test_status(&[(default_af(), gez!(10))]);
@@ -855,8 +916,14 @@ mod tests {
         ];
 
         let e = get_superficial_loss_info(0, &txs, &statuses).unwrap_err();
-        assert_eq!("Share count for affiliate B went below zero in \
-                    30-day period after sale (on 2017-01-14)", &e);
+        assert_eq!(
+            "Share count for affiliate B went below zero in 30-day period \
+            after sale (balance = -1 on 2017-01-14).\nTransaction sequence:\n".to_string()
+            + "  2017-01-11 Sell 5 -> total (Default): 5, total (all): 5  (triggering sale)\n"
+            + "  2017-01-12 Buy 3 -> total (B): 3, total (all): 8\n"
+            + "  2017-01-14 Sell 4 -> total (B): -1, total (all): 4",
+            e
+        );
 
         // Case: Some sell after is too large, on other affiliate, and goes
         // below total for all affiliates
@@ -875,8 +942,13 @@ mod tests {
 
         let e = get_superficial_loss_info(0, &txs, &statuses).unwrap_err();
         assert_eq!(
-            "Total share count went below zero in 30-day period after sale (on 2017-01-14)",
-            &e);
+            "Total share count went below zero in 30-day period after sale \
+            (balance = -12 on 2017-01-14).\nTransaction sequence:\n".to_string()
+            + "  2017-01-11 Sell 5 -> total (Default): 5, total (all): 5  (triggering sale)\n"
+            + "  2017-01-12 Buy 3 -> total (B): 3, total (all): 8\n"
+            + "  2017-01-14 Sell 20 -> total (B): -17, total (all): -12",
+            e
+        );
     }
 
     // MARK: get_superficial_loss_ratio / calc_superficial_loss_ratio tests
