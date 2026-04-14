@@ -93,7 +93,7 @@ export function extractSellData(
 
          entries.push({
             security,
-            date: settlDate,
+            settlementDate: settlDate,
             affiliate: baseName,
             proceedsCad: parseDollarCell(row[AMOUNT_COL]),
             costBaseCad: parseDollarCell(row[ACB_COL]),
