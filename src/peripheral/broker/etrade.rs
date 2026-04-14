@@ -1124,6 +1124,36 @@ fn parse_rsu_benefits_from_sheet(
     // Collect rows so we can look ahead for Tax Withholding after Vest Schedule.
     let all_rows: Vec<&[calamine::Data]> = rows.collect();
 
+    // First pass: collect "Shares released" Event rows.
+    // E*Trade's Vest Schedule "Released Qty" column misleadingly shows the
+    // *vested* quantity, not the net shares released after tax withholding.
+    // The actual released count is only in the Event rows.
+    // Key: (grant_number, date_str) -> shares released.
+    let mut shares_released_events =
+        std::collections::HashMap::<(String, String), Decimal>::new();
+    for (idx, row) in all_rows.iter().enumerate() {
+        reader.set_row(row, idx + 2);
+        let record_type =
+            reader.get_str("Record Type").map_err(|e| e.to_string())?;
+        if record_type == "Event" {
+            let event_type = reader
+                .get_str("Event Type")
+                .map_err(|e| e.to_string())?;
+            if event_type == "Shares released" {
+                let grant_num = reader
+                    .get_str("Grant Number")
+                    .map_err(|e| e.to_string())?;
+                let date_str =
+                    reader.get_str("Date").map_err(|e| e.to_string())?;
+                let qty = reader
+                    .get_dec("Qty. or Amount")
+                    .map_err(|e| e.to_string())?;
+                shares_released_events
+                    .insert((grant_num, date_str), qty);
+            }
+        }
+    }
+
     let mut i = 0;
     while i < all_rows.len() {
         let row = all_rows[i];
@@ -1140,12 +1170,12 @@ fn parse_rsu_benefits_from_sheet(
                     reader.get_str("Grant Number").map_err(|e| e.to_string())?;
             }
             "Vest Schedule" => {
-                let released_qty = reader
+                let vest_schedule_released_qty = reader
                     .get_opt_dec("Released Qty")
                     .map_err(|e| e.to_string())?
                     .unwrap_or(Decimal::ZERO);
 
-                if released_qty.is_zero() {
+                if vest_schedule_released_qty.is_zero() {
                     i += 1;
                     continue;
                 }
@@ -1158,11 +1188,13 @@ fn parse_rsu_benefits_from_sheet(
                     )?;
 
                 // Look ahead for the Tax Withholding row to get Taxable Gain.
+                let has_tax_withholding;
                 let taxable_gain = if i + 1 < all_rows.len() {
                     reader.set_row(all_rows[i + 1], i + 3);
                     let next_type =
                         reader.get_str("Record Type").map_err(|e| e.to_string())?;
                     if next_type == "Tax Withholding" {
+                        has_tax_withholding = true;
                         let gain = reader
                             .get_dec("Taxable Gain")
                             .map_err(|e| e.to_string())?;
@@ -1183,14 +1215,37 @@ fn parse_rsu_benefits_from_sheet(
                     ));
                 };
 
-                let fmv_per_share = taxable_gain / released_qty;
+                // When tax withholding applies, E*Trade's "Released Qty"
+                // column actually contains the *vested* quantity (before
+                // withholding). The true shares released to the account
+                // (after withholding) are only in the "Shares released"
+                // Event row. Use that when available.
+                let acquire_shares = if has_tax_withholding {
+                    if let Some(&event_released) =
+                        shares_released_events.get(&(
+                            current_grant_number.clone(),
+                            vest_date_str.clone(),
+                        ))
+                    {
+                        event_released
+                    } else {
+                        vest_schedule_released_qty
+                    }
+                } else {
+                    vest_schedule_released_qty
+                };
+
+                // Taxable gain covers all vested shares, so use the Vest
+                // Schedule qty (the vested count) for the per-share FMV.
+                let fmv_per_share =
+                    taxable_gain / vest_schedule_released_qty;
 
                 benefits.push(BenefitEntry {
                     security: current_symbol.clone(),
                     acquire_tx_date: vest_date,
                     acquire_settle_date: vest_date,
                     acquire_share_price: fmv_per_share,
-                    acquire_shares: released_qty,
+                    acquire_shares,
                     sell_to_cover_tx_date: None,
                     sell_to_cover_settle_date: None,
                     sell_to_cover_price: None,
@@ -2355,42 +2410,56 @@ Morgan Stanley Smith Barney LLC acted as agent.
             sheet.write(1, 1, "BAR").unwrap();
             sheet.write(1, 2, "08-MAY-2020").unwrap();
             sheet.write(1, 10, "R12345").unwrap();
-            // Event row (skipped)
+            // Event rows — "Shares released" tells us the net shares after
+            // tax withholding (E*Trade's Vest Schedule "Released Qty"
+            // misleadingly shows the vested count, not the net released).
             sheet.write(2, 0, "Event").unwrap();
             sheet.write(2, 10, "R12345").unwrap();
             sheet.write(2, 21, "02/22/2021").unwrap();
             sheet.write(2, 22, "Shares sold").unwrap();
             sheet.write(2, 23, 50.0).unwrap();
-            // Vest Schedule with Released Qty > 0
-            sheet.write(3, 0, "Vest Schedule").unwrap();
+            // "Shares released" for vest period 1: 40 out of 100 vested
+            sheet.write(3, 0, "Event").unwrap();
             sheet.write(3, 10, "R12345").unwrap();
-            sheet.write(3, 24, 1.0).unwrap(); // Vest Period
-            sheet.write(3, 25, "02/20/2021").unwrap(); // Vest Date
-            sheet.write(3, 33, 100.0).unwrap(); // Released Qty
-            sheet.write(3, 37, 5000.0).unwrap(); // Total Taxes Paid
-                                                 // Tax Withholding for vest period 1
-            sheet.write(4, 0, "Tax Withholding").unwrap();
+            sheet.write(3, 21, "02/20/2021").unwrap();
+            sheet.write(3, 22, "Shares released").unwrap();
+            sheet.write(3, 23, 40.0).unwrap();
+            // "Shares released" for vest period 3: 80 out of 200 vested
+            sheet.write(4, 0, "Event").unwrap();
             sheet.write(4, 10, "R12345").unwrap();
-            sheet.write(4, 24, 1.0).unwrap();
-            sheet.write(4, 39, 3000.0).unwrap(); // Taxable Gain
-                                                 // Vest Schedule with Released Qty = 0 (future vest, skipped)
+            sheet.write(4, 21, "08/20/2021").unwrap();
+            sheet.write(4, 22, "Shares released").unwrap();
+            sheet.write(4, 23, 80.0).unwrap();
+            // Vest Schedule with Released Qty > 0
             sheet.write(5, 0, "Vest Schedule").unwrap();
             sheet.write(5, 10, "R12345").unwrap();
-            sheet.write(5, 24, 2.0).unwrap();
-            sheet.write(5, 25, "05/20/2026").unwrap();
-            sheet.write(5, 33, 0.0).unwrap();
-            // Second vest with data
-            sheet.write(6, 0, "Vest Schedule").unwrap();
+            sheet.write(5, 24, 1.0).unwrap(); // Vest Period
+            sheet.write(5, 25, "02/20/2021").unwrap(); // Vest Date
+            sheet.write(5, 33, 100.0).unwrap(); // Released Qty (really vested)
+            sheet.write(5, 37, 5000.0).unwrap(); // Total Taxes Paid
+            // Tax Withholding for vest period 1
+            sheet.write(6, 0, "Tax Withholding").unwrap();
             sheet.write(6, 10, "R12345").unwrap();
-            sheet.write(6, 24, 3.0).unwrap();
-            sheet.write(6, 25, "08/20/2021").unwrap();
-            sheet.write(6, 33, 200.0).unwrap();
-            sheet.write(6, 37, 10000.0).unwrap();
-            // Tax Withholding for vest period 3
-            sheet.write(7, 0, "Tax Withholding").unwrap();
+            sheet.write(6, 24, 1.0).unwrap();
+            sheet.write(6, 39, 3000.0).unwrap(); // Taxable Gain
+            // Vest Schedule with Released Qty = 0 (future vest, skipped)
+            sheet.write(7, 0, "Vest Schedule").unwrap();
             sheet.write(7, 10, "R12345").unwrap();
-            sheet.write(7, 24, 3.0).unwrap();
-            sheet.write(7, 39, 8000.0).unwrap(); // FMV = 8000/200 = 40
+            sheet.write(7, 24, 2.0).unwrap();
+            sheet.write(7, 25, "05/20/2026").unwrap();
+            sheet.write(7, 33, 0.0).unwrap();
+            // Second vest with data
+            sheet.write(8, 0, "Vest Schedule").unwrap();
+            sheet.write(8, 10, "R12345").unwrap();
+            sheet.write(8, 24, 3.0).unwrap();
+            sheet.write(8, 25, "08/20/2021").unwrap();
+            sheet.write(8, 33, 200.0).unwrap(); // Released Qty (really vested)
+            sheet.write(8, 37, 10000.0).unwrap();
+            // Tax Withholding for vest period 3
+            sheet.write(9, 0, "Tax Withholding").unwrap();
+            sheet.write(9, 10, "R12345").unwrap();
+            sheet.write(9, 24, 3.0).unwrap();
+            sheet.write(9, 39, 8000.0).unwrap(); // FMV = 8000/200 = 40
         }
 
         #[test]
@@ -2407,7 +2476,7 @@ Morgan Stanley Smith Barney LLC acted as agent.
                     acquire_tx_date: date("2021-02-20"),
                     acquire_settle_date: date("2021-02-20"),
                     acquire_share_price: dec!(30), // 3000 / 100
-                    acquire_shares: dec!(100),
+                    acquire_shares: dec!(40),     // from "Shares released" Event
                     sell_to_cover_tx_date: None,
                     sell_to_cover_settle_date: None,
                     sell_to_cover_price: None,
@@ -2427,7 +2496,7 @@ Morgan Stanley Smith Barney LLC acted as agent.
                     acquire_tx_date: date("2021-08-20"),
                     acquire_settle_date: date("2021-08-20"),
                     acquire_share_price: dec!(40), // 8000 / 200
-                    acquire_shares: dec!(200),
+                    acquire_shares: dec!(80),     // from "Shares released" Event
                     sell_to_cover_tx_date: None,
                     sell_to_cover_settle_date: None,
                     sell_to_cover_price: None,
