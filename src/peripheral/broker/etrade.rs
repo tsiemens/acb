@@ -1136,20 +1136,15 @@ fn parse_rsu_benefits_from_sheet(
         let record_type =
             reader.get_str("Record Type").map_err(|e| e.to_string())?;
         if record_type == "Event" {
-            let event_type = reader
-                .get_str("Event Type")
-                .map_err(|e| e.to_string())?;
+            let event_type =
+                reader.get_str("Event Type").map_err(|e| e.to_string())?;
             if event_type == "Shares released" {
-                let grant_num = reader
-                    .get_str("Grant Number")
-                    .map_err(|e| e.to_string())?;
-                let date_str =
-                    reader.get_str("Date").map_err(|e| e.to_string())?;
-                let qty = reader
-                    .get_dec("Qty. or Amount")
-                    .map_err(|e| e.to_string())?;
-                shares_released_events
-                    .insert((grant_num, date_str), qty);
+                let grant_num =
+                    reader.get_str("Grant Number").map_err(|e| e.to_string())?;
+                let date_str = reader.get_str("Date").map_err(|e| e.to_string())?;
+                let qty =
+                    reader.get_dec("Qty. or Amount").map_err(|e| e.to_string())?;
+                shares_released_events.insert((grant_num, date_str), qty);
             }
         }
     }
@@ -1221,11 +1216,8 @@ fn parse_rsu_benefits_from_sheet(
                 // (after withholding) are only in the "Shares released"
                 // Event row. Use that when available.
                 let acquire_shares = if has_tax_withholding {
-                    if let Some(&event_released) =
-                        shares_released_events.get(&(
-                            current_grant_number.clone(),
-                            vest_date_str.clone(),
-                        ))
+                    if let Some(&event_released) = shares_released_events
+                        .get(&(current_grant_number.clone(), vest_date_str.clone()))
                     {
                         event_released
                     } else {
@@ -1237,8 +1229,7 @@ fn parse_rsu_benefits_from_sheet(
 
                 // Taxable gain covers all vested shares, so use the Vest
                 // Schedule qty (the vested count) for the per-share FMV.
-                let fmv_per_share =
-                    taxable_gain / vest_schedule_released_qty;
+                let fmv_per_share = taxable_gain / vest_schedule_released_qty;
 
                 benefits.push(BenefitEntry {
                     security: current_symbol.clone(),
@@ -2405,61 +2396,93 @@ Morgan Stanley Smith Barney LLC acted as agent.
             for (c, h) in headers.iter().enumerate() {
                 sheet.write(0, c as u16, *h).unwrap();
             }
+
+            const C_RECORD_TYPE: u16 = 0;
+            const C_SYMBOL: u16 = 1;
+            const C_GRANT_DATE: u16 = 2;
+            const C_GRANT_NUMBER: u16 = 10;
+            const C_DATE: u16 = 21;
+            const C_EVENT_TYPE: u16 = 22;
+            const C_QTY: u16 = 23;
+            const C_VEST_PERIOD: u16 = 24;
+            const C_VEST_DATE: u16 = 25;
+            const C_RELEASED_QTY: u16 = 33;
+            const C_TOTAL_TAXES_PAID: u16 = 37;
+            const C_TAXABLE_GAIN: u16 = 39;
+
+            let mut row: u32 = 1;
+
             // Grant row
-            sheet.write(1, 0, "Grant").unwrap();
-            sheet.write(1, 1, "BAR").unwrap();
-            sheet.write(1, 2, "08-MAY-2020").unwrap();
-            sheet.write(1, 10, "R12345").unwrap();
+            sheet.write(row, C_RECORD_TYPE, "Grant").unwrap();
+            sheet.write(row, C_SYMBOL, "BAR").unwrap();
+            sheet.write(row, C_GRANT_DATE, "08-MAY-2020").unwrap();
+            sheet.write(row, C_GRANT_NUMBER, "R12345").unwrap();
+            row += 1;
+
             // Event rows — "Shares released" tells us the net shares after
             // tax withholding (E*Trade's Vest Schedule "Released Qty"
             // misleadingly shows the vested count, not the net released).
-            sheet.write(2, 0, "Event").unwrap();
-            sheet.write(2, 10, "R12345").unwrap();
-            sheet.write(2, 21, "02/22/2021").unwrap();
-            sheet.write(2, 22, "Shares sold").unwrap();
-            sheet.write(2, 23, 50.0).unwrap();
+            sheet.write(row, C_RECORD_TYPE, "Event").unwrap();
+            sheet.write(row, C_GRANT_NUMBER, "R12345").unwrap();
+            sheet.write(row, C_DATE, "02/22/2021").unwrap();
+            sheet.write(row, C_EVENT_TYPE, "Shares sold").unwrap();
+            sheet.write(row, C_QTY, 50.0).unwrap();
+            row += 1;
+
             // "Shares released" for vest period 1: 40 out of 100 vested
-            sheet.write(3, 0, "Event").unwrap();
-            sheet.write(3, 10, "R12345").unwrap();
-            sheet.write(3, 21, "02/20/2021").unwrap();
-            sheet.write(3, 22, "Shares released").unwrap();
-            sheet.write(3, 23, 40.0).unwrap();
+            sheet.write(row, C_RECORD_TYPE, "Event").unwrap();
+            sheet.write(row, C_GRANT_NUMBER, "R12345").unwrap();
+            sheet.write(row, C_DATE, "02/20/2021").unwrap();
+            sheet.write(row, C_EVENT_TYPE, "Shares released").unwrap();
+            sheet.write(row, C_QTY, 40.0).unwrap();
+            row += 1;
+
             // "Shares released" for vest period 3: 80 out of 200 vested
-            sheet.write(4, 0, "Event").unwrap();
-            sheet.write(4, 10, "R12345").unwrap();
-            sheet.write(4, 21, "08/20/2021").unwrap();
-            sheet.write(4, 22, "Shares released").unwrap();
-            sheet.write(4, 23, 80.0).unwrap();
+            sheet.write(row, C_RECORD_TYPE, "Event").unwrap();
+            sheet.write(row, C_GRANT_NUMBER, "R12345").unwrap();
+            sheet.write(row, C_DATE, "08/20/2021").unwrap();
+            sheet.write(row, C_EVENT_TYPE, "Shares released").unwrap();
+            sheet.write(row, C_QTY, 80.0).unwrap();
+            row += 1;
+
             // Vest Schedule with Released Qty > 0
-            sheet.write(5, 0, "Vest Schedule").unwrap();
-            sheet.write(5, 10, "R12345").unwrap();
-            sheet.write(5, 24, 1.0).unwrap(); // Vest Period
-            sheet.write(5, 25, "02/20/2021").unwrap(); // Vest Date
-            sheet.write(5, 33, 100.0).unwrap(); // Released Qty (really vested)
-            sheet.write(5, 37, 5000.0).unwrap(); // Total Taxes Paid
+            sheet.write(row, C_RECORD_TYPE, "Vest Schedule").unwrap();
+            sheet.write(row, C_GRANT_NUMBER, "R12345").unwrap();
+            sheet.write(row, C_VEST_PERIOD, 1.0).unwrap();
+            sheet.write(row, C_VEST_DATE, "02/20/2021").unwrap();
+            sheet.write(row, C_RELEASED_QTY, 100.0).unwrap(); // Released Qty (really vested)
+            sheet.write(row, C_TOTAL_TAXES_PAID, 5000.0).unwrap();
+            row += 1;
+
             // Tax Withholding for vest period 1
-            sheet.write(6, 0, "Tax Withholding").unwrap();
-            sheet.write(6, 10, "R12345").unwrap();
-            sheet.write(6, 24, 1.0).unwrap();
-            sheet.write(6, 39, 3000.0).unwrap(); // Taxable Gain
+            sheet.write(row, C_RECORD_TYPE, "Tax Withholding").unwrap();
+            sheet.write(row, C_GRANT_NUMBER, "R12345").unwrap();
+            sheet.write(row, C_VEST_PERIOD, 1.0).unwrap();
+            sheet.write(row, C_TAXABLE_GAIN, 3000.0).unwrap(); // Taxable Gain
+            row += 1;
+
             // Vest Schedule with Released Qty = 0 (future vest, skipped)
-            sheet.write(7, 0, "Vest Schedule").unwrap();
-            sheet.write(7, 10, "R12345").unwrap();
-            sheet.write(7, 24, 2.0).unwrap();
-            sheet.write(7, 25, "05/20/2026").unwrap();
-            sheet.write(7, 33, 0.0).unwrap();
+            sheet.write(row, C_RECORD_TYPE, "Vest Schedule").unwrap();
+            sheet.write(row, C_GRANT_NUMBER, "R12345").unwrap();
+            sheet.write(row, C_VEST_PERIOD, 2.0).unwrap();
+            sheet.write(row, C_VEST_DATE, "05/20/2026").unwrap();
+            sheet.write(row, C_RELEASED_QTY, 0.0).unwrap();
+            row += 1;
+
             // Second vest with data
-            sheet.write(8, 0, "Vest Schedule").unwrap();
-            sheet.write(8, 10, "R12345").unwrap();
-            sheet.write(8, 24, 3.0).unwrap();
-            sheet.write(8, 25, "08/20/2021").unwrap();
-            sheet.write(8, 33, 200.0).unwrap(); // Released Qty (really vested)
-            sheet.write(8, 37, 10000.0).unwrap();
+            sheet.write(row, C_RECORD_TYPE, "Vest Schedule").unwrap();
+            sheet.write(row, C_GRANT_NUMBER, "R12345").unwrap();
+            sheet.write(row, C_VEST_PERIOD, 3.0).unwrap();
+            sheet.write(row, C_VEST_DATE, "08/20/2021").unwrap();
+            sheet.write(row, C_RELEASED_QTY, 200.0).unwrap(); // Released Qty (really vested)
+            sheet.write(row, C_TOTAL_TAXES_PAID, 10000.0).unwrap();
+            row += 1;
+
             // Tax Withholding for vest period 3
-            sheet.write(9, 0, "Tax Withholding").unwrap();
-            sheet.write(9, 10, "R12345").unwrap();
-            sheet.write(9, 24, 3.0).unwrap();
-            sheet.write(9, 39, 8000.0).unwrap(); // FMV = 8000/200 = 40
+            sheet.write(row, C_RECORD_TYPE, "Tax Withholding").unwrap();
+            sheet.write(row, C_GRANT_NUMBER, "R12345").unwrap();
+            sheet.write(row, C_VEST_PERIOD, 3.0).unwrap();
+            sheet.write(row, C_TAXABLE_GAIN, 8000.0).unwrap(); // FMV = 8000/200 = 40
         }
 
         #[test]
@@ -2476,7 +2499,7 @@ Morgan Stanley Smith Barney LLC acted as agent.
                     acquire_tx_date: date("2021-02-20"),
                     acquire_settle_date: date("2021-02-20"),
                     acquire_share_price: dec!(30), // 3000 / 100
-                    acquire_shares: dec!(40),     // from "Shares released" Event
+                    acquire_shares: dec!(40),      // from "Shares released" Event
                     sell_to_cover_tx_date: None,
                     sell_to_cover_settle_date: None,
                     sell_to_cover_price: None,
@@ -2496,7 +2519,7 @@ Morgan Stanley Smith Barney LLC acted as agent.
                     acquire_tx_date: date("2021-08-20"),
                     acquire_settle_date: date("2021-08-20"),
                     acquire_share_price: dec!(40), // 8000 / 200
-                    acquire_shares: dec!(80),     // from "Shares released" Event
+                    acquire_shares: dec!(80),      // from "Shares released" Event
                     sell_to_cover_tx_date: None,
                     sell_to_cover_settle_date: None,
                     sell_to_cover_price: None,
