@@ -65,7 +65,7 @@
 
 <script lang="ts">
 import { defineComponent, computed, type PropType } from 'vue';
-import { InactiveFilterMode, affiliateBaseName, type OutputStore } from './output_store.js';
+import { InactiveFilterMode, AcbOutputViewMode, affiliateBaseName, type OutputStore } from './output_store.js';
 import { AFFILIATE_COL, SETTLE_DATE_COL } from '../render_table_utils.js';
 
 const FILTER_CYCLE: InactiveFilterMode[] = [
@@ -95,10 +95,23 @@ export default defineComponent({
 
       const availableAffiliates = computed(() => {
          const baseNames = new Set<string>();
-         if (props.store.securityTables) {
+         const viewMode = props.store.activeViewMode;
+         if (viewMode === AcbOutputViewMode.SecurityTables && props.store.securityTables) {
             for (const table of props.store.securityTables.values()) {
                for (const row of table.rows) {
                   const aff = row[AFFILIATE_COL];
+                  if (aff) baseNames.add(affiliateBaseName(aff));
+               }
+            }
+         }
+         // summaryTable is shared by TxSummary and TallyShares modes; find the
+         // affiliate column by name since the column layout differs between the two.
+         if (viewMode === AcbOutputViewMode.Summary && props.store.summaryTable) {
+            const affIdx = props.store.summaryTable.header
+               .findIndex(h => h.toLowerCase() === 'affiliate');
+            if (affIdx >= 0) {
+               for (const row of props.store.summaryTable.rows) {
+                  const aff = row[affIdx];
                   if (aff) baseNames.add(affiliateBaseName(aff));
                }
             }
@@ -114,7 +127,8 @@ export default defineComponent({
 
       const availableYears = computed(() => {
          const years = new Set<number>();
-         if (props.store.securityTables) {
+         const viewMode = props.store.activeViewMode;
+         if (viewMode === AcbOutputViewMode.SecurityTables && props.store.securityTables) {
             for (const table of props.store.securityTables.values()) {
                for (const row of table.rows) {
                   const year = parseInt(row[SETTLE_DATE_COL]?.split('-')[0], 10);
@@ -122,11 +136,18 @@ export default defineComponent({
                }
             }
          }
-         if (props.store.summaryTable) {
-            for (const row of props.store.summaryTable.rows) {
-              // Settlement date column
-              const year = parseInt(row[2]?.split('-')[0], 10);
-              if (!isNaN(year)) years.add(year);
+         if (viewMode === AcbOutputViewMode.Summary && props.store.summaryTable) {
+            // summaryTable is shared by TxSummary and TallyShares modes.
+            // TallyShares produces a ["security", ["affiliate",] "shares"] table with
+            // no date column, so we must find the column by name rather than assuming
+            // a fixed index.
+            const settleDateIdx = props.store.summaryTable.header
+               .findIndex(h => h.toLowerCase() === 'settlement date');
+            if (settleDateIdx >= 0) {
+               for (const row of props.store.summaryTable.rows) {
+                  const year = parseInt(row[settleDateIdx]?.split('-')[0], 10);
+                  if (!isNaN(year)) years.add(year);
+               }
             }
          }
          return Array.from(years).sort((a, b) => b - a);
