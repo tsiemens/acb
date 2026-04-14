@@ -5,10 +5,11 @@
       <span v-if="titleBadge" class="title-badge" :title="titleBadgeHelpText">{{ titleBadge }}</span>
     </div>
 
-    <div v-if="errors.length > 0" class="security-errors">
-      <p v-for="(err, i) in errors" :key="i">{{ err }}</p>
-      <p v-if="errorSuffix">{{ errorSuffix }}</p>
-    </div>
+    <ErrorBox
+      v-if="errors.length > 0"
+      :store="{ visible: true, title: '', descPre: '', errorText: '', errorTexts: errors, descPost: errorSuffix }"
+      :fullWidth="true"
+    />
 
     <div class="table-fixed-head">
       <table>
@@ -55,9 +56,11 @@
 <script lang="ts">
 import { defineComponent, computed, type PropType } from 'vue';
 import type { RenderTable } from '../acb_wasm_types.js';
+import ErrorBox from './ErrorBox.vue';
 
 export default defineComponent({
    name: 'DataTable',
+   components: { ErrorBox },
    props: {
       table: {
          type: Object as PropType<RenderTable>,
@@ -142,14 +145,6 @@ export default defineComponent({
 
 .title-badge[title]:not([title=""]) {
   cursor: help;
-}
-
-.security-errors {
-  border: 1px solid #f5c6cb;
-  background: #fbe6e7;
-  border-radius: 5px;
-  padding: 10px;
-  margin-bottom: 10px;
 }
 
 .security-notes {
