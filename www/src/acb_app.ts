@@ -11,7 +11,7 @@ import { getAppInputStore, getSummaryDate } from "./vue/app_input_store.js";
 import { getConfigJsonForWasm } from "./vue/config_store.js";
 import { ErrorBox } from "./vue/error_box_store.js";
 import { downloadCsv, makeZipAndDownload } from "./download_utils.js";
-import { openDynamicTextDialog } from "./vue/info_dialog_store.js";
+import { openTampermonkeyScriptDialog } from "./vue/info_dialog_store.js";
 import { generateTamperMonkeyScript } from "./tampermonkey_gen.js";
 import { showTampermonkeyExportDialog } from "./vue/tampermonkey_dialog_store.js";
 import {
@@ -173,7 +173,7 @@ async function asyncRunAcbForTampermonkey(filenames: string[], contents: string[
          data: encoder.encode(scriptContent),
       });
       modifyDrawerNotificationForUserAddedFiles(fileStore);
-      openDynamicTextDialog(file.name, scriptContent);
+      openTampermonkeyScriptDialog(file.name, scriptContent);
    } catch (err) {
       let errMsg = typeof err === "string" ? err : (err instanceof Error ? err.message : String(err));
       console.error("asyncRunAcbForTampermonkey caught error: ", err);

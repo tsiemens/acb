@@ -33,3 +33,10 @@ export function openDynamicTextDialog(title: string, content: string): void {
    s.dynamicTextContent = content;
    s.activeDialogId = 'dynamicTextInfo';
 }
+
+export function openTampermonkeyScriptDialog(title: string, content: string): void {
+   const s = getInfoDialogStore();
+   s.dynamicTextTitle = title;
+   s.dynamicTextContent = content;
+   s.activeDialogId = 'tampermonkeyScriptDialog';
+}

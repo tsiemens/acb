@@ -2,7 +2,7 @@
 import { ref, computed } from 'vue';
 import { FileKind } from './file_manager_store.js';
 import type { FileManagerState, FileEntry } from './file_manager_store.js';
-import { openDynamicTextDialog } from './info_dialog_store.js';
+import { openDynamicTextDialog, openTampermonkeyScriptDialog } from './info_dialog_store.js';
 import FileDropAreaBase from './FileDropAreaBase.vue';
 
 const props = defineProps<{
@@ -120,7 +120,11 @@ function showExtractedText(file: FileEntry) {
 
 function showFileAsText(file: FileEntry) {
    const content = new TextDecoder().decode(file.data);
-   openDynamicTextDialog(file.name, content);
+   if (file.kind == FileKind.TampermonkeyScript) {
+      openTampermonkeyScriptDialog(file.name, content);
+   } else {
+      openDynamicTextDialog(file.name, content);
+   }
 }
 
 function removeSelected() {
