@@ -91,6 +91,37 @@
     </div>
   </InfoDialog>
 
+  <InfoDialog :store="store" dialog-id="tampermonkeyScriptDialog" :title="store.dynamicTextTitle" max-width="900px">
+    <div class="dynamic-text-wrapper">
+      <button class="dynamic-text-copy-btn" @click="copyTampermonkeyScript">{{ tmCopyBtnLabel }}</button>
+      <pre class="dynamic-text-content">{{ store.dynamicTextContent }}</pre>
+    </div>
+    <h4 class="tm-instructions-heading">How to use:</h4>
+    <ol class="tm-instructions-list">
+      <li>Install the <a href="https://www.tampermonkey.net/" target="_blank" rel="noopener">TamperMonkey</a> browser extension (security settings MAY need to be changed — see note below)</li>
+      <li>Click "Copy Script" above</li>
+      <li>Open TamperMonkey dashboard, click the "+" tab to create a new script, clear the template, and paste</li>
+      <li>Save the script (Ctrl+S / Cmd+S)</li>
+      <li>Navigate to WealthSimple Tax and search for "Capital Gains" to add the <strong>Capital Gains (or Losses)</strong> section to your return</li>
+      <li>A dark panel will appear pinned to the right side of the page — this is the auto-fill control panel</li>
+      <li>Scroll to the Capital Gains section so it's visible, then click <strong>"Start Auto-Fill"</strong></li>
+      <li>The script will automatically add rows and fill in each disposition (type, description, proceeds, cost base, expenses) — click "Stop" at any time</li>
+      <li>For the 2024 tax year, transactions are automatically split into Period 1 (Jan 1 – Jun 24) and Period 2 (Jun 25 – Dec 31) based on the trade date</li>
+      <li><strong>Review all values</strong> before submitting your return</li>
+    </ol>
+    <div class="info-dialog-message-warning tm-csp-warning">
+      <p class="tm-csp-title">Important: TamperMonkey Security Settings</p>
+      <p>WealthSimple Tax has strict Content Security Policy (CSP) headers that block injected scripts by default. You may need to change these TamperMonkey settings if the script panel does not appear:</p>
+      <ol>
+        <li>Click the TamperMonkey icon &rarr; <strong>Dashboard</strong> &rarr; <strong>Settings</strong> tab</li>
+        <li>Under <strong>General</strong>, set <strong>Config Mode</strong> to <strong>"Advanced"</strong> (this reveals the security options)</li>
+        <li>Scroll to <strong>Security</strong> and set <strong>"Modify existing content security policy (CSP) headers"</strong> to <strong>"Remove entirely (possibly unsafe)"</strong></li>
+        <li>Click <strong>Save</strong> and reload the WealthSimple Tax page</li>
+      </ol>
+      <p class="tm-csp-footer">You can revert this setting after you're done filing your taxes.</p>
+    </div>
+  </InfoDialog>
+
   <InfoDialog :store="store" dialog-id="licenseDialog" title="License">
     <p>ACB is open sourced under the MIT License</p>
     <div style="font-family: monospace;">
@@ -138,6 +169,7 @@ export default defineComponent({
    },
    setup(props) {
       const copyBtnLabel = ref('Copy');
+      const tmCopyBtnLabel = ref('Copy Script');
 
       function copyDynamicText() {
          navigator.clipboard.writeText(props.store.dynamicTextContent).then(() => {
@@ -149,7 +181,17 @@ export default defineComponent({
          });
       }
 
-      return { copyrightYears: copyrightYears(), copyBtnLabel, copyDynamicText };
+      function copyTampermonkeyScript() {
+         navigator.clipboard.writeText(props.store.dynamicTextContent).then(() => {
+            tmCopyBtnLabel.value = 'Copied!';
+            setTimeout(() => { tmCopyBtnLabel.value = 'Copy Script'; }, 1500);
+         }).catch(() => {
+            tmCopyBtnLabel.value = 'Failed';
+            setTimeout(() => { tmCopyBtnLabel.value = 'Copy Script'; }, 1500);
+         });
+      }
+
+      return { copyrightYears: copyrightYears(), copyBtnLabel, copyDynamicText, tmCopyBtnLabel, copyTampermonkeyScript };
    },
 });
 </script>
@@ -228,7 +270,53 @@ ol li {
   white-space: pre-wrap;
   word-break: break-word;
   font-family: 'Courier New', Courier, monospace;
-  max-height: 60vh;
+  max-height: 40vh;
   overflow-y: auto;
+}
+
+.tm-instructions-heading {
+  margin-top: 18px;
+}
+
+.tm-instructions-list {
+  margin: 0 0 4px 0;
+  padding-left: 24px;
+}
+
+.tm-instructions-list li {
+  margin-bottom: 6px;
+}
+
+/* tm-csp* - TamperMonkey Content Security Policy */
+
+.tm-csp-warning {
+  margin-top: 16px;
+  margin-bottom: 0;
+}
+
+.tm-csp-warning p {
+  margin: 8px 0 4px;
+}
+
+.tm-csp-warning ol {
+  margin: 4px 0 4px 0;
+  padding-left: 24px;
+}
+
+.tm-csp-warning ol li {
+  margin-bottom: 4px;
+}
+
+.tm-csp-title {
+  font-weight: 600;
+  margin-top: 0 !important;
+  margin-bottom: 6px !important;
+}
+
+.tm-csp-footer {
+  font-size: 0.9em;
+  opacity: 0.75;
+  margin-top: 8px !important;
+  margin-bottom: 0 !important;
 }
 </style>

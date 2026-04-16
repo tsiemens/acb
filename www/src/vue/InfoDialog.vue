@@ -2,6 +2,7 @@
   <DialogShell
     :active="isActive"
     :title="title"
+    :max-width="maxWidth"
     @close="close"
   >
     <slot></slot>
@@ -28,6 +29,10 @@ export default defineComponent({
       title: {
          type: String,
          required: true,
+      },
+      maxWidth: {
+         type: String,
+         default: '600px',
       },
    },
    setup(props) {
