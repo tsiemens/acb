@@ -398,8 +398,13 @@ fn delta_for_tx(
             }
         }
         crate::portfolio::TxActionSpecifics::Split(split_specs) => {
-            new_share_balance = pre_tx_status.share_balance
-                * split_specs.ratio.pre_to_post_factor().into();
+            // Multiply first, then divide, to preserve precision when
+            // post/pre has a non-terminating decimal representation (e.g. a
+            // 134-for-170 reverse split would otherwise yield
+            // 134.00000000000000000000000001 from 170 shares).
+            new_share_balance = (pre_tx_status.share_balance
+                * split_specs.ratio.post_split.into())
+            .div(split_specs.ratio.pre_split);
             let share_diff = *new_share_balance - *pre_tx_status.share_balance;
             // This erroring would be strange in practice. Only if the share balance
             // was already broken.
@@ -438,10 +443,17 @@ fn delta_for_tx(
         }
     }
 
+    // Strip trailing-zero scale from share balances so downstream rendering
+    // shows "134" rather than "134.000" when arithmetic on fractional-ratio
+    // splits or similar operations leaves an exact-integer value with a
+    // non-zero scale.
+    let normalize_gez = |b: GreaterEqualZeroDecimal| {
+        GreaterEqualZeroDecimal::try_from(b.normalize()).unwrap()
+    };
     let new_status = PortfolioSecurityStatus {
         security: pre_tx_status.security.clone(),
-        share_balance: new_share_balance,
-        all_affiliate_share_balance: new_all_affiliates_share_balance,
+        share_balance: normalize_gez(new_share_balance),
+        all_affiliate_share_balance: normalize_gez(new_all_affiliates_share_balance),
         total_acb: new_acb_total,
     };
 
@@ -2132,6 +2144,46 @@ mod tests {
             TDt{post_st: TPSS{shares: gez!(5.5), all_shares: gez!(5.5),
                 total_acb: sgez!(11.0), ..def()}, gain: None, ..def()}, // R-Split
         ]);
+
+        // Case: Reverse split with a ratio whose reduced form has a
+        // non-terminating decimal representation (e.g. 134/170 = 67/85),
+        // but which produces an exact integer result for the held share
+        // balance. Regression test for precision loss in the share
+        // balance calculation.
+        let txs = vec![
+            TTx{t_day: 1, act: A::Buy, shares: gez!(170), price: gez!(1.0),
+                af_name: "", ..def()}.x(),
+            TTx{t_day: 2, act: A::Split, split: split("134-for-170"),
+                af_name: "", ..def()}.x(),
+        ];
+        let deltas = txs_to_delta_list_no_err(txs);
+        validate_deltas(deltas, vec![
+            TDt{post_st: TPSS{shares: gez!(170), all_shares: gez!(170),
+                total_acb: sgez!(170.0), ..def()}, ..def()}, // Buy in Default
+            TDt{post_st: TPSS{shares: gez!(134), all_shares: gez!(134),
+                total_acb: sgez!(170.0), ..def()}, gain: None, ..def()}, // R-Split
+        ]);
+
+        // Case: Reverse split expressed with a decimal ratio
+        // (0.7926-for-1.0) that multiplies to a non-integer share
+        // balance (170 * 0.7926 = 134.7420), followed by a fractional
+        // sale (total amount form) of 0.742 shares, ending at a whole
+        // integer (134). Since intermediate arithmetic retains trailing
+        // decimal zeros, the post-sale share balance must still be
+        // rendered as "134" (not "134.0000") for display consistency
+        // with the integer cases above.
+        let txs = vec![
+            TTx{t_day: 1, act: A::Buy, shares: gez!(170), price: gez!(1.0),
+                af_name: "", ..def()}.x(),
+            TTx{t_day: 2, act: A::Split, split: split("0.7926-for-1.0"),
+                af_name: "", ..def()}.x(),
+            TTx{t_day: 3, act: A::Sell, shares: gez!(0.742), t_amt: gez!(1.0),
+                af_name: "", ..def()}.x(),
+        ];
+        let deltas = txs_to_delta_list_no_err(txs);
+        let final_share_balance = deltas.last().unwrap().post_status.share_balance;
+        assert_eq!(*final_share_balance, Decimal::from(134));
+        assert_eq!(final_share_balance.to_string(), "134");
 
         // Case: Split in multiple affiliates.
         // Currently, splits are per-affiliate (this is just an implementation
