@@ -406,13 +406,22 @@ pub fn render_tx_table_model(
             }
             super::TxActionSpecifics::Split(split_specs) => {
                 // Show the change in shares in the shares column, and the
-                // mult factor along the new balance.
+                // mult factor along the new balance. We render an approximate of
+                // the multiplication factor, since we don't actually multiple
+                // by the factor itself in practice.
                 shares =
                     Some(*d.post_status.share_balance - *d.pre_status.share_balance);
+                let factor = *split_specs.ratio.pre_to_post_factor();
+                let factor_str = if factor.fract().is_zero() {
+                    factor.trunc().to_string()
+                } else {
+                    format!("{:.4}", factor).trim_end_matches('0').to_string()
+                };
                 new_share_balance = format!(
-                    "{} (x{})",
+                    "{} ({} ~ x{})",
                     changing_new_share_balance_str(),
-                    split_specs.ratio.pre_to_post_factor()
+                    split_specs.ratio,
+                    factor_str
                 );
                 // Splits to not affect ACB, so we don't want to show anything
                 acb_delta = None;
