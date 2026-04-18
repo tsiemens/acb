@@ -877,5 +877,14 @@ mod tests {
             !render_tables.contains_key("FOO"),
             "FOO should have been renamed"
         );
+
+        let bar_table = render_tables.get("BAR").unwrap();
+        assert_eq!(bar_table.rows.len(), 1);
+        let memo_cell = &bar_table.rows[0][15];
+        assert!(
+            memo_cell.contains("AKA FOO"),
+            "memo cell should contain 'AKA FOO', got {:?}",
+            memo_cell
+        );
     }
 }
