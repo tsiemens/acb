@@ -138,10 +138,10 @@ pub(super) fn txs_from_data(
 
     if let Some(cfg) = config {
         for tx in &mut csv_txs {
-            tx.security = tx
-                .security
-                .take()
-                .map(|sec| crate::app::config::rename_symbol(cfg, &sec).to_string());
+            crate::portfolio::tx_utils::apply_security_rename(
+                tx,
+                &cfg.symbol_renames,
+            );
         }
     }
 
@@ -1373,6 +1373,11 @@ mod tests {
                 Some("FOO.TO"),
                 "expected FOO renamed to FOO.TO, got {:?}",
                 tx.security
+            );
+            assert!(
+                tx.memo.as_deref().unwrap_or("").contains("AKA FOO"),
+                "renamed tx memo should contain 'AKA FOO', got {:?}",
+                tx.memo
             );
         }
     }

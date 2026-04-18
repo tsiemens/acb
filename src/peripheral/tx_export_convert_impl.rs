@@ -160,10 +160,10 @@ fn process_broker_txs(
         .collect();
     if let Some(cfg) = config {
         for tx in &mut csv_txs {
-            tx.security = tx
-                .security
-                .take()
-                .map(|sec| crate::app::config::rename_symbol(cfg, &sec).to_string());
+            crate::portfolio::tx_utils::apply_security_rename(
+                tx,
+                &cfg.symbol_renames,
+            );
         }
     }
     Ok(csv_txs)
@@ -491,12 +491,24 @@ mod tests {
                 .unwrap();
 
         assert_eq!(result.len(), 2);
-        let securities: Vec<_> =
-            result.iter().map(|t| t.security.as_deref()).collect();
+        let foo_tx = result
+            .iter()
+            .find(|t| t.security.as_deref() == Some("FOO.TO"))
+            .expect("FOO should be renamed to FOO.TO");
+        let bar_tx = result
+            .iter()
+            .find(|t| t.security.as_deref() == Some("BAR"))
+            .expect("BAR should be unchanged");
+
         assert!(
-            securities.contains(&Some("FOO.TO")),
-            "FOO should be renamed to FOO.TO"
+            foo_tx.memo.as_deref().unwrap_or("").contains("AKA FOO"),
+            "renamed tx memo should contain 'AKA FOO', got {:?}",
+            foo_tx.memo
         );
-        assert!(securities.contains(&Some("BAR")), "BAR should be unchanged");
+        assert!(
+            !bar_tx.memo.as_deref().unwrap_or("").contains("AKA"),
+            "unchanged tx memo should not contain 'AKA', got {:?}",
+            bar_tx.memo
+        );
     }
 }

@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use time::Date;
 
 use crate::{
-    app::config::{rename_symbol, AcbConfig},
+    app::config::AcbConfig,
     fx::io::RateLoader,
     portfolio::{
         bookkeeping::{txs_to_delta_list, DeltaListResult},
@@ -11,6 +11,7 @@ use crate::{
             tx_csv::{parse_tx_csv, TxCsvParseOptions},
             tx_loader::load_tx_rates,
         },
+        tx_utils::apply_security_rename,
         AffiliateFilter, Security, Tx,
     },
     util::rw::{DescribedReader, WriteHandle},
@@ -77,10 +78,7 @@ pub async fn run_acb_app_to_delta_models(
 
         if let Some(cfg) = config {
             for tx in &mut csv_txs {
-                tx.security = tx
-                    .security
-                    .take()
-                    .map(|sec| rename_symbol(cfg, &sec).to_string());
+                apply_security_rename(tx, &cfg.symbol_renames);
             }
         }
 
