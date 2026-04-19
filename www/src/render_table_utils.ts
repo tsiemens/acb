@@ -17,6 +17,9 @@ export const MEMO_COL = 15;
 // rendered on a separate line within the cell.
 export const BREAK_BEFORE_PAREN_COLS = new Set([AMOUNT_COL, AMT_PER_SHARE_COL, COMMISSION_COL]);
 
+/** Pseudo-security name representing CAD/USD FX gains/losses. */
+export const USD_FX_SECURITY = "USD.FX";
+
 export function isRegisteredAffiliate(affiliate: string): boolean {
    return /\(R\)\s*$/i.test(affiliate);
 }
@@ -62,11 +65,22 @@ export interface SellDataFromTables {
    sellYears: number[];
    /** Base affiliate names that have sell transactions. */
    affiliateBaseNames: string[];
+   /** Sorted unique securities that have sell transactions. */
+   securities: string[];
 }
 
 /**
  * Scan all security render tables and extract sell transaction data
  * for non-registered affiliates.
+ *
+ * costBaseCad is back-solved from the displayed capital gain
+ * (proceeds - capitalGain - expenses) so that downstream consumers which
+ * compute gain = proceeds - costBase - expenses match the table's
+ * SfL-adjusted gain rather than the raw pre-adjustment loss. Falls back to
+ * the ACB column when the capital gain cell is empty.
+ *
+ * Rows with a zero displayed capital gain are omitted, since they have
+ * nothing to report.
  */
 export function extractSellData(
    securityTables: Map<string, RenderTable>,
@@ -74,6 +88,7 @@ export function extractSellData(
    const entries: AcbTaxEntry[] = [];
    const yearsSet = new Set<number>();
    const affiliatesSet = new Set<string>();
+   const securitiesSet = new Set<string>();
 
    for (const [security, table] of securityTables) {
       for (const row of table.rows) {
@@ -83,8 +98,24 @@ export function extractSellData(
          const affiliate = row[AFFILIATE_COL] || '';
          if (isRegisteredAffiliate(affiliate)) continue;
 
+         const proceedsCad = parseDollarCell(row[AMOUNT_COL]);
+         const sellingExpensesCad = parseDollarCell(row[COMMISSION_COL]);
+         // Back-solve costBase from the table's displayed capital gain so that
+         // proceeds - costBase - expenses equals the SfL-adjusted gain shown in
+         // the table, rather than the raw pre-adjustment loss.
+         const capGainRaw = (row[CAP_GAIN_COL] || '').trim();
+         const hasCapGain = capGainRaw !== '' && capGainRaw !== '-' && capGainRaw !== '--';
+         const capGainCad = hasCapGain ? parseDollarCell(row[CAP_GAIN_COL]) : 0;
+         if (hasCapGain && capGainCad === 0) {
+            continue;
+         }
+         const costBaseCad = hasCapGain
+            ? proceedsCad - capGainCad - sellingExpensesCad
+            : parseDollarCell(row[ACB_COL]);
+
          const baseName = affiliateBaseName(affiliate);
          affiliatesSet.add(baseName);
+         securitiesSet.add(security);
 
          const settlDate = row[SETTLE_DATE_COL] || '';
          const yearStr = settlDate.split('-')[0];
@@ -95,16 +126,20 @@ export function extractSellData(
             security,
             settlementDate: settlDate,
             affiliate: baseName,
-            proceedsCad: parseDollarCell(row[AMOUNT_COL]),
-            costBaseCad: parseDollarCell(row[ACB_COL]),
-            sellingExpensesCad: parseDollarCell(row[COMMISSION_COL]),
+            proceedsCad,
+            costBaseCad,
+            sellingExpensesCad,
          });
       }
    }
 
    const sellYears = Array.from(yearsSet).sort((a, b) => b - a);
    const affiliateBaseNames = Array.from(affiliatesSet).sort();
-   return { entries, sellYears, affiliateBaseNames };
+   const sorted = Array.from(securitiesSet).sort();
+   const securities = sorted.includes(USD_FX_SECURITY)
+      ? [USD_FX_SECURITY, ...sorted.filter((s) => s !== USD_FX_SECURITY)]
+      : sorted;
+   return { entries, sellYears, affiliateBaseNames, securities };
 }
 
 export function generateShareTallyRenderTable(txSummary: RenderTable): [RenderTable, string] {

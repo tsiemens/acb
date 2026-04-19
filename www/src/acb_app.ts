@@ -150,13 +150,17 @@ async function asyncRunAcbForTampermonkey(filenames: string[], contents: string[
       const dialogResult = await showTampermonkeyExportDialog({
          years: sellData.sellYears,
          affiliates: sellData.affiliateBaseNames,
+         securities: sellData.securities,
+         entries: sellData.entries,
       });
       if (dialogResult === null) return;
 
+      const includedSecurities = new Set(dialogResult.securities);
       const filtered = sellData.entries.filter(e => {
          const entryYear = parseInt(e.settlementDate.split('-')[0], 10);
          if (entryYear !== dialogResult.year) return false;
          if (dialogResult.affiliate !== null && e.affiliate !== dialogResult.affiliate) return false;
+         if (!includedSecurities.has(e.security)) return false;
          return true;
       });
 
