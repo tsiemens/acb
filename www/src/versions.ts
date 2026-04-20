@@ -16,4 +16,4 @@ export const packageVersion = __PACKAGE_VERSION__;
  *
  * The main ACB app version is fetched via API call to get_acb_version().
  */
-export const webappVersion = "0.26.04";
+export const webappVersion = "0.26.04.1";
