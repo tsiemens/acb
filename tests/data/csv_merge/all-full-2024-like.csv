@@ -1,0 +1,5 @@
+security,trade date,settlement date,action,shares,amount/share,commission,split ratio,currency,memo,Exchange Rate
+AAA,2024-01-02,2024-01-04,Buy,3,373.305,1.23,,USD,Broker legacy buy,
+BBB,2024-02-12,2024-02-14,Sell,4,143.21,2.34,,USD,Broker legacy sell,
+CCC,2024-12-04,2024-11-25,Split,,,,4-for-1,,4:1 split,
+FFF,2024-12-20,2024-12-24,Buy,7,71.805,0.45,,USD,Broker margin acct-001,

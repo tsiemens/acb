@@ -47,6 +47,11 @@ path = "src/bin/csv_to_xlsx.rs"
 required-features = [ "xlsx_write" ]
 
 [[bin]]
+name = "csv-merge"
+path = "src/bin/csv_merge.rs"
+required-features = []
+
+[[bin]]
 name = "questrade-statement-fmv"
 path = "src/bin/questrade_statement_fmv.rs"
 required-features = [ "pdf_parse" ]

@@ -1,0 +1,3 @@
+security,trade date,settlement date,action,shares,amount/share,commission,currency,memo
+CCC,2025-02-15,2025-02-15,Buy,115,106.87,0.00,USD,ESPP
+CCC,2025-02-19,2025-02-20,Sell,19,104.704737,5.02,USD,ESPP sell-to-cover
