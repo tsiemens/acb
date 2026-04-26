@@ -199,7 +199,9 @@ pub fn convert_xl_txs(
     let rg = read_xl_source(source, sheet)?;
 
     let tx_res = match broker {
-        BrokerArg::Questrade => questrade::sheet_to_txs(&rg, source_path.as_deref()),
+        BrokerArg::Questrade => {
+            questrade::sheet_to_txs(&rg, source_path.as_deref(), config)
+        }
         BrokerArg::RbcDi => {
             return Err("RBC DI uses CSV format, not Excel. \
                         Please provide a .csv file."

@@ -108,7 +108,7 @@ export default defineComponent({
          } else if (renames.has(from)) {
             addWarning.value = `Warning: "${from}" already has a rename. Adding will overwrite it.`;
          } else if (renames.has(to)) {
-            addWarning.value = `Warning: "${to}" is already a "from" key — chaining renames is not supported.`;
+            addWarning.value = `Warning: "${to}" is already a "from" key — this will chain through to its target.`;
          } else {
             addWarning.value = '';
          }

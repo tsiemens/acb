@@ -882,8 +882,8 @@ mod tests {
         assert_eq!(bar_table.rows.len(), 1);
         let memo_cell = &bar_table.rows[0][15];
         assert!(
-            memo_cell.contains("AKA FOO"),
-            "memo cell should contain 'AKA FOO', got {:?}",
+            memo_cell.contains("FOO AKA BAR"),
+            "memo cell should contain 'FOO AKA BAR', got {:?}",
             memo_cell
         );
     }

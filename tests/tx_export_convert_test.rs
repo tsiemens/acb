@@ -102,7 +102,7 @@ const QT_BASIC_EXP_CSV: &str = "\
     DLR.TO  ,2023-01-06,2023-01-07     ,Buy   ,3     ,1.00        ,0.00      ,CAD     ,Default (R),Questrade Individual RRSP 10000002
     CCO     ,2023-01-08,2023-01-09     ,Buy   ,4     ,10.00       ,1.00      ,CAD     ,Default    ,Questrade Individual margin 10000003
     USD.FX  ,2023-01-10,2023-01-10     ,Sell  ,51    ,1.00        ,0.00      ,USD     ,Default (R),Questrade Individual TFSA 10000001; from DLR.TO Buy
-    DLR.TO  ,2023-01-10,2023-01-11     ,Buy   ,5     ,10.00       ,1.00      ,USD     ,Default (R),Questrade Individual TFSA 10000001; H038778 AKA DLR.U.TO
+    DLR.TO  ,2023-01-10,2023-01-11     ,Buy   ,5     ,10.00       ,1.00      ,USD     ,Default (R),Questrade Individual TFSA 10000001; H038778 AKA DLR.U.TO AKA DLR.TO
     USD.FX  ,2023-01-12,2023-01-12     ,Sell  ,60    ,1.00        ,0.00      ,USD     ,Default (R),Questrade Individual RRSP 10000002; from UCO Buy
     UCO     ,2023-01-12,2023-01-13     ,Buy   ,6     ,10.00       ,0.00      ,USD     ,Default (R),Questrade Individual RRSP 10000002
     USD.FX  ,2023-01-14,2023-01-14     ,Sell  ,71    ,1.00        ,0.00      ,USD     ,Default    ,Questrade Individual margin 10000003; from UCO Buy
@@ -118,7 +118,8 @@ const QT_BASIC_EXP_CSV: &str = "\
     UCO     ,2023-01-26,2023-01-27     ,Sell  ,13    ,10.00       ,1.00      ,USD     ,Default    ,Questrade Individual margin 10000003
     USD.FX  ,2023-01-28,2023-01-28     ,Buy   ,30.5  ,1.00        ,0.00      ,USD     ,Default    ,Questrade Individual margin 10000003; DIV from UCO
     UCO     ,2023-01-28,2023-01-29     ,Buy   ,20    ,0.00        ,0.00      ,USD     ,Default    ,Questrade Individual margin 10000003; From DIS action.
-    UCO     ,2023-01-28,2023-01-29     ,Sell  ,19    ,0.00        ,0.00      ,USD     ,Default    ,Questrade Individual margin 10000003; From LIQ action.\
+    UCO     ,2023-01-28,2023-01-29     ,Sell  ,19    ,0.00        ,0.00      ,USD     ,Default    ,Questrade Individual margin 10000003; From LIQ action.
+    CCO     ,2023-01-30,2023-01-31     ,Buy   ,3     ,10.00       ,0.00      ,CAD     ,Default    ,Questrade Individual margin 10000003; CCOO resolved from description; From REI action.; Desc: VERBOSE NAME FOR C-C-O REINV@C$10.00 REC 2023-01-28 PAY 2023-01-30\
     ";
 
 #[test]

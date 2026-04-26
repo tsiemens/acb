@@ -17,7 +17,7 @@
         <h3 class="section-heading">Symbol Renames</h3>
         <p class="section-desc">
           Rename ticker symbols before processing. Applies to both broker
-          imports and ACB calculations. Single-pass only — no chaining.
+          imports and ACB calculations. Chains are resolved recursively.
         </p>
         <SymbolRenamesEditor />
       </section>
