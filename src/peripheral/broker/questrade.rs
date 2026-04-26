@@ -6,11 +6,12 @@ use calamine::{Data, Range};
 use time::Date;
 
 use crate::{
+    app::config::AcbConfig,
     peripheral::{
         broker::{Account, BrokerTx, FxTracker, FxtRow},
         sheet_common::SheetParseError,
     },
-    portfolio::{Currency, TxAction},
+    portfolio::{tx_utils::resolve_rename, Currency, TxAction},
     util::{basic::SError, date::parse_standard_date},
 };
 
@@ -22,18 +23,31 @@ pub const QUESTRADE_ACCOUNT_BROKER_NAME: &str = "Questrade";
 pub fn sheet_to_txs(
     sheet: &Range<Data>,
     fpath: Option<&std::path::Path>,
+    config: Option<&AcbConfig>,
 ) -> Result<Vec<BrokerTx>, SheetToTxsErr> {
     // Column names:
     //  'Transaction Date', 'Settlement Date', 'Action''Symbol', 'Description',
     //  'Quantity', 'Price', 'Gross Amount', 'Commission', 'Net Amount',
     //  'Currency', 'Account #', 'Activity Type', 'Account Type'
 
-    let symbol_aliases =
-        HashMap::<&'static str, (&'static str, &'static str)>::from([
-            // symbol : (alias_to, AKA)
-            ("H038778", ("DLR.TO", "DLR.U.TO")),
-            ("G036247", ("DLR.TO", "DLR.U.TO")),
-        ]);
+    // Static QT-internal placeholder codes chained to a public listing.
+    // Recursive resolution turns H038778 → DLR.U.TO → DLR.TO into a single
+    // chain so the resulting memo annotation reads
+    // "H038778 AKA DLR.U.TO AKA DLR.TO".
+    let mut symbol_renames: HashMap<String, String> = HashMap::from([
+        ("H038778".to_string(), "DLR.U.TO".to_string()),
+        ("G036247".to_string(), "DLR.U.TO".to_string()),
+        ("DLR.U.TO".to_string(), "DLR.TO".to_string()),
+    ]);
+    // Merge in user-configured symbol_renames. User entries win on key
+    // conflict so users have ultimate control. The same renames will also be
+    // applied later in process_broker_txs via apply_security_rename; that
+    // second pass is a no-op for symbols already resolved here.
+    if let Some(cfg) = config {
+        for (from, to) in &cfg.symbol_renames {
+            symbol_renames.insert(from.clone(), to.clone());
+        }
+    }
 
     // Also, None
     let ignored_actions: HashSet<&'static str> = HashSet::from_iter(
@@ -186,7 +200,7 @@ pub fn sheet_to_txs(
                 let lookup_desc = normalize_symbol_lookup_desc(&description);
                 if let Some(symbol) = desc_symbol_aliases.get(&lookup_desc) {
                     (symbol.clone(), true)
-                } else if symbol_aliases.contains_key(pre_alias_symbol.as_str()) {
+                } else if symbol_renames.contains_key(pre_alias_symbol.as_str()) {
                     // Some Questrade placeholder symbols are already known
                     // manual aliases, so they do not need description lookup.
                     (pre_alias_symbol.clone(), false)
@@ -196,18 +210,19 @@ pub fn sheet_to_txs(
                     fatal_error = true;
                     return Err(err(format!(
                         "Unable to resolve REI symbol {pre_alias_symbol} from \
-                         description \"{description}\". Include a matching BUY \
-                         or SELL row for this security in the export."
+                         description \"{description}\". Add a symbol_renames \
+                         entry to your acb-config.json, or include a matching \
+                         BUY or SELL row for this security in the export."
                     )));
                 }
             } else {
                 (pre_alias_symbol.clone(), false)
             };
 
-            let (symbol, orig_symbol_note) = if let Some((alias, aka)) =
-                symbol_aliases.get(resolved_symbol.as_str())
+            let (symbol, orig_symbol_note) = if let Some(rc) =
+                resolve_rename(&resolved_symbol, &symbol_renames)
             {
-                (alias.to_string(), format!("; {resolved_symbol} AKA {aka}"))
+                (rc.resolved, format!("; {}", rc.chain_repr))
             } else if resolved_from_description {
                 (
                     resolved_symbol,
@@ -377,7 +392,7 @@ pub fn extract_questrade_accounts(
             return vec![];
         }
     };
-    match sheet_to_txs(&rg, None) {
+    match sheet_to_txs(&rg, None, None) {
         Ok(txs) => txs.iter().map(|t| t.account.clone()).collect(),
         Err(e) => {
             // Partial results may still have accounts
@@ -476,7 +491,7 @@ mod tests {
         ]);
 
         let range = read_xl_data(data, None).unwrap();
-        let txs = sheet_to_txs(&range, None).unwrap();
+        let txs = sheet_to_txs(&range, None, None).unwrap();
 
         let rei_tx = txs.iter().find(|tx| tx.row_num == 2).unwrap();
         assert_eq!(rei_tx.security, "ANIE");
@@ -520,7 +535,7 @@ mod tests {
         ]);
 
         let range = read_xl_data(data, None).unwrap();
-        let err = sheet_to_txs(&range, None).unwrap_err();
+        let err = sheet_to_txs(&range, None, None).unwrap_err();
 
         assert!(
             err.txs.is_none(),
@@ -530,6 +545,111 @@ mod tests {
         let msg = err.errors[0].to_string();
         assert!(msg.contains("Unable to resolve REI symbol Z491275"));
         assert!(msg.contains("matching BUY or SELL row"));
+    }
+
+    #[cfg(feature = "xlsx_write")]
+    #[test]
+    fn test_rei_resolves_via_user_config_symbol_rename() {
+        // Same as test_rei_without_trade_alias_is_fatal, but the user has
+        // mapped the broker placeholder symbol to a real ticker in their
+        // config. The merged alias map should let the REI row resolve
+        // without needing a sibling BUY/SELL row in the export.
+        let data = make_questrade_sheet_bytes(&[vec![
+            "2026-02-17 12:00:00 AM",
+            "2026-02-19 12:00:00 AM",
+            "REI",
+            "Z491275",
+            "AURORA NORTHERN INCOME ETF SHS REINV@U$42.615 REC 02/11/26 PAY 02/17/26",
+            "14.00000",
+            "0.00000000",
+            "0.00",
+            "0.00",
+            "-596.61",
+            "USD",
+            "11112222",
+            "Dividend reinvestment",
+            "Individual margin",
+        ]]);
+
+        let mut config = AcbConfig::new();
+        config.symbol_renames.insert("Z491275".to_string(), "ANIE".to_string());
+
+        let range = read_xl_data(data, None).unwrap();
+        let txs = sheet_to_txs(&range, None, Some(&config)).unwrap();
+
+        let rei_tx = txs.iter().find(|tx| tx.row_num == 2).unwrap();
+        assert_eq!(rei_tx.security, "ANIE");
+        assert_eq!(rei_tx.action, TxAction::Buy);
+        assert_eq!(rei_tx.amount_per_share, Decimal::new(42615, 3));
+        assert!(rei_tx.memo.contains("Z491275 AKA ANIE"));
+        assert!(rei_tx.memo.contains("From REI action."));
+    }
+
+    #[cfg(feature = "xlsx_write")]
+    #[test]
+    fn test_static_qt_aliases_chain_to_dlr_to() {
+        // With no user overrides, the built-in chain should resolve a QT
+        // internal placeholder all the way through DLR.U.TO to DLR.TO and
+        // emit the full chain in the memo.
+        let data = make_questrade_sheet_bytes(&[vec![
+            "2026-01-09 12:00:00 AM",
+            "2026-01-13 12:00:00 AM",
+            "Buy",
+            "H038778",
+            "HORIZONS US DOLLAR CURRENCY ETF",
+            "10.00000",
+            "10.00000000",
+            "-100.00",
+            "0.00",
+            "-100.00",
+            "USD",
+            "11112222",
+            "Trades",
+            "Individual margin",
+        ]]);
+
+        let range = read_xl_data(data, None).unwrap();
+        let txs = sheet_to_txs(&range, None, None).unwrap();
+
+        let tx = txs.iter().find(|tx| tx.row_num == 2).unwrap();
+        assert_eq!(tx.security, "DLR.TO");
+        assert!(
+            tx.memo.contains("H038778 AKA DLR.U.TO AKA DLR.TO"),
+            "memo should contain full chain, got: {}",
+            tx.memo
+        );
+    }
+
+    #[cfg(feature = "xlsx_write")]
+    #[test]
+    fn test_user_config_overrides_static_qt_alias() {
+        // User config wins over the static default for the same key.
+        let data = make_questrade_sheet_bytes(&[vec![
+            "2026-01-09 12:00:00 AM",
+            "2026-01-13 12:00:00 AM",
+            "Buy",
+            "H038778",
+            "HORIZONS US DOLLAR CURRENCY ETF",
+            "10.00000",
+            "10.00000000",
+            "-100.00",
+            "0.00",
+            "-100.00",
+            "USD",
+            "11112222",
+            "Trades",
+            "Individual margin",
+        ]]);
+
+        let mut config = AcbConfig::new();
+        config.symbol_renames.insert("H038778".to_string(), "USER.TO".to_string());
+
+        let range = read_xl_data(data, None).unwrap();
+        let txs = sheet_to_txs(&range, None, Some(&config)).unwrap();
+
+        let tx = txs.iter().find(|tx| tx.row_num == 2).unwrap();
+        assert_eq!(tx.security, "USER.TO");
+        assert!(tx.memo.contains("H038778 AKA USER.TO"));
     }
 
     #[cfg(feature = "xlsx_write")]
@@ -587,7 +707,7 @@ mod tests {
         ]);
 
         let range = read_xl_data(data, None).unwrap();
-        let txs = sheet_to_txs(&range, None).unwrap();
+        let txs = sheet_to_txs(&range, None, None).unwrap();
 
         let rei_tx = txs.iter().find(|tx| tx.row_num == 2).unwrap();
         assert_eq!(rei_tx.security, "ANIE");

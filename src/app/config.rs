@@ -26,8 +26,8 @@ pub struct AcbConfig {
     /// Global symbol rename map: `from → to`.
     ///
     /// Applied at every ingestion point (broker import and ACB calculation).
-    /// Single-pass, no chaining: `A → B` and `B → C` will rename `A` to `B`
-    /// only; `B` to `C` only. Case-sensitive exact match.
+    /// Resolution is recursive with cycle protection: `A → B` and `B → C`
+    /// resolves `A` to `C`. Case-sensitive exact match.
     #[serde(default)]
     pub symbol_renames: HashMap<String, String>,
 }
@@ -136,10 +136,13 @@ impl AcbConfig {
 
 /// Look up `sym` in the config's `symbol_renames` map.
 ///
-/// Returns the renamed symbol if a mapping exists, otherwise returns `sym`
-/// unchanged. Single-pass: no chaining is performed.
-pub fn rename_symbol<'a>(config: &'a AcbConfig, sym: &'a str) -> &'a str {
-    config.symbol_renames.get(sym).map(|s| s.as_str()).unwrap_or(sym)
+/// Returns the final renamed symbol (recursively resolved through the chain)
+/// if a mapping exists, otherwise returns `sym` unchanged. Cycle-safe.
+pub fn rename_symbol(config: &AcbConfig, sym: &str) -> String {
+    match crate::portfolio::tx_utils::resolve_rename(sym, &config.symbol_renames) {
+        Some(rc) => rc.resolved,
+        None => sym.to_string(),
+    }
 }
 
 /// Default config file path: `~/.config/acb/acb-config.json`
@@ -283,15 +286,26 @@ mod tests {
     }
 
     #[test]
-    fn test_rename_symbol_no_chaining() {
+    fn test_rename_symbol_chains_recursively() {
         let mut config = AcbConfig::new();
         config.symbol_renames.insert("A".to_string(), "B".to_string());
         config.symbol_renames.insert("B".to_string(), "C".to_string());
 
-        // Single-pass: A → B (stops there, does not chain to C)
-        assert_eq!(rename_symbol(&config, "A"), "B");
-        // Direct hit: B → C
+        // Recursive: A → B → C resolves to C.
+        assert_eq!(rename_symbol(&config, "A"), "C");
         assert_eq!(rename_symbol(&config, "B"), "C");
+        assert_eq!(rename_symbol(&config, "C"), "C");
+    }
+
+    #[test]
+    fn test_rename_symbol_cycle_terminates() {
+        let mut config = AcbConfig::new();
+        config.symbol_renames.insert("A".to_string(), "B".to_string());
+        config.symbol_renames.insert("B".to_string(), "A".to_string());
+
+        // Cycle: resolution stops once a symbol revisits a prior hop.
+        let result = rename_symbol(&config, "A");
+        assert!(result == "A" || result == "B");
     }
 
     #[test]

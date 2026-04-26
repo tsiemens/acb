@@ -19,13 +19,8 @@ This is primarily designed for Canadians filing tax returns, who have stocks, RS
 ### "Bonus" Script Features
 In addition to the main `acb` app, a few extra utilities are provided for convenience.
 Most/all of the complex scripts are also compiled into `target/...` or your cargo bin (see installation below), though some simpler scripts (without any dependencies) are in the `py/` directory.
-- tx-export-convert: Convert exported transaction spreadsheets to acb-compatible csv files (Questrade-only for now)
-- etrade-plan-pdf-tx-extract: Generate acb csv files from ETRADE stock plan PDFs.
-
-#### Questrade DRIP transactions
-`tx-export-convert` supports Questrade dividend reinvestment (`REI`) rows by converting them to `Buy` transactions. When Questrade reports a zero price for the reinvestment, the converter derives the effective price from the absolute net amount divided by the share quantity.
-
-Questrade may report DRIP rows with an internal symbol instead of the traded security symbol. In that case, the converter resolves the symbol from a matching security description in a `BUY` or `SELL` row from the same export. If no match is available, include a matching trade row for that security in the export before converting it.
+- `tx-export-convert`: Convert exported transaction spreadsheets to acb-compatible csv files (supported: Questrade, RBC DI). See the [internal wiki page](https://github.com/tsiemens/acb/wiki/Transaction-Spreadsheet-Generation-Utilities) for details.
+- `etrade-plan-pdf-tx-extract`: Generate acb csv files from ETRADE stock plan PDFs.
 
 ## Example
 
