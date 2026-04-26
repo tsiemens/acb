@@ -22,6 +22,11 @@ Most/all of the complex scripts are also compiled into `target/...` or your carg
 - tx-export-convert: Convert exported transaction spreadsheets to acb-compatible csv files (Questrade-only for now)
 - etrade-plan-pdf-tx-extract: Generate acb csv files from ETRADE stock plan PDFs.
 
+#### Questrade DRIP transactions
+`tx-export-convert` supports Questrade dividend reinvestment (`REI`) rows by converting them to `Buy` transactions. When Questrade reports a zero price for the reinvestment, the converter derives the effective price from the absolute net amount divided by the share quantity.
+
+Questrade may report DRIP rows with an internal symbol instead of the traded security symbol. In that case, the converter resolves the symbol from a matching security description in a `BUY` or `SELL` row from the same export. If no match is available, include a matching trade row for that security in the export before converting it.
+
 ## Example
 
 A csv file like so:
