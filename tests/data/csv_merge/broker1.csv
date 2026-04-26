@@ -1,0 +1,3 @@
+security,trade date,settlement date,action,commission,shares,amount/share,currency,memo
+DDD,2025-01-03,2025-01-06,Buy,0.00,1,48.9968,USD,Broker margin acct-001
+EEE,2025-01-03,2025-01-06,Buy,0.00,6,59.0659,USD,Broker margin acct-001
