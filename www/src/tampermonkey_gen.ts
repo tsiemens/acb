@@ -27,7 +27,7 @@ export function generateTamperMonkeyScript(
    return generateWsTamperScript(
       entries.map(toWsEntry),
       year,
-      { namespace: 'acb.ts0.ca/ws-tamper',
+      { namespace: 'acb.trevors.dev/ws-tamper',
         label: `ACB [${affiliate}]`,
        }
    );
