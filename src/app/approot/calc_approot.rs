@@ -562,6 +562,170 @@ mod tests {
         do_test_same_day_buy_sells(true, vec![1, 2]);
     }
 
+    // Columns in a render table row (see render::render_tx_table_model).
+    const COL_CAP_GAIN: usize = 9;
+    const COL_NEW_ACB: usize = 12;
+
+    fn do_test_same_day_order(
+        same_day_rows: Vec<Row>,
+        // Expected Cap. Gain per same-day row; "-" for buys (no gain).
+        expected_gains: &[&str],
+        expected_total_gain: &str,
+        expected_final_acb: &str,
+    ) {
+        assert_eq!(same_day_rows.len(), expected_gains.len());
+        let mut rows = vec![
+            // Establish an initial position of 30 sh @ $10 = $300 ACB, settled
+            // before the same-day trades so it always sorts first.
+            Row {
+                sec: "FOO",
+                td: "2016-01-01",
+                sd: "2016-01-03",
+                a: "Buy",
+                sh: "30",
+                aps: "10",
+                cur: "CAD",
+                ..Row::default()
+            },
+        ];
+        rows.extend(same_day_rows);
+        let n = rows.len();
+
+        let readers = CsvFileBuilder::with_all_modern_headers()
+            .split_csv_rows(&vec![n], &rows);
+        let render_res = block_on(run_acb_app_to_render_model(
+            readers,
+            &TxCsvParseOptions::default(),
+            None,
+            None,
+            false,
+            false,
+            AppRenderMode::Default,
+            &mut make_empty_test_rate_loader(),
+            WriteHandle::empty_write_handle(),
+        ))
+        .unwrap();
+
+        let render_table = get_and_check_foo_table(&render_res);
+        assert_eq!(render_table.rows.len(), n);
+        assert_eq!(Vec::<String>::new(), render_table.errors);
+
+        for (i, exp_gain) in expected_gains.iter().enumerate() {
+            assert_eq!(
+                *exp_gain,
+                render_table.rows[1 + i][COL_CAP_GAIN], // skip initial Buy row
+                "same-day row {} (1-indexed) Cap. Gain mismatch",
+                i + 1
+            );
+        }
+        assert_eq!(
+            expected_final_acb,
+            render_table.rows[n - 1][COL_NEW_ACB],
+            "final ACB mismatch"
+        );
+        assert_eq!(expected_total_gain, get_total_cap_gain(render_table));
+    }
+
+    #[test]
+    fn test_same_day_tx_order_affects_gain() {
+        // This test exists to counter the intuition that intra-day transaction order
+        // is irrelevant because "we only report gains per day, not per trade." That
+        // framing is wrong: ACB is path-dependent. Every Buy averages into ACB/share
+        // and every Sell consumes the *then-current* ACB/share, so interleaving Buys
+        // and Sells changes the cost basis applied to each disposition. The five
+        // orderings below use identical trades and produce daily gains spanning
+        // $300–$400 — a $100 spread — demonstrating that reordering or aggregating
+        // same-day trades is not a neutral operation.
+        // Ordering is only neutral if you sell all your shares and the ACB hits
+        // zero. Technically speaking this makes it possible to shift things around
+        // and change your gains over the course of the year if you carry shares
+        // across the fiscal year, but it appears as though chronological reporting
+        // is *probably* the correct way to calculate.
+
+        // Baseline: 30 sh @ $10 = $300 ACB settled before the day.
+        // Same four intra-day trades in five different orderings:
+        //   B10@$30, S10@$20, B10@$10, S10@$40
+        // Starting with ≥30 sh ensures no ordering hits zero or negative shares.
+        let sday = |a, sh, aps| Row {
+            sec: "FOO",
+            td: "2016-01-05",
+            sd: "2016-01-07",
+            a,
+            sh,
+            aps,
+            cur: "CAD",
+            ..Row::default()
+        };
+
+        #[rustfmt::skip]
+        // Order 1 (B,S,B,S): each buy adjusts ACB/share before the next sell.
+        // +10@30: 40 sh, ACB $600, ACB/sh $15.00
+        // -10@20: cost $150.00, gain $50.00; 30 sh, ACB $450
+        // +10@10: 40 sh, ACB $550, ACB/sh $13.75
+        // -10@40: cost $137.50, gain $262.50; 30 sh, ACB $412.50
+        do_test_same_day_order(
+            vec![sday("Buy","10","30"), sday("Sell","10","20"),
+                 sday("Buy","10","10"), sday("Sell","10","40")],
+            &["-", "$50.00", "-", "$262.50"],
+            "$312.50", "$412.50",
+        );
+
+        #[rustfmt::skip]
+        // Order 2 (B,B,S,S): cheap buy averages ACB/share to $14 before any sell.
+        // +10@30: 40 sh, ACB $600, ACB/sh $15.00
+        // +10@10: 50 sh, ACB $700, ACB/sh $14.00
+        // -10@20: cost $140.00, gain $60.00; 40 sh, ACB $560
+        // -10@40: cost $140.00, gain $260.00; 30 sh, ACB $420
+        do_test_same_day_order(
+            vec![sday("Buy","10","30"), sday("Buy","10","10"),
+                 sday("Sell","10","20"), sday("Sell","10","40")],
+            &["-", "-", "$60.00", "$260.00"],
+            "$320.00", "$420.00",
+        );
+
+        #[rustfmt::skip]
+        // Order 3 (S,S,B,B): both sells occur at the low opening ACB/share of $10,
+        // maximizing the day's reported gain.
+        // -10@20: cost $100.00, gain $100.00; 20 sh, ACB $200
+        // -10@40: cost $100.00, gain $300.00; 10 sh, ACB $100
+        // +10@30: 20 sh, ACB $400
+        // +10@10: 30 sh, ACB $500
+        do_test_same_day_order(
+            vec![sday("Sell","10","20"), sday("Sell","10","40"),
+                 sday("Buy","10","30"), sday("Buy","10","10")],
+            &["$100.00", "$300.00", "-", "-"],
+            "$400.00", "$500.00",
+        );
+
+        #[rustfmt::skip]
+        // Order 4 (S,B,S,B): the intervening buy raises ACB/share to $16.67
+        // before the second sell, reducing that sell's gain vs. Order 3.
+        // -10@20: cost $100.00, gain $100.00; 20 sh, ACB $200
+        // +10@30: 30 sh, ACB $500, ACB/sh $16.67
+        // -10@40: cost $166.67, gain $233.33; 20 sh, ACB $333.33
+        // +10@10: 30 sh, ACB $433.33
+        do_test_same_day_order(
+            vec![sday("Sell","10","20"), sday("Buy","10","30"),
+                 sday("Sell","10","40"), sday("Buy","10","10")],
+            &["$100.00", "-", "$233.33", "-"],
+            "$333.33", "$433.33",
+        );
+
+        #[rustfmt::skip]
+        // Order 5 (B,S,S,B): the first buy raises ACB/share to $15 for both sells,
+        // minimizing the day's gain.
+        // +10@30: 40 sh, ACB $600, ACB/sh $15.00
+        // -10@20: cost $150.00, gain $50.00; 30 sh, ACB $450
+        // -10@40: cost $150.00, gain $250.00; 20 sh, ACB $300
+        // +10@10: 30 sh, ACB $400
+        do_test_same_day_order(
+            vec![sday("Buy","10","30"), sday("Sell","10","20"),
+                 sday("Sell","10","40"), sday("Buy","10","10")],
+            &["-", "$50.00", "$250.00", "-"],
+            "$300.00", "$400.00",
+        );
+    }
+
     fn do_test_negative_stocks(render_costs: bool) {
         #[rustfmt::skip]
         let readers =
