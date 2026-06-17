@@ -145,6 +145,47 @@ fn get_filename(path: &Path) -> String {
         .unwrap_or_else(|| "<unnamed file>".to_string())
 }
 
+/// The single cash figure a plan-sale source reports for the portion of the
+/// gross sale proceeds that does NOT flow to the participant as buyable cash.
+///
+/// Exactly one of these is ever known per source -- never both, never neither --
+/// so it is modelled as a union rather than two Options:
+///
+/// - `Withheld`: the amount withheld from proceeds (tax + exercise cost + fees).
+///   This is the natural figure for ESO exercises.
+/// - `NetToParticipant`: the net proceeds returned to the participant
+///   ("Total Due Participant" / "Amount in Excess of Tax Due"). This is the
+///   natural figure for RSU releases and ESPP purchases.
+///
+/// The complement of whichever value is stored is recoverable from the gross
+/// sale proceeds (shares * price - fee), so both views are always available via
+/// the methods below regardless of which variant the source gave us.
+#[derive(PartialEq, Eq, Clone, Copy, Debug)]
+pub enum PlanSaleCashAmount {
+    Withheld(Decimal),
+    NetToParticipant(Decimal),
+}
+
+impl PlanSaleCashAmount {
+    /// The amount withheld from the gross proceeds (tax + cost + fees).
+    pub fn withheld(&self, gross_proceeds: Decimal) -> Decimal {
+        match self {
+            PlanSaleCashAmount::Withheld(w) => *w,
+            PlanSaleCashAmount::NetToParticipant(n) => gross_proceeds - n,
+        }
+    }
+
+    /// The net cash returned to the participant. This is the amount that
+    /// actually lands in the account (in the plan currency) and so is the basis
+    /// for any implicit FX buy.
+    pub fn proceeds_to_participant(&self, gross_proceeds: Decimal) -> Decimal {
+        match self {
+            PlanSaleCashAmount::Withheld(w) => gross_proceeds - w,
+            PlanSaleCashAmount::NetToParticipant(n) => *n,
+        }
+    }
+}
+
 #[derive(PartialEq, Eq, Clone, Debug)]
 pub struct BenefitEntry {
     pub security: String,
@@ -154,37 +195,52 @@ pub struct BenefitEntry {
     pub acquire_share_price: Decimal,
     pub acquire_shares: Decimal,
 
-    // Sell-to-cover fields for trade confirmation matching
-    // (see find_sell_to_cover_trade_set and amend_paired_benefit_sales):
+    // Plan-sale fields for trade confirmation matching
+    // (see find_plan_sale_trade_set and amend_paired_benefit_sales):
     //
-    // - sell_to_cover_shares: Required for matching. This is the primary key
+    // A "plan sale" is a sale executed automatically as part of the benefit
+    // event (RSU release, ESO exercise, ESPP purchase). A sell-to-cover is one
+    // kind of plan sale, where the whole proceeds are withheld for tax; a
+    // same-day-sale is another, where only part is withheld and the rest is
+    // returned to the participant (see plan_sale_cash_amount).
+    //
+    // - plan_sale_shares: Required for matching. This is the primary key
     //   used to find matching trade confirmations (by summing share counts
     //   across candidate trade combos). If None, the benefit is skipped for
-    //   sell-to-cover pairing entirely.
+    //   plan-sale pairing entirely.
     //
-    // - sell_to_cover_price: Optional tiebreaker. When multiple trade combos
+    // - plan_sale_price: Optional tiebreaker. When multiple trade combos
     //   match by share count, the combo whose weighted-average price is
     //   closest to this value wins. If None, ambiguous matches produce an
     //   error. (Available from benefit PDFs; not available from xlsx.)
     //
-    // - sell_to_cover_tx_date, sell_to_cover_settle_date: Populated by
+    // - plan_sale_tx_date, plan_sale_settle_date: Populated by
     //   amend_paired_benefit_sales from the matched trade confirmation.
     //   Not expected to be set by parsers (benefit PDFs and xlsx both lack
     //   these; trade confirmation PDFs are the authoritative source).
     //
-    // - sell_to_cover_fee: Populated from benefit PDFs if available, otherwise
+    // - plan_sale_fee: Populated from benefit PDFs if available, otherwise
     //   filled in by amend_paired_benefit_sales from matched trades.
     //
-    // All five fields must be Some for sell_to_cover_data() to return
+    // All five fields must be Some for plan_sale_data() to return
     // Ok(Some(...)). The amend step is responsible for completing the set.
-    pub sell_to_cover_tx_date: Option<Date>,
-    pub sell_to_cover_settle_date: Option<Date>,
-    pub sell_to_cover_price: Option<Decimal>,
-    pub sell_to_cover_shares: Option<Decimal>,
-    pub sell_to_cover_fee: Option<Decimal>,
+    pub plan_sale_tx_date: Option<Date>,
+    pub plan_sale_settle_date: Option<Date>,
+    pub plan_sale_price: Option<Decimal>,
+    pub plan_sale_shares: Option<Decimal>,
+    pub plan_sale_fee: Option<Decimal>,
+
+    /// The withheld-vs-returned cash split for the plan sale, when the source
+    /// reports it. RSU/ESPP populate this (as NetToParticipant); ESO does not
+    /// yet (its cash figure is not parsed -- see parse_eso_entries). Separate
+    /// from the matching fields above so that ESO plan-sale pairing is
+    /// unaffected. Consumed by the (future) implicit-FX-buy generation; see the
+    /// TODO in txs_from_data.
+    pub plan_sale_cash_amount: Option<PlanSaleCashAmount>,
 
     pub plan_note: String,
-    pub sell_note: Option<String>,
+    /// Defaults to "sell-to-cover" if not specified
+    pub plan_sale_note: Option<String>,
     pub filename: String,
 
     /// Account the benefit was purchased/released under. Used to look up
@@ -194,54 +250,52 @@ pub struct BenefitEntry {
     pub account: super::Account,
 }
 
-pub struct SellToCoverData {
-    pub sell_to_cover_tx_date: Date,
-    pub sell_to_cover_settle_date: Date,
-    pub sell_to_cover_price: Decimal,
-    pub sell_to_cover_shares: Decimal,
-    pub sell_to_cover_fee: Decimal,
+pub struct PlanSaleData {
+    pub plan_sale_tx_date: Date,
+    pub plan_sale_settle_date: Date,
+    pub plan_sale_price: Decimal,
+    pub plan_sale_shares: Decimal,
+    pub plan_sale_fee: Decimal,
 }
 
 impl BenefitEntry {
-    /// Retrieves the sell-to-cover data (if present) for the benefit.
-    /// Returns Err if incomplete StC data is populated, and Ok(None) if no
-    /// StC data is populated.
-    pub fn sell_to_cover_data(&self) -> Result<Option<SellToCoverData>, SError> {
+    /// Retrieves the plan-sale data (if present) for the benefit.
+    /// Returns Err if incomplete plan-sale data is populated, and Ok(None) if no
+    /// plan-sale data is populated.
+    pub fn plan_sale_data(&self) -> Result<Option<PlanSaleData>, SError> {
         #[derive(PartialEq, Default, Debug)]
-        struct StcOpts {
-            sell_to_cover_tx_date: Option<Date>,
-            sell_to_cover_settle_date: Option<Date>,
-            sell_to_cover_price: Option<Decimal>,
-            sell_to_cover_shares: Option<Decimal>,
-            sell_to_cover_fee: Option<Decimal>,
+        struct PlanSaleOpts {
+            plan_sale_tx_date: Option<Date>,
+            plan_sale_settle_date: Option<Date>,
+            plan_sale_price: Option<Decimal>,
+            plan_sale_shares: Option<Decimal>,
+            plan_sale_fee: Option<Decimal>,
         }
-        let stc_opts = StcOpts {
-            sell_to_cover_tx_date: self.sell_to_cover_tx_date,
-            sell_to_cover_settle_date: self.sell_to_cover_settle_date,
-            sell_to_cover_price: self.sell_to_cover_price,
-            sell_to_cover_shares: self.sell_to_cover_shares,
-            sell_to_cover_fee: self.sell_to_cover_fee,
+        let opts = PlanSaleOpts {
+            plan_sale_tx_date: self.plan_sale_tx_date,
+            plan_sale_settle_date: self.plan_sale_settle_date,
+            plan_sale_price: self.plan_sale_price,
+            plan_sale_shares: self.plan_sale_shares,
+            plan_sale_fee: self.plan_sale_fee,
         };
-        if stc_opts == StcOpts::default() {
+        if opts == PlanSaleOpts::default() {
             return Ok(None);
         }
 
         let err = || {
             format!(
-                "Some, but not all, sell-to-cover fields were found for \
-                    {} shares of {} aquired on {}. StC {:?}",
-                self.acquire_shares, self.security, self.acquire_tx_date, stc_opts
+                "Some, but not all, plan-sale fields were found for \
+                    {} shares of {} aquired on {}. Plan sale {:?}",
+                self.acquire_shares, self.security, self.acquire_tx_date, opts
             )
         };
 
-        Ok(Some(SellToCoverData {
-            sell_to_cover_tx_date: stc_opts.sell_to_cover_tx_date.ok_or_else(err)?,
-            sell_to_cover_settle_date: stc_opts
-                .sell_to_cover_settle_date
-                .ok_or_else(err)?,
-            sell_to_cover_price: stc_opts.sell_to_cover_price.ok_or_else(err)?,
-            sell_to_cover_shares: stc_opts.sell_to_cover_shares.ok_or_else(err)?,
-            sell_to_cover_fee: stc_opts.sell_to_cover_fee.ok_or_else(err)?,
+        Ok(Some(PlanSaleData {
+            plan_sale_tx_date: opts.plan_sale_tx_date.ok_or_else(err)?,
+            plan_sale_settle_date: opts.plan_sale_settle_date.ok_or_else(err)?,
+            plan_sale_price: opts.plan_sale_price.ok_or_else(err)?,
+            plan_sale_shares: opts.plan_sale_shares.ok_or_else(err)?,
+            plan_sale_fee: opts.plan_sale_fee.ok_or_else(err)?,
         }))
     }
 }
@@ -321,7 +375,8 @@ struct RsuData {
     pub total_tax: Decimal,
     #[allow(dead_code)]
     pub fee: Decimal,
-    #[allow(dead_code)]
+    /// "Total Due Participant": the net USD returned to the participant after
+    /// the sell-to-cover. Carried into BenefitEntry::plan_sale_cash_amount.
     pub cash_leftover: Decimal,
 }
 
@@ -365,17 +420,21 @@ fn parse_rsu_entry(
         acquire_share_price: rsu_data.fmv_per_share,
         acquire_shares: rsu_data.shares_released,
 
-        // The sell-to-cover date is almost always a day or two after the release
+        // The plan-sale date is almost always a day or two after the release
         // date. This needs to be looked up separately if we want an accurate
         // USD/CAD exchange rate.
-        sell_to_cover_tx_date: None,
-        sell_to_cover_settle_date: None,
-        sell_to_cover_price: Some(rsu_data.sale_price_per_share),
-        sell_to_cover_shares: Some(rsu_data.shares_sold),
-        sell_to_cover_fee: Some(rsu_data.fee),
+        plan_sale_tx_date: None,
+        plan_sale_settle_date: None,
+        plan_sale_price: Some(rsu_data.sale_price_per_share),
+        plan_sale_shares: Some(rsu_data.shares_sold),
+        plan_sale_fee: Some(rsu_data.fee),
+        // RSUs report the net cash returned to the participant directly.
+        plan_sale_cash_amount: Some(PlanSaleCashAmount::NetToParticipant(
+            rsu_data.cash_leftover,
+        )),
 
         plan_note: format!("RSU {}", rsu_data.award_number),
-        sell_note: None,
+        plan_sale_note: None,
         filename: get_filename(filepath),
         account: new_account(rsu_data.common_benefit_data.account_number),
     })
@@ -586,29 +645,39 @@ fn parse_eso_entries(
             acquire_settle_date: eso_data.exercise_date,
             acquire_share_price: grant.exercise_fmv,
             acquire_shares: grant.shares_exercised,
-            sell_to_cover_tx_date: if is_last {
+            plan_sale_tx_date: if is_last {
                 Some(eso_data.exercise_date)
             } else {
                 None
             },
-            sell_to_cover_settle_date: if is_last {
+            plan_sale_settle_date: if is_last {
                 Some(eso_data.exercise_date)
             } else {
                 None
             },
-            sell_to_cover_price: if is_last {
+            plan_sale_price: if is_last {
                 Some(grant.sale_price)
             } else {
                 None
             },
-            sell_to_cover_shares: if is_last {
+            plan_sale_shares: if is_last {
                 Some(eso_data.shares_sold)
             } else {
                 None
             },
-            sell_to_cover_fee: if is_last { Some(fee_sum) } else { None },
+            plan_sale_fee: if is_last { Some(fee_sum) } else { None },
+            // TODO(eso-fx): ESO confirmations are not yet parsed for the cash
+            // returned to the participant ("Total Due Participant"). For a Same
+            // Day Sale the whole lot is sold and only part of the proceeds is
+            // withheld; the remainder lands in the account as USD and should
+            // become a USD.FX buy. Parse that per grant (see
+            // eso_multigrant_aggregated_sell_bug.md -- the sale is currently
+            // aggregated onto the last grant, so there is no clean per-grant
+            // entry to hang this on yet) and populate plan_sale_cash_amount
+            // with PlanSaleCashAmount::Withheld(...) or NetToParticipant(...).
+            plan_sale_cash_amount: None,
             plan_note: format!("Option Grant {}", grant.grant_number),
-            sell_note: Some(eso_data.exercise_type.clone()),
+            plan_sale_note: Some(eso_data.exercise_type.clone()),
             filename: get_filename(filepath),
             account: new_account(
                 eso_data.common_benefit_data.account_number.clone(),
@@ -641,7 +710,8 @@ struct EsppData {
     #[allow(dead_code)]
     pub total_sale_price: Option<Decimal>,
     pub fee: Option<Decimal>,
-    #[allow(dead_code)]
+    /// "Amount in Excess of Tax Due": the net USD returned to the participant
+    /// after the sell-to-cover. Carried into BenefitEntry::plan_sale_cash_amount.
     pub cash_leftover: Option<Decimal>,
 }
 
@@ -699,17 +769,22 @@ fn parse_espp_entry(
         acquire_settle_date: espp_data.purchase_date,
         acquire_share_price: espp_data.fmv_per_share,
         acquire_shares: espp_data.shares_purchased,
-        // The sell-to-cover date is almost always a day or two after the release
+        // The plan-sale date is almost always a day or two after the release
         // date. This needs to be looked up separately if we want an accurate
         // USD/CAD exchange rate.
-        sell_to_cover_tx_date: None,
-        sell_to_cover_settle_date: None,
-        sell_to_cover_price: espp_data.sale_price_per_share,
-        sell_to_cover_shares: espp_data.shares_sold,
-        sell_to_cover_fee: espp_data.fee,
+        plan_sale_tx_date: None,
+        plan_sale_settle_date: None,
+        plan_sale_price: espp_data.sale_price_per_share,
+        plan_sale_shares: espp_data.shares_sold,
+        plan_sale_fee: espp_data.fee,
+        // ESPP reports the net cash returned to the participant directly (when
+        // any shares were sold to cover).
+        plan_sale_cash_amount: espp_data
+            .cash_leftover
+            .map(PlanSaleCashAmount::NetToParticipant),
 
         plan_note: "ESPP".to_string(),
-        sell_note: None,
+        plan_sale_note: None,
         filename: get_filename(filepath),
         account: new_account(espp_data.common_benefit_data.account_number),
     })
@@ -1081,7 +1156,7 @@ fn parse_espp_benefits_from_sheet(
             .get_opt_dec("Tax Collection Shares")
             .map_err(|e| e.to_string())?;
 
-        let sell_to_cover_shares = match tax_shares {
+        let plan_sale_shares = match tax_shares {
             Some(s) if !s.is_zero() => Some(s),
             _ => None,
         };
@@ -1092,13 +1167,16 @@ fn parse_espp_benefits_from_sheet(
             acquire_settle_date: purchase_date,
             acquire_share_price: fmv,
             acquire_shares: purchased_qty,
-            sell_to_cover_tx_date: None,
-            sell_to_cover_settle_date: None,
-            sell_to_cover_price: None,
-            sell_to_cover_shares,
-            sell_to_cover_fee: None,
+            plan_sale_tx_date: None,
+            plan_sale_settle_date: None,
+            plan_sale_price: None,
+            plan_sale_shares,
+            plan_sale_fee: None,
+            // xlsx BenefitHistory does not report the cash returned to the
+            // participant.
+            plan_sale_cash_amount: None,
             plan_note: "ESPP".to_string(),
-            sell_note: None,
+            plan_sale_note: None,
             filename: filename.to_string(),
             account: new_account(String::new()),
         });
@@ -1237,13 +1315,16 @@ fn parse_rsu_benefits_from_sheet(
                     acquire_settle_date: vest_date,
                     acquire_share_price: fmv_per_share,
                     acquire_shares,
-                    sell_to_cover_tx_date: None,
-                    sell_to_cover_settle_date: None,
-                    sell_to_cover_price: None,
-                    sell_to_cover_shares: None,
-                    sell_to_cover_fee: None,
+                    plan_sale_tx_date: None,
+                    plan_sale_settle_date: None,
+                    plan_sale_price: None,
+                    plan_sale_shares: None,
+                    plan_sale_fee: None,
+                    // xlsx BenefitHistory does not report the cash returned to
+                    // the participant.
+                    plan_sale_cash_amount: None,
                     plan_note: format!("RSU {}", current_grant_number),
-                    sell_note: None,
+                    plan_sale_note: None,
                     filename: filename.to_string(),
                     account: new_account(String::new()),
                 });
@@ -1316,11 +1397,27 @@ mod tests {
         new_account, parse_eso_data, parse_eso_entries, parse_espp_entry,
         parse_post_ms_2023_trade_confirmation,
         parse_pre_ms_2023_trade_confirmations, parse_rsu_entry, BenefitCommonData,
-        BenefitEntry, EsoData, EsoGrantData,
+        BenefitEntry, EsoData, EsoGrantData, PlanSaleCashAmount,
     };
 
     fn s(_str: &str) -> String {
         _str.to_string()
+    }
+
+    #[test]
+    fn test_plan_sale_cash_amount_views() {
+        // gross_proceeds = shares * price - fee, supplied by the caller.
+        let gross = dec!(1000);
+
+        // Source reports the net returned to the participant (RSU/ESPP).
+        let net = PlanSaleCashAmount::NetToParticipant(dec!(300));
+        assert_eq!(net.proceeds_to_participant(gross), dec!(300));
+        assert_eq!(net.withheld(gross), dec!(700));
+
+        // Source reports the withheld amount (ESO, once parsed).
+        let withheld = PlanSaleCashAmount::Withheld(dec!(700));
+        assert_eq!(withheld.withheld(gross), dec!(700));
+        assert_eq!(withheld.proceeds_to_participant(gross), dec!(300));
     }
 
     fn date(date_str: &str) -> time::Date {
@@ -1390,13 +1487,16 @@ mod tests {
                 acquire_settle_date: date("2023-10-20"),
                 acquire_share_price: dec!(215.35),
                 acquire_shares: dec!(1234),
-                sell_to_cover_tx_date: None,
-                sell_to_cover_settle_date: None,
-                sell_to_cover_price: Some(dec!(213.7733)),
-                sell_to_cover_shares: Some(dec!(67)),
-                sell_to_cover_fee: Some(dec!(4.13)),
+                plan_sale_tx_date: None,
+                plan_sale_settle_date: None,
+                plan_sale_price: Some(dec!(213.7733)),
+                plan_sale_shares: Some(dec!(67)),
+                plan_sale_fee: Some(dec!(4.13)),
+                plan_sale_cash_amount: Some(PlanSaleCashAmount::NetToParticipant(
+                    dec!(147.58),
+                )),
                 plan_note: s("RSU R98765"),
-                sell_note: None,
+                plan_sale_note: None,
                 filename: s("myrsu.pdf"),
                 account: new_account(s("11223344")),
             },
@@ -1471,13 +1571,16 @@ statement is subject to the terms of the plan under which the release was made.
                 acquire_settle_date: date("2023-10-20"),
                 acquire_share_price: dec!(215.35),
                 acquire_shares: dec!(1234),
-                sell_to_cover_tx_date: None,
-                sell_to_cover_settle_date: None,
-                sell_to_cover_price: Some(dec!(213.7733)),
-                sell_to_cover_shares: Some(dec!(67)),
-                sell_to_cover_fee: Some(dec!(4.13)),
+                plan_sale_tx_date: None,
+                plan_sale_settle_date: None,
+                plan_sale_price: Some(dec!(213.7733)),
+                plan_sale_shares: Some(dec!(67)),
+                plan_sale_fee: Some(dec!(4.13)),
+                plan_sale_cash_amount: Some(PlanSaleCashAmount::NetToParticipant(
+                    dec!(147.58),
+                )),
                 plan_note: s("RSU R98765"),
-                sell_note: None,
+                plan_sale_note: None,
                 filename: s("myrsu.pdf"),
                 account: new_account(s("11223344")),
             },
@@ -1585,13 +1688,14 @@ statement is subject to the terms of the plan under which the release was made.
                     acquire_settle_date: date("2024-10-20"),
                     acquire_share_price: dec!(1000.00),
                     acquire_shares: dec!(100),
-                    sell_to_cover_tx_date: None,
-                    sell_to_cover_settle_date: None,
-                    sell_to_cover_price: None,
-                    sell_to_cover_shares: None,
-                    sell_to_cover_fee: None,
+                    plan_sale_tx_date: None,
+                    plan_sale_settle_date: None,
+                    plan_sale_price: None,
+                    plan_sale_shares: None,
+                    plan_sale_fee: None,
+                    plan_sale_cash_amount: None,
                     plan_note: s("Option Grant 1234"),
-                    sell_note: Some(s("Same-Day Sale")),
+                    plan_sale_note: Some(s("Same-Day Sale")),
                     filename: s("myeso.pdf"),
                     account: new_account(s("0112")),
                 },
@@ -1601,13 +1705,14 @@ statement is subject to the terms of the plan under which the release was made.
                     acquire_settle_date: date("2024-10-20"),
                     acquire_share_price: dec!(2000.00),
                     acquire_shares: dec!(200),
-                    sell_to_cover_tx_date: Some(date("2024-10-20")),
-                    sell_to_cover_settle_date: Some(date("2024-10-20")),
-                    sell_to_cover_price: Some(dec!(1001.00)),
-                    sell_to_cover_shares: Some(dec!(1002)),
-                    sell_to_cover_fee: Some(dec!(21.00)),
+                    plan_sale_tx_date: Some(date("2024-10-20")),
+                    plan_sale_settle_date: Some(date("2024-10-20")),
+                    plan_sale_price: Some(dec!(1001.00)),
+                    plan_sale_shares: Some(dec!(1002)),
+                    plan_sale_fee: Some(dec!(21.00)),
+                    plan_sale_cash_amount: None,
                     plan_note: s("Option Grant 1235"),
-                    sell_note: Some(s("Same-Day Sale")),
+                    plan_sale_note: Some(s("Same-Day Sale")),
                     filename: s("myeso.pdf"),
                     account: new_account(s("0112")),
                 },
@@ -1691,13 +1796,16 @@ statement is subject to the terms of the plan under which the release was made.
                 acquire_settle_date: date("2023-10-20"),
                 acquire_share_price: dec!(215.35),
                 acquire_shares: dec!(123),
-                sell_to_cover_tx_date: None,
-                sell_to_cover_settle_date: None,
-                sell_to_cover_price: Some(dec!(213.7733)),
-                sell_to_cover_shares: Some(dec!(67)),
-                sell_to_cover_fee: Some(dec!(4.13)),
+                plan_sale_tx_date: None,
+                plan_sale_settle_date: None,
+                plan_sale_price: Some(dec!(213.7733)),
+                plan_sale_shares: Some(dec!(67)),
+                plan_sale_fee: Some(dec!(4.13)),
+                plan_sale_cash_amount: Some(PlanSaleCashAmount::NetToParticipant(
+                    dec!(0.00),
+                )),
                 plan_note: s("ESPP"),
-                sell_note: None,
+                plan_sale_note: None,
                 filename: s("myespp.pdf"),
                 account: new_account(s("11223344")),
             },
@@ -1783,13 +1891,16 @@ statement is subject to the terms of the plan under which the purchase was made.
                 acquire_settle_date: date("2023-10-20"),
                 acquire_share_price: dec!(215.35),
                 acquire_shares: dec!(123),
-                sell_to_cover_tx_date: None,
-                sell_to_cover_settle_date: None,
-                sell_to_cover_price: Some(dec!(213.7733)),
-                sell_to_cover_shares: Some(dec!(67)),
-                sell_to_cover_fee: Some(dec!(4.13)),
+                plan_sale_tx_date: None,
+                plan_sale_settle_date: None,
+                plan_sale_price: Some(dec!(213.7733)),
+                plan_sale_shares: Some(dec!(67)),
+                plan_sale_fee: Some(dec!(4.13)),
+                plan_sale_cash_amount: Some(PlanSaleCashAmount::NetToParticipant(
+                    dec!(0.00),
+                )),
                 plan_note: s("ESPP"),
-                sell_note: None,
+                plan_sale_note: None,
                 filename: s("myespp.pdf"),
                 account: new_account(s("11223344")),
             },
@@ -1846,13 +1957,14 @@ statement is subject to the terms of the plan under which the purchase was made.
                 acquire_settle_date: date("2023-10-20"),
                 acquire_share_price: dec!(215.35),
                 acquire_shares: dec!(123),
-                sell_to_cover_tx_date: None,
-                sell_to_cover_settle_date: None,
-                sell_to_cover_price: None,
-                sell_to_cover_shares: None,
-                sell_to_cover_fee: None,
+                plan_sale_tx_date: None,
+                plan_sale_settle_date: None,
+                plan_sale_price: None,
+                plan_sale_shares: None,
+                plan_sale_fee: None,
+                plan_sale_cash_amount: None,
                 plan_note: s("ESPP"),
-                sell_note: None,
+                plan_sale_note: None,
                 filename: s("myespp.pdf"),
                 account: new_account(s("11223344")),
             },
@@ -2312,13 +2424,14 @@ Morgan Stanley Smith Barney LLC acted as agent.
                     acquire_settle_date: date("2017-02-15"),
                     acquire_share_price: dec!(100.67),
                     acquire_shares: dec!(32),
-                    sell_to_cover_tx_date: None,
-                    sell_to_cover_settle_date: None,
-                    sell_to_cover_price: None,
-                    sell_to_cover_shares: None,
-                    sell_to_cover_fee: None,
+                    plan_sale_tx_date: None,
+                    plan_sale_settle_date: None,
+                    plan_sale_price: None,
+                    plan_sale_shares: None,
+                    plan_sale_fee: None,
+                    plan_sale_cash_amount: None,
                     plan_note: "ESPP".to_string(),
-                    sell_note: None,
+                    plan_sale_note: None,
                     filename: "test.xlsx".to_string(),
                     account: new_account(String::new()),
                 },
@@ -2332,13 +2445,14 @@ Morgan Stanley Smith Barney LLC acted as agent.
                     acquire_settle_date: date("2022-02-15"),
                     acquire_share_price: dec!(129.94),
                     acquire_shares: dec!(57),
-                    sell_to_cover_tx_date: None,
-                    sell_to_cover_settle_date: None,
-                    sell_to_cover_price: None,
-                    sell_to_cover_shares: Some(dec!(21)),
-                    sell_to_cover_fee: None,
+                    plan_sale_tx_date: None,
+                    plan_sale_settle_date: None,
+                    plan_sale_price: None,
+                    plan_sale_shares: Some(dec!(21)),
+                    plan_sale_fee: None,
+                    plan_sale_cash_amount: None,
                     plan_note: "ESPP".to_string(),
-                    sell_note: None,
+                    plan_sale_note: None,
                     filename: "test.xlsx".to_string(),
                     account: new_account(String::new()),
                 },
@@ -2500,13 +2614,14 @@ Morgan Stanley Smith Barney LLC acted as agent.
                     acquire_settle_date: date("2021-02-20"),
                     acquire_share_price: dec!(30), // 3000 / 100
                     acquire_shares: dec!(40),      // from "Shares released" Event
-                    sell_to_cover_tx_date: None,
-                    sell_to_cover_settle_date: None,
-                    sell_to_cover_price: None,
-                    sell_to_cover_shares: None,
-                    sell_to_cover_fee: None,
+                    plan_sale_tx_date: None,
+                    plan_sale_settle_date: None,
+                    plan_sale_price: None,
+                    plan_sale_shares: None,
+                    plan_sale_fee: None,
+                    plan_sale_cash_amount: None,
                     plan_note: "RSU R12345".to_string(),
-                    sell_note: None,
+                    plan_sale_note: None,
                     filename: "test.xlsx".to_string(),
                     account: new_account(String::new()),
                 },
@@ -2520,13 +2635,14 @@ Morgan Stanley Smith Barney LLC acted as agent.
                     acquire_settle_date: date("2021-08-20"),
                     acquire_share_price: dec!(40), // 8000 / 200
                     acquire_shares: dec!(80),      // from "Shares released" Event
-                    sell_to_cover_tx_date: None,
-                    sell_to_cover_settle_date: None,
-                    sell_to_cover_price: None,
-                    sell_to_cover_shares: None,
-                    sell_to_cover_fee: None,
+                    plan_sale_tx_date: None,
+                    plan_sale_settle_date: None,
+                    plan_sale_price: None,
+                    plan_sale_shares: None,
+                    plan_sale_fee: None,
+                    plan_sale_cash_amount: None,
                     plan_note: "RSU R12345".to_string(),
-                    sell_note: None,
+                    plan_sale_note: None,
                     filename: "test.xlsx".to_string(),
                     account: new_account(String::new()),
                 },
@@ -2586,13 +2702,14 @@ Morgan Stanley Smith Barney LLC acted as agent.
                     acquire_settle_date: date("2021-03-17"),
                     acquire_share_price: dec!(50),
                     acquire_shares: dec!(10),
-                    sell_to_cover_tx_date: None,
-                    sell_to_cover_settle_date: None,
-                    sell_to_cover_price: None,
-                    sell_to_cover_shares: None,
-                    sell_to_cover_fee: None,
+                    plan_sale_tx_date: None,
+                    plan_sale_settle_date: None,
+                    plan_sale_price: None,
+                    plan_sale_shares: None,
+                    plan_sale_fee: None,
+                    plan_sale_cash_amount: None,
                     plan_note: "ESPP".to_string(),
-                    sell_note: None,
+                    plan_sale_note: None,
                     filename: "test".to_string(),
                     account: new_account(String::new()),
                 },
@@ -2604,13 +2721,14 @@ Morgan Stanley Smith Barney LLC acted as agent.
                     acquire_settle_date: date("2022-01-03"),
                     acquire_share_price: dec!(55),
                     acquire_shares: dec!(15),
-                    sell_to_cover_tx_date: None,
-                    sell_to_cover_settle_date: None,
-                    sell_to_cover_price: None,
-                    sell_to_cover_shares: None,
-                    sell_to_cover_fee: None,
+                    plan_sale_tx_date: None,
+                    plan_sale_settle_date: None,
+                    plan_sale_price: None,
+                    plan_sale_shares: None,
+                    plan_sale_fee: None,
+                    plan_sale_cash_amount: None,
                     plan_note: "ESPP".to_string(),
-                    sell_note: None,
+                    plan_sale_note: None,
                     filename: "test".to_string(),
                     account: new_account(String::new()),
                 },
@@ -2620,13 +2738,14 @@ Morgan Stanley Smith Barney LLC acted as agent.
                     acquire_settle_date: date("2022-06-17"),
                     acquire_share_price: dec!(60),
                     acquire_shares: dec!(20),
-                    sell_to_cover_tx_date: None,
-                    sell_to_cover_settle_date: None,
-                    sell_to_cover_price: None,
-                    sell_to_cover_shares: None,
-                    sell_to_cover_fee: None,
+                    plan_sale_tx_date: None,
+                    plan_sale_settle_date: None,
+                    plan_sale_price: None,
+                    plan_sale_shares: None,
+                    plan_sale_fee: None,
+                    plan_sale_cash_amount: None,
                     plan_note: "ESPP".to_string(),
-                    sell_note: None,
+                    plan_sale_note: None,
                     filename: "test".to_string(),
                     account: new_account(String::new()),
                 },
