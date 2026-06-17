@@ -62,23 +62,26 @@ pub(super) fn txs_from_data(
 
         csv_txs.push(buy_tx);
 
-        if let Some(sell_to_cover) = b.sell_to_cover_data()? {
-            let sell_note =
-                b.sell_note.as_ref().map(|n| n.as_str()).unwrap_or("sell-to-cover");
+        if let Some(plan_sale) = b.plan_sale_data()? {
+            let plan_sale_note = b
+                .plan_sale_note
+                .as_ref()
+                .map(|n| n.as_str())
+                .unwrap_or("sell-to-cover");
             let sell_tx = CsvTx {
                 security: Some(b.security.clone()),
-                trade_date: Some(sell_to_cover.sell_to_cover_tx_date),
-                settlement_date: Some(sell_to_cover.sell_to_cover_settle_date),
+                trade_date: Some(plan_sale.plan_sale_tx_date),
+                settlement_date: Some(plan_sale.plan_sale_settle_date),
                 action: Some(TxAction::Sell),
-                shares: Some(sell_to_cover.sell_to_cover_shares),
-                amount_per_share: Some(sell_to_cover.sell_to_cover_price),
+                shares: Some(plan_sale.plan_sale_shares),
+                amount_per_share: Some(plan_sale.plan_sale_price),
                 total_amount: None,
-                commission: Some(sell_to_cover.sell_to_cover_fee),
+                commission: Some(plan_sale.plan_sale_fee),
                 tx_currency: Some(Currency::usd()),
                 tx_curr_to_local_exchange_rate: None,
                 commission_currency: None,
                 commission_curr_to_local_exchange_rate: None,
-                memo: Some(format!("{} {}", b.plan_note, sell_note)),
+                memo: Some(format!("{} {}", b.plan_note, plan_sale_note)),
                 affiliate: affiliate.clone(),
                 specified_superficial_loss: None,
                 stock_split_ratio: None,
@@ -86,6 +89,19 @@ pub(super) fn txs_from_data(
             };
 
             csv_txs.push(sell_tx);
+
+            // TODO(plan-sale-fx): generate a USD.FX buy for the portion of the
+            // plan-sale proceeds that is NOT withheld (i.e. the cash actually
+            // returned to the participant), when `generate_fx` is set.
+            // `b.plan_sale_cash_amount` carries this figure for RSU/ESPP
+            // (NetToParticipant); use
+            // `cash.proceeds_to_participant(gross_proceeds)` where
+            // gross_proceeds = plan_sale_shares * plan_sale_price - plan_sale_fee.
+            // See local_md/eso_same_day_sale_fx_bug.md. ESO is not wired up yet
+            // (plan_sale_cash_amount is None for ESO -- see parse_eso_entries),
+            // and the multi-grant aggregation bug
+            // (local_md/eso_multigrant_aggregated_sell_bug.md) means there is no
+            // clean per-grant sale to attribute the FX to until that is fixed.
         }
     }
 
@@ -153,11 +169,11 @@ pub(super) fn txs_from_data(
 ///
 /// trade_confs should be pre-filtered to only contain trades within a reasonable
 /// date range of benefit.
-fn find_sell_to_cover_trade_set<'a>(
+fn find_plan_sale_trade_set<'a>(
     benefit: &BenefitEntry,
     trade_confs: &Vec<&'a BrokerTx>,
 ) -> Result<Vec<&'a BrokerTx>, SError> {
-    let sell_to_cover_shares = benefit.sell_to_cover_shares.unwrap();
+    let plan_sale_shares = benefit.plan_sale_shares.unwrap();
 
     let benefit_err_desc = || {
         format!(
@@ -170,19 +186,19 @@ fn find_sell_to_cover_trade_set<'a>(
     // the security of all matches and the number of shares matches.
     let mut all_matching_trades: Vec<Vec<&BrokerTx>> = Vec::new();
     for n in (1..=trade_confs.len()).rev() {
-        tracing::trace!("find_sell_to_cover_trade_set combos len {n}");
+        tracing::trace!("find_plan_sale_trade_set combos len {n}");
 
         // (combinations from itertools crate, here)
         for trades in trade_confs.iter().combinations(n) {
             if !trades.iter().all(|t| t.security == benefit.security) {
                 tracing::trace!(
-                    "find_sell_to_cover_trade_set skipping set with not \
+                    "find_plan_sale_trade_set skipping set with not \
                                 all securities matched"
                 );
                 continue;
             }
             let n_shares: Decimal = trades.iter().map(|t| t.num_shares).sum();
-            if n_shares == sell_to_cover_shares {
+            if n_shares == plan_sale_shares {
                 all_matching_trades.push(trades.into_iter().map(|t| *t).collect());
             }
         }
@@ -201,7 +217,7 @@ fn find_sell_to_cover_trade_set<'a>(
         Ok(matching_trades)
     } else if all_matching_trades.len() > 1 {
         tracing::trace!(
-            "find_sell_to_cover_trade_set {} candidates found",
+            "find_plan_sale_trade_set {} candidates found",
             all_matching_trades.len()
         );
         // Try to chose best trade combination match.
@@ -223,7 +239,7 @@ fn find_sell_to_cover_trade_set<'a>(
                 let total_shares: Decimal =
                     trades.iter().map(|t| t.num_shares).sum();
                 let avg_price = total_val / total_shares;
-                let diff = match benefit.sell_to_cover_price {
+                let diff = match benefit.plan_sale_price {
                     Some(p) => (p - avg_price).abs(),
                     None => Decimal::MAX,
                 };
@@ -255,7 +271,7 @@ fn find_sell_to_cover_trade_set<'a>(
             .join("\n  ");
         tracing::debug!(
             "Average reported sale price: {:?}\n  {}",
-            benefit.sell_to_cover_price,
+            benefit.plan_sale_price,
             combos_str
         );
 
@@ -271,7 +287,7 @@ fn find_sell_to_cover_trade_set<'a>(
                                 sell-to-cover for {}:\n \
                                 Average reported sale price: {:?}\n  {}",
                 benefit_err_desc(),
-                benefit.sell_to_cover_price,
+                benefit.plan_sale_price,
                 combos_str
             ))
         }
@@ -310,7 +326,7 @@ pub(super) fn amend_paired_benefit_sales(
     let mut warnings = Vec::new();
     let mut errors = Vec::new();
     for benefit in &mut benefits {
-        if benefit.sell_to_cover_shares.is_none() {
+        if benefit.plan_sale_shares.is_none() {
             continue;
         }
 
@@ -328,7 +344,7 @@ pub(super) fn amend_paired_benefit_sales(
             }
         }
 
-        match find_sell_to_cover_trade_set(benefit, &candidate_trades) {
+        match find_plan_sale_trade_set(benefit, &candidate_trades) {
             Ok(matched_trades) => {
                 // Ament the benefit dates
                 let t0 = matched_trades[0];
@@ -350,22 +366,22 @@ pub(super) fn amend_paired_benefit_sales(
                         warnings.push(warn);
                     }
                 }
-                benefit.sell_to_cover_tx_date = Some(t0.trade_date);
-                benefit.sell_to_cover_settle_date = Some(t0.settlement_date);
+                benefit.plan_sale_tx_date = Some(t0.trade_date);
+                benefit.plan_sale_settle_date = Some(t0.settlement_date);
 
                 // Populate price and fee from matched trades when not
                 // already set (e.g. xlsx-sourced benefits lack these).
-                if benefit.sell_to_cover_price.is_none() {
+                if benefit.plan_sale_price.is_none() {
                     let total_val: Decimal = matched_trades
                         .iter()
                         .map(|t| t.amount_per_share * t.num_shares)
                         .sum();
                     let total_shares: Decimal =
                         matched_trades.iter().map(|t| t.num_shares).sum();
-                    benefit.sell_to_cover_price = Some(total_val / total_shares);
+                    benefit.plan_sale_price = Some(total_val / total_shares);
                 }
-                if benefit.sell_to_cover_fee.is_none() {
-                    benefit.sell_to_cover_fee =
+                if benefit.plan_sale_fee.is_none() {
+                    benefit.plan_sale_fee =
                         Some(matched_trades.iter().map(|t| t.commission).sum());
                 }
 
@@ -411,11 +427,11 @@ pub(super) fn amend_benefit_sales(
 ) -> Result<AmendBenefitsRes, Vec<SError>> {
     if no_sell_to_cover_pair {
         for b in &mut pdf_data.benefits {
-            b.sell_to_cover_tx_date = None;
-            b.sell_to_cover_settle_date = None;
-            b.sell_to_cover_price = None;
-            b.sell_to_cover_shares = None;
-            b.sell_to_cover_fee = None;
+            b.plan_sale_tx_date = None;
+            b.plan_sale_settle_date = None;
+            b.plan_sale_price = None;
+            b.plan_sale_shares = None;
+            b.plan_sale_fee = None;
         }
         Ok(AmendBenefitsRes {
             benefits_and_trades: BenefitsAndTrades {
@@ -447,13 +463,13 @@ fn benefits_to_render_table(benefits: &[BenefitEntry]) -> RenderTable {
         "acquire_settle_date",
         "acquire_share_price",
         "acquire_shares",
-        "sell_to_cover_tx_date",
-        "sell_to_cover_settle_date",
-        "sell_to_cover_price",
-        "sell_to_cover_shares",
-        "sell_to_cover_fee",
+        "plan_sale_tx_date",
+        "plan_sale_settle_date",
+        "plan_sale_price",
+        "plan_sale_shares",
+        "plan_sale_fee",
         "plan_note",
-        "sell_note",
+        "plan_sale_note",
         "filename",
     ]
     .into_iter()
@@ -467,13 +483,13 @@ fn benefits_to_render_table(benefits: &[BenefitEntry]) -> RenderTable {
             b.acquire_settle_date.to_string(),
             b.acquire_share_price.to_string(),
             b.acquire_shares.to_string(),
-            display_opt(&b.sell_to_cover_tx_date),
-            display_opt(&b.sell_to_cover_settle_date),
-            display_opt(&b.sell_to_cover_price),
-            display_opt(&b.sell_to_cover_shares),
-            display_opt(&b.sell_to_cover_fee),
+            display_opt(&b.plan_sale_tx_date),
+            display_opt(&b.plan_sale_settle_date),
+            display_opt(&b.plan_sale_price),
+            display_opt(&b.plan_sale_shares),
+            display_opt(&b.plan_sale_fee),
             b.plan_note.clone(),
-            display_opt(&b.sell_note),
+            display_opt(&b.plan_sale_note),
             b.filename.clone(),
         ]);
     }
@@ -647,7 +663,7 @@ mod tests {
     use crate::testlib::{assert_re, assert_vec_eq};
     use crate::util::date::pub_testlib::doy_date;
 
-    use super::find_sell_to_cover_trade_set;
+    use super::find_plan_sale_trade_set;
 
     fn foo() -> String {
         String::from("FOO")
@@ -694,15 +710,16 @@ mod tests {
                 acquire_share_price: dec!(1.50),
                 acquire_shares: Decimal::from(self.n_sh),
                 // Pre-amend states for stc.
-                sell_to_cover_tx_date: self.stc_tdate,
-                sell_to_cover_settle_date: self
+                plan_sale_tx_date: self.stc_tdate,
+                plan_sale_settle_date: self
                     .stc_tdate
                     .map(|d| d.saturating_add(time::Duration::days(2))),
-                sell_to_cover_price: if has_stc { Some(dec!(1.55)) } else { None },
-                sell_to_cover_shares: self.n_stc.map(|s| Decimal::from(s)),
-                sell_to_cover_fee: if has_stc { Some(dec!(5.99)) } else { None },
+                plan_sale_price: if has_stc { Some(dec!(1.55)) } else { None },
+                plan_sale_shares: self.n_stc.map(|s| Decimal::from(s)),
+                plan_sale_fee: if has_stc { Some(dec!(5.99)) } else { None },
+                plan_sale_cash_amount: None,
                 plan_note: "XXXX Vest".to_string(),
-                sell_note: if has_stc {
+                plan_sale_note: if has_stc {
                     Some("XXX STC".to_string())
                 } else {
                     None
@@ -776,13 +793,14 @@ mod tests {
             acquire_settle_date: dt(10),
             acquire_share_price: dec!(1),
             acquire_shares: dec!(100),
-            sell_to_cover_tx_date: Some(dt(10)),
-            sell_to_cover_settle_date: Some(dt(12)),
-            sell_to_cover_price: stc_price,
-            sell_to_cover_shares: Some(Decimal::from(n_shares)),
-            sell_to_cover_fee: Some(dec!(0)),
+            plan_sale_tx_date: Some(dt(10)),
+            plan_sale_settle_date: Some(dt(12)),
+            plan_sale_price: stc_price,
+            plan_sale_shares: Some(Decimal::from(n_shares)),
+            plan_sale_fee: Some(dec!(0)),
+            plan_sale_cash_amount: None,
             plan_note: "XXXX Vest".to_string(),
-            sell_note: Some("XXX STC".to_string()),
+            plan_sale_note: Some("XXX STC".to_string()),
             filename: "a_file.pdf".to_string(),
             account: crate::peripheral::broker::etrade::new_account(String::new()),
         }
@@ -832,7 +850,7 @@ mod tests {
 
     #[rustfmt::skip]
     #[test]
-    fn test_find_sell_to_cover_trade_set() {
+    fn test_find_plan_sale_trade_set() {
         if std::env::var("VERBOSE").is_ok() {
             crate::tracing::enable_trace_env(
                 "acb::peripheral::etrade_plan_pdf_tx_extract_impl=trace");
@@ -841,20 +859,20 @@ mod tests {
 
         // Very basic case
         let trades = vec![tx_n_shares(5)];
-        let matching_trades = find_sell_to_cover_trade_set(
+        let matching_trades = find_plan_sale_trade_set(
             &benefit_n_shares(5), &trades.iter().collect()).unwrap();
 
         assert_vec_eq(trades.iter().collect(), matching_trades);
 
         // Basic multiple case
         let trades = vec![tx_n_shares(5), tx_n_shares(1)];
-        let matching_trades = find_sell_to_cover_trade_set(
+        let matching_trades = find_plan_sale_trade_set(
             &benefit_n_shares(6), &trades.iter().collect()).unwrap();
         assert_sorted_vec_eq(trades.iter().collect(), matching_trades);
 
         // Multiple, reconcilable case
         let trades = vec![tx_n_shares(5), tx_n_shares(2), tx_n_shares(1)];
-        let matching_trades = find_sell_to_cover_trade_set(
+        let matching_trades = find_plan_sale_trade_set(
             &benefit_n_shares(6), &trades.iter().collect()).unwrap();
         assert_sorted_vec_eq(vec![&trades[0], &trades[2]], matching_trades);
 
@@ -862,13 +880,13 @@ mod tests {
         // match).
         let trades = vec![tx_n_shares(5), tx_n_shares(1), tx_n_shares(12),
                           tx_n_shares(1)];
-        let matching_trades = find_sell_to_cover_trade_set(
+        let matching_trades = find_plan_sale_trade_set(
             &benefit_n_shares(6), &trades.iter().collect()).unwrap();
         assert_sorted_vec_eq(vec![&trades[0], &trades[1]], matching_trades);
 
         // No match
         let trades = vec![tx_n_shares(5), tx_n_shares(1)];
-        let err = find_sell_to_cover_trade_set(
+        let err = find_plan_sale_trade_set(
             &benefit_n_shares(2), &trades.iter().collect()).unwrap_err();
         assert_eq!(err,
             "Found no trades matching the sell-to-cover for a_file.pdf: \
@@ -876,7 +894,7 @@ mod tests {
 
         // No candidates
         let trades = vec![];
-        let err = find_sell_to_cover_trade_set(
+        let err = find_plan_sale_trade_set(
             &benefit_n_shares(2), &trades.iter().collect()).unwrap_err();
         assert_eq!(err,
             "Found no trades matching the sell-to-cover for a_file.pdf: \
@@ -887,7 +905,7 @@ mod tests {
                           tx_n_shares_price(1, dec!(100)),
                           tx_n_shares_price(4, dec!(101)),
                           tx_n_shares_price(2, dec!(99))];
-        let matching_trades = find_sell_to_cover_trade_set(
+        let matching_trades = find_plan_sale_trade_set(
             &benefit_n_shares_stc_price(6, Some(dec!(100))),
             &trades.iter().collect()).unwrap();
         assert_sorted_vec_eq(vec![&trades[2], &trades[3]], matching_trades);
@@ -895,14 +913,14 @@ mod tests {
         // Resolve multiple by absolute value difference
         let trades = vec![tx_n_shares_price(6, dec!(101)),
                           tx_n_shares_price(6, dec!(50))];
-        let matching_trades = find_sell_to_cover_trade_set(
+        let matching_trades = find_plan_sale_trade_set(
             &benefit_n_shares_stc_price(6, Some(dec!(100))),
             &trades.iter().collect()).unwrap();
         assert_sorted_vec_eq(vec![&trades[0]], matching_trades);
 
         let trades = vec![tx_n_shares_price(6, dec!(150)),
                           tx_n_shares_price(6, dec!(99))];
-        let matching_trades = find_sell_to_cover_trade_set(
+        let matching_trades = find_plan_sale_trade_set(
             &benefit_n_shares_stc_price(6, Some(dec!(100))),
             &trades.iter().collect()).unwrap();
         assert_sorted_vec_eq(vec![&trades[1]], matching_trades);
@@ -913,7 +931,7 @@ mod tests {
         let trades = vec![tx_n_shares_price(5, dec!(400)),
                           tx_n_shares_price(1, dec!(99)),
                           tx_n_shares_price(4, dec!(101))];
-        let matching_trades = find_sell_to_cover_trade_set(
+        let matching_trades = find_plan_sale_trade_set(
             &benefit_n_shares_stc_price(5, Some(dec!(100))),
             &trades.iter().collect()).unwrap();
         assert_sorted_vec_eq(vec![&trades[1], &trades[2]], matching_trades);
@@ -921,7 +939,7 @@ mod tests {
         // Unreconcilable case (no aggregate sell-to-cover price).
         // Realistically, this case should be impossible to hit, but we cover it
         // just because the Benefit struct supports Option of the price.
-        let err = find_sell_to_cover_trade_set(
+        let err = find_plan_sale_trade_set(
             &benefit_n_shares_stc_price(5, None),
             &trades.iter().collect()).unwrap_err();
         assert_re(
@@ -946,7 +964,7 @@ mod tests {
         let benefits = vec![TBen{tdate: dt(20), n_sh: 2, n_stc: None, ..dflt()}.x()];
         let trade_confs = vec![TTx{tdate: dt(20), n_sh: 1, ..dflt()}.x()];
         let amend_res = amend_paired_benefit_sales(EtradeData{benefits, trade_confs}).unwrap();
-        assert_eq!(amend_res.benefits_and_trades.benefits[0].sell_to_cover_tx_date,
+        assert_eq!(amend_res.benefits_and_trades.benefits[0].plan_sale_tx_date,
                    None);
         assert_eq!(amend_res.benefits_and_trades.other_trades.len(), 1);
         assert!(amend_res.warnings.is_empty());
@@ -956,8 +974,8 @@ mod tests {
         let trade_confs = vec![TTx{tdate: dt(25), n_sh: 5, ..dflt()}.x()];
         let amend_res = amend_paired_benefit_sales(EtradeData{benefits, trade_confs}).unwrap();
         let amended_benefits = amend_res.benefits_and_trades.benefits;
-        assert_eq!(amended_benefits[0].sell_to_cover_tx_date, Some(dt(25)));
-        assert_eq!(amended_benefits[0].sell_to_cover_settle_date, Some(dt(27)));
+        assert_eq!(amended_benefits[0].plan_sale_tx_date, Some(dt(25)));
+        assert_eq!(amended_benefits[0].plan_sale_settle_date, Some(dt(27)));
         assert_eq!(amend_res.benefits_and_trades.other_trades.len(), 0);
         assert!(amend_res.warnings.is_empty());
 
@@ -987,10 +1005,10 @@ mod tests {
         ];
         let amend_res = amend_paired_benefit_sales(EtradeData{benefits, trade_confs}).unwrap();
         let amended_benefits = amend_res.benefits_and_trades.benefits;
-        if amended_benefits[0].sell_to_cover_tx_date != Some(dt(20)) &&
-           amended_benefits[0].sell_to_cover_tx_date != Some(dt(21)) {
+        if amended_benefits[0].plan_sale_tx_date != Some(dt(20)) &&
+           amended_benefits[0].plan_sale_tx_date != Some(dt(21)) {
             // It could be either. Just pick one arbitrarily to assert on.
-            assert_eq!(amended_benefits[0].sell_to_cover_tx_date, Some(dt(20)));
+            assert_eq!(amended_benefits[0].plan_sale_tx_date, Some(dt(20)));
         }
         assert_vec_eq(amend_res.benefits_and_trades.other_trades, vec![
             TTx{tdate: dt(21), n_sh: 3, ..dflt()}.x(),
@@ -1017,8 +1035,8 @@ mod tests {
             .unwrap();
         let amended_benefits = amend_res.benefits_and_trades.benefits;
         assert_eq!(amend_res.warnings.len(), 0);
-        assert_eq!(amended_benefits[0].sell_to_cover_tx_date, Some(dt(21)));
-        assert_eq!(amended_benefits[1].sell_to_cover_tx_date, Some(dt(23)));
+        assert_eq!(amended_benefits[0].plan_sale_tx_date, Some(dt(21)));
+        assert_eq!(amended_benefits[1].plan_sale_tx_date, Some(dt(23)));
 
         benefits.reverse();
         let errs = amend_paired_benefit_sales(EtradeData{benefits: benefits, trade_confs})
@@ -1042,7 +1060,7 @@ mod tests {
             .unwrap();
         let amended_benefits = amend_res.benefits_and_trades.benefits;
         assert_eq!(amend_res.warnings.len(), 0);
-        assert_eq!(amended_benefits[0].sell_to_cover_tx_date, Some(dt(21)));
+        assert_eq!(amended_benefits[0].plan_sale_tx_date, Some(dt(21)));
     }
 
     #[rustfmt::skip]
@@ -1274,11 +1292,11 @@ mod tests {
         // Benefit STC fields should all be stripped
         assert_eq!(bat.benefits.len(), 1);
         let b = &bat.benefits[0];
-        assert_eq!(b.sell_to_cover_tx_date, None);
-        assert_eq!(b.sell_to_cover_settle_date, None);
-        assert_eq!(b.sell_to_cover_price, None);
-        assert_eq!(b.sell_to_cover_shares, None);
-        assert_eq!(b.sell_to_cover_fee, None);
+        assert_eq!(b.plan_sale_tx_date, None);
+        assert_eq!(b.plan_sale_settle_date, None);
+        assert_eq!(b.plan_sale_price, None);
+        assert_eq!(b.plan_sale_shares, None);
+        assert_eq!(b.plan_sale_fee, None);
 
         // All trade confs should remain as other_trades (nothing consumed)
         assert_eq!(bat.other_trades.len(), 2);
