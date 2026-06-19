@@ -445,6 +445,7 @@ struct EsoGrantData {
     grant_number: u64,
     exercise_fmv: Decimal,
     shares_exercised: Decimal,
+    shares_sold: Decimal,
     sale_price: Decimal,
     fee: Decimal,
 }
@@ -541,6 +542,53 @@ fn extract_currency(key: &str, parens: bool, text: &str) -> Result<Decimal, SErr
     return extract_dec_common(key, true, parens, text);
 }
 
+/// Determines the number of shares sold for each grant in an exercise.
+///
+/// eTrade forms only reliably report a single, form-level "Shares Sold" total
+/// in the header. Some forms additionally include a per-grant "Shares Sold" row
+/// in the exercise body; when present (and matching the grant count) we use it
+/// directly. Otherwise:
+/// - a single-grant form carries the whole header total on its one grant, and
+/// - a multi-grant full sell-all (where every exercised share was sold) splits
+///   per grant as exactly the shares exercised by that grant.
+///
+/// A multi-grant *partial* sell with no per-grant data is ambiguous (we cannot
+/// know how the sold shares were allocated across grants), so we return an
+/// error rather than guess.
+fn per_grant_shares_sold(
+    body: &str,
+    header_shares_sold: Decimal,
+    grant_shares_exercised: &[Decimal],
+) -> Result<Vec<Decimal>, SError> {
+    let num_grants = grant_shares_exercised.len();
+
+    // Prefer an explicit per-grant "Shares Sold" row from the exercise body.
+    if let Ok(sold) = search_for_dec_rows("Shares Sold", false, false, body) {
+        if sold.len() == num_grants {
+            return Ok(sold);
+        }
+    }
+
+    // A single grant carries the whole header total unambiguously.
+    if num_grants == 1 {
+        return Ok(vec![header_shares_sold]);
+    }
+
+    // For multiple grants, we can only split a full sell-all (every exercised
+    // share was sold). A partial multi-grant sell is ambiguous.
+    let total_exercised =
+        grant_shares_exercised.iter().fold(Decimal::ZERO, |acc, s| acc + s);
+    if header_shares_sold == total_exercised {
+        return Ok(grant_shares_exercised.to_vec());
+    }
+
+    Err(format!(
+        "Cannot determine per-grant shares sold: form sold {header_shares_sold} \
+         of {total_exercised} shares exercised across {num_grants} grants, and \
+         no per-grant \"Shares Sold\" data was found"
+    ))
+}
+
 fn parse_eso_data(eso_pdf_text: &str) -> Result<EsoData, SError> {
     let text = eso_pdf_text;
 
@@ -579,12 +627,17 @@ fn parse_eso_data(eso_pdf_text: &str) -> Result<EsoData, SError> {
     let grant_sale_prices = search_for_dec_rows("Sale Price", true, false, body)?;
     let grant_fees = search_for_dec_rows("Comission/Fee", true, false, body)?;
 
+    let header_shares_sold = extract_numeric("Shares Sold", false, header)?;
+    let grant_shares_sold =
+        per_grant_shares_sold(body, header_shares_sold, &grant_shares_exercised)?;
+
     let mut grants = Vec::with_capacity(grant_indicies.len());
-    for (((((_, num), fmv), shares), s_price), fee) in grant_indicies
+    for ((((((_, num), fmv), shares), sold), s_price), fee) in grant_indicies
         .iter()
         .zip(grant_numbers)
         .zip(grant_exercise_fmvs)
         .zip(grant_shares_exercised)
+        .zip(grant_shares_sold)
         .zip(grant_sale_prices)
         .zip(grant_fees)
     {
@@ -592,9 +645,22 @@ fn parse_eso_data(eso_pdf_text: &str) -> Result<EsoData, SError> {
             grant_number: num,
             exercise_fmv: fmv,
             shares_exercised: shares,
+            shares_sold: sold,
             sale_price: s_price,
             fee: fee,
         });
+    }
+
+    // Reconcile the per-grant sold shares against the form-level total, so a
+    // bad parse or an unexpected form layout surfaces as an error rather than
+    // silently dropping or double-counting shares.
+    let summed_sold =
+        grants.iter().fold(Decimal::ZERO, |acc, g| acc + g.shares_sold);
+    if summed_sold != header_shares_sold {
+        return Err(format!(
+            "Sum of per-grant shares sold ({summed_sold}) does not match the \
+             form total ({header_shares_sold})"
+        ));
     }
 
     Ok(EsoData {
@@ -605,75 +671,49 @@ fn parse_eso_data(eso_pdf_text: &str) -> Result<EsoData, SError> {
             ETRADE_SLASH_DATE_FORMAT,
         )
         .map_err(|e| e.to_string())?,
-        shares_sold: extract_numeric("Shares Sold", false, header)?,
+        shares_sold: header_shares_sold,
         grants: grants,
     })
 }
 
 /// Parses BenefitEntries out of exercies stock options confirmations.
-/// Each form can contain of multiple grants exercises, and each will yield
-/// a separate benefit entry.
-/// Due to how some attributes are consolidated (sold shares, for example),
-/// some parts are added into just the last BenefitEntry.
+/// Each form can contain multiple grant exercises, and each yields a separate,
+/// fully independent benefit entry: its own acquisition (Buy) and its own sale
+/// (Sell) sized to that grant's exercised and sold shares.
 fn parse_eso_entries(
     eso_pdf_text: &str,
     filepath: &Path,
 ) -> Result<Vec<BenefitEntry>, SError> {
     let eso_data = parse_eso_data(eso_pdf_text)?;
 
+    if eso_data.grants.is_empty() {
+        return Err(format!("No exercised grants found in {filepath:?}"));
+    }
+
     let mut entries = Vec::with_capacity(eso_data.grants.len());
-    let last_grant = eso_data
-        .grants
-        .last()
-        .ok_or_else(|| format!("No exercised grants found in {filepath:?}"))?;
-
-    // Decimal doesn't implement Sum, so we have to manually accumulate it.
-    let fee_sum = eso_data.grants.iter().fold(Decimal::ZERO, |acc, g| acc + g.fee);
-
-    for (i, grant) in eso_data.grants.iter().enumerate() {
-        if grant.sale_price != last_grant.sale_price {
-            return Err(format!(
-                "Non-equal ESO sale prices {} and {}",
-                grant.sale_price, last_grant.sale_price
-            ));
-        }
-
-        let is_last = i == eso_data.grants.len() - 1;
+    for grant in eso_data.grants.iter() {
+        // Only emit a sale when the grant actually sold shares (a grant may be
+        // exercised-and-held in a partial sell-to-cover). plan_sale_data()
+        // requires all-or-nothing on these fields.
+        let sold = grant.shares_sold > Decimal::ZERO;
         entries.push(BenefitEntry {
             security: eso_data.common_benefit_data.symbol.clone(),
             acquire_tx_date: eso_data.exercise_date,
             acquire_settle_date: eso_data.exercise_date,
             acquire_share_price: grant.exercise_fmv,
             acquire_shares: grant.shares_exercised,
-            plan_sale_tx_date: if is_last {
-                Some(eso_data.exercise_date)
-            } else {
-                None
-            },
-            plan_sale_settle_date: if is_last {
-                Some(eso_data.exercise_date)
-            } else {
-                None
-            },
-            plan_sale_price: if is_last {
-                Some(grant.sale_price)
-            } else {
-                None
-            },
-            plan_sale_shares: if is_last {
-                Some(eso_data.shares_sold)
-            } else {
-                None
-            },
-            plan_sale_fee: if is_last { Some(fee_sum) } else { None },
+            plan_sale_tx_date: sold.then_some(eso_data.exercise_date),
+            plan_sale_settle_date: sold.then_some(eso_data.exercise_date),
+            plan_sale_price: sold.then_some(grant.sale_price),
+            plan_sale_shares: sold.then_some(grant.shares_sold),
+            plan_sale_fee: sold.then_some(grant.fee),
             // TODO(eso-fx): ESO confirmations are not yet parsed for the cash
             // returned to the participant ("Total Due Participant"). For a Same
             // Day Sale the whole lot is sold and only part of the proceeds is
             // withheld; the remainder lands in the account as USD and should
-            // become a USD.FX buy. Parse that per grant (see
-            // eso_multigrant_aggregated_sell_bug.md -- the sale is currently
-            // aggregated onto the last grant, so there is no clean per-grant
-            // entry to hang this on yet) and populate plan_sale_cash_amount
+            // become a USD.FX buy. With per-grant sells now in place (see
+            // eso_multigrant_aggregated_sell_bug.md), the remaining work is to
+            // parse the per-grant cash figure and populate plan_sale_cash_amount
             // with PlanSaleCashAmount::Withheld(...) or NetToParticipant(...).
             plan_sale_cash_amount: None,
             plan_note: format!("Option Grant {}", grant.grant_number),
@@ -1594,8 +1634,8 @@ statement is subject to the terms of the plan under which the release was made.
         Order Type Same-Day Sale
         Company Name (Symbol) FOO COMPANY,
         INC.(FOO)
-        Shares Exercised 1002
-        Shares Sold 1002
+        Shares Exercised 300
+        Shares Sold 300
         Price Type Market
         Limit Price N/A
         Term Good for Day
@@ -1619,7 +1659,7 @@ statement is subject to the terms of the plan under which the release was made.
         Sale Price $1,001.00 $2,001.00
         Exercise Market Value $1,000.00 $2,000.00
         Shares Exercised 100 200
-        Shares Sold 31 91
+        Shares Sold 100 200
         Total Gain $7,234.12 $10,101.11
         Taxable Gain $7,234.12 $10,101.11
         Gross Proceeds $9,876.54 $15,000.23
@@ -1645,12 +1685,13 @@ statement is subject to the terms of the plan under which the release was made.
                 },
                 exercise_type: s("Same-Day Sale"),
                 exercise_date: date("2024-10-20"),
-                shares_sold: dec!(1002),
+                shares_sold: dec!(300),
                 grants: vec![
                     EsoGrantData {
                         grant_number: 1234,
                         exercise_fmv: dec!(1000.00),
                         shares_exercised: dec!(100),
+                        shares_sold: dec!(100),
                         sale_price: dec!(1001.00),
                         fee: dec!(10.00),
                     },
@@ -1658,6 +1699,7 @@ statement is subject to the terms of the plan under which the release was made.
                         grant_number: 1235,
                         exercise_fmv: dec!(2000.00),
                         shares_exercised: dec!(200),
+                        shares_sold: dec!(200),
                         sale_price: dec!(2001.00),
                         fee: dec!(11.00),
                     },
@@ -1668,14 +1710,11 @@ statement is subject to the terms of the plan under which the release was made.
 
     #[test]
     fn test_parse_eso_entries() {
-        // Sale prices must all be equal
-        let fixed_eso_data = SAMPLE_ESO.replace(
-            "Sale Price $1,001.00 $2,001.00",
-            "Sale Price $1,001.00 $1,001.00",
-        );
-
+        // Each grant produces its own independent Buy + Sell, sized to that
+        // grant's own exercised/sold shares, sale price, and fee. Sale prices
+        // no longer need to be equal across grants.
         let eso_entries = parse_eso_entries(
-            &fixed_eso_data,
+            SAMPLE_ESO,
             &std::path::PathBuf::from("foo/bar/myeso.pdf"),
         )
         .unwrap();
@@ -1688,11 +1727,11 @@ statement is subject to the terms of the plan under which the release was made.
                     acquire_settle_date: date("2024-10-20"),
                     acquire_share_price: dec!(1000.00),
                     acquire_shares: dec!(100),
-                    plan_sale_tx_date: None,
-                    plan_sale_settle_date: None,
-                    plan_sale_price: None,
-                    plan_sale_shares: None,
-                    plan_sale_fee: None,
+                    plan_sale_tx_date: Some(date("2024-10-20")),
+                    plan_sale_settle_date: Some(date("2024-10-20")),
+                    plan_sale_price: Some(dec!(1001.00)),
+                    plan_sale_shares: Some(dec!(100)),
+                    plan_sale_fee: Some(dec!(10.00)),
                     plan_sale_cash_amount: None,
                     plan_note: s("Option Grant 1234"),
                     plan_sale_note: Some(s("Same-Day Sale")),
@@ -1707,9 +1746,9 @@ statement is subject to the terms of the plan under which the release was made.
                     acquire_shares: dec!(200),
                     plan_sale_tx_date: Some(date("2024-10-20")),
                     plan_sale_settle_date: Some(date("2024-10-20")),
-                    plan_sale_price: Some(dec!(1001.00)),
-                    plan_sale_shares: Some(dec!(1002)),
-                    plan_sale_fee: Some(dec!(21.00)),
+                    plan_sale_price: Some(dec!(2001.00)),
+                    plan_sale_shares: Some(dec!(200)),
+                    plan_sale_fee: Some(dec!(11.00)),
                     plan_sale_cash_amount: None,
                     plan_note: s("Option Grant 1235"),
                     plan_sale_note: Some(s("Same-Day Sale")),
@@ -1718,6 +1757,109 @@ statement is subject to the terms of the plan under which the release was made.
                 },
             ],
         );
+    }
+
+    // A multi-grant partial sell-to-cover form: not all exercised shares are
+    // sold, and the body carries an explicit per-grant "Shares Sold" row.
+    const SAMPLE_ESO_PARTIAL: &str = "
+        Order Number 12345678
+        Account Stock Plan (FOO) -0112
+        Order Type Sell-to-Cover
+        Company Name (Symbol) FOO COMPANY,
+        INC.(FOO)
+        Shares Exercised 300
+        Shares Sold 130
+        Price Type Market
+        Limit Price N/A
+        Term Good for Day
+         Exercise Details
+
+        Exercise Date: 10/20/2024 Exercise Type: Sell-to-Cover Registration:
+        Grant 1 Grant 2
+        Grant Date 1/1/2012 2/2/2013
+        Grant Number 1234 1235
+        Grant Type Nonqual Nonqual
+        Grant Price $3.33 $4.44
+        Sale Price $1,001.00 $2,001.00
+        Exercise Market Value $1,000.00 $2,000.00
+        Shares Exercised 100 200
+        Shares Sold 40 90
+        Total Gain $7,234.12 $10,101.11
+        Taxable Gain $7,234.12 $10,101.11
+        Comission/Fee $10.00 $11.00
+        EMPLOYEE STOCK PLAN EXERCISE CONFIRMATION
+        NO BODY
+         Employee ID: 1111
+";
+
+    #[test]
+    fn test_parse_eso_entries_partial_per_grant() {
+        let eso_entries = parse_eso_entries(
+            SAMPLE_ESO_PARTIAL,
+            &std::path::PathBuf::from("foo/bar/myeso.pdf"),
+        )
+        .unwrap();
+        assert_eq!(eso_entries.len(), 2);
+        // Per-grant sold shares come from the body row, not the header total.
+        assert_eq!(eso_entries[0].plan_sale_shares, Some(dec!(40)));
+        assert_eq!(eso_entries[0].acquire_shares, dec!(100));
+        assert_eq!(eso_entries[1].plan_sale_shares, Some(dec!(90)));
+        assert_eq!(eso_entries[1].acquire_shares, dec!(200));
+    }
+
+    #[test]
+    fn test_parse_eso_entries_ambiguous_partial_errors() {
+        // Multi-grant partial sell with no per-grant "Shares Sold" body row is
+        // ambiguous and must error rather than guess an allocation.
+        let ambiguous = SAMPLE_ESO_PARTIAL.replace("Shares Sold 40 90\n", "");
+        let res = parse_eso_entries(
+            &ambiguous,
+            &std::path::PathBuf::from("foo/bar/myeso.pdf"),
+        );
+        assert!(res.is_err(), "expected error, got {res:?}");
+    }
+
+    #[test]
+    fn test_parse_eso_entries_single_grant() {
+        // A single-grant form carries the whole header total on its one grant,
+        // even without a per-grant body row.
+        let single = "
+        Order Number 12345678
+        Account Stock Plan (FOO) -0112
+        Order Type Same-Day Sale
+        Company Name (Symbol) FOO COMPANY,
+        INC.(FOO)
+        Shares Exercised 100
+        Shares Sold 100
+        Price Type Market
+         Exercise Details
+
+        Exercise Date: 10/20/2024 Exercise Type: Same-Day Sale Registration:
+        Grant 1
+        Grant Date 1/1/2012
+        Grant Number 1234
+        Grant Type Nonqual
+        Grant Price $3.33
+        Sale Price $1,001.00
+        Exercise Market Value $1,000.00
+        Shares Exercised 100
+        Total Gain $7,234.12
+        Taxable Gain $7,234.12
+        Comission/Fee $10.00
+        EMPLOYEE STOCK PLAN EXERCISE CONFIRMATION
+        NO BODY
+         Employee ID: 1111
+";
+        let eso_entries = parse_eso_entries(
+            single,
+            &std::path::PathBuf::from("foo/bar/myeso.pdf"),
+        )
+        .unwrap();
+        assert_eq!(eso_entries.len(), 1);
+        assert_eq!(eso_entries[0].acquire_shares, dec!(100));
+        assert_eq!(eso_entries[0].plan_sale_shares, Some(dec!(100)));
+        assert_eq!(eso_entries[0].plan_sale_price, Some(dec!(1001.00)));
+        assert_eq!(eso_entries[0].plan_sale_fee, Some(dec!(10.00)));
     }
 
     #[test]

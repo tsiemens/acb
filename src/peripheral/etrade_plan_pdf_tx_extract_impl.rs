@@ -316,6 +316,15 @@ pub(super) struct AmendBenefitsRes {
 /// Entries in trade_confs are "consumed" when this match occurs.
 /// A new BenefitsAndTrades is returned.
 /// Consumes the pdf_data, as it moves much of its contents into the output.
+///
+/// Benefits originating from a single exercise/release form are matched
+/// together: a multi-grant ESO exercise emits a separate per-grant plan sale,
+/// but the broker reports the combined sale as a single (aggregated) trade
+/// confirmation. Such benefits are grouped by their originating form and
+/// acquisition date, and the group's combined plan sale is matched against the
+/// trade set as a whole (the matched trade dates are then applied to every
+/// benefit in the group). For the common single-grant case this is equivalent
+/// to matching each benefit individually.
 pub(super) fn amend_paired_benefit_sales(
     pdf_data: EtradeData,
 ) -> Result<AmendBenefitsRes, Vec<SError>> {
@@ -325,28 +334,69 @@ pub(super) fn amend_paired_benefit_sales(
 
     let mut warnings = Vec::new();
     let mut errors = Vec::new();
-    for benefit in &mut benefits {
+
+    // Group benefits-with-plan-sales by their originating form and acquisition
+    // date, preserving first-seen order. Benefits without a plan sale are left
+    // untouched.
+    let mut groups: Vec<((String, time::Date), Vec<usize>)> = Vec::new();
+    for (i, benefit) in benefits.iter().enumerate() {
         if benefit.plan_sale_shares.is_none() {
             continue;
         }
+        let key = (benefit.filename.clone(), benefit.acquire_tx_date);
+        match groups.iter_mut().find(|(k, _)| *k == key) {
+            Some((_, members)) => members.push(i),
+            None => groups.push((key, vec![i])),
+        }
+    }
 
-        // Find the sale(s) which could constitute this sell-to-cover
-        // We'll take any sell that is between the benefit data and 5 days after.
-        let latest_day =
-            benefit.acquire_tx_date.saturating_add(time::Duration::days(5));
+    for (key, group) in &groups {
+        let acquire_tx_date = key.1;
+
+        // Find the sale(s) which could constitute this group's sell-to-cover.
+        // We'll take any sell that is between the benefit date and 5 days after.
+        let latest_day = acquire_tx_date.saturating_add(time::Duration::days(5));
         let mut candidate_trades = Vec::new();
         for trade in &leftover_trade_confs {
             if trade.action == TxAction::Sell
-                && benefit.acquire_tx_date <= trade.trade_date
+                && acquire_tx_date <= trade.trade_date
                 && trade.trade_date <= latest_day
             {
                 candidate_trades.push(trade);
             }
         }
 
-        match find_plan_sale_trade_set(benefit, &candidate_trades) {
+        // Build a representative benefit carrying the group's combined sold
+        // shares and its share-weighted sale price, so the (possibly
+        // aggregated) trade set is matched against the whole group at once.
+        // For a single-grant group this is identical to the benefit itself.
+        let total_shares: Decimal = group
+            .iter()
+            .map(|&i| benefits[i].plan_sale_shares.unwrap())
+            .fold(Decimal::ZERO, |acc, s| acc + s);
+        let weighted_price = {
+            let mut total_val = Decimal::ZERO;
+            let mut all_priced = true;
+            for &i in group {
+                match benefits[i].plan_sale_price {
+                    Some(p) => {
+                        total_val += p * benefits[i].plan_sale_shares.unwrap()
+                    }
+                    None => all_priced = false,
+                }
+            }
+            if all_priced && !total_shares.is_zero() {
+                Some(total_val / total_shares)
+            } else {
+                None
+            }
+        };
+        let mut match_benefit = benefits[group[0]].clone();
+        match_benefit.plan_sale_shares = Some(total_shares);
+        match_benefit.plan_sale_price = weighted_price;
+
+        match find_plan_sale_trade_set(&match_benefit, &candidate_trades) {
             Ok(matched_trades) => {
-                // Ament the benefit dates
                 let t0 = matched_trades[0];
                 for t in &matched_trades {
                     if t0.trade_date != t.trade_date
@@ -366,23 +416,33 @@ pub(super) fn amend_paired_benefit_sales(
                         warnings.push(warn);
                     }
                 }
-                benefit.plan_sale_tx_date = Some(t0.trade_date);
-                benefit.plan_sale_settle_date = Some(t0.settlement_date);
 
-                // Populate price and fee from matched trades when not
-                // already set (e.g. xlsx-sourced benefits lack these).
-                if benefit.plan_sale_price.is_none() {
+                // Price/fee to fall back on when a benefit didn't carry its own
+                // (e.g. xlsx-sourced benefits): the matched trades' aggregate.
+                let trade_avg_price = {
                     let total_val: Decimal = matched_trades
                         .iter()
                         .map(|t| t.amount_per_share * t.num_shares)
                         .sum();
-                    let total_shares: Decimal =
+                    let total_trade_shares: Decimal =
                         matched_trades.iter().map(|t| t.num_shares).sum();
-                    benefit.plan_sale_price = Some(total_val / total_shares);
-                }
-                if benefit.plan_sale_fee.is_none() {
-                    benefit.plan_sale_fee =
-                        Some(matched_trades.iter().map(|t| t.commission).sum());
+                    total_val / total_trade_shares
+                };
+                let trade_total_commission: Decimal =
+                    matched_trades.iter().map(|t| t.commission).sum();
+
+                // Apply the matched trade dates (and any missing price/fee) to
+                // every benefit in the group.
+                for &i in group {
+                    let benefit = &mut benefits[i];
+                    benefit.plan_sale_tx_date = Some(t0.trade_date);
+                    benefit.plan_sale_settle_date = Some(t0.settlement_date);
+                    if benefit.plan_sale_price.is_none() {
+                        benefit.plan_sale_price = Some(trade_avg_price);
+                    }
+                    if benefit.plan_sale_fee.is_none() {
+                        benefit.plan_sale_fee = Some(trade_total_commission);
+                    }
                 }
 
                 // Remove matches from leftover trades
