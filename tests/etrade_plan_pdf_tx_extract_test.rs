@@ -162,6 +162,46 @@ fn test_etrade_scenario_with_config() {
     );
 }
 
+#[test]
+fn test_etrade_scenario_with_fx() {
+    // The default scenario tests run with FX disabled. This one exercises the
+    // FX path: the 2023_sample ESO forms are same-day sales that return USD to
+    // the participant ("Net Proceeds"), so each sold grant emits a USD.FX buy
+    // for that net amount on the sale's trade date.
+    let variant_dir = Path::new("./tests/data/etrade_scenarios/2023_sample/lopdf");
+    let mut files: Vec<PathBuf> = fs::read_dir(variant_dir)
+        .unwrap()
+        .filter_map(|rd| rd.ok())
+        .map(|rd| rd.path())
+        .filter(|p| p.display().to_string().ends_with(".txt"))
+        .collect();
+    files.sort();
+    assert_ne!(files, Vec::<PathBuf>::new());
+
+    let args = Args {
+        files,
+        pretty: false,
+        extract_only: false,
+        debug: false,
+        no_fx: false,
+        no_sell_to_cover_pair: false,
+        year: None,
+        config: None,
+    };
+    let (res, out, err) = run_and_get_output(args);
+    assert!(res.is_ok(), "res={:?} out={} err={}", res, out, err);
+    assert_eq!(err, "");
+
+    let exp_path = variant_dir.join("../expected_output_with_fx.csv");
+    let mut exp_out = String::new();
+    fs::File::open(&exp_path).unwrap().read_to_string(&mut exp_out).unwrap();
+
+    acb::testlib::assert_vec_eq(
+        out.split("\n").collect(),
+        exp_out.split("\n").collect(),
+    );
+}
+
 /// Inserts an `affiliate` column between `currency` and `memo` in a CSV
 /// string. The header row gets the literal "affiliate"; the value for each
 /// data row is chosen by `row_value`, which receives the pre-splice cell

@@ -448,6 +448,10 @@ struct EsoGrantData {
     shares_sold: Decimal,
     sale_price: Decimal,
     fee: Decimal,
+    /// Per-grant "Net Proceeds": the USD returned to the participant for this
+    /// grant after the exercise cost, fees, and tax are withheld. Carried into
+    /// BenefitEntry::plan_sale_cash_amount as NetToParticipant.
+    net_proceeds: Decimal,
 }
 
 #[derive(PartialEq, Debug)]
@@ -626,13 +630,27 @@ fn parse_eso_data(eso_pdf_text: &str) -> Result<EsoData, SError> {
         search_for_dec_rows("Shares Exercised", false, false, body)?;
     let grant_sale_prices = search_for_dec_rows("Sale Price", true, false, body)?;
     let grant_fees = search_for_dec_rows("Comission/Fee", true, false, body)?;
+    // Per-grant cash returned to the participant. Lives in the exercise body
+    // (one value per grant column); the form-level "Net Proceeds" total is in
+    // the header, which is excluded from `body`, so this is unambiguous.
+    let grant_net_proceeds = search_for_dec_rows("Net Proceeds", true, false, body)?;
 
     let header_shares_sold = extract_numeric("Shares Sold", false, header)?;
     let grant_shares_sold =
         per_grant_shares_sold(body, header_shares_sold, &grant_shares_exercised)?;
 
-    let mut grants = Vec::with_capacity(grant_indicies.len());
-    for ((((((_, num), fmv), shares), sold), s_price), fee) in grant_indicies
+    // Guard against a short "Net Proceeds" row silently truncating grants via
+    // zip (the row parser caps at the grant columns it finds).
+    let num_grants = grant_indicies.len();
+    if grant_net_proceeds.len() != num_grants {
+        return Err(format!(
+            "Found {} per-grant \"Net Proceeds\" values but {num_grants} grants",
+            grant_net_proceeds.len()
+        ));
+    }
+
+    let mut grants = Vec::with_capacity(num_grants);
+    for (((((((_, num), fmv), shares), sold), s_price), fee), net) in grant_indicies
         .iter()
         .zip(grant_numbers)
         .zip(grant_exercise_fmvs)
@@ -640,6 +658,7 @@ fn parse_eso_data(eso_pdf_text: &str) -> Result<EsoData, SError> {
         .zip(grant_shares_sold)
         .zip(grant_sale_prices)
         .zip(grant_fees)
+        .zip(grant_net_proceeds)
     {
         grants.push(EsoGrantData {
             grant_number: num,
@@ -648,6 +667,7 @@ fn parse_eso_data(eso_pdf_text: &str) -> Result<EsoData, SError> {
             shares_sold: sold,
             sale_price: s_price,
             fee: fee,
+            net_proceeds: net,
         });
     }
 
@@ -707,15 +727,12 @@ fn parse_eso_entries(
             plan_sale_price: sold.then_some(grant.sale_price),
             plan_sale_shares: sold.then_some(grant.shares_sold),
             plan_sale_fee: sold.then_some(grant.fee),
-            // TODO(eso-fx): ESO confirmations are not yet parsed for the cash
-            // returned to the participant ("Total Due Participant"). For a Same
-            // Day Sale the whole lot is sold and only part of the proceeds is
-            // withheld; the remainder lands in the account as USD and should
-            // become a USD.FX buy. With per-grant sells now in place (see
-            // eso_multigrant_aggregated_sell_bug.md), the remaining work is to
-            // parse the per-grant cash figure and populate plan_sale_cash_amount
-            // with PlanSaleCashAmount::Withheld(...) or NetToParticipant(...).
-            plan_sale_cash_amount: None,
+            // The grant's "Net Proceeds" is the USD that actually reaches the
+            // account after withholding; in txs_from_data it becomes a USD.FX
+            // buy (see eso_same_day_sale_fx_bug.md). Only attach it when the
+            // grant sold shares (an exercise-and-hold grant returns no cash).
+            plan_sale_cash_amount: sold
+                .then(|| PlanSaleCashAmount::NetToParticipant(grant.net_proceeds)),
             plan_note: format!("Option Grant {}", grant.grant_number),
             plan_sale_note: Some(eso_data.exercise_type.clone()),
             filename: get_filename(filepath),
@@ -1665,6 +1682,9 @@ statement is subject to the terms of the plan under which the release was made.
         Gross Proceeds $9,876.54 $15,000.23
         Total Price $1,234.00 $123.32
         Comission/Fee $10.00 $11.00
+        Taxes Withheld $1,500.00 (Tax Rate / Taxable Gain) $2,500.00 (Tax Rate / Taxable Gain)
+            Canada-NS $1,500.00 (5.5%  / $7,234.12) $2,500.00 (5.5%  / $10,101.11)
+        Net Proceeds $5,000.00 $12,000.00
         EMPLOYEE STOCK PLAN EXERCISE CONFIRMATION
         NO BODY
         1234 MAIN ST
@@ -1694,6 +1714,7 @@ statement is subject to the terms of the plan under which the release was made.
                         shares_sold: dec!(100),
                         sale_price: dec!(1001.00),
                         fee: dec!(10.00),
+                        net_proceeds: dec!(5000.00),
                     },
                     EsoGrantData {
                         grant_number: 1235,
@@ -1702,6 +1723,7 @@ statement is subject to the terms of the plan under which the release was made.
                         shares_sold: dec!(200),
                         sale_price: dec!(2001.00),
                         fee: dec!(11.00),
+                        net_proceeds: dec!(12000.00),
                     },
                 ],
             },
@@ -1732,7 +1754,9 @@ statement is subject to the terms of the plan under which the release was made.
                     plan_sale_price: Some(dec!(1001.00)),
                     plan_sale_shares: Some(dec!(100)),
                     plan_sale_fee: Some(dec!(10.00)),
-                    plan_sale_cash_amount: None,
+                    plan_sale_cash_amount: Some(
+                        PlanSaleCashAmount::NetToParticipant(dec!(5000.00)),
+                    ),
                     plan_note: s("Option Grant 1234"),
                     plan_sale_note: Some(s("Same-Day Sale")),
                     filename: s("myeso.pdf"),
@@ -1749,7 +1773,9 @@ statement is subject to the terms of the plan under which the release was made.
                     plan_sale_price: Some(dec!(2001.00)),
                     plan_sale_shares: Some(dec!(200)),
                     plan_sale_fee: Some(dec!(11.00)),
-                    plan_sale_cash_amount: None,
+                    plan_sale_cash_amount: Some(
+                        PlanSaleCashAmount::NetToParticipant(dec!(12000.00)),
+                    ),
                     plan_note: s("Option Grant 1235"),
                     plan_sale_note: Some(s("Same-Day Sale")),
                     filename: s("myeso.pdf"),
@@ -1787,6 +1813,7 @@ statement is subject to the terms of the plan under which the release was made.
         Total Gain $7,234.12 $10,101.11
         Taxable Gain $7,234.12 $10,101.11
         Comission/Fee $10.00 $11.00
+        Net Proceeds $2,000.00 $4,000.00
         EMPLOYEE STOCK PLAN EXERCISE CONFIRMATION
         NO BODY
          Employee ID: 1111
@@ -1805,6 +1832,16 @@ statement is subject to the terms of the plan under which the release was made.
         assert_eq!(eso_entries[0].acquire_shares, dec!(100));
         assert_eq!(eso_entries[1].plan_sale_shares, Some(dec!(90)));
         assert_eq!(eso_entries[1].acquire_shares, dec!(200));
+        // Per-grant Net Proceeds is carried as the cash returned to the
+        // participant.
+        assert_eq!(
+            eso_entries[0].plan_sale_cash_amount,
+            Some(PlanSaleCashAmount::NetToParticipant(dec!(2000.00)))
+        );
+        assert_eq!(
+            eso_entries[1].plan_sale_cash_amount,
+            Some(PlanSaleCashAmount::NetToParticipant(dec!(4000.00)))
+        );
     }
 
     #[test]
@@ -1846,6 +1883,7 @@ statement is subject to the terms of the plan under which the release was made.
         Total Gain $7,234.12
         Taxable Gain $7,234.12
         Comission/Fee $10.00
+        Net Proceeds $2,000.00
         EMPLOYEE STOCK PLAN EXERCISE CONFIRMATION
         NO BODY
          Employee ID: 1111
@@ -1860,6 +1898,10 @@ statement is subject to the terms of the plan under which the release was made.
         assert_eq!(eso_entries[0].plan_sale_shares, Some(dec!(100)));
         assert_eq!(eso_entries[0].plan_sale_price, Some(dec!(1001.00)));
         assert_eq!(eso_entries[0].plan_sale_fee, Some(dec!(10.00)));
+        assert_eq!(
+            eso_entries[0].plan_sale_cash_amount,
+            Some(PlanSaleCashAmount::NetToParticipant(dec!(2000.00)))
+        );
     }
 
     #[test]
