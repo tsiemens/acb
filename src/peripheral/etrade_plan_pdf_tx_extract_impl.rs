@@ -90,18 +90,44 @@ pub(super) fn txs_from_data(
 
             csv_txs.push(sell_tx);
 
-            // TODO(plan-sale-fx): generate a USD.FX buy for the portion of the
-            // plan-sale proceeds that is NOT withheld (i.e. the cash actually
-            // returned to the participant), when `generate_fx` is set.
-            // `b.plan_sale_cash_amount` carries this figure for RSU/ESPP
-            // (NetToParticipant); use
-            // `cash.proceeds_to_participant(gross_proceeds)` where
-            // gross_proceeds = plan_sale_shares * plan_sale_price - plan_sale_fee.
-            // See local_md/eso_same_day_sale_fx_bug.md. ESO is not wired up yet
-            // (plan_sale_cash_amount is None for ESO -- see parse_eso_entries),
-            // and the multi-grant aggregation bug
-            // (local_md/eso_multigrant_aggregated_sell_bug.md) means there is no
-            // clean per-grant sale to attribute the FX to until that is fixed.
+            // The plan sale is modeled as a sell-to-cover, which bypasses the
+            // FxTracker (it normally only generates FX for manual trades). But
+            // for ESO/RSU/ESPP same-day sales only part of the proceeds is
+            // withheld; the rest actually lands in the account as USD and must
+            // become a USD.FX buy. `plan_sale_cash_amount` carries that figure.
+            // See local_md/eso_same_day_sale_fx_bug.md.
+            if generate_fx {
+                if let Some(cash) = &b.plan_sale_cash_amount {
+                    let gross_proceeds = plan_sale.plan_sale_shares
+                        * plan_sale.plan_sale_price
+                        - plan_sale.plan_sale_fee;
+                    let net = cash.proceeds_to_participant(gross_proceeds);
+                    if net.is_sign_negative() {
+                        return Err(format!(
+                            "Plan-sale proceeds to participant were negative \
+                             ({net}) for {}",
+                            b.plan_note
+                        ));
+                    }
+                    if !net.is_zero() {
+                        let fx_tx = FxTracker::fx_tx(
+                            Currency::usd(),
+                            plan_sale.plan_sale_tx_date,
+                            plan_sale.plan_sale_tx_date.to_string(),
+                            net,
+                            (i * 2) + 1,
+                            b.account.clone(),
+                            None,
+                            format!(
+                                "{} {} proceeds to participant",
+                                b.plan_note, plan_sale_note
+                            ),
+                        )
+                        .map_err(|e| format!("{e}"))?;
+                        fx_tracker.add_income_fx_tx(fx_tx);
+                    }
+                }
+            }
         }
     }
 
@@ -714,7 +740,10 @@ mod tests {
     use rust_decimal::Decimal;
     use rust_decimal_macros::dec;
 
-    use crate::peripheral::broker::{etrade::BenefitEntry, BrokerTx};
+    use crate::peripheral::broker::{
+        etrade::{BenefitEntry, PlanSaleCashAmount},
+        BrokerTx,
+    };
     use crate::peripheral::etrade_plan_pdf_tx_extract_impl::{
         amend_paired_benefit_sales, EtradeData,
     };
@@ -740,6 +769,11 @@ mod tests {
         pub n_sh: u32,
         pub n_stc: Option<u32>,
         pub stc_tdate: Option<time::Date>,
+        /// Net proceeds returned to the participant (NetToParticipant cash).
+        pub cash: Option<Decimal>,
+        /// Amount withheld from gross proceeds (Withheld cash). Mutually
+        /// exclusive with `cash`.
+        pub withheld: Option<Decimal>,
     }
 
     impl Default for TBen {
@@ -750,6 +784,8 @@ mod tests {
                 n_sh: 100,
                 n_stc: Some(50),
                 stc_tdate: None,
+                cash: None,
+                withheld: None,
             }
         }
     }
@@ -777,7 +813,14 @@ mod tests {
                 plan_sale_price: if has_stc { Some(dec!(1.55)) } else { None },
                 plan_sale_shares: self.n_stc.map(|s| Decimal::from(s)),
                 plan_sale_fee: if has_stc { Some(dec!(5.99)) } else { None },
-                plan_sale_cash_amount: None,
+                plan_sale_cash_amount: match (self.cash, self.withheld) {
+                    (Some(n), None) => Some(PlanSaleCashAmount::NetToParticipant(n)),
+                    (None, Some(w)) => Some(PlanSaleCashAmount::Withheld(w)),
+                    (None, None) => None,
+                    (Some(_), Some(_)) => {
+                        panic!("set only one of cash/withheld")
+                    }
+                },
                 plan_note: "XXXX Vest".to_string(),
                 plan_sale_note: if has_stc {
                     Some("XXX STC".to_string())
@@ -1305,6 +1348,106 @@ mod tests {
             .filter(|tx| tx.security.as_ref().map_or(false, |s| s.ends_with(".FX")))
             .collect();
         assert_eq!(fx_txs.len(), 0);
+    }
+
+    #[rustfmt::skip]
+    #[test]
+    fn test_txs_from_data_plan_sale_proceeds_generate_fx() {
+        // A plan sale (ESO/RSU/ESPP same-day sale) that returns net USD to the
+        // participant generates a USD.FX buy of exactly that net amount, on the
+        // plan-sale trade date -- even though the sale itself is a sell-to-cover.
+        let data = super::BenefitsAndTrades {
+            benefits: vec![
+                TBen{tdate: dt(10), n_stc: Some(20), stc_tdate: Some(dt(10)),
+                     cash: Some(dec!(123.45)), ..dflt()}.x(),
+            ],
+            other_trades: vec![],
+        };
+
+        let txs = super::txs_from_data(&data, true, false, None).unwrap();
+        // 1 benefit buy + 1 sell-to-cover + 1 proceeds FX buy
+        assert_eq!(txs.len(), 3);
+        let fx_txs: Vec<_> = txs.iter()
+            .filter(|tx| tx.security.as_ref().map_or(false, |s| s.ends_with(".FX")))
+            .collect();
+        assert_eq!(fx_txs.len(), 1);
+        let fx_tx = fx_txs[0];
+        assert_eq!(fx_tx.security, Some("USD.FX".to_string()));
+        assert_eq!(fx_tx.action, Some(TxAction::Buy));
+        assert_eq!(fx_tx.shares, Some(dec!(123.45)));
+        assert_eq!(fx_tx.trade_date, Some(dt(10)));
+
+        // Disabling FX generation suppresses it.
+        let txs_no_fx = super::txs_from_data(&data, false, false, None).unwrap();
+        assert_eq!(txs_no_fx.len(), 2);
+        assert!(txs_no_fx.iter().all(|tx| tx
+            .security
+            .as_ref()
+            .map_or(true, |s| !s.ends_with(".FX"))));
+    }
+
+    #[rustfmt::skip]
+    #[test]
+    fn test_txs_from_data_zero_proceeds_no_fx() {
+        // An exact sell-to-cover (nothing returned to the participant) emits no
+        // proceeds FX.
+        let data = super::BenefitsAndTrades {
+            benefits: vec![
+                TBen{tdate: dt(10), n_stc: Some(20), stc_tdate: Some(dt(10)),
+                     cash: Some(dec!(0)), ..dflt()}.x(),
+            ],
+            other_trades: vec![],
+        };
+
+        let txs = super::txs_from_data(&data, true, false, None).unwrap();
+        // 1 benefit buy + 1 sell-to-cover, NO FX
+        assert_eq!(txs.len(), 2);
+        assert!(txs.iter().all(|tx| tx
+            .security
+            .as_ref()
+            .map_or(true, |s| !s.ends_with(".FX"))));
+    }
+
+    #[rustfmt::skip]
+    #[test]
+    fn test_txs_from_data_withheld_proceeds_generate_fx() {
+        // When the source reports the withheld amount (Withheld variant) rather
+        // than the net, the FX buy must be the *remainder* of the gross sale:
+        // gross = 20 * 1.55 - 5.99 = 25.01; withheld 5.01 -> 20.00 to participant.
+        let data = super::BenefitsAndTrades {
+            benefits: vec![
+                TBen{tdate: dt(10), n_stc: Some(20), stc_tdate: Some(dt(10)),
+                     withheld: Some(dec!(5.01)), ..dflt()}.x(),
+            ],
+            other_trades: vec![],
+        };
+
+        let txs = super::txs_from_data(&data, true, false, None).unwrap();
+        assert_eq!(txs.len(), 3);
+        let fx_tx = txs.iter()
+            .find(|tx| tx.security.as_ref().map_or(false, |s| s.ends_with(".FX")))
+            .unwrap();
+        assert_eq!(fx_tx.security, Some("USD.FX".to_string()));
+        assert_eq!(fx_tx.action, Some(TxAction::Buy));
+        assert_eq!(fx_tx.shares, Some(dec!(20.00)));
+    }
+
+    #[rustfmt::skip]
+    #[test]
+    fn test_txs_from_data_proceeds_exceeding_gross_errors() {
+        // Withholding more than the gross proceeds implies negative cash to the
+        // participant, which is nonsensical and must surface as an error.
+        let data = super::BenefitsAndTrades {
+            benefits: vec![
+                TBen{tdate: dt(10), n_stc: Some(20), stc_tdate: Some(dt(10)),
+                     withheld: Some(dec!(30.00)), ..dflt()}.x(),
+            ],
+            other_trades: vec![],
+        };
+
+        let res = super::txs_from_data(&data, true, false, None);
+        let err = res.unwrap_err();
+        assert!(err.contains("negative"), "err: {err}");
     }
 
     #[rustfmt::skip]
