@@ -21,7 +21,9 @@ export const BREAK_BEFORE_PAREN_COLS = new Set([AMOUNT_COL, AMT_PER_SHARE_COL, C
 export const USD_FX_SECURITY = "USD.FX";
 
 export function isRegisteredAffiliate(affiliate: string): boolean {
-   return /\(R\)\s*$/i.test(affiliate);
+   // Strip any cost pool marker so a registered cost pool affiliate like
+   // "Spouse (R) [...]" is still detected as registered.
+   return /\(R\)\s*$/i.test(affiliate.replace(/\s*\[[^\]]*\]/, ''));
 }
 
 /**
