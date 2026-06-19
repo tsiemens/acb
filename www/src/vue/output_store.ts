@@ -85,9 +85,17 @@ export function getViewModeLabel(mode: AcbOutputViewMode): string {
    return VIEW_MODE_LABELS[mode];
 }
 
-/** Strip the registered suffix "(R)" to get the base affiliate name. */
+/**
+ * Strip the registered suffix "(R)" and any cost pool marker `[...]` to get the
+ * base affiliate name. Cost pools (e.g. "Default [RSU 2026-02-20]") thereby
+ * cluster under their parent affiliate in filters rather than each appearing as
+ * a separate entry. Mirrors `Affiliate::base_name_normalized` in Rust.
+ */
 export function affiliateBaseName(affiliate: string): string {
-   return affiliate.replace(/\s*\(R\)$/i, '').trim();
+   return affiliate
+      .replace(/\s*\[[^\]]*\]/, '')
+      .replace(/\s*\(R\)\s*$/i, '')
+      .trim();
 }
 
 /**

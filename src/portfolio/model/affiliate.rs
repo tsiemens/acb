@@ -7,10 +7,26 @@ use std::{
 
 #[derive(PartialEq, Eq, Debug)]
 struct AffiliateData {
+    // Normalized unique id, e.g. "default", "spouse (R)",
+    // "default [rsu xyz 2026-02-20]". Lower-cased, with the registered "(R)"
+    // suffix and/or cost pool "[tag]" appended. ACB is keyed off this.
+    // A fully-specified id might be "default (R) [tag desc]".
     id: String,
+    // The base display name only: the cleaned name with original casing, but
+    // WITHOUT the registered "(R)" marker and WITHOUT any cost pool "[tag]"
+    // (e.g. "Default", "My Spouse"). Whitespace is collapsed/trimmed, and an
+    // empty name becomes "Default". An affiliate and its cost pools share this
+    // base name (they differ only by tag), so it groups them together; see
+    // `base_name_normalized`.
     name_base: String,
+    // Full display name / canonical strep (round-trips through `from_strep`):
+    // name_base, plus " (R)" if registered, plus " [tag]" if a cost pool.
     name: String,
     registered: bool,
+    // The "cost pool" tag isolates an affiliate's ACB from the rest of its base
+    // affiliate's lots (see the type docs on `Affiliate`). None for ordinary
+    // affiliates.
+    cost_pool_tag: Option<String>,
 }
 
 const GLOBAL_AF_ID: &str = "__global__";
@@ -18,38 +34,91 @@ const GLOBAL_AF_ID: &str = "__global__";
 lazy_static! {
     static ref REGISTERED_RE: Regex = Regex::new(r"\([rR]\)").unwrap();
     static ref EXTRA_SPACE_RE: Regex = Regex::new(r"  +").unwrap();
+    // Matches a cost pool marker like `[RSU XYZ 2026-02-20]`. The capture group
+    // is the cost pool tag. Everything outside the marker is the base affiliate.
+    static ref COST_POOL_RE: Regex = Regex::new(r"\[([^\]]*)\]").unwrap();
 }
 
 impl AffiliateData {
     fn from_base_name(name_base: &str, registered: bool) -> AffiliateData {
+        AffiliateData::from_parts(name_base, registered, None)
+    }
+
+    /// Build from a base name, registered status, and an optional cost pool tag.
+    /// The base name should NOT contain `(R)` or a `[...]` cost pool marker.
+    /// An empty or whitespace-only `cost_pool_tag` is treated as no cost pool.
+    fn from_parts(
+        name_base: &str,
+        registered: bool,
+        cost_pool_tag: Option<&str>,
+    ) -> AffiliateData {
         let mut pretty_name =
-            EXTRA_SPACE_RE.replace_all(&name_base, " ").trim().to_string();
+            EXTRA_SPACE_RE.replace_all(name_base, " ").trim().to_string();
 
         if pretty_name.is_empty() {
             pretty_name = "Default".to_string();
         }
-        let mut id = pretty_name.to_lowercase();
         let name_base_cleaned = pretty_name.clone();
+
+        // base_id/base_name are the id/name with no cost pool tag.
+        let mut base_id = pretty_name.to_lowercase();
+        let mut base_name = pretty_name;
         if registered {
-            id += " (R)";
-            pretty_name += " (R)";
+            base_id += " (R)";
+            base_name += " (R)";
         }
 
+        // Normalize the tag, ignoring empty/whitespace-only tags.
+        let cost_pool_tag: Option<String> = cost_pool_tag.and_then(|t| {
+            let cleaned = EXTRA_SPACE_RE.replace_all(t, " ").trim().to_string();
+            if cleaned.is_empty() {
+                None
+            } else {
+                Some(cleaned)
+            }
+        });
+
+        let (id, name) = match &cost_pool_tag {
+            Some(tag) => (
+                format!("{} [{}]", base_id, tag.to_lowercase()),
+                format!("{} [{}]", base_name, tag),
+            ),
+            None => (base_id, base_name),
+        };
+
         AffiliateData {
-            id: id,
+            id,
             name_base: name_base_cleaned,
-            name: pretty_name,
-            registered: registered,
+            name,
+            registered,
+            cost_pool_tag,
         }
     }
 
     fn from_strep(s: &str) -> AffiliateData {
-        let registered = REGISTERED_RE.is_match(s);
-        let mut pretty_name: String = s.to_string();
+        // Extract an optional cost pool marker `[<tag>]`. Everything outside the
+        // marker is the base affiliate. The first marker wins if multiple are
+        // somehow present.
+        let (base_strep, cost_pool_tag): (String, Option<String>) =
+            match COST_POOL_RE.captures(s) {
+                Some(caps) => {
+                    let tag = caps.get(1).unwrap().as_str().to_string();
+                    let whole = caps.get(0).unwrap();
+                    let mut base = s.to_string();
+                    // Replace with a space so adjacent tokens don't merge; the
+                    // extra space is collapsed/trimmed in from_parts.
+                    base.replace_range(whole.start()..whole.end(), " ");
+                    (base, Some(tag))
+                }
+                None => (s.to_string(), None),
+            };
+
+        let registered = REGISTERED_RE.is_match(&base_strep);
+        let mut pretty_name = base_strep;
         if registered {
             pretty_name = REGISTERED_RE.replace_all(&pretty_name, " ").to_string();
         }
-        AffiliateData::from_base_name(&pretty_name, registered)
+        AffiliateData::from_parts(&pretty_name, registered, cost_pool_tag.as_deref())
     }
 }
 
@@ -69,6 +138,25 @@ impl AffiliateData {
 /// but subsequent times, we'll just pick up the previous with the same id.
 /// As a side-effect, this means that capitalization differences will be resolved by
 /// the first Affiliate to be deduplicated.
+///
+/// ## Cost pools
+///
+/// An affiliate may additionally carry a "cost pool" tag, encoded in its strep as
+/// a bracketed marker `[<tag>]` (e.g. `Default [7(1.31) - RSU XYZ 2026-02-20]`).
+/// Like the `(R)` registered marker, it may appear anywhere in the strep, not only
+/// at the end. This is used to isolate a subset of a security's lots into their own
+/// ACB while still belonging to the same person/account. This matters for ITA
+/// subsection 7(1.31) "benefit" sales, where the cost base must be averaged
+/// separately, yet superficial loss rules still apply across the lots. Modelling
+/// each such pool as a distinct Affiliate gives it a self-contained ACB (ACB is
+/// keyed per-affiliate id), while superficial-loss detection — which already
+/// operates across all affiliates of a security — keeps treating them as one
+/// inventory.
+///
+/// A cost pool shares its `name_base` with the ordinary affiliate it belongs to,
+/// so `base_name_normalized` (and the web GUI's equivalent base-name grouping)
+/// naturally folds cost pools back under their parent affiliate in filters rather
+/// than listing each separately.
 #[derive(PartialEq, Eq, Clone, Debug)]
 pub struct Affiliate(Arc<AffiliateData>);
 
@@ -120,6 +208,18 @@ impl Affiliate {
     // which indicates it applies across all affiliates.
     pub fn is_global(&self) -> bool {
         self.id() == GLOBAL_AF_ID
+    }
+
+    /// The cost pool tag isolating this affiliate's ACB from the rest of its
+    /// base affiliate's lots, or None for an ordinary affiliate. See the type
+    /// docs.
+    pub fn cost_pool_tag(&self) -> Option<&str> {
+        self.0.cost_pool_tag.as_deref()
+    }
+
+    /// Whether this affiliate is an isolated cost pool (has a cost pool tag).
+    pub fn is_cost_pool(&self) -> bool {
+        self.0.cost_pool_tag.is_some()
     }
 }
 
@@ -292,5 +392,116 @@ mod tests {
 
         let af = Affiliate::from_base_name("", true);
         assert_eq!(af, Affiliate::default_registered());
+    }
+
+    #[test]
+    fn test_affiliate_cost_pool() {
+        let new =
+            |s: &str| -> Affiliate { Affiliate::new(AffiliateData::from_strep(s)) };
+
+        let verify = |strep: &str,
+                      exp_id: &str,
+                      exp_name: &str,
+                      exp_reg: bool,
+                      exp_tag: Option<&str>| {
+            let af = new(strep);
+            assert_eq!(exp_id, af.id(), "id for {strep:?}");
+            assert_eq!(exp_name, af.name(), "name for {strep:?}");
+            assert_eq!(exp_reg, af.registered(), "registered for {strep:?}");
+            assert_eq!(exp_tag, af.cost_pool_tag(), "tag for {strep:?}");
+            assert_eq!(
+                exp_tag.is_some(),
+                af.is_cost_pool(),
+                "is_cost_pool {strep:?}"
+            );
+        };
+
+        // Default base, with a cost pool tag (no explicit base name).
+        verify(
+            "[RSU XYZ 2026-02-20]",
+            "default [rsu xyz 2026-02-20]",
+            "Default [RSU XYZ 2026-02-20]",
+            false,
+            Some("RSU XYZ 2026-02-20"),
+        );
+
+        // Named base, with a cost pool tag.
+        verify(
+            "Default [RSU XYZ 2026-02-20]",
+            "default [rsu xyz 2026-02-20]",
+            "Default [RSU XYZ 2026-02-20]",
+            false,
+            Some("RSU XYZ 2026-02-20"),
+        );
+
+        // Registered base, with a cost pool tag.
+        verify(
+            "Spouse (R) [ESO 2025-01-02]",
+            "spouse (R) [eso 2025-01-02]",
+            "Spouse (R) [ESO 2025-01-02]",
+            true,
+            Some("ESO 2025-01-02"),
+        );
+
+        // Empty/whitespace tags are ignored (treated as an ordinary affiliate).
+        verify("Spouse []", "spouse", "Spouse", false, None);
+        verify("Spouse [   ]", "spouse", "Spouse", false, None);
+
+        // The marker may appear anywhere in the strep, not only at the end
+        // (same as the `(R)` registered marker).
+        assert_eq!(new("[RSU A] Spouse"), new("Spouse [RSU A]"));
+        assert_eq!(new("Spouse [RSU A] (R)"), new("Spouse (R) [RSU A]"));
+
+        // A `(r)` *inside* the tag must NOT register the affiliate: the marker
+        // is extracted before the registered check, so the `(r)` stays part of
+        // the tag text.
+        verify(
+            "Default [some tag (r)]",
+            "default [some tag (r)]",
+            "Default [some tag (r)]",
+            false,
+            Some("some tag (r)"),
+        );
+        // ...while a `(R)` outside the tag still registers the base, leaving an
+        // in-tag `(r)` untouched.
+        verify(
+            "Default (R) [foo (r)]",
+            "default (R) [foo (r)]",
+            "Default (R) [foo (r)]",
+            true,
+            Some("foo (r)"),
+        );
+
+        let plain = new("Spouse");
+        assert!(!plain.is_cost_pool());
+        assert_eq!(plain.cost_pool_tag(), None);
+
+        // name() round-trips through from_strep for cost pools.
+        for s in [
+            "Default [RSU XYZ 2026-02-20]",
+            "Spouse (R) [ESO 2025-01-02]",
+            "[RSU XYZ 2026-02-20]",
+            "Default [some tag (r)]",
+            "Default (R) [foo (r)]",
+        ] {
+            let af = new(s);
+            assert_eq!(af, new(af.name()), "round-trip for {s:?}");
+        }
+
+        // Two different tags on the same base are distinct affiliates (separate
+        // ACB), but share a base name so they cluster together in filters.
+        let pool_a = new("Default [RSU A]");
+        let pool_b = new("Default [RSU B]");
+        let base = new("Default");
+        assert_ne!(pool_a, pool_b);
+        assert_ne!(pool_a, base);
+        // base_name_normalized() folds cost pools into their base, which is how
+        // the GUI groups them (see also the web `affiliateBaseName`).
+        assert_eq!(pool_a.base_name_normalized(), base.base_name_normalized());
+        assert_eq!(pool_a.base_name_normalized(), pool_b.base_name_normalized());
+        assert_ne!(
+            pool_a.base_name_normalized(),
+            new("Spouse [RSU A]").base_name_normalized()
+        );
     }
 }
