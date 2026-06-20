@@ -48,7 +48,7 @@
     </div>
 
     <div v-if="notes.length > 0" class="security-notes">
-      <p v-for="(note, i) in notes" :key="i">{{ note }}</p>
+      <p v-for="(note, i) in notes" :key="i" v-html="formatNote(note)"></p>
     </div>
   </div>
 </template>
@@ -111,7 +111,19 @@ export default defineComponent({
          return escapeHtml(cell).replace(/\n/g, '<br>');
       }
 
-      return { errors, notes, formatCell };
+      // Escape HTML, then turn any http(s) URLs into clickable <a> links.
+      // Escaping first ensures arbitrary note text can't inject markup; the
+      // URL regex runs over the escaped string (where '&' is already '&amp;',
+      // which is valid inside an href).
+      function formatNote(note: string): string {
+         const escaped = escapeHtml(note);
+         return escaped.replace(
+            /https?:\/\/[^\s<]+[^\s<.,;:!?)\]}'"]/g,
+            (url) => `<a href="${url}" target="_blank" rel="noopener noreferrer">${url}</a>`,
+         );
+      }
+
+      return { errors, notes, formatCell, formatNote };
    },
 });
 </script>
