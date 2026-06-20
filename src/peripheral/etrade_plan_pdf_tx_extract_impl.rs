@@ -19,18 +19,37 @@ pub(super) struct EtradeData {
 /// Constructs/extracts CsvTxs from the BenefitsAndTrades, and emits a sorted result.
 /// Errors if sell-to-cover data is incomplete.
 ///
+/// When `isolate_benefit_sale_acb` is true, a benefit paired with a plan sale
+/// (sell-to-cover / same-day-sale) is split into its retained shares (kept in the
+/// main affiliate) and its sold shares, which -- together with the immediate sale
+/// -- are routed into a per-grant isolated "cost pool" affiliate tagged
+/// `[7(1.31) - <plan note> <date>]` so the benefit sale gets a self-contained ACB
+/// (cost basis), separate from the main holdings, per ITA subsection 7(1.31). See
+/// the `Affiliate` cost-pool docs. When false, the benefit's whole acquisition and
+/// its sale both stay in the main affiliate (this only has an effect when
+/// sell-to-cover pairing is active, since the pool is built around the paired
+/// sale).
+///
 /// If `generate_fx` is true, FX transactions will be generated for manual trades
 /// (but not for sell-to-cover sales).
 pub(super) fn txs_from_data(
     trade_data: &BenefitsAndTrades,
     generate_fx: bool,
     no_sell_to_cover_pair: bool,
+    isolate_benefit_sale_acb: bool,
     config: Option<&AcbConfig>,
 ) -> Result<Vec<crate::portfolio::CsvTx>, SError> {
     let mut csv_txs = Vec::new();
     let mut fx_tracker = FxTracker::new();
 
-    for (i, b) in trade_data.benefits.iter().enumerate() {
+    // Running read index for benefit txs. Each benefit may emit up to three txs
+    // (a retained-portion buy, a sold-portion buy, and the sale), so we cannot
+    // use a fixed `i * 2` stride; a monotonic counter keeps every benefit tx's
+    // read_index below `csv_txs.len()`, which is what the later trade/FX read
+    // index bases rely on for stable ordering.
+    let mut read_index: u32 = 0;
+
+    for b in trade_data.benefits.iter() {
         let af =
             super::broker::affiliate_for_account_with_config(&b.account, config);
         // In the vast majority of cases, the affiliate will be default
@@ -38,94 +57,168 @@ pub(super) fn txs_from_data(
         let affiliate = if af == crate::portfolio::Affiliate::default() {
             None
         } else {
-            Some(af)
-        };
-        let buy_tx = crate::portfolio::CsvTx {
-            security: Some(b.security.clone()),
-            trade_date: Some(b.acquire_tx_date),
-            settlement_date: Some(b.acquire_settle_date),
-            action: Some(TxAction::Buy),
-            shares: Some(b.acquire_shares),
-            amount_per_share: Some(b.acquire_share_price),
-            total_amount: None,
-            commission: Some(Decimal::ZERO),
-            tx_currency: Some(Currency::usd()),
-            tx_curr_to_local_exchange_rate: None,
-            commission_currency: None,
-            commission_curr_to_local_exchange_rate: None,
-            memo: Some(b.plan_note.clone()),
-            affiliate: affiliate.clone(),
-            specified_superficial_loss: None,
-            stock_split_ratio: None,
-            read_index: (i * 2).try_into().unwrap(),
+            Some(af.clone())
         };
 
-        csv_txs.push(buy_tx);
+        let plan_sale = b.plan_sale_data()?;
 
-        if let Some(plan_sale) = b.plan_sale_data()? {
-            let plan_sale_note = b
-                .plan_sale_note
-                .as_ref()
-                .map(|n| n.as_str())
-                .unwrap_or("sell-to-cover");
-            let sell_tx = CsvTx {
+        // When isolating a paired benefit sale, carve the sold shares (and their
+        // immediate sale) into a per-grant "cost pool" affiliate, per ITA
+        // subsection 7(1.31): this gives the benefit sale a self-contained ACB
+        // (cost basis), separate from the main holdings. The shares the
+        // participant keeps stay in the main affiliate. (Superficial-loss
+        // detection still spans all affiliates of the security, so an isolated
+        // benefit-sale loss can still adjust the main holdings' ACB -- see the
+        // Affiliate cost-pool docs.) When not isolating, the whole acquisition and
+        // the sale both stay in the main affiliate (`sold_pool` is None).
+        let sold_pool = match (&plan_sale, isolate_benefit_sale_acb) {
+            (Some(plan_sale), true) => {
+                let sold = plan_sale.plan_sale_shares;
+                if (b.acquire_shares - sold).is_sign_negative() {
+                    return Err(format!(
+                        "Plan-sale of {sold} shares exceeds the {} acquired for \
+                         {} on {}",
+                        b.acquire_shares, b.plan_note, b.acquire_tx_date
+                    ));
+                }
+                // The tag uniquely identifies the grant. ACB is already keyed
+                // per security, so the security is left out of the tag.
+                let tag = format!("7(1.31) - {} {}", b.plan_note, b.acquire_tx_date);
+                Some((sold, af.with_cost_pool_tag(&tag)))
+            }
+            _ => None,
+        };
+
+        // The main-affiliate buy: the retained shares when isolating a cost pool,
+        // otherwise the whole acquisition. Skipped when a full plan-sale leaves
+        // nothing retained.
+        let main_buy_shares = match &sold_pool {
+            Some((sold, _)) => b.acquire_shares - *sold,
+            None => b.acquire_shares,
+        };
+        if main_buy_shares.is_sign_positive() && !main_buy_shares.is_zero() {
+            let memo = match &sold_pool {
+                Some(_) => format!("{} (retained portion)", b.plan_note),
+                None => b.plan_note.clone(),
+            };
+            csv_txs.push(crate::portfolio::CsvTx {
                 security: Some(b.security.clone()),
-                trade_date: Some(plan_sale.plan_sale_tx_date),
-                settlement_date: Some(plan_sale.plan_sale_settle_date),
-                action: Some(TxAction::Sell),
-                shares: Some(plan_sale.plan_sale_shares),
-                amount_per_share: Some(plan_sale.plan_sale_price),
+                trade_date: Some(b.acquire_tx_date),
+                settlement_date: Some(b.acquire_settle_date),
+                action: Some(TxAction::Buy),
+                shares: Some(main_buy_shares),
+                amount_per_share: Some(b.acquire_share_price),
                 total_amount: None,
-                commission: Some(plan_sale.plan_sale_fee),
+                commission: Some(Decimal::ZERO),
                 tx_currency: Some(Currency::usd()),
                 tx_curr_to_local_exchange_rate: None,
                 commission_currency: None,
                 commission_curr_to_local_exchange_rate: None,
-                memo: Some(format!("{} {}", b.plan_note, plan_sale_note)),
+                memo: Some(memo),
                 affiliate: affiliate.clone(),
                 specified_superficial_loss: None,
                 stock_split_ratio: None,
-                read_index: ((i * 2) + 1).try_into().unwrap(),
-            };
+                read_index,
+            });
+            read_index += 1;
+        }
 
-            csv_txs.push(sell_tx);
+        let Some(plan_sale) = &plan_sale else {
+            continue;
+        };
 
-            // The plan sale is modeled as a sell-to-cover, which bypasses the
-            // FxTracker (it normally only generates FX for manual trades). But
-            // for ESO/RSU/ESPP same-day sales only part of the proceeds is
-            // withheld; the rest actually lands in the account as USD and must
-            // become a USD.FX buy. `plan_sale_cash_amount` carries that figure.
-            // See local_md/eso_same_day_sale_fx_bug.md.
-            if generate_fx {
-                if let Some(cash) = &b.plan_sale_cash_amount {
-                    let gross_proceeds = plan_sale.plan_sale_shares
-                        * plan_sale.plan_sale_price
-                        - plan_sale.plan_sale_fee;
-                    let net = cash.proceeds_to_participant(gross_proceeds);
-                    if net.is_sign_negative() {
-                        return Err(format!(
-                            "Plan-sale proceeds to participant were negative \
-                             ({net}) for {}",
-                            b.plan_note
-                        ));
-                    }
-                    if !net.is_zero() {
-                        let fx_tx = FxTracker::fx_tx(
-                            Currency::usd(),
-                            plan_sale.plan_sale_tx_date,
-                            plan_sale.plan_sale_tx_date.to_string(),
-                            net,
-                            (i * 2) + 1,
-                            b.account.clone(),
-                            None,
-                            format!(
-                                "{} {} proceeds to participant",
-                                b.plan_note, plan_sale_note
-                            ),
-                        )
-                        .map_err(|e| format!("{e}"))?;
-                        fx_tracker.add_income_fx_tx(fx_tx);
-                    }
+        let plan_sale_note = b.plan_sale_note.as_deref().unwrap_or("sell-to-cover");
+
+        // The sale lands in the cost pool when isolating, else the main
+        // affiliate. When isolating, the sold shares are (re)acquired in the pool
+        // first, so the pool's ACB is self-contained.
+        let sell_affiliate = match &sold_pool {
+            Some((sold_shares, pool_af)) => {
+                csv_txs.push(CsvTx {
+                    security: Some(b.security.clone()),
+                    trade_date: Some(b.acquire_tx_date),
+                    settlement_date: Some(b.acquire_settle_date),
+                    action: Some(TxAction::Buy),
+                    shares: Some(*sold_shares),
+                    amount_per_share: Some(b.acquire_share_price),
+                    total_amount: None,
+                    commission: Some(Decimal::ZERO),
+                    tx_currency: Some(Currency::usd()),
+                    tx_curr_to_local_exchange_rate: None,
+                    commission_currency: None,
+                    commission_curr_to_local_exchange_rate: None,
+                    memo: Some(format!(
+                        "{} (sold portion, separate ACB)",
+                        b.plan_note
+                    )),
+                    affiliate: Some(pool_af.clone()),
+                    specified_superficial_loss: None,
+                    stock_split_ratio: None,
+                    read_index,
+                });
+                read_index += 1;
+                Some(pool_af.clone())
+            }
+            None => affiliate.clone(),
+        };
+
+        let sell_read_index = read_index;
+        csv_txs.push(CsvTx {
+            security: Some(b.security.clone()),
+            trade_date: Some(plan_sale.plan_sale_tx_date),
+            settlement_date: Some(plan_sale.plan_sale_settle_date),
+            action: Some(TxAction::Sell),
+            shares: Some(plan_sale.plan_sale_shares),
+            amount_per_share: Some(plan_sale.plan_sale_price),
+            total_amount: None,
+            commission: Some(plan_sale.plan_sale_fee),
+            tx_currency: Some(Currency::usd()),
+            tx_curr_to_local_exchange_rate: None,
+            commission_currency: None,
+            commission_curr_to_local_exchange_rate: None,
+            memo: Some(format!("{} {}", b.plan_note, plan_sale_note)),
+            affiliate: sell_affiliate,
+            specified_superficial_loss: None,
+            stock_split_ratio: None,
+            read_index: sell_read_index,
+        });
+        read_index += 1;
+
+        // The plan sale is modeled as a sell-to-cover, which bypasses the
+        // FxTracker (it normally only generates FX for manual trades). But
+        // for ESO/RSU/ESPP same-day sales only part of the proceeds is
+        // withheld; the rest actually lands in the account as USD and must
+        // become a USD.FX buy. `plan_sale_cash_amount` carries that figure.
+        // See local_md/eso_same_day_sale_fx_bug.md.
+        if generate_fx {
+            if let Some(cash) = &b.plan_sale_cash_amount {
+                let gross_proceeds = plan_sale.plan_sale_shares
+                    * plan_sale.plan_sale_price
+                    - plan_sale.plan_sale_fee;
+                let net = cash.proceeds_to_participant(gross_proceeds);
+                if net.is_sign_negative() {
+                    return Err(format!(
+                        "Plan-sale proceeds to participant were negative \
+                         ({net}) for {}",
+                        b.plan_note
+                    ));
+                }
+                if !net.is_zero() {
+                    let fx_tx = FxTracker::fx_tx(
+                        Currency::usd(),
+                        plan_sale.plan_sale_tx_date,
+                        plan_sale.plan_sale_tx_date.to_string(),
+                        net,
+                        sell_read_index as usize,
+                        b.account.clone(),
+                        None,
+                        format!(
+                            "{} {} proceeds to participant",
+                            b.plan_note, plan_sale_note
+                        ),
+                    )
+                    .map_err(|e| format!("{e}"))?;
+                    fx_tracker.add_income_fx_tx(fx_tx);
                 }
             }
         }
@@ -704,6 +797,7 @@ pub fn convert_etrade_file_data(
     xlsx_files: &[EtradeXlsxFile],
     generate_fx: bool,
     no_sell_to_cover_pair: bool,
+    isolate_benefit_sale_acb: bool,
     year: Option<i32>,
     config: Option<&AcbConfig>,
 ) -> Result<EtradeConvertResult, Vec<SError>> {
@@ -718,6 +812,7 @@ pub fn convert_etrade_file_data(
         &benefits_and_trades,
         generate_fx,
         no_sell_to_cover_pair,
+        isolate_benefit_sale_acb,
         config,
     )
     .map_err(|e| vec![e])?;
@@ -1185,7 +1280,7 @@ mod tests {
                 TTx{tdate: dt(19), n_sh: 2, act: TxAction::Buy,
                     ..dflt()}.x(),
             ]
-        }, false, false, None).unwrap();
+        }, false, false, true, None).unwrap();
 
         assert_vec_eq(txs, vec![
             // Vest without Stc
@@ -1206,7 +1301,7 @@ mod tests {
                 affiliate: None,
                 specified_superficial_loss: None,
                 stock_split_ratio: None,
-                read_index: 2,
+                read_index: 3,
             },
             // Extra sell
             CsvTx {
@@ -1226,7 +1321,7 @@ mod tests {
                 affiliate: Some(crate::portfolio::Affiliate::default()),
                 specified_superficial_loss: None,
                 stock_split_ratio: None,
-                read_index: 3,
+                read_index: 4,
             },
             // Extra buy
             CsvTx {
@@ -1246,14 +1341,14 @@ mod tests {
                 affiliate: Some(crate::portfolio::Affiliate::default()),
                 specified_superficial_loss: None,
                 stock_split_ratio: None,
-                read_index: 4 },
-            // Vest with StC
+                read_index: 5 },
+            // Vest with StC: retained portion stays in the main affiliate
             CsvTx {
                 security: Some(foo()),
                 trade_date: Some(dt(20)), // Some(2024-01-21),
                 settlement_date: Some(dt(22)), // Some(2024-01-23),
                 action: Some(TxAction::Buy),
-                shares: Some(dec!(100)),
+                shares: Some(dec!(97)),
                 amount_per_share: Some(dec!(1.50)),
                 total_amount: None,
                 commission: Some(dec!(0)),
@@ -1261,11 +1356,32 @@ mod tests {
                 tx_curr_to_local_exchange_rate: None,
                 commission_currency: None,
                 commission_curr_to_local_exchange_rate: None,
-                memo: Some("XXXX Vest".to_string()),
+                memo: Some("XXXX Vest (retained portion)".to_string()),
                 affiliate: None,
                 specified_superficial_loss: None,
                 stock_split_ratio: None,
                 read_index: 0,
+            },
+            // Sold portion -> isolated 7(1.31) cost pool affiliate
+            CsvTx {
+                security: Some(foo()),
+                trade_date: Some(dt(20)), // Some(2024-01-21),
+                settlement_date: Some(dt(22)), // Some(2024-01-23),
+                action: Some(TxAction::Buy),
+                shares: Some(dec!(3)),
+                amount_per_share: Some(dec!(1.50)),
+                total_amount: None,
+                commission: Some(dec!(0)),
+                tx_currency: Some(Currency::usd()),
+                tx_curr_to_local_exchange_rate: None,
+                commission_currency: None,
+                commission_curr_to_local_exchange_rate: None,
+                memo: Some("XXXX Vest (sold portion, separate ACB)".to_string()),
+                affiliate: Some(crate::portfolio::Affiliate::from_strep(
+                    "Default [7(1.31) - XXXX Vest 2024-01-21]")),
+                specified_superficial_loss: None,
+                stock_split_ratio: None,
+                read_index: 1,
             },
             // Stc
             CsvTx {
@@ -1282,10 +1398,11 @@ mod tests {
                 commission_currency: None,
                 commission_curr_to_local_exchange_rate: None,
                 memo: Some("XXXX Vest XXX STC".to_string()),
-                affiliate: None,
+                affiliate: Some(crate::portfolio::Affiliate::from_strep(
+                    "Default [7(1.31) - XXXX Vest 2024-01-21]")),
                 specified_superficial_loss: None,
                 stock_split_ratio: None,
-                read_index: 1,
+                read_index: 2,
             },
         ]);
     }
@@ -1304,9 +1421,10 @@ mod tests {
         };
 
         // With FX generation enabled
-        let txs_with_fx = super::txs_from_data(&data, true, false, None).unwrap();
-        // Should have: 1 benefit buy + 1 sell-to-cover + 1 manual sell + 1 FX tx
-        assert_eq!(txs_with_fx.len(), 4);
+        let txs_with_fx = super::txs_from_data(&data, true, false, true, None).unwrap();
+        // Should have: 2 benefit buys (retained + sold-portion cost pool)
+        // + 1 sell-to-cover + 1 manual sell + 1 FX tx
+        assert_eq!(txs_with_fx.len(), 5);
 
         // Find the FX transaction
         let fx_txs: Vec<_> = txs_with_fx.iter()
@@ -1320,9 +1438,9 @@ mod tests {
         assert_eq!(fx_tx.shares, Some(dec!(8.01)));
 
         // With FX generation disabled
-        let txs_no_fx = super::txs_from_data(&data, false, false, None).unwrap();
-        // Should have: 1 benefit buy + 1 sell-to-cover + 1 manual sell (no FX)
-        assert_eq!(txs_no_fx.len(), 3);
+        let txs_no_fx = super::txs_from_data(&data, false, false, true, None).unwrap();
+        // Should have: 2 benefit buys + 1 sell-to-cover + 1 manual sell (no FX)
+        assert_eq!(txs_no_fx.len(), 4);
         let fx_txs: Vec<_> = txs_no_fx.iter()
             .filter(|tx| tx.security.as_ref().map_or(false, |s| s.ends_with(".FX")))
             .collect();
@@ -1341,13 +1459,53 @@ mod tests {
             other_trades: vec![],
         };
 
-        let txs = super::txs_from_data(&data, true, false, None).unwrap();
-        // Should have: 1 benefit buy + 1 sell-to-cover, NO FX
-        assert_eq!(txs.len(), 2);
+        let txs = super::txs_from_data(&data, true, false, true, None).unwrap();
+        // Should have: 2 benefit buys (retained + sold-portion cost pool)
+        // + 1 sell-to-cover, NO FX
+        assert_eq!(txs.len(), 3);
         let fx_txs: Vec<_> = txs.iter()
             .filter(|tx| tx.security.as_ref().map_or(false, |s| s.ends_with(".FX")))
             .collect();
         assert_eq!(fx_txs.len(), 0);
+    }
+
+    #[rustfmt::skip]
+    #[test]
+    fn test_txs_from_data_no_benefit_sale_acb_isolation() {
+        // With isolation disabled, a paired benefit sale is NOT split into a
+        // cost pool: the whole acquisition and the sale both stay in the main
+        // affiliate (the pre-isolation behavior). One buy + one sell, neither
+        // tagged as a cost pool.
+        let data = super::BenefitsAndTrades {
+            benefits: vec![
+                TBen{tdate: dt(10), n_sh: 100, n_stc: Some(20),
+                     stc_tdate: Some(dt(10)), ..dflt()}.x(),
+            ],
+            other_trades: vec![],
+        };
+
+        let txs = super::txs_from_data(&data, false, false, false, None).unwrap();
+        assert_eq!(txs.len(), 2);
+
+        let buys: Vec<_> = txs.iter()
+            .filter(|t| t.action == Some(TxAction::Buy)).collect();
+        assert_eq!(buys.len(), 1);
+        // The whole 100-share acquisition, plain memo, default (None) affiliate.
+        assert_eq!(buys[0].shares, Some(dec!(100)));
+        assert_eq!(buys[0].memo, Some("XXXX Vest".to_string()));
+        assert_eq!(buys[0].affiliate, None);
+
+        let sells: Vec<_> = txs.iter()
+            .filter(|t| t.action == Some(TxAction::Sell)).collect();
+        assert_eq!(sells.len(), 1);
+        assert_eq!(sells[0].shares, Some(dec!(20)));
+        assert_eq!(sells[0].affiliate, None);
+
+        // No affiliate is a cost pool.
+        assert!(txs.iter().all(|t| t
+            .affiliate
+            .as_ref()
+            .map_or(true, |a| !a.is_cost_pool())));
     }
 
     #[rustfmt::skip]
@@ -1364,9 +1522,10 @@ mod tests {
             other_trades: vec![],
         };
 
-        let txs = super::txs_from_data(&data, true, false, None).unwrap();
-        // 1 benefit buy + 1 sell-to-cover + 1 proceeds FX buy
-        assert_eq!(txs.len(), 3);
+        let txs = super::txs_from_data(&data, true, false, true, None).unwrap();
+        // 2 benefit buys (retained + sold-portion cost pool) + 1 sell-to-cover
+        // + 1 proceeds FX buy
+        assert_eq!(txs.len(), 4);
         let fx_txs: Vec<_> = txs.iter()
             .filter(|tx| tx.security.as_ref().map_or(false, |s| s.ends_with(".FX")))
             .collect();
@@ -1378,8 +1537,8 @@ mod tests {
         assert_eq!(fx_tx.trade_date, Some(dt(10)));
 
         // Disabling FX generation suppresses it.
-        let txs_no_fx = super::txs_from_data(&data, false, false, None).unwrap();
-        assert_eq!(txs_no_fx.len(), 2);
+        let txs_no_fx = super::txs_from_data(&data, false, false, true, None).unwrap();
+        assert_eq!(txs_no_fx.len(), 3);
         assert!(txs_no_fx.iter().all(|tx| tx
             .security
             .as_ref()
@@ -1399,9 +1558,10 @@ mod tests {
             other_trades: vec![],
         };
 
-        let txs = super::txs_from_data(&data, true, false, None).unwrap();
-        // 1 benefit buy + 1 sell-to-cover, NO FX
-        assert_eq!(txs.len(), 2);
+        let txs = super::txs_from_data(&data, true, false, true, None).unwrap();
+        // 2 benefit buys (retained + sold-portion cost pool) + 1 sell-to-cover,
+        // NO FX
+        assert_eq!(txs.len(), 3);
         assert!(txs.iter().all(|tx| tx
             .security
             .as_ref()
@@ -1422,8 +1582,10 @@ mod tests {
             other_trades: vec![],
         };
 
-        let txs = super::txs_from_data(&data, true, false, None).unwrap();
-        assert_eq!(txs.len(), 3);
+        let txs = super::txs_from_data(&data, true, false, true, None).unwrap();
+        // 2 benefit buys (retained + sold-portion cost pool) + 1 sell-to-cover
+        // + 1 proceeds FX buy
+        assert_eq!(txs.len(), 4);
         let fx_tx = txs.iter()
             .find(|tx| tx.security.as_ref().map_or(false, |s| s.ends_with(".FX")))
             .unwrap();
@@ -1445,7 +1607,7 @@ mod tests {
             other_trades: vec![],
         };
 
-        let res = super::txs_from_data(&data, true, false, None);
+        let res = super::txs_from_data(&data, true, false, true, None);
         let err = res.unwrap_err();
         assert!(err.contains("negative"), "err: {err}");
     }
@@ -1461,7 +1623,7 @@ mod tests {
             ],
         };
 
-        let txs = super::txs_from_data(&data, true, false, None).unwrap();
+        let txs = super::txs_from_data(&data, true, false, true, None).unwrap();
         assert_eq!(txs.len(), 2);
 
         let fx_tx = txs.iter()
@@ -1521,7 +1683,7 @@ mod tests {
             ],
         };
 
-        let txs = super::txs_from_data(&data, false, true, None).unwrap();
+        let txs = super::txs_from_data(&data, false, true, true, None).unwrap();
 
         // 1 benefit buy + 2 trades (no STC sell, no FX)
         assert_eq!(txs.len(), 3);
@@ -1552,7 +1714,7 @@ mod tests {
             ],
         };
 
-        let txs = super::txs_from_data(&data, true, true, None).unwrap();
+        let txs = super::txs_from_data(&data, true, true, true, None).unwrap();
         // 1 sell + 1 FX
         assert_eq!(txs.len(), 2);
 
@@ -1583,6 +1745,7 @@ mod tests {
             },
             false,
             false,
+            true,
             Some(&config),
         )
         .unwrap();

@@ -221,6 +221,21 @@ impl Affiliate {
     pub fn is_cost_pool(&self) -> bool {
         self.0.cost_pool_tag.is_some()
     }
+
+    /// Returns the cost-pool variant of this affiliate: the same base name and
+    /// registered status, but carrying the given cost pool `tag` so it gets a
+    /// self-contained ACB. See the type docs on cost pools.
+    ///
+    /// Any existing cost pool tag on `self` is replaced. An empty or
+    /// whitespace-only `tag` yields the plain (untagged) base affiliate.
+    pub fn with_cost_pool_tag(&self, tag: &str) -> Affiliate {
+        let afd = AffiliateData::from_parts(
+            &self.0.name_base,
+            self.0.registered,
+            Some(tag),
+        );
+        AffiliateDedupTable::global_table().deduped_affiliate_from_afd(afd)
+    }
 }
 
 impl std::hash::Hash for Affiliate {
@@ -503,5 +518,33 @@ mod tests {
             pool_a.base_name_normalized(),
             new("Spouse [RSU A]").base_name_normalized()
         );
+    }
+
+    #[test]
+    fn test_with_cost_pool_tag() {
+        // Derives the tagged variant from a plain base affiliate.
+        let base = Affiliate::from_strep("Spouse");
+        let pool = base.with_cost_pool_tag("RSU A");
+        assert_eq!(pool, Affiliate::from_strep("Spouse [RSU A]"));
+        assert_eq!(pool.cost_pool_tag(), Some("RSU A"));
+
+        // Preserves registered status.
+        let reg = Affiliate::from_strep("Spouse (R)");
+        let reg_pool = reg.with_cost_pool_tag("ESO 2025-01-02");
+        assert_eq!(
+            reg_pool,
+            Affiliate::from_strep("Spouse (R) [ESO 2025-01-02]")
+        );
+        assert!(reg_pool.registered());
+
+        // Replaces an existing tag rather than nesting it.
+        assert_eq!(
+            pool.with_cost_pool_tag("RSU B"),
+            base.with_cost_pool_tag("RSU B")
+        );
+
+        // An empty/whitespace tag yields the plain base affiliate.
+        assert_eq!(base.with_cost_pool_tag(""), base);
+        assert_eq!(base.with_cost_pool_tag("   "), base);
     }
 }

@@ -250,6 +250,7 @@ pub fn convert_etrade_pdfs_to_csv(
     xlsx_names: Vec<String>,
     generate_fx: bool,
     no_sell_to_cover_pair: bool,
+    isolate_benefit_sale_acb: bool,
     year: Option<i32>,
     config_json: Option<String>,
 ) -> Result<JsValue, JsValue> {
@@ -274,6 +275,7 @@ pub fn convert_etrade_pdfs_to_csv(
         &xlsx_files,
         generate_fx,
         no_sell_to_cover_pair,
+        isolate_benefit_sale_acb,
         year,
         config.as_ref(),
     )

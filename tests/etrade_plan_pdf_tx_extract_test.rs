@@ -46,6 +46,7 @@ fn do_test_scenario(scenario_variant_dir: &Path) {
         debug: false,
         no_fx: true,
         no_sell_to_cover_pair: is_xlsx_variant,
+        isolate_benefit_sale_acb: false,
         year: None,
         config: None,
     };
@@ -105,6 +106,7 @@ fn test_etrade_pdf_parse_error() {
         debug: false,
         no_fx: true,
         no_sell_to_cover_pair: false,
+        isolate_benefit_sale_acb: false,
         year: None,
         config: None,
     };
@@ -139,6 +141,7 @@ fn test_etrade_scenario_with_config() {
         debug: false,
         no_fx: true,
         no_sell_to_cover_pair: false,
+        isolate_benefit_sale_acb: false,
         year: None,
         config: Some(PathBuf::from("./tests/data/alt-config.json")),
     };
@@ -185,6 +188,7 @@ fn test_etrade_scenario_with_fx() {
         debug: false,
         no_fx: false,
         no_sell_to_cover_pair: false,
+        isolate_benefit_sale_acb: false,
         year: None,
         config: None,
     };
@@ -193,6 +197,47 @@ fn test_etrade_scenario_with_fx() {
     assert_eq!(err, "");
 
     let exp_path = variant_dir.join("../expected_output_with_fx.csv");
+    let mut exp_out = String::new();
+    fs::File::open(&exp_path).unwrap().read_to_string(&mut exp_out).unwrap();
+
+    acb::testlib::assert_vec_eq(
+        out.split("\n").collect(),
+        exp_out.split("\n").collect(),
+    );
+}
+
+#[test]
+fn test_etrade_scenario_with_acb_isolation() {
+    // With --isolate-benefit-sale-acb, each paired benefit sale is split into a
+    // retained-portion buy (main affiliate) plus a sold-portion buy and sale in
+    // a per-grant `[7(1.31) - ...]` cost pool affiliate. Output therefore gains
+    // an affiliate column.
+    let variant_dir = Path::new("./tests/data/etrade_scenarios/2022_sample/lopdf");
+    let mut files: Vec<PathBuf> = fs::read_dir(variant_dir)
+        .unwrap()
+        .filter_map(|rd| rd.ok())
+        .map(|rd| rd.path())
+        .filter(|p| p.display().to_string().ends_with(".txt"))
+        .collect();
+    files.sort();
+    assert_ne!(files, Vec::<PathBuf>::new());
+
+    let args = Args {
+        files,
+        pretty: false,
+        extract_only: false,
+        debug: false,
+        no_fx: true,
+        no_sell_to_cover_pair: false,
+        isolate_benefit_sale_acb: true,
+        year: None,
+        config: None,
+    };
+    let (res, out, err) = run_and_get_output(args);
+    assert!(res.is_ok(), "res={:?} out={} err={}", res, out, err);
+    assert_eq!(err, "");
+
+    let exp_path = variant_dir.join("../expected_output_isolated.csv");
     let mut exp_out = String::new();
     fs::File::open(&exp_path).unwrap().read_to_string(&mut exp_out).unwrap();
 
@@ -245,6 +290,7 @@ fn test_etrade_xlsx_benefits_parse_error() {
         debug: false,
         no_fx: true,
         no_sell_to_cover_pair: false,
+        isolate_benefit_sale_acb: false,
         year: None,
         config: None,
     };
