@@ -1,5 +1,5 @@
 import { RenderTable } from "./acb_wasm_types.js";
-import { affiliateBaseName } from "./vue/output_store.js";
+import { affiliateBaseName, affiliateCostPoolTag } from "./vue/output_store.js";
 import type { AcbTaxEntry } from "./tampermonkey_gen.js";
 
 // -- Column indices for security render tables --
@@ -116,6 +116,7 @@ export function extractSellData(
             : parseDollarCell(row[ACB_COL]);
 
          const baseName = affiliateBaseName(affiliate);
+         const costPoolTag = affiliateCostPoolTag(affiliate) ?? undefined;
          affiliatesSet.add(baseName);
          securitiesSet.add(security);
 
@@ -128,6 +129,7 @@ export function extractSellData(
             security,
             settlementDate: settlDate,
             affiliate: baseName,
+            costPoolTag,
             proceedsCad,
             costBaseCad,
             sellingExpensesCad,

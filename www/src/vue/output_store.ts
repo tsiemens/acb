@@ -99,6 +99,20 @@ export function affiliateBaseName(affiliate: string): string {
 }
 
 /**
+ * Extract the cost pool tag from an affiliate's string representation: the
+ * contents of the bracketed marker `[...]` (e.g. "7(1.31) - RSU 123456
+ * 2017-02-01" for "Default [7(1.31) - RSU 123456 2017-02-01]"). Returns null
+ * when there is no cost pool marker or it is empty. Complements
+ * affiliateBaseName, which strips this same marker.
+ */
+export function affiliateCostPoolTag(affiliate: string): string | null {
+   const m = /\[([^\]]*)\]/.exec(affiliate);
+   if (!m) return null;
+   const tag = m[1].trim();
+   return tag.length > 0 ? tag : null;
+}
+
+/**
  * Check if a row's affiliate value matches the selected affiliate filter.
  * Matches on base name (ignoring "(R)" suffix).
  */
