@@ -6,6 +6,8 @@
     "scripts": {
         "render-templates": "node render.cjs",
         "typecheck": "tsc --noEmit",
+        "test": "vitest run",
+        "test:watch": "vitest",
         "build-ts": "vite build",
         "watch-ts": "vite build --watch",
         "dist-static-links-and-debug": "make dist-static-links-and-debug",
@@ -38,6 +40,7 @@
         "terser": "^5.42.0",
         "typescript": "^5.9.3",
         "vite": "^8.0.16",
-        "vite-svg-loader": "^5.1.1"
+        "vite-svg-loader": "^5.1.1",
+        "vitest": "^4.1.9"
     }
 }
