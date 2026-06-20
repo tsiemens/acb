@@ -226,6 +226,7 @@ fn render_txs_from_data(
     pretty: bool,
     generate_fx: bool,
     no_sell_to_cover_pair: bool,
+    isolate_benefit_sale_acb: bool,
     out_w: WriteHandle,
     config: Option<&crate::app::config::AcbConfig>,
 ) -> Result<(), SError> {
@@ -233,6 +234,7 @@ fn render_txs_from_data(
         trade_data,
         generate_fx,
         no_sell_to_cover_pair,
+        isolate_benefit_sale_acb,
         config,
     )?;
 
@@ -308,6 +310,15 @@ pub struct Args {
     /// sell transactions, and benefit sell-to-cover data is ignored.
     #[arg(long)]
     pub no_sell_to_cover_pair: bool,
+
+    /// Isolate each paired benefit sale's ACB into a separate per-grant "cost
+    /// pool" affiliate (tagged `[7(1.31) - ...]`). The shares sold as part of a
+    /// benefit event (sell-to-cover / same-day-sale) then get their own
+    /// self-contained ACB (cost basis), separate from the main holdings, per ITA
+    /// subsection 7(1.31). Has no effect alongside --no-sell-to-cover-pair, since
+    /// the cost pool is built around the paired sale.
+    #[arg(long)]
+    pub isolate_benefit_sale_acb: bool,
 
     /// Only include benefits whose acquisition date falls in this year.
     /// Useful when processing a BenefitHistory xlsx that spans many years.
@@ -403,6 +414,7 @@ pub fn run_with_args(
         args.pretty,
         !args.no_fx,
         args.no_sell_to_cover_pair,
+        args.isolate_benefit_sale_acb,
         out_w,
         config.as_ref(),
     )

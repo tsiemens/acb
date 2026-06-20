@@ -35,6 +35,12 @@ export interface AppInputStore {
    noFx: boolean;
    /** Do not pair sell-to-cover data with trade confirmations (E*TRADE only) */
    noSellToCoverPair: boolean;
+   /**
+    * Isolate each paired benefit sale's ACB into a separate per-grant cost pool
+    * affiliate (E*TRADE only). Only has an effect when sell-to-cover pairing is
+    * active.
+    */
+   isolateBenefitSaleAcb: boolean;
    /** Filter to only include entries whose settlement date falls in this year */
    filterYear: string;
 }
@@ -52,6 +58,7 @@ export function getAppInputStore(): AppInputStore {
          extractOnly: false,
          noFx: false,
          noSellToCoverPair: false,
+         isolateBenefitSaleAcb: false,
          filterYear: '',
       }) as AppInputStore;
    }

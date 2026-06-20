@@ -46,6 +46,21 @@
         </div>
       </div>
 
+      <div class="option-group">
+        <div class="checkbox-container">
+          <input
+            type="checkbox"
+            id="isolateBenefitAcbCheckbox"
+            :checked="appInputStore.isolateBenefitSaleAcb"
+            @change="onIsolateBenefitAcbChange"
+          >
+          <label
+            for="isolateBenefitAcbCheckbox"
+            title="Give each paired benefit sale its own isolated per-grant cost basis (ITA 7(1.31)), separate from your main holdings, instead of averaging it into them. Only has an effect when sell-to-cover pairing is enabled. Only affects E*TRADE benefit extraction."
+          >Isolate Benefit Sale ACB</label>
+        </div>
+      </div>
+
       <div v-if="isDebugMode" class="option-group">
         <div class="checkbox-container">
           <input
@@ -124,6 +139,10 @@ export default defineComponent({
          appInputStore.noSellToCoverPair = !(event.target as HTMLInputElement).checked;
       }
 
+      function onIsolateBenefitAcbChange(event: Event) {
+         appInputStore.isolateBenefitSaleAcb = (event.target as HTMLInputElement).checked;
+      }
+
       function onExtractOnlyChange(event: Event) {
          appInputStore.extractOnly = (event.target as HTMLInputElement).checked;
       }
@@ -143,7 +162,8 @@ export default defineComponent({
       return {
          sidebarInfoStore, appInputStore, tabStore, TabId, isDebugMode,
          ratesCacheExists,
-         onPrintFullChange, onPairStcChange, onExtractOnlyChange, onNoFxChange,
+         onPrintFullChange, onPairStcChange, onIsolateBenefitAcbChange,
+         onExtractOnlyChange, onNoFxChange,
          onFilterYearInput, onClearRatesCache,
       };
    },

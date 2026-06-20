@@ -1957,6 +1957,214 @@ mod tests {
 
     #[test]
     #[rustfmt::skip]
+    fn test_isolated_benefit_sale_cost_pool_sfl() {
+        // ITA subsection 7(1.31) "isolated benefit sale" scenario, as produced by
+        // the E*TRADE extractor's --isolate-benefit-sale-acb. The shares sold as
+        // part of a benefit (sell-to-cover) get their own self-contained ACB in a
+        // per-grant cost-pool affiliate, so the cost basis is NOT averaged with the
+        // main holdings. But superficial-loss detection still spans all affiliates
+        // of the security, so a loss realized when the cost pool sells out all of
+        // its shares is still preserved -- here it is denied and rolled into the
+        // ACB of the main affiliate's holdings (which bought identical shares in
+        // the window and still holds them at the end of the period).
+        //
+        // Default                       Default [7(1.31) - RSU 2017-02-01]
+        // --------                       ---------------------------------
+        // buy 100 (long-standing)
+        // wait...
+        // vest: buy 8 (retained)         vest: buy 2 (sold portion, own ACB)
+        //                                stc:  sell 2 (loss -> superficial)
+        let pool = "Default [7(1.31) - RSU 2017-02-01]";
+        let txs = vec![
+            // Long-standing main holding, acquired well outside the SFL window.
+            TTx{t_day: 1, act: A::Buy, shares: gez!(100), price: gez!(1.0),
+                af_name: "", ..def()}.x(),
+            // Benefit vest: retained portion stays in the main affiliate.
+            TTx{t_day: 31, act: A::Buy, shares: gez!(8), price: gez!(2.0),
+                af_name: "", ..def()}.x(),
+            // Benefit vest: sold portion gets its own isolated cost pool.
+            TTx{t_day: 31, act: A::Buy, shares: gez!(2), price: gez!(2.0),
+                af_name: pool, ..def()}.x(),
+            // Sell-to-cover: the pool sells out all of its shares at a loss.
+            TTx{t_day: 32, act: A::Sell, shares: gez!(2), price: gez!(1.0),
+                af_name: pool, ..def()}.x(),
+        ];
+        let deltas = txs_to_delta_list_no_err(txs);
+        validate_deltas(deltas, vec![
+            // Long-standing buy in main (Default) affiliate.
+            TDt{post_st: TPSS{shares: gez!(100), all_shares: gez!(100),
+                total_acb: sgez!(100.0), ..def()}, ..def()},
+            // Retained-portion vest buy in main affiliate.
+            TDt{post_st: TPSS{shares: gez!(108), all_shares: gez!(108),
+                total_acb: sgez!(116.0), ..def()}, ..def()},
+            // Sold-portion vest buy lands in the isolated cost pool: its ACB
+            // (2 sh * $2 = $4) is self-contained, not averaged into the main
+            // holdings.
+            TDt{post_st: TPSS{shares: gez!(2), all_shares: gez!(110),
+                total_acb: sgez!(4.0), ..def()}, ..def()},
+            // The cost pool sells all 2 shares for $1 (ACB $2/sh): a $2 loss that
+            // is fully superficial, so the reported capital gain is 0.
+            TDt{post_st: TPSS{shares: gez!(0), all_shares: gez!(108),
+                total_acb: sgez!(0), ..def()}, gain: sdec!(0), sfl: sndec!(-2.0),
+                ..def()},
+            // The denied $2 loss is rolled into the ACB of the main affiliate
+            // (the only buyer in the window still holding shares at period end):
+            // 116 + 2 = 118. The superficial loss is preserved across affiliates
+            // even though the cost basis was isolated.
+            TDt{post_st: TPSS{shares: gez!(108), all_shares: gez!(108),
+                total_acb: sgez!(118.0), ..def()}, ..def()},
+        ]);
+    }
+
+    #[test]
+    #[rustfmt::skip]
+    fn test_isolated_full_benefit_sale_sfl() {
+        // ITA 7(1.31) isolation, but for a benefit where the ENTIRE vest is sold
+        // (an ESO / same-day-sale with no retained portion). The cost pool buys
+        // then sells out all of its shares, so there is no benefit-related buy in
+        // the main affiliate at all -- it only holds long-standing shares.
+        //
+        // The loss IS still superficial: identical shares were acquired in the
+        // window (the cost pool's own vest buy) and identical shares are still held
+        // at the end of the period (the long-standing main holding). So the loss is
+        // denied (reported gain 0). BUT because the only buying affiliate (the cost
+        // pool) sold out, there are no buyer shares left to receive the ACB
+        // adjustment, so nothing is auto-rolled into the main affiliate and the
+        // delta is flagged potentially-over-applied (a warning suggesting manual
+        // handling). This is the case where isolation, combined with a full sale,
+        // means the denied loss is NOT automatically preserved in the main ACB.
+        //
+        // Default                       Default [7(1.31) - ESO 2017-02-01]
+        // --------                       ----------------------------------
+        // buy 100 (long-standing)
+        // wait...
+        //                                vest: buy 10 (entire vest, own ACB)
+        //                                sale: sell 10 (loss -> superficial)
+        let pool = "Default [7(1.31) - ESO 2017-02-01]";
+        let txs = vec![
+            TTx{t_day: 1, act: A::Buy, shares: gez!(100), price: gez!(1.0),
+                af_name: "", ..def()}.x(),
+            TTx{t_day: 31, act: A::Buy, shares: gez!(10), price: gez!(2.0),
+                af_name: pool, ..def()}.x(),
+            TTx{t_day: 32, act: A::Sell, shares: gez!(10), price: gez!(1.0),
+                af_name: pool, ..def()}.x(),
+        ];
+        let deltas = txs_to_delta_list_no_err(txs);
+        validate_deltas(deltas, vec![
+            // Long-standing main holding.
+            TDt{post_st: TPSS{shares: gez!(100), all_shares: gez!(100),
+                total_acb: sgez!(100.0), ..def()}, ..def()},
+            // Entire vest acquired in the isolated cost pool ($20 ACB).
+            TDt{post_st: TPSS{shares: gez!(10), all_shares: gez!(110),
+                total_acb: sgez!(20.0), ..def()}, ..def()},
+            // The pool sells out: $10 loss, fully superficial (gain 0), but the
+            // loss is NOT rolled into any affiliate (the only buyer sold out), so
+            // it is flagged potentially-over-applied. No SFLA delta follows.
+            TDt{post_st: TPSS{shares: gez!(0), all_shares: gez!(100),
+                total_acb: sgez!(0), ..def()}, gain: sdec!(0), sfl: sndec!(-10.0),
+                potentially_over_applied_sfl: true},
+        ]);
+        // The main affiliate's ACB is unchanged (the denied loss was not rolled in):
+        // 3 deltas total, with no auto-generated SfLA adjustment.
+        assert_eq!(txs_to_delta_list_no_err(vec![
+            TTx{t_day: 1, act: A::Buy, shares: gez!(100), price: gez!(1.0),
+                af_name: "", ..def()}.x(),
+            TTx{t_day: 31, act: A::Buy, shares: gez!(10), price: gez!(2.0),
+                af_name: pool, ..def()}.x(),
+            TTx{t_day: 32, act: A::Sell, shares: gez!(10), price: gez!(1.0),
+                af_name: pool, ..def()}.x(),
+        ]).len(), 3);
+    }
+
+    #[test]
+    #[rustfmt::skip]
+    fn test_isolated_multiple_benefit_sales_sold_out() {
+        let pool_a = "Default [7(1.31) - ESO A 2017-02-01]";
+        let pool_b = "Default [7(1.31) - ESO B 2017-02-01]";
+
+        // Two ESOs vesting and fully sold the same day, each in its own isolated
+        // cost pool, with NO other holdings anywhere. Pool A sells at a loss, pool
+        // B at a gain. Because every share is sold within the period, the total
+        // share balance across all affiliates at the end of the period is zero, so
+        // NEITHER loss is superficial -- pool A's loss is an ordinary capital loss
+        // and nothing rolls into the default affiliate.
+        //
+        // Default [... ESO A]            Default [... ESO B]
+        // -------------------            -------------------
+        // buy 10                         buy 10
+        // sell 10 (loss)                 sell 10 (gain)
+        let txs = vec![
+            TTx{t_day: 31, act: A::Buy, shares: gez!(10), price: gez!(2.0),
+                af_name: pool_a, ..def()}.x(),
+            TTx{t_day: 31, act: A::Buy, shares: gez!(10), price: gez!(2.0),
+                af_name: pool_b, ..def()}.x(),
+            TTx{t_day: 32, act: A::Sell, shares: gez!(10), price: gez!(1.0),
+                af_name: pool_a, ..def()}.x(),
+            TTx{t_day: 32, act: A::Sell, shares: gez!(10), price: gez!(3.0),
+                af_name: pool_b, ..def()}.x(),
+        ];
+        let deltas = txs_to_delta_list_no_err(txs);
+        validate_deltas(deltas, vec![
+            TDt{post_st: TPSS{shares: gez!(10), all_shares: gez!(10),
+                total_acb: sgez!(20.0), ..def()}, ..def()}, // Buy in pool A
+            TDt{post_st: TPSS{shares: gez!(10), all_shares: gez!(20),
+                total_acb: sgez!(20.0), ..def()}, ..def()}, // Buy in pool B
+            // Pool A sells out at a loss: NOT superficial (zero shares remain at
+            // end of period), so it is an ordinary $10 capital loss, no SFL.
+            TDt{post_st: TPSS{shares: gez!(0), all_shares: gez!(10),
+                total_acb: sgez!(0), ..def()}, gain: sdec!(-10.0), sfl: None,
+                ..def()},
+            // Pool B sells out at a gain.
+            TDt{post_st: TPSS{shares: gez!(0), all_shares: gez!(0),
+                total_acb: sgez!(0), ..def()}, gain: sdec!(10.0), sfl: None,
+                ..def()},
+        ]);
+
+        // Same two fully-sold ESOs, but now the main affiliate holds long-standing
+        // shares. Now identical shares ARE still held at the end of the period, so
+        // pool A's loss IS superficial and is denied (gain 0). But the buying
+        // affiliates (both pools) sold out, so -- as in the single-ESO case -- the
+        // denied loss is not auto-rolled into the main affiliate, and the delta is
+        // flagged potentially-over-applied.
+        //
+        // Default              Default [... ESO A]    Default [... ESO B]
+        // --------             -------------------    -------------------
+        // buy 100              buy 10                 buy 10
+        //                      sell 10 (loss)         sell 10 (gain)
+        let txs = vec![
+            TTx{t_day: 1, act: A::Buy, shares: gez!(100), price: gez!(1.0),
+                af_name: "", ..def()}.x(),
+            TTx{t_day: 31, act: A::Buy, shares: gez!(10), price: gez!(2.0),
+                af_name: pool_a, ..def()}.x(),
+            TTx{t_day: 31, act: A::Buy, shares: gez!(10), price: gez!(2.0),
+                af_name: pool_b, ..def()}.x(),
+            TTx{t_day: 32, act: A::Sell, shares: gez!(10), price: gez!(1.0),
+                af_name: pool_a, ..def()}.x(),
+            TTx{t_day: 32, act: A::Sell, shares: gez!(10), price: gez!(3.0),
+                af_name: pool_b, ..def()}.x(),
+        ];
+        let deltas = txs_to_delta_list_no_err(txs);
+        validate_deltas(deltas, vec![
+            TDt{post_st: TPSS{shares: gez!(100), all_shares: gez!(100),
+                total_acb: sgez!(100.0), ..def()}, ..def()}, // Long-standing main
+            TDt{post_st: TPSS{shares: gez!(10), all_shares: gez!(110),
+                total_acb: sgez!(20.0), ..def()}, ..def()}, // Buy in pool A
+            TDt{post_st: TPSS{shares: gez!(10), all_shares: gez!(120),
+                total_acb: sgez!(20.0), ..def()}, ..def()}, // Buy in pool B
+            // Pool A sells out at a loss: superficial now (main still holds 100),
+            // denied (gain 0), but not rolled in (both buyers sold out).
+            TDt{post_st: TPSS{shares: gez!(0), all_shares: gez!(110),
+                total_acb: sgez!(0), ..def()}, gain: sdec!(0), sfl: sndec!(-10.0),
+                potentially_over_applied_sfl: true},
+            // Pool B sells out at a gain.
+            TDt{post_st: TPSS{shares: gez!(0), all_shares: gez!(100),
+                total_acb: sgez!(0), ..def()}, gain: sdec!(10.0), sfl: None,
+                ..def()},
+        ]);
+    }
+
+    #[test]
+    #[rustfmt::skip]
     fn test_other_affiliate_explicit_sfl() {
 
         /* SFL with sells on two other affiliates (both non-registered),
