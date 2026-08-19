@@ -25,7 +25,7 @@
         "canada-acb": "github:tsiemens/canada-acb-js#preview-0.1.2",
         "jszip": "^3.10.1",
         "papaparse": "^5.5.3",
-        "pdfjs-dist": "^5.5.207",
+        "pdfjs-dist": "^6.2.108",
         "vue": "^3.5.29"
     },
     "devDependencies": {
