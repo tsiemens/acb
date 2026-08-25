@@ -2,6 +2,9 @@
     "name": "acb-web-gui",
     "version": "1.0.0",
     "description": "A web interface for ACB",
+    "engines": {
+        "node": ">=22.13.0"
+    },
     "type": "module",
     "scripts": {
         "render-templates": "node render.cjs",
@@ -22,10 +25,10 @@
         "all": "npm run pre-build && npm run lint && npm run build"
     },
     "dependencies": {
-        "canada-acb": "github:tsiemens/canada-acb-js#preview-0.1.2",
+        "canada-acb": "github:tsiemens/canada-acb-js#preview-0.1.4",
         "jszip": "^3.10.1",
         "papaparse": "^5.5.3",
-        "pdfjs-dist": "^5.5.207",
+        "pdfjs-dist": "^6.2.108",
         "vue": "^3.5.29"
     },
     "devDependencies": {
@@ -34,8 +37,8 @@
         "@typescript-eslint/parser": "^8.57.0",
         "@vitejs/plugin-vue": "^6.0.5",
         "ejs": "^3.1.10",
-        "eslint": "^9.26.0",
-        "eslint-plugin-import": "^2.31.0",
+        "eslint": "^10.9.1",
+        "eslint-plugin-import-x": "^4.17.1",
         "http-server": "^14.1.1",
         "terser": "^5.42.0",
         "typescript": "^5.9.3",

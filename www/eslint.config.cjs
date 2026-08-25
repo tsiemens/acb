@@ -1,11 +1,7 @@
 // eslint.config.js or eslint.config.cjs
 const tseslint = require('@typescript-eslint/eslint-plugin');
 const tsParser = require('@typescript-eslint/parser');
-const { FlatCompat } = require('@eslint/eslintrc');
-const importPlugin = require('eslint-plugin-import');
-
-// Initialize a compatibility object
-const compat = new FlatCompat();
+const importPlugin = require('eslint-plugin-import-x');
 
 module.exports = [
   // Base configuration for all files
@@ -31,7 +27,7 @@ module.exports = [
     },
     plugins: {
       '@typescript-eslint': tseslint,
-      'import': importPlugin
+      'import-x': importPlugin
     },
     rules: {
       // Include basic recommended rules that don't require type checking
@@ -40,7 +36,7 @@ module.exports = [
       '@typescript-eslint/no-explicit-any': 'warn',
 
       // Use import plugin to enforce extensions
-      'import/extensions': [
+      'import-x/extensions': [
         'error',
         'ignorePackages',
         {
