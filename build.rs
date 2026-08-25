@@ -270,7 +270,7 @@ fn install_node_modules(emit_verbose_warnings: bool) {
     fs::create_dir_all(&node_env_dir).expect("Failed to create node_env directory");
 
     // Write package.json
-    let pdfjs_version = "^5.5.207";
+    let pdfjs_version = "^6.2.108";
 
     // If www/package.json also has pdfjs-dist, assert the versions match.
     let www_package_json_path = repo_root.join("www/package.json");
