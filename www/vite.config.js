@@ -1,7 +1,7 @@
 import { defineConfig } from 'vite';
 import vue from '@vitejs/plugin-vue';
 import svgLoader from 'vite-svg-loader';
-import packageJson from './package.json';
+import packageJson from './package.json' with { type: 'json' };
 
 export default defineConfig({
   plugins: [vue(), svgLoader()],
@@ -26,7 +26,7 @@ export default defineConfig({
     outDir: 'dist/js',
     assetsDir: 'assets',
     base: '/js/',
-    rollupOptions: {
+    rolldownOptions: {
       input: {
         main: './src/main.ts'
       },

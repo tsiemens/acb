@@ -153,7 +153,7 @@ export function getConfigStore(): ConfigStore {
       _store = reactive({
          config: initial,
          fileEntryId: null,
-      }) as ConfigStore;
+      });
 
       // If a config was loaded from storage, sync it to the file drawer.
       if (initial) {

@@ -60,7 +60,7 @@ export function getAppInputStore(): AppInputStore {
          noSellToCoverPair: false,
          isolateBenefitSaleAcb: false,
          filterYear: '',
-      }) as AppInputStore;
+      });
    }
    return _store;
 }
