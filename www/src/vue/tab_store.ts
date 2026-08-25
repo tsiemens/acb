@@ -32,7 +32,7 @@ export function getTabStore(): TabStore {
             tabs.map(t => [t.id, false]),
          ),
          glowingTabs: new Set<TabIdType>(),
-      }) as TabStore;
+      });
 
       const s = _store;
       watch(() => s.activeTab, (newTab) => {
