@@ -41,13 +41,14 @@ fn install_python_venv() {
 
     let out_dir = env::var("OUT_DIR").unwrap();
     let venv_path = Path::new(&out_dir).join("venv");
-    let target_dir = Path::new(&out_dir).join("../../..");
     if emit_verbose_warnings {
         println!("cargo::warning=Installing venv in {:?}", venv_path);
     }
 
-    // Create virtualenv
-    Command::new("python3")
+    // Create virtualenv. The Windows python.org installer provides
+    // python.exe and py.exe, but never python3.exe.
+    let system_python = if cfg!(windows) { "python" } else { "python3" };
+    Command::new(system_python)
         .args(&["-m", "venv", venv_path.to_str().unwrap()])
         .status()
         .expect("Failed to create virtualenv");
@@ -81,7 +82,9 @@ fn install_python_venv() {
         .status()
         .expect("Failed to run pip install");
 
-    if cfg!(unix) {
+    #[cfg(unix)]
+    {
+        let target_dir = Path::new(&out_dir).join("../../..");
         if let Err(e) =
             make_python_bin_wrapper(&target_dir, &venv_path, &python_path)
         {
@@ -343,9 +346,9 @@ fn install_node_modules(emit_verbose_warnings: bool) {
 
 fn write_venv_constants(out_dir: &str, venv_path: &str, pip_path: &str, python_bin_path: &str) {
     let content = format!(
-        r#"pub const VENV_PATH: &str = "{venv_path}";
-pub const PIP_PATH: &str = "{pip_path}";
-pub const PYTHON_BIN_PATH: &str = "{python_bin_path}";
+        r#"pub const VENV_PATH: &str = {venv_path:?};
+pub const PIP_PATH: &str = {pip_path:?};
+pub const PYTHON_BIN_PATH: &str = {python_bin_path:?};
 "#
     );
     fs::write(Path::new(out_dir).join("venv_constants.rs"), content)
@@ -359,7 +362,7 @@ fn write_node_constants(
     node_repo_root: Option<&str>,
 ) {
     let fmt = |v: Option<&str>| match v {
-        Some(s) => format!("Some(\"{s}\")"),
+        Some(s) => format!("Some({s:?})"),
         None => "None".to_string(),
     };
     let content = format!(
