@@ -1,0 +1,7 @@
+# Integration tests compare tool output against these fixtures line by line,
+# splitting on "\n". The tool always writes LF, so a fixture checked out with
+# CRLF leaves a trailing "\r" on every line and the comparison fails.
+tests/data/** text eol=lf
+
+# Spreadsheet fixtures are binary and must not be line-ending converted.
+tests/data/**/*.xlsx binary
