@@ -5,3 +5,11 @@ tests/data/** text eol=lf
 
 # Spreadsheet fixtures are binary and must not be line-ending converted.
 tests/data/**/*.xlsx binary
+
+# Scripts run through their shebang line. Checked out with CRLF, the trailing
+# "\r" becomes part of the interpreter name and the kernel finds no such
+# program.
+*.sh text eol=lf
+py/acb-tools text eol=lf
+py/colorize-table text eol=lf
+www/scripts/npm text eol=lf

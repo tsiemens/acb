@@ -111,6 +111,50 @@ fn get_repo_root(out_dir: &str) -> std::path::PathBuf {
         .expect("Failed to canonicalize repo root path")
 }
 
+fn is_executable_file(path: &Path) -> bool {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::metadata(path)
+            .map(|m| m.is_file() && m.permissions().mode() & 0o111 != 0)
+            .unwrap_or(false)
+    }
+    #[cfg(not(unix))]
+    {
+        path.is_file()
+    }
+}
+
+/// The filenames an executable named `name` can have on this platform. Windows
+/// requires one of the PATHEXT suffixes, other platform don't care
+fn executable_names(name: &str) -> Vec<String> {
+    if cfg!(windows) {
+        let path_ext = env::var("PATHEXT")
+            .unwrap_or_else(|_| ".COM;.EXE;.BAT;.CMD".to_string());
+        path_ext
+            .split(';')
+            .filter(|ext| !ext.is_empty())
+            .map(|ext| format!("{name}{ext}"))
+            .collect()
+    } else {
+        vec![name.to_string()]
+    }
+}
+
+/// Find an executable named `name` in `dir`.
+fn find_exe_in_dir(dir: &Path, name: &str) -> Option<std::path::PathBuf> {
+    executable_names(name)
+        .into_iter()
+        .map(|candidate| dir.join(candidate))
+        .find(|full_path| is_executable_file(full_path))
+}
+
+/// Find an executable on PATH.
+fn find_exe_on_path(name: &str) -> Option<std::path::PathBuf> {
+    let path = env::var_os("PATH")?;
+    env::split_paths(&path).find_map(|dir| find_exe_in_dir(&dir, name))
+}
+
 /// Resolve the node binary path using fnm + .node-version, falling back to
 /// node on PATH (e.g. in CI where actions/setup-node provides it directly).
 /// Returns None if neither fnm nor node is available.
@@ -119,62 +163,49 @@ fn resolve_node_bin_path(repo_root: &Path) -> Option<std::path::PathBuf> {
         .or_else(|| resolve_node_on_path(repo_root))
 }
 
-/// Try to resolve node via fnm.
+/// Locate the fnm binary. `cargo install fnm` is the documented way to get it,
+/// so look in the cargo bin directory before falling back to PATH.
+fn find_fnm() -> Option<std::path::PathBuf> {
+    // Cargo sets CARGO_HOME for build scripts, whether or not it is set in the
+    // surrounding environment.
+    env::var_os("CARGO_HOME")
+        .and_then(|cargo_home| {
+            find_exe_in_dir(&Path::new(&cargo_home).join("bin"), "fnm")
+        })
+        .or_else(|| find_exe_on_path("fnm"))
+}
+
 fn resolve_node_via_fnm(repo_root: &Path) -> Option<std::path::PathBuf> {
-    let home = env::var("HOME").ok()?;
-    let fnm_path = Path::new(&home).join(".cargo/bin/fnm");
-
-    // Check if fnm exists either on PATH or in ~/.cargo/bin
-    let fnm_cmd = if fnm_path.exists() {
-        fnm_path.to_str().unwrap().to_string()
-    } else {
-        // Check PATH
-        let check = Command::new("which")
-            .arg("fnm")
-            .output()
-            .ok()?;
-        if !check.status.success() {
-            return None;
-        }
-        "fnm".to_string()
-    };
-
+    let fnm = find_fnm()?;
     let www_dir = repo_root.join("www");
 
-    // Use fnm to get the node binary path. We need to:
-    // 1. eval fnm env to set up the PATH
-    // 2. cd to www/ so fnm reads .node-version
-    // 3. fnm use to install/activate the version
-    // 4. output the real (resolved) node binary path
-    //    (fnm uses ephemeral symlinks in /run/ that don't persist)
-    let script = format!(
-        r#"
-export PATH="$HOME/.cargo/bin:$PATH"
-eval "$({fnm_cmd} env --shell bash)"
-cd {www_dir} && {fnm_cmd} use --install-if-missing --silent-if-unchanged
-realpath "$(which node)"
-"#,
-        fnm_cmd = fnm_cmd,
-        www_dir = www_dir.display(),
-    );
+    // Provision the requested version. fnm reports an already-installed version
+    // as a warning and exits successfully, so this is idempotent; a genuine
+    // failure surfaces below when the version cannot be used.
+    let _ = Command::new(&fnm)
+        .arg("install")
+        .current_dir(&www_dir)
+        .output();
 
-    let output = Command::new("bash")
-        .arg("-c")
-        .arg(&script)
+    // fnm runs commands through ephemeral shims, so ask node itself where the
+    // real binary is.
+    let output = Command::new(&fnm)
+        .args(&["exec", "--using-file", "--", "node", "-p", "process.execPath"])
+        .current_dir(&www_dir)
         .output()
         .ok()?;
 
-    if output.status.success() {
-        let node_path = String::from_utf8(output.stdout).ok()?.trim().to_string();
-        if !node_path.is_empty() {
-            Some(std::path::PathBuf::from(node_path))
-        } else {
-            None
-        }
-    } else {
+    if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
         println!("cargo::warning=fnm node resolution failed: {}", stderr);
+        return None;
+    }
+
+    let node_path = String::from_utf8(output.stdout).ok()?.trim().to_string();
+    if node_path.is_empty() {
         None
+    } else {
+        Some(std::path::PathBuf::from(node_path))
     }
 }
 
@@ -185,7 +216,7 @@ fn read_node_version_file(repo_root: &Path) -> Option<String> {
 }
 
 /// Query the version of a node binary (returns e.g. "22.1.0").
-fn get_node_version(node_path: &str) -> Option<String> {
+fn get_node_version(node_path: &Path) -> Option<String> {
     let output = Command::new(node_path)
         .arg("--version")
         .output()
@@ -201,23 +232,13 @@ fn get_node_version(node_path: &str) -> Option<String> {
 }
 
 /// Fallback: check if node is directly available on PATH (e.g. CI with
-/// actions/setup-node). Warns to stderr if its major version doesn't match
+/// actions/setup-node). Warns if its major version doesn't match
 /// .node-version.
 fn resolve_node_on_path(repo_root: &Path) -> Option<std::path::PathBuf> {
-    let output = Command::new("which")
-        .arg("node")
-        .output()
-        .ok()?;
-    if !output.status.success() {
-        return None;
-    }
-    let node_path = String::from_utf8(output.stdout).ok()?.trim().to_string();
-    if node_path.is_empty() {
-        return None;
-    }
+    let node_path = find_exe_on_path("node")?;
 
-    let node_version = get_node_version(&node_path)
-        .unwrap_or_else(|| "unknown".to_string());
+    let node_version =
+        get_node_version(&node_path).unwrap_or_else(|| "unknown".to_string());
 
     // Check version matches .node-version
     let expected_node_version_opt = read_node_version_file(repo_root);
@@ -235,10 +256,31 @@ fn resolve_node_on_path(repo_root: &Path) -> Option<std::path::PathBuf> {
     }
 
     println!(
-        "cargo::warning=fnm not installed. Using node from PATH: {} (version: {}. Expected .node-version: {})",
-        node_path, node_version, expected_node_version_opt.unwrap_or_else(|| "unknown".into())
+        "cargo::warning=Using node from PATH: {} (version: {}. Expected .node-version: {})",
+        node_path.display(), node_version, expected_node_version_opt.unwrap_or_else(|| "unknown".into())
     );
-    Some(std::path::PathBuf::from(node_path))
+    Some(node_path)
+}
+
+/// Locate the npm belonging to a given node binary. npm ships in the same
+/// directory as node, so the sibling is the npm for that node's version. PATH
+/// is the fallback for a node installed without npm.
+fn resolve_npm_path(node_bin_path: &Path) -> Option<std::path::PathBuf> {
+    node_bin_path
+        .parent()
+        .and_then(|node_dir| find_exe_in_dir(node_dir, "npm"))
+        .or_else(|| find_exe_on_path("npm"))
+}
+
+/// PATH with the resolved node's directory in front.
+///
+/// npm is itself a script that finds node through PATH, so without this it
+/// can run against a different node than the one resolved here.
+fn path_with_node_dir(node_bin_path: &Path) -> Option<std::ffi::OsString> {
+    let node_dir = node_bin_path.parent()?;
+    let mut dirs = vec![node_dir.to_path_buf()];
+    dirs.extend(env::split_paths(&env::var_os("PATH").unwrap_or_default()));
+    env::join_paths(dirs).ok()
 }
 
 fn install_node_modules(emit_verbose_warnings: bool) {
@@ -265,8 +307,18 @@ fn install_node_modules(emit_verbose_warnings: bool) {
         );
     }
 
-    // Determine npm path (sibling of node)
-    let npm_script = repo_root.join("www/scripts/npm");
+    let npm_path = match resolve_npm_path(&node_bin_path) {
+        Some(p) => p,
+        None => {
+            println!(
+                "cargo::warning=npm not found next to {:?} or on PATH. \
+                 Node.js PDF reader (pdfjs-dist) will not be functional.",
+                node_bin_path
+            );
+            write_node_constants(&out_dir, None, None, None);
+            return;
+        }
+    };
 
     // Set up node_modules in OUT_DIR
     let node_env_dir = Path::new(&out_dir).join("node_env");
@@ -317,9 +369,12 @@ fn install_node_modules(emit_verbose_warnings: bool) {
     fs::write(node_env_dir.join("package.json"), package_json)
         .expect("Failed to write package.json");
 
-    // Run npm install using the www/scripts/npm wrapper
-    let npm_output = Command::new(npm_script.to_str().unwrap())
-        .args(&["install", "--prefix", node_env_dir.to_str().unwrap()])
+    let mut npm_cmd = Command::new(&npm_path);
+    npm_cmd.arg("install").current_dir(&node_env_dir);
+    if let Some(path) = path_with_node_dir(&node_bin_path) {
+        npm_cmd.env("PATH", path);
+    }
+    let npm_output = npm_cmd
         .output()
         .expect("Failed to run npm install for node_env");
 
@@ -328,7 +383,7 @@ fn install_node_modules(emit_verbose_warnings: bool) {
         let stderr = String::from_utf8_lossy(&npm_output.stderr);
         println!("cargo::warning=npm install for pdfjs-dist failed. Node.js PDF reader will not be functional.");
         for line in stdout.lines().chain(stderr.lines()) {
-            println!("cargo::warning=www/scripts/npm: {}", line);
+            println!("cargo::warning=npm: {}", line);
         }
         write_node_constants(&out_dir, None, None, None);
         return;
