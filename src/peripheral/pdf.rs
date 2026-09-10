@@ -378,10 +378,8 @@ pub fn get_pages_text_from_path_py(
     }
     args.push(p.display().to_string());
 
-    let output = run_python_script_file(
-        &crate::util::py::get_python_script_dir().join("pdf_text.py"),
-        args,
-    )?;
+    let script_dir = crate::util::py::get_python_script_dir()?;
+    let output = run_python_script_file(&script_dir.join("pdf_text.py"), args)?;
 
     let split_pat = regex::Regex::new(r"PAGE_BREAK<\d+>").unwrap();
 
