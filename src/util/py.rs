@@ -40,6 +40,9 @@ pub fn run_python_script_file(
     let child = Command::new(python_bin()?)
         .arg(script_path)
         .args(args)
+        // Python otherwise encodes piped stdout with the locale's code page,
+        // which is not UTF-8 on Windows.
+        .env("PYTHONIOENCODING", "utf-8")
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
@@ -63,6 +66,9 @@ pub fn run_python_script(script: &str) -> Result<String, SError> {
     let child = Command::new(python_bin()?)
         .arg("-c")
         .arg(script)
+        // Python otherwise encodes piped stdout with the locale's code page,
+        // which is not UTF-8 on Windows.
+        .env("PYTHONIOENCODING", "utf-8")
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
@@ -103,5 +109,20 @@ print("Hello from Python!")
     match run_python_script(script) {
         Ok(output) => Ok(output),
         Err(e) => Err(e),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::run_python_script;
+
+    /// The script itself stays ASCII so that only the output encoding is
+    /// under test. `\u00e9` is representable in the Windows ANSI code page,
+    /// where encoding it produces a byte that is not valid UTF-8; `\u2192`
+    /// is not representable there at all, so encoding it fails outright.
+    #[test]
+    fn test_non_ascii_output_survives_the_pipe() {
+        let output = run_python_script(r"print('caf\u00e9 \u2192')").unwrap();
+        assert_eq!(output.trim_end(), "café →");
     }
 }
